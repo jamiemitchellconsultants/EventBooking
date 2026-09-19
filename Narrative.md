@@ -10,6 +10,7 @@ This document records what was asked, what was decided, why, and what followed.
 |---|---|---|---|---|
 | [1](#entry-add-ai-fingerprint-protocol-and-check) | 2026-09-19 | Add AI fingerprint protocol and check | product | Port the mechanism unchanged: the footer is the first 12 hex characters of the sha256 of the diff from the merge-base to the head. |
 | [2](#entry-add-path-filtered-build-and-test-workflow) | 2026-09-19 | Add path-filtered build and test workflow | product | Build and test run only on pull requests and pushes to `main`, skip when every changed file is markdown, `docs/`, `narrative/` or an agent-instruction directory, and cancel superseded runs. |
+| [3](#entry-exempt-narrative-proposal-prs-from-the-ai-fingerprint-check) | 2026-09-19 | Exempt Narrative proposal PRs from the AI fingerprint check | product | Narrative proposal PRs are exempt from the fingerprint requirement, correcting the earlier decision that they should carry one. |
 
 ---
 
@@ -54,3 +55,25 @@ Build and test run only on pull requests and pushes to `main`, skip when every c
 Documentation-only PRs no longer pay for a build. A code change to a filtered path could in principle escape a build only if it is entirely under an ignored path, which by construction cannot affect a build. Intermediate commits on a branch go unvalidated when a newer commit cancels their run. Making `build` required later means removing the path filter first.
 
 AI-Fingerprint: sha256:e25adb570700
+
+---
+
+<a id="entry-exempt-narrative-proposal-prs-from-the-ai-fingerprint-check"></a>
+
+## Entry 3 — 2026-09-19 — Exempt Narrative proposal PRs from the AI fingerprint check
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+The fingerprint protocol was applied to every PR, with a step to append the footer to Narrative proposal PRs. In practice the proposal PR's fingerprint check ran when the bot opened it, before the footer existed, and the later body edit made with the workflow token did not re-run the check. The required check therefore failed on the first proposal PR, for #2.
+
+## Decision
+
+Narrative proposal PRs are exempt from the fingerprint requirement, correcting the earlier decision that they should carry one. The exemption needs both the branch prefix and the bot author, because only the workflow token can author as `github-actions[bot]`, whereas anyone can name a branch. The footer-appending step is removed as pointless.
+
+## Consequences
+
+Proposal PRs pass the required check without a footer. Their bodies are written by the Narrative action and are not covered by the protocol; a human still reviews and merges them. Proposal PRs already open, including #4 and #5, keep their failing run until their next event, such as a close and reopen, or an admin merges past it.
+
+AI-Fingerprint: sha256:057149eaddf9
