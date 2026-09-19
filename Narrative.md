@@ -11,6 +11,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [1](#entry-add-ai-fingerprint-protocol-and-check) | 2026-09-19 | Add AI fingerprint protocol and check | product | Port the mechanism unchanged: the footer is the first 12 hex characters of the sha256 of the diff from the merge-base to the head. |
 | [2](#entry-add-path-filtered-build-and-test-workflow) | 2026-09-19 | Add path-filtered build and test workflow | product | Build and test run only on pull requests and pushes to `main`, skip when every changed file is markdown, `docs/`, `narrative/` or an agent-instruction directory, and cancel superseded runs. |
 | [3](#entry-exempt-narrative-proposal-prs-from-the-ai-fingerprint-check) | 2026-09-19 | Exempt Narrative proposal PRs from the AI fingerprint check | product | Narrative proposal PRs are exempt from the fingerprint requirement, correcting the earlier decision that they should carry one. |
+| [4](#entry-docs-eventbooking-design-spec-and-full-design-package) | 2026-09-19 | docs: EventBooking design spec and full design package | product | EventBooking ports JointBooking's .NET solution and generalises it (D5). A clean rebuild from JointBooking's redesign docs, and generalising JointBooking in place, were both rejected. |
 
 ---
 
@@ -77,3 +78,69 @@ Narrative proposal PRs are exempt from the fingerprint requirement, correcting t
 Proposal PRs pass the required check without a footer. Their bodies are written by the Narrative action and are not covered by the protocol; a human still reviews and merges them. Proposal PRs already open, including #4 and #5, keep their failing run until their next event, such as a close and reopen, or an admin merges past it.
 
 AI-Fingerprint: sha256:057149eaddf9
+
+---
+
+<a id="entry-docs-eventbooking-design-spec-and-full-design-package"></a>
+
+## Entry 4 — 2026-09-19 — docs: EventBooking design spec and full design package
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+JointBooking coordinates recruitment candidates across three fixed appointment types, negotiated
+by three fixed managers, in 4-hour windows at one head office, and deploys to AWS. We wanted a
+general-purpose, public product for invitation-only events that keeps JointBooking's two core
+guarantees: no overbooking under concurrency, and bookability only after every responsible team
+agrees. It also needed four generalisations:
+
+- many locations, each with its own time zone;
+- variable-length events;
+- any number of Admin-managed appointment types;
+- self-hosted deployment only.
+
+## Decision
+
+EventBooking ports JointBooking's .NET solution and generalises it (D5). A clean rebuild from
+JointBooking's redesign docs, and generalising JointBooking in place, were both rejected.
+
+- **Negotiation.** An `EventProposal` lists its own `AppointmentType`s. Each listed type's single
+  Manager, one per type across all locations (D1), accepts with a headcount, and the proposal
+  confirms once every listed type has accepted. Negotiation is the only source of events; bulk
+  import is dropped (D6).
+- **Requirements.** An `Attendee`'s requirements derive from an Admin-managed `AttendeeGroup` (D3).
+- **Invites.** The Coordinator selects the eligible `Location`s per `Invite` (D4), and the number
+  of options is configurable (D7).
+- **Deployment.** AWS, Terraform, the Entra ID adapter and MinIO are dropped in favour of local
+  Docker Compose and the home lab with Keycloak (D8, D9).
+- **Questions settled here that JointBooking left open:**
+  - a durable email outbox (D13);
+  - deterministic, versioned attendee tokens (D14);
+  - a closed `AttendeeStatus` transition table (D15);
+  - fixed boundary values.
+
+## Consequences
+
+- The domain model is broader:
+  - capacity locking now needs a canonical lock order;
+  - invite selection becomes a relational-division query;
+  - every time rule is evaluated in the location's zone, and proposals falling on a DST gap or
+    overlap are rejected.
+- Two JointBooking behaviours change: an Admin may clear a type's only Manager, and the seed tool
+  migrates only unless `--demo` is passed.
+- Deliberately out of scope:
+  - multi-tenancy;
+  - per-location managers;
+  - reminders before an upcoming booking;
+  - historical reporting;
+  - milestone-relative scheduling;
+  - any cloud target.
+- The design package is maintained alongside the code under its definition of done. The
+  implementation plan comes next.
+
+---
+
+AI-Fingerprint: sha256:89469b5a9146
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
