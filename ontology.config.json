@@ -1,0 +1,23 @@
+{
+  "ontologyPath": "docs/ontology.md",
+  "namespaceUri": "https://ontology.example/eventbooking#",
+  "sections": {
+    "required": [
+      "Entities",
+      "Relationships"
+    ],
+    "optional": [
+      "External Systems",
+      "Subsystems",
+      "Aggregate Roots",
+      "Value Objects",
+      "Domain Events",
+      "Enums",
+      "Use Cases",
+      "Business Rules & Invariants"
+    ]
+  },
+  "allowlist": [],
+  "bannedAliases": [],
+  "ignorePaths": []
+}

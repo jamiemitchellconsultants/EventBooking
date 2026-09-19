@@ -1,0 +1,22 @@
+@prefix : <https://ontology.example/eventbooking#> .
+@prefix kit: <https://ontology-kit.dev/schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+: kit:projectName "EventBooking" .
+
+:Event a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "Event" ;
+    rdfs:comment "A bookable occurrence that offers one or more `SessionType`s. Properties are undecided until the first code lands." .
+
+:SessionType a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "SessionType" ;
+    rdfs:comment "A kind of session an `Event` can offer. Whether this is modelled as an entity or an enumeration is undecided until the first code lands." .
+
+:offers a owl:ObjectProperty ;
+    rdfs:domain :Event ;
+    rdfs:range :SessionType ;
+    rdfs:label "offers" ;
+    kit:cardinality "1 → 1..*" .
