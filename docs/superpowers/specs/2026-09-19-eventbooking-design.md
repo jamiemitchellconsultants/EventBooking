@@ -1,7 +1,9 @@
 # EventBooking — Design Spec
 
 **Date:** 2026-09-19
-**Status:** Draft for review
+**Status:** Decision record. The full design is in [docs/design/](../../design/README.md), which
+supersedes the detail in sections 4–11 below. The decisions in section 2 still stand, and so do
+the vocabulary mapping in section 3 and the scope in section 12.
 **Origin:** Generalisation of JointBooking (`jamiemitchellconsultants/JointBooking`, `main` at `6957928`)
 
 ## 1. Purpose
@@ -311,10 +313,10 @@ This ports JointBooking's structure with names changed from jointbooking to even
 The `EVENTBOOKING_*` environment variables replace the `JOINTBOOKING_*` ones, and the MinIO
 variables are removed.
 
-The installer script lives in the separate LocalAI repository (`setup-jointbooking-windows.ps1`).
-An equivalent `setup-eventbooking-windows.ps1` is needed there. That is **out of scope for this
-repository**, but it is a prerequisite for the first home-lab deploy, so it should be tracked as a
-companion issue in LocalAI.
+JointBooking's installer lived in a separate repository. EventBooking instead documents the
+install steps and ships a reference script, `deploy/home-lab/install.sh`. Any operator-owned
+automation must perform the same steps (see
+[07 — Home lab](../../design/07-deployment.md#home-lab-deployhome-lab)).
 
 ## 8. Seed data
 
@@ -337,7 +339,8 @@ The demo dataset is regenerated for the general model. It deliberately exercises
   - two AppointmentStaff.
 
 The seed keeps date anchoring (`--reanchor`), idempotent natural-key upserts, and the seeded
-attendee invitation emails through Mailpit.
+attendee invitation emails through Mailpit. The final dataset and flags, including migrate-only by
+default, are in [07 — Seed data](../../design/07-deployment.md#seed-data).
 
 ## 9. Error handling
 
@@ -398,5 +401,5 @@ problem-details response that names the rule, never a 500.
 - Bulk event import (D6)
 - Attendee-chosen appointment types, or per-attendee overrides (D3)
 - Any cloud deployment target
-- The LocalAI installer script (§7.2)
+- Operator-specific install automation beyond the reference script (§7.2)
 - Migrating data from a running JointBooking instance (D12)
