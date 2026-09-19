@@ -68,6 +68,52 @@ Apply the label when a pull request makes a meaningful product, architecture, go
 operational, correction, or experimental decision. Leave it off for mechanical changes that do not
 alter project intent.
 
+## Detailed implementation plans
+
+A superpowers plan (`docs/superpowers/plans/<slug>/`) is deliberately code-free — it is input for
+spec-driven development, not something an execution agent can run directly. Once a superpowers plan
+for a feature area exists, the next step is to generate its matching detailed implementation plan
+under `docs/detailed-implementations/<slug>/`, using the same date-prefixed slug as the superpowers
+plan it expands.
+
+Use a prompt along these lines to generate it:
+
+> from superpowers create implementation plans in docs/detailed-implementations detailed enough to
+> be processed by opencode + superpowers + qwen3.6 27b q6. include code fragments and domain entity
+> detail as needed. each task must end with a commit and push.
+
+- The detailed plan must be self-sufficient for a small local model (opencode + superpowers +
+  qwen3.6 27b q6) to execute without re-deriving design decisions already made in the superpowers
+  plan or the spec.
+- Split the document into numbered tasks (`### Task N: <name>`), continuing the numbering already
+  used across `docs/detailed-implementations/<slug>/`'s other files rather than restarting at 1.
+  Each task is TDD-shaped and must contain, in this order:
+  1. **`**Files:**`** — every file the task creates or touches, marked `Create:`, `Modify:`, or
+     `Test:`, with full repo-relative paths.
+  2. **`**Interfaces:**`** — what the task consumes from earlier tasks and what it produces
+     (namespace plus public surface), as a C# code fragment with member-level comments rather than
+     prose. This is the "domain entity detail" a downstream task, and a smaller model, reads instead
+     of re-deriving it from the spec.
+  3. **`- [ ] **Step 1: Write the failing test**`** — a complete test file, not a sketch, using the
+     project's real test framework and fixtures.
+  4. Further numbered `- [ ]` steps implementing the production code to make that test pass, plus
+     any additional tests the task needs.
+  5. A final **`- [ ] **Step N: Commit and push**`** step with the literal shell commands:
+     ```
+     git add -A
+     git commit -m "<type>(<scope>): <summary>"
+     git push
+     ```
+     One commit per task — never batch multiple tasks into one commit, and never end a task without
+     this step.
+- Each detailed-implementation file opens with a one-line title (`# NN — <area> (Tasks X–Y)`), a
+  `[← Overview](00-overview.md) · [Ontology](../../ontology.md)` link line, and a short paragraph
+  giving the task range's scope and its position in the layering (domain / application /
+  infrastructure / API / web) — mirror the existing files' framing rather than inventing new
+  section furniture.
+- Domain terminology must still follow the [Ontology protocol](#ontology-protocol) below — detailed
+  plans are exactly the kind of plan doc that protocol covers.
+
 <!-- ontology-protocol:start -->
 ## Ontology protocol
 
