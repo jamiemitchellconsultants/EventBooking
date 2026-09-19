@@ -13,6 +13,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [3](#entry-exempt-narrative-proposal-prs-from-the-ai-fingerprint-check) | 2026-09-19 | Exempt Narrative proposal PRs from the AI fingerprint check | product | Narrative proposal PRs are exempt from the fingerprint requirement, correcting the earlier decision that they should carry one. |
 | [4](#entry-docs-eventbooking-design-spec-and-full-design-package) | 2026-09-19 | docs: EventBooking design spec and full design package | product | EventBooking ports JointBooking's .NET solution and generalises it (D5). A clean rebuild from JointBooking's redesign docs, and generalising JointBooking in place, were both rejected. |
 | [5](#entry-docs-plan-add-the-eventbooking-implementation-plan) | 2026-09-19 | docs(plan): add the EventBooking implementation plan | product | Deliver in eight phases, one pull request each, following the spec's porting sequence: first port JointBooking under EventBooking names with AWS removed and the build green, then generalise the domain, persistence, application, API/MCP… |
+| [6](#entry-docs-agents-add-detailed-implementation-plans-section) | 2026-09-19 | docs(agents): add detailed implementation plans section | product | Adopt JointBooking's convention as is. Each superpowers plan gets a matching detailed implementation plan under `docs/detailed-implementations/<slug>/`. |
 
 ---
 
@@ -171,5 +172,31 @@ Implementation can start at Task 1, using subagent-driven or inline execution. E
 ---
 
 AI-Fingerprint: sha256:5da7b6ed8fea
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+<a id="entry-docs-agents-add-detailed-implementation-plans-section"></a>
+
+## Entry 6 — 2026-09-19 — docs(agents): add detailed implementation plans section
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Superpowers plans under `docs/superpowers/plans/` are code-free by design. They are input for spec-driven development and can't be handed straight to an execution agent, least of all a small local model. JointBooking already uses a convention for expanding them into executable, task-level plans, and EventBooking had nothing equivalent.
+
+## Decision
+
+Adopt JointBooking's convention as is. Each superpowers plan gets a matching detailed implementation plan under `docs/detailed-implementations/<slug>/`. It is split into numbered TDD-shaped tasks, each with Files, Interfaces and a complete failing test first, and each task ends with its own commit and push. The target is plans that opencode + superpowers + qwen3.6 27b q6 can execute without re-deriving design decisions.
+
+## Consequences
+
+Planning becomes a two-stage process: a superpowers plan, then a detailed implementation plan. Detailed plans are plan documents under the ontology protocol, so they must use canonical terms. Tasks are numbered continuously across a slug's files. The instructions now match JointBooking's except for the corrected ontology link path. JointBooking still has the broken `../ontology.md` link.
+
+---
+
+AI-Fingerprint: sha256:a0d7fcf8ef56
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
