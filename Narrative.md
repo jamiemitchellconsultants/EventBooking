@@ -12,6 +12,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [2](#entry-add-path-filtered-build-and-test-workflow) | 2026-09-19 | Add path-filtered build and test workflow | product | Build and test run only on pull requests and pushes to `main`, skip when every changed file is markdown, `docs/`, `narrative/` or an agent-instruction directory, and cancel superseded runs. |
 | [3](#entry-exempt-narrative-proposal-prs-from-the-ai-fingerprint-check) | 2026-09-19 | Exempt Narrative proposal PRs from the AI fingerprint check | product | Narrative proposal PRs are exempt from the fingerprint requirement, correcting the earlier decision that they should carry one. |
 | [4](#entry-docs-eventbooking-design-spec-and-full-design-package) | 2026-09-19 | docs: EventBooking design spec and full design package | product | EventBooking ports JointBooking's .NET solution and generalises it (D5). A clean rebuild from JointBooking's redesign docs, and generalising JointBooking in place, were both rejected. |
+| [5](#entry-docs-plan-add-the-eventbooking-implementation-plan) | 2026-09-19 | docs(plan): add the EventBooking implementation plan | product | Deliver in eight phases, one pull request each, following the spec's porting sequence: first port JointBooking under EventBooking names with AWS removed and the build green, then generalise the domain, persistence, application, API/MCP… |
 
 ---
 
@@ -142,5 +143,33 @@ JointBooking's redesign docs, and generalising JointBooking in place, were both 
 ---
 
 AI-Fingerprint: sha256:89469b5a9146
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+<a id="entry-docs-plan-add-the-eventbooking-implementation-plan"></a>
+
+## Entry 5 — 2026-09-19 — docs(plan): add the EventBooking implementation plan
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+The design package fixes what EventBooking must do, but not the order of work, how the port from JointBooking is staged, or how to resolve two detail differences between the spec and the design package (demo attendee groups, and seed flags).
+
+## Decision
+
+Deliver in eight phases, one pull request each, following the spec's porting sequence: first port JointBooking under EventBooking names with AWS removed and the build green, then generalise the domain, persistence, application, API/MCP and web in that order, then seed and deployment, then load test and docs. The plan is code-free: it specifies behaviour, contracts and tests, and leaves the code to the implementer. Where the spec and design package differ in detail, the design package wins (4 demo groups; migrate-only seed by default with `--demo`), as its README requires.
+
+Rejected: one plan per subsystem (cross-references between phases would be lost); a clean rebuild ordering (contradicts D5).
+
+## Consequences
+
+Implementation can start at Task 1, using subagent-driven or inline execution. Each phase PR states whether it makes a decision. The plan is a living document: if a task changes a documented rule, the design package is updated in the same PR.
+
+---
+
+AI-Fingerprint: sha256:5da7b6ed8fea
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
