@@ -49,6 +49,11 @@ maintain a deterministic, review-first decision history.
   silently; missing sections with the label present make it fail visibly. **Neither is repairable
   after merge** — labelling a merged pull request does nothing, and a missed entry has to be
   written by hand as a fragment.
+- Open narrative proposal pull requests (`automation/narrative-pr-<number>`) conflict on
+  `Narrative.md` when another entry merges first. `.github/workflows/refresh-narrative.yml` fixes
+  this on the next push to `main` that touches the narrative, by merging `main` and recompiling. Never
+  hand-merge `Narrative.md`; if the refresh run fails naming other files, resolve those, then run
+  `narrative compile`.
 - **Supplying a pull-request body replaces the repository template wholesale.** If you pass a body
   to `gh pr create`, carry the three sections in it yourself. This is the single most common way an
   installation decays: the template documents the rule, and the agent never reads it because the
