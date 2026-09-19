@@ -20,9 +20,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Narrative proposal PRs are opened by the Narrative action with a fixed body, so they are
+      # exempt. Both conditions are required: the branch prefix alone could be claimed by anyone,
+      # while only the workflow token can author as github-actions[bot].
+      - name: Detect narrative proposal PR
+        id: exempt
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          case "$HEAD_REF" in
+            automation/narrative-pr-*)
+              if [ "$AUTHOR" = "github-actions[bot]" ]; then
+                echo "exempt=true" >> "$GITHUB_OUTPUT"
+                echo "Narrative proposal PR opened by github-actions[bot]; fingerprint not required."
+              fi
+              ;;
+          esac
+
       # PR_BODY is passed via env rather than interpolated into the script: it is untrusted text
       # and direct `${{ }}` interpolation into a run: block is a script-injection vector.
       - name: AI fingerprint check
+        if: steps.exempt.outputs.exempt != 'true'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

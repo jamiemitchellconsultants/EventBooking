@@ -159,5 +159,5 @@ it manually.
   commands. An administrator can bypass a red check, since `enforce_admins` is off.
 - Supplying a pull-request body replaces the repository template wholesale (same rule as the
   Narrative sections above) — if you pass a body, carry the `AI-Fingerprint:` footer in it yourself.
-- A narrative proposal pull request is opened by the Narrative action with a fixed body, so
-  `.github/workflows/maintain-narrative.yml` computes and appends the footer to it.
+- A narrative proposal pull request (branch `automation/narrative-pr-<number>`, opened by
+  `github-actions[bot]`) is exempt: the Narrative action writes its body, and the check skips it.
