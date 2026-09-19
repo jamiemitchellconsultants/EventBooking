@@ -22,6 +22,17 @@ EventBooking is a booking system for events with multiple session types. The cod
 - Do not delete remote branches unless explicitly requested.
 - Inspect the staged diff before committing and before pushing.
 
+## Build and test workflow
+
+- `.github/workflows/dotnet-build.yml` builds and tests on pull requests and on pushes to `main`,
+  and cancels superseded runs. It is skipped when every changed file is documentation, `docs/`,
+  `narrative/` or an agent-instruction file (`paths-ignore`).
+- A pull request that touches a build path but does not need a build (for example a workflow-only
+  change) takes the `no-build-check` label, which makes the `build` job report "skipped".
+- `build` is deliberately not a required status check. Never make it one while it has a `paths`
+  filter, and never give a workflow whose job is required a `paths` filter: a required check that
+  does not run leaves every pull request pending forever.
+
 ## Project Narrative
 
 This repository uses [Project Narrative](https://github.com/jamiemitchellconsultants/Narrative) to
