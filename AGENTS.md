@@ -120,3 +120,33 @@ If the term check flags your term, there are exactly three correct responses:
 
 Reaching for option 3 by default is how this control decays. Prefer 1 and 2.
 <!-- ontology-protocol:end -->
+
+## AI fingerprint protocol
+
+Every pull request body must carry an `AI-Fingerprint:` footer line proving it was produced by
+following this protocol rather than typed by hand — it isn't cryptographically secure and isn't
+meant to resist a determined forger; it only has to be tedious enough that nobody bothers computing
+it manually.
+
+- Before running `gh pr create` (or updating an open PR's body after pushing new commits), compute:
+  ```
+  MERGE_BASE=$(git merge-base origin/main HEAD)
+  git diff "$MERGE_BASE" HEAD | sha256sum | cut -c1-12
+  ```
+  and add this exact footer line to the PR body:
+  ```
+  AI-Fingerprint: sha256:<the 12 hex characters from above>
+  ```
+- The hash is stable while `origin/main` advances (the merge-base doesn't move unless this branch
+  is itself rebased), but changes with every commit pushed to the branch — recompute and update the
+  PR body's footer line after any push that changes `HEAD`, or the `ai-fingerprint` check will fail
+  on the stale hash. On macOS without `sha256sum`, use `shasum -a 256` in its place.
+- `.github/workflows/ai-fingerprint.yml` recomputes the same hash from
+  `merge-base(base, head)..head` on every `pull_request` event and compares it against the body's
+  `AI-Fingerprint:` line. A missing or mismatched fingerprint is a **failing** check.
+- There is no author exemption. A human committing directly is expected to run the same two
+  commands. An administrator can bypass a red check, since `enforce_admins` is off.
+- Supplying a pull-request body replaces the repository template wholesale (same rule as the
+  Narrative sections above) — if you pass a body, carry the `AI-Fingerprint:` footer in it yourself.
+- A narrative proposal pull request is opened by the Narrative action with a fixed body, so
+  `.github/workflows/maintain-narrative.yml` computes and appends the footer to it.
