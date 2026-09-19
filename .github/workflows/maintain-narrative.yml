@@ -20,33 +20,3 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           required-label: narrative-required
-
-      # The Narrative action opens its proposal PR with a fixed body that knows nothing about this
-      # repo's AI-fingerprint protocol (see AGENTS.md), so the ai-fingerprint check would fail on it.
-      # Compute and attach the footer here instead of teaching the external action about a
-      # convention specific to this repo.
-      - name: Add AI fingerprint to narrative proposal PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git fetch origin "${{ github.event.pull_request.base.ref }}" --quiet
-
-          BRANCH="automation/narrative-pr-${{ github.event.pull_request.number }}"
-          PR_JSON=$(gh pr list --head "$BRANCH" --json number,baseRefOid,headRefOid,body --jq '.[0]')
-          if [ -z "$PR_JSON" ]; then
-            echo "No narrative proposal was opened for $BRANCH; nothing to fingerprint."
-            exit 0
-          fi
-
-          PR_NUMBER=$(printf '%s' "$PR_JSON" | jq -r .number)
-          BODY=$(printf '%s' "$PR_JSON" | jq -r .body)
-          if printf '%s' "$BODY" | grep -qE '^AI-Fingerprint: sha256:[0-9a-f]{12}$'; then
-            echo "PR #$PR_NUMBER already carries a fingerprint."
-            exit 0
-          fi
-
-          BASE_OID=$(printf '%s' "$PR_JSON" | jq -r .baseRefOid)
-          HEAD_OID=$(printf '%s' "$PR_JSON" | jq -r .headRefOid)
-          MERGE_BASE=$(git merge-base "$BASE_OID" "$HEAD_OID")
-          FINGERPRINT=$(git diff "$MERGE_BASE" "$HEAD_OID" | sha256sum | cut -c1-12)
-          printf '%s\n\nAI-Fingerprint: sha256:%s\n' "$BODY" "$FINGERPRINT" | gh pr edit "$PR_NUMBER" --body-file -
