@@ -5,18 +5,758 @@
 
 : kit:projectName "EventBooking" .
 
+:Location a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "Location" ;
+    rdfs:comment "An Admin-managed physical site where `Event`s take place. `timeZoneId` is an IANA zone; every `EventWindow` at the site is interpreted in it. `code` is immutable, unique, canonical uppercase snake case, accepted case-insensitively at input boundaries." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "code" ;
+    kit:hasProperty "name" ;
+    kit:hasProperty "address" ;
+    kit:hasProperty "timeZoneId" ;
+    kit:hasProperty "isActive" ;
+    kit:invariant "Cannot be deactivated while it hosts an `Open` `EventProposal` or an `Active` future `Event`." .
+
+:AppointmentType a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "AppointmentType" ;
+    rdfs:comment "An Admin-managed kind of appointment an `Attendee` may be required to attend, run by at most one current Manager across every `Location`. `code` is immutable, unique, canonical uppercase snake case. There is no fixed number of types." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "code" ;
+    kit:hasProperty "name" ;
+    kit:hasProperty "isActive" ;
+    kit:invariant "Cannot be deactivated while listed on an `Open` `EventProposal` or an `Active` future `Event`, or mapped by an active `AttendeeGroup`." .
+
+:EventProposal a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "EventProposal" ;
+    rdfs:comment "An attendee-facing `EventWindow` at one `Location`, proposed by one Manager together with the list of `AppointmentType`s the `Event` will offer. Every listed type's Manager must accept before it becomes an `Event`." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "locationId" ;
+    kit:hasProperty "date" ;
+    kit:hasProperty "startTime" ;
+    kit:hasProperty "durationMinutes" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "createdByManagerUserId" ;
+    kit:invariant "Becomes `Confirmed`, creating its `Event` and one `EventCapacity` per listed `AppointmentType` from each `ProposalAcceptance` headcount, in the same transaction that records the final missing acceptance. A proposal whose list has one entry is confirmed on creation." ;
+    kit:invariant "Every listed `AppointmentType` must be active and have a current Manager when the proposal is created; the `Location` must be active; the `EventWindow` must start in the future." .
+
+:EventProposalAppointmentType a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "EventProposalAppointmentType" ;
+    rdfs:comment "One `AppointmentType` listed on an `EventProposal`. The list is fixed at creation, has at least one entry, and must include the proposing Manager's own type." ;
+    kit:hasProperty "proposalId" ;
+    kit:hasProperty "appointmentTypeId" .
+
+:ProposalAcceptance a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "ProposalAcceptance" ;
+    rdfs:comment "One Manager's acceptance of an `EventProposal` for their own listed `AppointmentType`, carrying their own positive headcount. The proposing Manager's acceptance is recorded when the proposal is created. The accepting Manager may revise `headcount` in place while the proposal is `Open`; no other Manager may read or change it." ;
+    kit:hasProperty "proposalId" ;
+    kit:hasProperty "appointmentTypeId" ;
+    kit:hasProperty "managerUserId" ;
+    kit:hasProperty "headcount" ;
+    kit:invariant "At most one per `EventProposal` and `AppointmentType`, only for a listed type, and only by that type's current Manager. A replaced Manager's acceptances and proposals pass to their successor." .
+
 :Event a owl:Class ;
     rdfs:subClassOf kit:Entity ;
     rdfs:label "Event" ;
-    rdfs:comment "A bookable occurrence that offers one or more `SessionType`s. Properties are undecided until the first code lands." .
+    rdfs:comment "An `EventProposal` accepted for every listed `AppointmentType`, bookable by `Attendee`s. Carries the same `EventWindow` and `Location` as its proposal." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "proposalId" ;
+    kit:hasProperty "locationId" ;
+    kit:hasProperty "date" ;
+    kit:hasProperty "startTime" ;
+    kit:hasProperty "durationMinutes" ;
+    kit:hasProperty "status" ;
+    kit:invariant "Behaves identically regardless of how many `AppointmentType`s it lists. Cancelling it voids every `Booking` against it, returns all `EventCapacity`, and issues a fresh `Invite` to each affected `Attendee`. Cancellation is refused once the `EventWindow` has started." .
 
-:SessionType a owl:Class ;
+:EventCapacity a owl:Class ;
     rdfs:subClassOf kit:Entity ;
-    rdfs:label "SessionType" ;
-    rdfs:comment "A kind of session an `Event` can offer. Whether this is modelled as an entity or an enumeration is undecided until the first code lands." .
+    rdfs:label "EventCapacity" ;
+    rdfs:comment "Remaining bookable headcount for one `AppointmentType` on one `Event`; exactly one row per listed type. While the `Event` is `Active`, that type's current Manager may replace `totalHeadcount` with any positive total that still covers every active booking requiring that type." ;
+    kit:hasProperty "eventId" ;
+    kit:hasProperty "appointmentTypeId" ;
+    kit:hasProperty "totalHeadcount" ;
+    kit:hasProperty "remainingCapacity" ;
+    kit:invariant "No overbooking: `remainingCapacity` is never below 0 or above `totalHeadcount`. Every read-check-write is one transaction that row-locks the affected `EventCapacity` rows in ascending `appointmentTypeId` order, backed by a database check constraint." .
+
+:AttendeeGroup a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "AttendeeGroup" ;
+    rdfs:comment "An Admin-managed category of `Attendee` whose `AttendeeGroupRequirement` mappings determine which `AppointmentType`s its members require. `code` is immutable, unique, canonical uppercase snake case." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "code" ;
+    kit:hasProperty "name" ;
+    kit:hasProperty "isActive" ;
+    kit:invariant "An active group maps to at least one active `AppointmentType`. Changing its mappings re-derives `AttendeeRequirement` for its members and supersedes their pending initial `Invite`s, and is refused while any member has an active original `Booking`." .
+
+:AttendeeGroupRequirement a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "AttendeeGroupRequirement" ;
+    rdfs:comment "One `AppointmentType` required by an `AttendeeGroup`." ;
+    kit:hasProperty "attendeeGroupId" ;
+    kit:hasProperty "appointmentTypeId" .
+
+:Attendee a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "Attendee" ;
+    rdfs:comment "A person invited to attend an `Event`, entered by a Coordinator via CSV upload or the API. `attendeeGroupId` is always required. `statusChangedAt` is stamped whenever `status` is written." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "name" ;
+    kit:hasProperty "email" ;
+    kit:hasProperty "attendeeGroupId" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "statusChangedAt" .
+
+:AttendeeRequirement a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "AttendeeRequirement" ;
+    rdfs:comment "One materialised `AppointmentType` an `Attendee` currently requires, derived only from their `AttendeeGroup`." ;
+    kit:hasProperty "attendeeId" ;
+    kit:hasProperty "appointmentTypeId" ;
+    kit:invariant "Derived only from the `Attendee`'s `AttendeeGroup`. Cannot change while the `Attendee` has an active original `Booking`, except for set-equivalent changes." .
+
+:Invite a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "Invite" ;
+    rdfs:comment "An offer to an `Attendee` of `SystemSettings` `inviteOptionCount` `Event` options, carrying a signed token, a snapshotted requirement set and a snapshotted set of eligible `Location`s. `recoveryOfBookingId` is null for an initial invitation and identifies the original `Booking` for missed-appointment recovery." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "attendeeId" ;
+    kit:hasProperty "recoveryOfBookingId" ;
+    kit:hasProperty "tokenHash" ;
+    kit:hasProperty "expiresAt" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "retryCount" ;
+    kit:invariant "Offers exactly `inviteOptionCount` `InviteOption`s, each an `Active`, future `Event` at one of its `InviteLocation`s that lists every snapshotted `InviteRequirement` with spare `EventCapacity`. An `Event` may list types the `Attendee` does not require; only required types are charged." .
+
+:InviteLocation a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "InviteLocation" ;
+    rdfs:comment "One `Location` a Coordinator selected when issuing an `Invite`. Options, replacements and automatic re-issues are drawn only from `Event`s at these `Location`s." ;
+    kit:hasProperty "inviteId" ;
+    kit:hasProperty "locationId" .
+
+:InviteOption a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "InviteOption" ;
+    rdfs:comment "One `Event` offered within an `Invite`." ;
+    kit:hasProperty "inviteId" ;
+    kit:hasProperty "eventId" .
+
+:InviteRequirement a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "InviteRequirement" ;
+    rdfs:comment "One `AppointmentType` snapshotted when an `Invite` is issued. An initial `Invite` snapshots every current `AttendeeRequirement`; a recovery `Invite` snapshots only still-outstanding no-show types." ;
+    kit:hasProperty "inviteId" ;
+    kit:hasProperty "appointmentTypeId" .
+
+:Booking a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "Booking" ;
+    rdfs:comment "Created when an `Attendee` confirms one `InviteOption`. Cancellation sets `status` rather than deleting the row." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "attendeeId" ;
+    kit:hasProperty "eventId" ;
+    kit:hasProperty "inviteId" ;
+    kit:hasProperty "recoveryOfBookingId" ;
+    kit:hasProperty "createdAt" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "manageTokenHash" ;
+    kit:invariant "Confirming an `InviteOption` creates the `Booking`, one `BookingAppointment` per `InviteRequirement`, and decrements `EventCapacity` for exactly those types, in one transaction." .
+
+:BookingAppointment a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "BookingAppointment" ;
+    rdfs:comment "The operational instance of one required `AppointmentType` within one `Booking`; unique per `Booking` and `AppointmentType`." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "bookingId" ;
+    kit:hasProperty "appointmentTypeId" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "checkedInAt" ;
+    kit:hasProperty "outcomeAt" ;
+    kit:hasProperty "lastChangedByStaffUserId" ;
+    kit:hasProperty "lastChangedAt" ;
+    kit:hasProperty "version" ;
+    kit:invariant "`Expected` to `CheckedIn` only on the `Event`'s local date; `Expected` to `NoShow` only after the `EventWindow` ends. Bounded corrections only: `CheckedIn` to `Expected`, `Completed` to `CheckedIn`, `NoShow` to `Expected`. Same-status submissions are idempotent; every real transition is versioned and audited." .
+
+:StaffAccessProfile a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "StaffAccessProfile" ;
+    rdfs:comment "The application's mirror of one staff identity's access. `roles` is written only by the identity-provider role sync; `appointmentTypeId` scope and `version` are Admin-owned." ;
+    kit:hasProperty "staffUserId" ;
+    kit:hasProperty "roles" ;
+    kit:hasProperty "appointmentTypeId" ;
+    kit:hasProperty "version" ;
+    kit:invariant "Admin is exclusive and unscoped and receives no attendee data. Coordinator may combine with Manager and/or AppointmentStaff but never Admin. Manager and AppointmentStaff share one `AppointmentType` scope. Each `AppointmentType` has at most one current Manager profile. A scoped role with a null scope grants no capability." .
+
+:StaffIdentity a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "StaffIdentity" ;
+    rdfs:comment "The application's cached mirror of one authenticated staff identity. Never the source of truth." ;
+    kit:hasProperty "staffUserId" ;
+    kit:hasProperty "staffId" ;
+    kit:hasProperty "displayName" ;
+    kit:hasProperty "lastSeenAt" ;
+    kit:invariant "One row per authenticated identity, `staffId` unique. A token without a valid `StaffId` claim is refused by every staff-authorized operation." .
+
+:AuditLog a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "AuditLog" ;
+    rdfs:comment "An append-only record of one state change. Carries identifiers, canonical codes and old/new statuses only; never names, email addresses or free text." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "entityType" ;
+    kit:hasProperty "entityId" ;
+    kit:hasProperty "action" ;
+    kit:hasProperty "actorType" ;
+    kit:hasProperty "actorId" ;
+    kit:hasProperty "timestamp" ;
+    kit:hasProperty "details" ;
+    kit:invariant "Append-only; never stores names, email addresses or free text." .
+
+:EmailLog a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "EmailLog" ;
+    rdfs:comment "A durable record of one attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "attendeeId" ;
+    kit:hasProperty "templateName" ;
+    kit:hasProperty "sentAt" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "inviteId" ;
+    kit:hasProperty "bookingId" ;
+    kit:hasProperty "eventId" ;
+    kit:hasProperty "claimedAt" .
+
+:SystemSettings a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "SystemSettings" ;
+    rdfs:comment "Single-row Admin-configurable settings. `inviteOptionCount` is between 1 and 5 and defaults to 3." ;
+    kit:hasProperty "inviteExpiryDays" ;
+    kit:hasProperty "maxAutoRetryCount" ;
+    kit:hasProperty "inviteOptionCount" .
+
+:EventWindow a owl:Class ;
+    rdfs:subClassOf kit:ValueObject ;
+    rdfs:label "EventWindow" ;
+    rdfs:comment "The attendee-facing window shared by an `EventProposal` and its `Event`, in the `Location`'s time zone. `durationMinutes` is a positive multiple of 15, at most 720, and the window must end on the same local date it starts. The end time is always derived, never stored." ;
+    kit:hasProperty "date" ;
+    kit:hasProperty "startTime" ;
+    kit:hasProperty "durationMinutes" .
+
+:StaffId a owl:Class ;
+    rdfs:subClassOf kit:ValueObject ;
+    rdfs:label "StaffId" ;
+    rdfs:comment "The organisation's staff number, sourced only from an identity-provider token claim and validated against a deployment-configured pattern. Normalised to uppercase." ;
+    kit:hasProperty "value" .
+
+:AttendeeReadiness a owl:Class ;
+    rdfs:subClassOf kit:ValueObject ;
+    rdfs:label "AttendeeReadiness" ;
+    rdfs:comment "A calculated, non-persisted view of whether an `Attendee`'s current requirements are satisfied across their active original `Booking` and its non-cancelled recovery `Booking`s." ;
+    kit:hasProperty "attendeeId" ;
+    kit:hasProperty "code" ;
+    kit:hasProperty "outstandingAppointmentTypes" ;
+    kit:invariant "`Ready` requires an active original `Booking` and one `Completed` `BookingAppointment` for every current `AttendeeRequirement` across that `Booking` and its non-cancelled recovery `Booking`s." .
+
+:OutstandingAppointmentType a owl:Class ;
+    rdfs:subClassOf kit:ValueObject ;
+    rdfs:label "OutstandingAppointmentType" ;
+    rdfs:comment "Readiness detail for one outstanding `AttendeeRequirement`. `isRecoverable` is true only when its latest non-cancelled attempt is `NoShow`." ;
+    kit:hasProperty "code" ;
+    kit:hasProperty "name" ;
+    kit:hasProperty "isRecoverable" .
+
+:Role a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "Role" ;
+    rdfs:comment "Business roles asserted by the identity provider's `roles` claim." .
+
+:Role_Manager a :Role ;
+    rdfs:label "Manager" .
+
+:Role_Coordinator a :Role ;
+    rdfs:label "Coordinator" .
+
+:Role_Admin a :Role ;
+    rdfs:label "Admin" .
+
+:Role_AppointmentStaff a :Role ;
+    rdfs:label "AppointmentStaff" .
+
+:StaffCapability a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "StaffCapability" ;
+    rdfs:comment "The unit of authorization checked at every staff-facing operation; roles map to capabilities." .
+
+:StaffCapability_ManageSettings a :StaffCapability ;
+    rdfs:label "ManageSettings" .
+
+:StaffCapability_ManageReferenceData a :StaffCapability ;
+    rdfs:label "ManageReferenceData" .
+
+:StaffCapability_ManageStaffAccess a :StaffCapability ;
+    rdfs:label "ManageStaffAccess" .
+
+:StaffCapability_ManageAttendees a :StaffCapability ;
+    rdfs:label "ManageAttendees" .
+
+:StaffCapability_ViewAttendeeDashboards a :StaffCapability ;
+    rdfs:label "ViewAttendeeDashboards" .
+
+:StaffCapability_ViewAttendeeAudit a :StaffCapability ;
+    rdfs:label "ViewAttendeeAudit" .
+
+:StaffCapability_ViewEventAudit a :StaffCapability ;
+    rdfs:label "ViewEventAudit" .
+
+:StaffCapability_ManageEventNegotiation a :StaffCapability ;
+    rdfs:label "ManageEventNegotiation" .
+
+:StaffCapability_ViewEventOperations a :StaffCapability ;
+    rdfs:label "ViewEventOperations" .
+
+:StaffCapability_CancelEvent a :StaffCapability ;
+    rdfs:label "CancelEvent" .
+
+:StaffCapability_ConductAppointments a :StaffCapability ;
+    rdfs:label "ConductAppointments" .
+
+:AttendeeStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "AttendeeStatus" ;
+    rdfs:comment "Lifecycle of an `Attendee`." .
+
+:AttendeeStatus_NotYetInvited a :AttendeeStatus ;
+    rdfs:label "NotYetInvited" .
+
+:AttendeeStatus_AwaitingAvailability a :AttendeeStatus ;
+    rdfs:label "AwaitingAvailability" .
+
+:AttendeeStatus_Invited a :AttendeeStatus ;
+    rdfs:label "Invited" .
+
+:AttendeeStatus_Booked a :AttendeeStatus ;
+    rdfs:label "Booked" .
+
+:AttendeeStatus_NoResponseNeedsFollowUp a :AttendeeStatus ;
+    rdfs:label "NoResponseNeedsFollowUp" .
+
+:EventProposalStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "EventProposalStatus" ;
+    rdfs:comment "Lifecycle of an `EventProposal`." .
+
+:EventProposalStatus_Open a :EventProposalStatus ;
+    rdfs:label "Open" .
+
+:EventProposalStatus_Withdrawn a :EventProposalStatus ;
+    rdfs:label "Withdrawn" .
+
+:EventProposalStatus_Confirmed a :EventProposalStatus ;
+    rdfs:label "Confirmed" .
+
+:EventStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "EventStatus" ;
+    rdfs:comment "Lifecycle of an `Event`." .
+
+:EventStatus_Active a :EventStatus ;
+    rdfs:label "Active" .
+
+:EventStatus_Cancelled a :EventStatus ;
+    rdfs:label "Cancelled" .
+
+:InviteStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "InviteStatus" ;
+    rdfs:comment "Lifecycle of an `Invite`." .
+
+:InviteStatus_Pending a :InviteStatus ;
+    rdfs:label "Pending" .
+
+:InviteStatus_Used a :InviteStatus ;
+    rdfs:label "Used" .
+
+:InviteStatus_Expired a :InviteStatus ;
+    rdfs:label "Expired" .
+
+:InviteStatus_Superseded a :InviteStatus ;
+    rdfs:label "Superseded" .
+
+:InviteStatus_Cancelled a :InviteStatus ;
+    rdfs:label "Cancelled" .
+
+:BookingStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "BookingStatus" ;
+    rdfs:comment "Lifecycle of a `Booking`." .
+
+:BookingStatus_Active a :BookingStatus ;
+    rdfs:label "Active" .
+
+:BookingStatus_Cancelled a :BookingStatus ;
+    rdfs:label "Cancelled" .
+
+:BookingStatus_Concluded a :BookingStatus ;
+    rdfs:label "Concluded" .
+
+:BookingAppointmentStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "BookingAppointmentStatus" ;
+    rdfs:comment "Lifecycle of a `BookingAppointment`." .
+
+:BookingAppointmentStatus_Expected a :BookingAppointmentStatus ;
+    rdfs:label "Expected" .
+
+:BookingAppointmentStatus_CheckedIn a :BookingAppointmentStatus ;
+    rdfs:label "CheckedIn" .
+
+:BookingAppointmentStatus_Completed a :BookingAppointmentStatus ;
+    rdfs:label "Completed" .
+
+:BookingAppointmentStatus_NoShow a :BookingAppointmentStatus ;
+    rdfs:label "NoShow" .
+
+:AttendeeReadinessCode a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "AttendeeReadinessCode" ;
+    rdfs:comment "The calculated code carried by `AttendeeReadiness`." .
+
+:AttendeeReadinessCode_Ready a :AttendeeReadinessCode ;
+    rdfs:label "Ready" .
+
+:AttendeeReadinessCode_NoActiveBooking a :AttendeeReadinessCode ;
+    rdfs:label "NoActiveBooking" .
+
+:AttendeeReadinessCode_RequirementSnapshotMismatch a :AttendeeReadinessCode ;
+    rdfs:label "RequirementSnapshotMismatch" .
+
+:AttendeeReadinessCode_AppointmentsOutstanding a :AttendeeReadinessCode ;
+    rdfs:label "AppointmentsOutstanding" .
+
+:ActorType a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "ActorType" ;
+    rdfs:comment "Who caused an `AuditLog` entry." .
+
+:ActorType_Staff a :ActorType ;
+    rdfs:label "Staff" .
+
+:ActorType_AttendeeToken a :ActorType ;
+    rdfs:label "AttendeeToken" .
+
+:ActorType_System a :ActorType ;
+    rdfs:label "System" .
+
+:AuditAction a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "AuditAction" ;
+    rdfs:comment "The complete vocabulary of audited state changes." .
+
+:AuditAction_ProposalCreated a :AuditAction ;
+    rdfs:label "ProposalCreated" .
+
+:AuditAction_ProposalWithdrawn a :AuditAction ;
+    rdfs:label "ProposalWithdrawn" .
+
+:AuditAction_AcceptanceRecorded a :AuditAction ;
+    rdfs:label "AcceptanceRecorded" .
+
+:AuditAction_AcceptanceWithdrawn a :AuditAction ;
+    rdfs:label "AcceptanceWithdrawn" .
+
+:AuditAction_EventConfirmed a :AuditAction ;
+    rdfs:label "EventConfirmed" .
+
+:AuditAction_EventCancelled a :AuditAction ;
+    rdfs:label "EventCancelled" .
+
+:AuditAction_CapacityDecremented a :AuditAction ;
+    rdfs:label "CapacityDecremented" .
+
+:AuditAction_CapacityIncremented a :AuditAction ;
+    rdfs:label "CapacityIncremented" .
+
+:AuditAction_CapacityAdjusted a :AuditAction ;
+    rdfs:label "CapacityAdjusted" .
+
+:AuditAction_InviteCreated a :AuditAction ;
+    rdfs:label "InviteCreated" .
+
+:AuditAction_InviteSent a :AuditAction ;
+    rdfs:label "InviteSent" .
+
+:AuditAction_InviteExpired a :AuditAction ;
+    rdfs:label "InviteExpired" .
+
+:AuditAction_InviteOptionReplaced a :AuditAction ;
+    rdfs:label "InviteOptionReplaced" .
+
+:AuditAction_BookingCreated a :AuditAction ;
+    rdfs:label "BookingCreated" .
+
+:AuditAction_BookingCancelled a :AuditAction ;
+    rdfs:label "BookingCancelled" .
+
+:AuditAction_StaffAccessChanged a :AuditAction ;
+    rdfs:label "StaffAccessChanged" .
+
+:AuditAction_StaffRolesSynced a :AuditAction ;
+    rdfs:label "StaffRolesSynced" .
+
+:AuditAction_AppointmentCheckedIn a :AuditAction ;
+    rdfs:label "AppointmentCheckedIn" .
+
+:AuditAction_AppointmentCompleted a :AuditAction ;
+    rdfs:label "AppointmentCompleted" .
+
+:AuditAction_AppointmentMarkedNoShow a :AuditAction ;
+    rdfs:label "AppointmentMarkedNoShow" .
+
+:AuditAction_AppointmentStatusCorrected a :AuditAction ;
+    rdfs:label "AppointmentStatusCorrected" .
+
+:AuditAction_AttendeeGroupAssigned a :AuditAction ;
+    rdfs:label "AttendeeGroupAssigned" .
+
+:AuditAction_AttendeeGroupReassigned a :AuditAction ;
+    rdfs:label "AttendeeGroupReassigned" .
+
+:AuditAction_RecoveryInviteCreated a :AuditAction ;
+    rdfs:label "RecoveryInviteCreated" .
+
+:AuditAction_RecoveryInviteCancelled a :AuditAction ;
+    rdfs:label "RecoveryInviteCancelled" .
+
+:AuditAction_RecoveryBookingCreated a :AuditAction ;
+    rdfs:label "RecoveryBookingCreated" .
+
+:AuditAction_RecoveryBookingConcluded a :AuditAction ;
+    rdfs:label "RecoveryBookingConcluded" .
+
+:AuditAction_AttendeeDeleted a :AuditAction ;
+    rdfs:label "AttendeeDeleted" .
+
+:AuditAction_LocationCreated a :AuditAction ;
+    rdfs:label "LocationCreated" .
+
+:AuditAction_LocationUpdated a :AuditAction ;
+    rdfs:label "LocationUpdated" .
+
+:AuditAction_AppointmentTypeCreated a :AuditAction ;
+    rdfs:label "AppointmentTypeCreated" .
+
+:AuditAction_AppointmentTypeUpdated a :AuditAction ;
+    rdfs:label "AppointmentTypeUpdated" .
+
+:AuditAction_AttendeeGroupCreated a :AuditAction ;
+    rdfs:label "AttendeeGroupCreated" .
+
+:AuditAction_AttendeeGroupUpdated a :AuditAction ;
+    rdfs:label "AttendeeGroupUpdated" .
+
+:AuditAction_SystemSettingsChanged a :AuditAction ;
+    rdfs:label "SystemSettingsChanged" .
+
+:EmailTemplate a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "EmailTemplate" ;
+    rdfs:comment "The attendee-facing email templates." .
+
+:EmailTemplate_AttendeeInvite a :EmailTemplate ;
+    rdfs:label "AttendeeInvite" .
+
+:EmailTemplate_BookingConfirmation a :EmailTemplate ;
+    rdfs:label "BookingConfirmation" .
+
+:EmailTemplate_EventCancelledRebookingNeeded a :EmailTemplate ;
+    rdfs:label "EventCancelledRebookingNeeded" .
+
+:EmailTemplate_AttendeeReinvite a :EmailTemplate ;
+    rdfs:label "AttendeeReinvite" .
+
+:EmailStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "EmailStatus" ;
+    rdfs:comment "Delivery state of an `EmailLog`." .
+
+:EmailStatus_Sent a :EmailStatus ;
+    rdfs:label "Sent" .
+
+:EmailStatus_Failed a :EmailStatus ;
+    rdfs:label "Failed" .
+
+:EmailStatus_Pending a :EmailStatus ;
+    rdfs:label "Pending" .
+
+:EmailStatus_Resolved a :EmailStatus ;
+    rdfs:label "Resolved" .
+
+:hosts a owl:ObjectProperty ;
+    rdfs:domain :Location ;
+    rdfs:range :EventProposal ;
+    rdfs:label "hosts" ;
+    kit:cardinality "1 → many" .
+
+:hosts_2 a owl:ObjectProperty ;
+    rdfs:domain :Location ;
+    rdfs:range :Event ;
+    rdfs:label "hosts" ;
+    kit:cardinality "1 → many" .
+
+:lists a owl:ObjectProperty ;
+    rdfs:domain :EventProposal ;
+    rdfs:range :EventProposalAppointmentType ;
+    rdfs:label "lists" ;
+    kit:cardinality "1 → 1..*" .
+
+:receives a owl:ObjectProperty ;
+    rdfs:domain :EventProposal ;
+    rdfs:range :ProposalAcceptance ;
+    rdfs:label "receives" ;
+    kit:cardinality "1 → 1..*" .
+
+:becomes a owl:ObjectProperty ;
+    rdfs:domain :EventProposal ;
+    rdfs:range :Event ;
+    rdfs:label "becomes" ;
+    kit:cardinality "1 → 0..1" .
+
+:has a owl:ObjectProperty ;
+    rdfs:domain :Event ;
+    rdfs:range :EventCapacity ;
+    rdfs:label "has" ;
+    kit:cardinality "1 → 1..* (one per listed `AppointmentType`)" .
+
+:offered_as a owl:ObjectProperty ;
+    rdfs:domain :Event ;
+    rdfs:range :InviteOption ;
+    rdfs:label "offered as" ;
+    kit:cardinality "1 → many" .
+
+:holds a owl:ObjectProperty ;
+    rdfs:domain :Event ;
+    rdfs:range :Booking ;
+    rdfs:label "holds" ;
+    kit:cardinality "1 → many" .
+
+:listed_on a owl:ObjectProperty ;
+    rdfs:domain :AppointmentType ;
+    rdfs:range :EventProposalAppointmentType ;
+    rdfs:label "listed on" ;
+    kit:cardinality "1 → many" .
+
+:measured_by a owl:ObjectProperty ;
+    rdfs:domain :AppointmentType ;
+    rdfs:range :EventCapacity ;
+    rdfs:label "measured by" ;
+    kit:cardinality "1 → many" .
+
+:required_by_group_through a owl:ObjectProperty ;
+    rdfs:domain :AppointmentType ;
+    rdfs:range :AttendeeGroupRequirement ;
+    rdfs:label "required by group through" ;
+    kit:cardinality "1 → many" .
+
+:required_by a owl:ObjectProperty ;
+    rdfs:domain :AppointmentType ;
+    rdfs:range :AttendeeRequirement ;
+    rdfs:label "required by" ;
+    kit:cardinality "1 → many" .
+
+:is_delivered_as a owl:ObjectProperty ;
+    rdfs:domain :AppointmentType ;
+    rdfs:range :BookingAppointment ;
+    rdfs:label "is delivered as" ;
+    kit:cardinality "1 → many" .
+
+:scopes a owl:ObjectProperty ;
+    rdfs:domain :AppointmentType ;
+    rdfs:range :StaffAccessProfile ;
+    rdfs:label "scopes" ;
+    kit:cardinality "1 → many, at most one carrying Manager" .
+
+:maps_through a owl:ObjectProperty ;
+    rdfs:domain :AttendeeGroup ;
+    rdfs:range :AttendeeGroupRequirement ;
+    rdfs:label "maps through" ;
+    kit:cardinality "1 → 1..* while active" .
+
+:assigned_to a owl:ObjectProperty ;
+    rdfs:domain :AttendeeGroup ;
+    rdfs:range :Attendee ;
+    rdfs:label "assigned to" ;
+    kit:cardinality "1 → many" .
+
+:requires a owl:ObjectProperty ;
+    rdfs:domain :Attendee ;
+    rdfs:range :AttendeeRequirement ;
+    rdfs:label "requires" ;
+    kit:cardinality "1 → 1..*" .
+
+:receives_2 a owl:ObjectProperty ;
+    rdfs:domain :Attendee ;
+    rdfs:range :Invite ;
+    rdfs:label "receives" ;
+    kit:cardinality "1 → many" .
+
+:makes a owl:ObjectProperty ;
+    rdfs:domain :Attendee ;
+    rdfs:range :Booking ;
+    rdfs:label "makes" ;
+    kit:cardinality "1 → many" .
+
+:restricted_to a owl:ObjectProperty ;
+    rdfs:domain :Invite ;
+    rdfs:range :InviteLocation ;
+    rdfs:label "restricted to" ;
+    kit:cardinality "1 → 1..*" .
 
 :offers a owl:ObjectProperty ;
-    rdfs:domain :Event ;
-    rdfs:range :SessionType ;
+    rdfs:domain :Invite ;
+    rdfs:range :InviteOption ;
     rdfs:label "offers" ;
+    kit:cardinality "1 → `inviteOptionCount`" .
+
+:snapshots a owl:ObjectProperty ;
+    rdfs:domain :Invite ;
+    rdfs:range :InviteRequirement ;
+    rdfs:label "snapshots" ;
     kit:cardinality "1 → 1..*" .
+
+:results_in a owl:ObjectProperty ;
+    rdfs:domain :Invite ;
+    rdfs:range :Booking ;
+    rdfs:label "results in" ;
+    kit:cardinality "1 → 0..1" .
+
+:recovered_by a owl:ObjectProperty ;
+    rdfs:domain :Booking ;
+    rdfs:range :Booking ;
+    rdfs:label "recovered by" ;
+    kit:cardinality "1 → many sequential, at most one active" .
+
+:contains a owl:ObjectProperty ;
+    rdfs:domain :Booking ;
+    rdfs:range :BookingAppointment ;
+    rdfs:label "contains" ;
+    kit:cardinality "1 → one per `InviteRequirement`" .
+
+:is_the_identity_behind a owl:ObjectProperty ;
+    rdfs:domain :StaffIdentity ;
+    rdfs:range :StaffAccessProfile ;
+    rdfs:label "is the identity behind" ;
+    kit:cardinality "1 → 0..1" .
+
+:records_a_change_on a owl:ObjectProperty ;
+    rdfs:domain :AuditLog ;
+    rdfs:range :Event ;
+    rdfs:label "records a change on" ;
+    kit:cardinality "many → 1 per entry (also any other audited entity)" .
+
+:records_a_delivery_attempt_for a owl:ObjectProperty ;
+    rdfs:domain :EmailLog ;
+    rdfs:range :Attendee ;
+    rdfs:label "records a delivery attempt for" ;
+    kit:cardinality "many → 1" .
