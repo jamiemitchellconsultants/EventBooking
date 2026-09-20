@@ -5,8 +5,8 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: in progress.** Tasks 4 and 5 are written and verified. Tasks 6–8 are not yet authored; do
-not start the phase expecting to finish it.
+**Status: in progress.** Tasks 4, 5 and 6 are written and verified. Tasks 7 and 8 are not yet
+authored; do not start the phase expecting to finish it.
 
 **Goal:** Generalise the domain itself — variable-length windows read in a location's zone,
 Admin-managed reference data, N-type negotiation, N-row capacity, and location-restricted invites —
@@ -39,7 +39,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | --- | --- | --- | --- |
 | 1 | Task 4 — variable-length windows in the location's zone | [phase-1a-event-window.md](phase-1a-event-window.md), with `phase-1a-edits-001.md` … `-028.md` | `feat(domain): variable-length EventWindow in the location's time zone` |
 | 2 | Task 5 — reference-data aggregates and settings | [phase-1b-reference-data.md](phase-1b-reference-data.md), with `phase-1b-edits-001.md` … `-005.md` | `feat(domain): Admin-managed Location, AppointmentType and AttendeeGroup` |
-| 3 | Task 6 — N-type negotiation | not yet authored | `feat(domain): negotiate an EventProposal across any number of types` |
+| 3 | Task 6 — N-type negotiation | [phase-1c-negotiation.md](phase-1c-negotiation.md), with `phase-1c-edits-001.md` … `-025.md` | `feat(domain): negotiate an EventProposal across any number of types` |
 | 4 | Task 7 — capacity generalised to N rows | not yet authored | `feat(domain): N-row EventCapacity charging only required types` |
 | 5 | Task 8 — invites with locations, and the closed status table | not yet authored | `feat(domain): location-restricted invites and closed attendee transitions` |
 
@@ -50,6 +50,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | End of Phase 0 (Task 3d) | 237 | 422 | 160 | 232 | 35 | 241 | 75 | 1402 |
 | Task 4 | 258 | 422 | 173 | 232 | 35 | 241 | 75 | 1436 |
 | Task 5 | 289 | 422 | 173 | 232 | 35 | 241 | 75 | 1467 |
+| Task 6 | 306 | 422 | 173 | 232 | 35 | 241 | 75 | 1484 |
 
 Each figure comes from a full `dotnet build EventBooking.sln -warnaserror` followed by every test
 project, with Docker running and no skipped tests. Task 4 was additionally replayed from its own
@@ -76,14 +77,20 @@ later tasks do not re-open them:
   bounds and default; Task 12 adds it to the settings command, the API and the MCP tool together.
   Until then the handler passes the stored value straight back.
 
-Tasks 5–8 must also settle these, which the design package leaves open:
+Two further decisions were taken in Task 6:
 
-- **Who may withdraw a proposal.** FR-2.9 gives that to "the current Manager of the proposer's
-  type", but `EventProposal` records only `createdByManagerUserId`. Either the proposer's
-  `AppointmentType` becomes part of the proposal in the ontology, or the rule has to be derived
-  from the proposer's own `ProposalAcceptance`. This is an ontology change, so it is settled before
-  Task 6 is written, not during it.
-- **Lock ordering versus the cancellation flow.** The documented order is `Attendee`,
-  `EventProposal`, `Event`, then `EventCapacity`, while the cancellation sequence in design 03b
-  takes the event first and then discovers attendees. Task 7 defines the ordering helper, so the
-  reconciliation belongs there.
+- **Who may withdraw a proposal, settled.** `proposerAppointmentTypeId` is now part of
+  `EventProposal` in the ontology, and both the proposal's withdrawal and the proposer's own
+  acceptance are judged against that type. A successor Manager inherits both.
+- **The predecessor's Admin fallback for withdrawing a proposal is gone.** It contradicted FR-2.9,
+  and the design's capability matrix gives Admin no negotiation capability. The null-scope gate
+  (FR-10.7) therefore arrives early in these handlers: a scoped role with no scope is refused
+  rather than crashing.
+
+Task 7 still has to settle one thing, which the user has decided but not yet applied:
+
+- **Lock ordering versus the cancellation flow.** The documented order — `Attendee`,
+  `EventProposal`, `Event`, `EventCapacity` — wins. Event cancellation reads the affected attendee
+  identifiers without locks, then takes each booking's locks in that order and re-validates under
+  lock. The sequence diagram in [design 03b](../design/03b-screens-and-flows.md) is corrected to
+  match as part of Task 7.

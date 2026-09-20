@@ -9,7 +9,7 @@ The repository stays documentation-only; all executable work happens in scratch 
 | Part | State |
 | --- | --- |
 | Phase 0 (master Tasks 1–3, split 1, 2, 3a–3d) | **Complete, verified, committed and pushed.** Every checkpoint was replayed from its own documents into an independent checkout |
-| Phase 1 (master Tasks 4–8) | Task 4 complete and replayed. Task 5 implemented and green in the prototype, packaging pending. Tasks 6–8 not started |
+| Phase 1 (master Tasks 4–8) | Tasks 4, 5 and 6 complete, packaged and replayed. Tasks 7 and 8 not started |
 | Phases 2–7 (master Tasks 9–33) | Not authored |
 
 Branch `docs/detailed-implementations` in `/Users/jamesmitchell/RiderProjects/EventBooking`, pushed
@@ -30,12 +30,12 @@ to `origin`. No pull request has been opened for the plans themselves yet.
 | Path | What it is |
 | --- | --- |
 | `/private/tmp/eventbooking-detail.6yx6zE` | Authoring scratch: generators, snapshots, logs |
-| `/private/tmp/eventbooking-detail.6yx6zE/verify` | The prototype. Currently at Task 5, green |
-| `/private/tmp/eventbooking-plan-replay.MkPSRw` | Independent replay checkout. Currently at Task 4 |
+| `/private/tmp/eventbooking-detail.6yx6zE/verify` | The prototype. Currently at Task 6, green |
+| `/private/tmp/eventbooking-plan-replay.MkPSRw` | Independent replay checkout. Currently at Task 6 |
 | `/Users/jamesmitchell/.codex/handoffs/eventbooking-detailed-plans-2026-09-20/` | Archives from the first authoring session, with the original request |
 
 Snapshots are JSON maps of repository-relative path to file contents: `task-1.json` through
-`task-5.json`. Each generator diffs two snapshots to produce a task's edit volumes.
+`task-6.json`. Each generator diffs two snapshots to produce a task's edit volumes.
 
 ## Tooling notes
 
@@ -59,7 +59,8 @@ with Docker running and no skipped tests.
 | Unmodified predecessor | 230 | 451 | 158 | 225 | 34 | 251 | 76 | 1425 |
 | Task 3d (end of Phase 0) | 237 | 422 | 160 | 232 | 35 | 241 | 75 | 1402 |
 | Task 4 | 258 | 422 | 173 | 232 | 35 | 241 | 75 | 1436 |
-| Task 5 (prototype) | 289 | 422 | 173 | 232 | 35 | 241 | 75 | 1467 |
+| Task 5 | 289 | 422 | 173 | 232 | 35 | 241 | 75 | 1467 |
+| Task 6 | 306 | 422 | 173 | 232 | 35 | 241 | 75 | 1484 |
 
 ## Decisions taken while authoring, which later tasks must respect
 
@@ -71,6 +72,13 @@ with Docker running and no skipped tests.
   retire in Phase 3, when seeding and the handlers move onto Admin-managed types.
 - `inviteOptionCount` is domain state from Task 5 but not editable until Task 12 adds it to the
   command, the API and the MCP tool together. The settings handler passes the stored value through.
+- Proposals are made at one transitional location until Task 13 carries a `Location` through the
+  command, the API and the MCP tool. The constant is in the application layer and says so.
+- The predecessor's Admin fallback for withdrawing a proposal is removed: FR-2.9 judges withdrawal
+  by the proposing appointment type, and Admin holds no negotiation capability. The null-scope gate
+  (FR-10.7) therefore lands early in the negotiation handlers.
+- One proposal builder is shared by every test project, linked from `tests/TestSupport/` with a
+  global using, because proposals now need a location, a listed set and a proposing type.
 - A migration's backfill values are part of the change, not an afterthought: EF's generated zero,
   false and empty defaults have misdescribed existing rows in three tasks so far, and each one was
   corrected by hand, with the column default dropped afterwards.
@@ -93,9 +101,10 @@ file's history at commit `2b192ca`, and each remaining one is raised as its task
 
 ## Next steps
 
-1. Package Task 5 from `task-4.json` to `task-5.json` and replay it in the replay checkout.
-2. Author Task 6 (N-type negotiation), implementing `proposerAppointmentTypeId`.
-3. Continue Tasks 7 and 8, then write the Phase 1 pull-request gate into
+1. Author Task 7 (N-row capacity and the lock-ordering helper), correcting the cancellation
+   sequence diagram in `docs/design/03b-screens-and-flows.md` in the same task.
+2. Author Task 8 (location-restricted invites and the closed attendee-status table).
+3. Then write the Phase 1 pull-request gate into
    `phase-1-domain.md` in the shape Phase 0 uses.
 4. Phase 2 (Tasks 9–11) stays prototype-verified. Phase 3 onward is hand-authored.
 5. Keep committing and pushing each finished task on `docs/detailed-implementations`. Lint every
