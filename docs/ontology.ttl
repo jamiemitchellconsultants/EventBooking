@@ -225,7 +225,7 @@
 :EmailLog a owl:Class ;
     rdfs:subClassOf kit:Entity ;
     rdfs:label "EmailLog" ;
-    rdfs:comment "A durable record of one attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body." ;
+    rdfs:comment "A durable record of one attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body. `claimCount`, `notBefore` and `correlationId` carry the dispatcher's attempt count, backoff and request correlation; delivery is at-least-once, and duplicates are harmless because links regenerate deterministically." ;
     kit:hasProperty "id" ;
     kit:hasProperty "attendeeId" ;
     kit:hasProperty "templateName" ;
@@ -234,7 +234,10 @@
     kit:hasProperty "inviteId" ;
     kit:hasProperty "bookingId" ;
     kit:hasProperty "eventId" ;
-    kit:hasProperty "claimedAt" .
+    kit:hasProperty "claimedAt" ;
+    kit:hasProperty "claimCount" ;
+    kit:hasProperty "notBefore" ;
+    kit:hasProperty "correlationId" .
 
 :SystemSettings a owl:Class ;
     rdfs:subClassOf kit:Entity ;

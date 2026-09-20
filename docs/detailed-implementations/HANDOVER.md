@@ -35,7 +35,7 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
-| Phases 3–7 — master Tasks 12–33 | Tasks 12–17 authored (hand-authored, unexecuted). Tasks 18–33 not authored |
+| Phases 3–7 — master Tasks 12–33 | Tasks 12–18 authored (hand-authored, unexecuted). Tasks 19–33 not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -437,7 +437,11 @@ fourteen is in this file's history at commit `2b192ca`.
    recovery demands ManageAttendees, workspace stays under ConductAppointments. Task 17
    (staff identity and authorization) is written as `phase-3f-staff-authorization.md`.
    Contradiction #3 was settled with the user as 403: a missing or malformed staff_id is
-   forbidden everywhere except /api/me, against the API catalogue's 401.
+   forbidden everywhere except /api/me, against the API catalogue's 401. Task 18
+   (notification outbox) is written as `phase-3g-notification-outbox.md` with new ontology
+   properties on the email log. Contradiction #6 was settled with the user as extend: claim
+   count, backoff and correlation columns are added. Contradiction #7 was settled as
+   at-least-once, stated explicitly with its crash window.
 3. Several transitional constructs now come due in Phase 3 and in Tasks 12–15. Read section 8's
    table before starting any of them; Task 15 in particular inherits three separate debts — the
    booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and `Booking`

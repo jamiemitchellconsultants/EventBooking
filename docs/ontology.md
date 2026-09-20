@@ -42,7 +42,7 @@ error.
 | `StaffAccessProfile` | `staffUserId`, `roles`, `appointmentTypeId`, `version` | The application's mirror of one staff identity's access. `roles` is written only by the identity-provider role sync; `appointmentTypeId` scope and `version` are Admin-owned. |
 | `StaffIdentity` | `staffUserId`, `staffId`, `displayName`, `lastSeenAt` | The application's cached mirror of one authenticated staff identity. Never the source of truth. |
 | `AuditLog` | `id`, `entityType`, `entityId`, `action`, `actorType`, `actorId`, `timestamp`, `details` | An append-only record of one state change. Carries identifiers, canonical codes and old/new statuses only; never names, email addresses or free text. |
-| `EmailLog` | `id`, `attendeeId`, `templateName`, `sentAt`, `status`, `inviteId`, `bookingId`, `eventId`, `claimedAt` | A durable record of one attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body. |
+| `EmailLog` | `id`, `attendeeId`, `templateName`, `sentAt`, `status`, `inviteId`, `bookingId`, `eventId`, `claimedAt`, `claimCount`, `notBefore`, `correlationId` | A durable record of one attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body. `claimCount`, `notBefore` and `correlationId` carry the dispatcher's attempt count, backoff and request correlation; delivery is at-least-once, and duplicates are harmless because links regenerate deterministically. |
 | `SystemSettings` | `inviteExpiryDays`, `maxAutoRetryCount`, `inviteOptionCount`, `version` | Single-row Admin-configurable settings. `inviteOptionCount` is between 1 and 5 and defaults to 3. |
 
 ---
