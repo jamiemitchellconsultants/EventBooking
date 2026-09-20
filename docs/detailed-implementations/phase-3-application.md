@@ -7,9 +7,7 @@
 
 **Status: complete.** Tasks 12–20 are written, including the Task 20a/20b split. Phase 3 is
 hand-authored: complete code and tests are written straight into each document, with no
-prototype, because the executing model compiles and test-drives them itself. complete code
-and complete tests are written straight into each document, with no prototype, because the
-executing model compiles and test-drives them itself.
+prototype, because the executing model compiles and test-drives them itself.
 
 **Goal:** Generalise every use case behind the handler pattern in design 04 ("Commands, queries
 and transactions"): one transaction per command, locks in the canonical order, the audit entry
@@ -48,7 +46,6 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 2 | Task 13 — negotiation and capacity-adjustment handlers | [phase-3b-negotiation.md](phase-3b-negotiation.md) | `feat(app): N-way negotiation with serialised confirmation` |
 | 3 | Task 14 — invite engine | [phase-3c-invite-engine.md](phase-3c-invite-engine.md) | `feat(app): location-restricted invite engine` |
 | 4 | Task 15 — booking, cancellation and event cancellation | [phase-3d-booking-cancellation.md](phase-3d-booking-cancellation.md) | `feat(app): booking and cancellation over N capacity rows` |
-| 4 | Task 15 — booking, cancellation and event cancellation | not yet authored | `feat(app): booking and cancellation over N capacity rows` |
 | 5 | Task 16 — recovery and the appointment workspace | [phase-3e-recovery-workspace.md](phase-3e-recovery-workspace.md) | `feat(app): recovery and workspace across locations` |
 | 6 | Task 17 — staff identity, role sync and authorization | [phase-3f-staff-authorization.md](phase-3f-staff-authorization.md) | `feat(auth): provider-neutral OIDC with per-request role sync` |
 | 7 | Task 18 — notification outbox and templates | [phase-3g-notification-outbox.md](phase-3g-notification-outbox.md) | `feat(email): durable outbox dispatcher and location-aware templates` |

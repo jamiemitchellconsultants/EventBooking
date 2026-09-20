@@ -35,7 +35,8 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
-| Phases 3–7 — master Tasks 12–33 | **Complete.** Tasks 12–20 written (hand-authored, unexecuted), Task 20 split into 20a/20b |
+| Phase 3 — master Tasks 12–20 | **Complete.** Tasks 12–20 written (hand-authored, unexecuted), Task 20 split into 20a/20b; pull request #20 open |
+| Phases 4–7 — master Tasks 21–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -353,6 +354,30 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 | The invite's fixed three options, in place of the stored `inviteOptionCount` | Task 14 |
 | Event cancellation reading its zone from the transitional-location constant | Phase 3 |
 
+### Phase 3 settlements (binding on later tasks)
+
+Settled with the user while authoring Phase 3, each against the master plan, spec or design
+wording it overrides:
+
+- **#9 (Task 12).** Invites snapshot the three settings values at issue: `inviteExpiryDays`,
+  `maxAutoRetryCount` and `inviteOptionCount` are ontology properties of the invite, written by
+  the Task 14 issuer. Later settings changes apply only to future invitations.
+- **#5 (Tasks 12, 20).** Task 12 owns reference data and settings only; attendee CRUD, import
+  and boundary work stay with Task 20, which is split into 20a (dashboards, attendee list,
+  readiness) and 20b (audit search, histories, phase gate).
+- **#2 (Task 15).** A replayed confirmation is refused as a conflict naming the existing
+  booking — against the master plan's "second confirm returns the same booking" test, which
+  Task 15's document replaces with the conflict test.
+- **#4 (Task 16).** Recovery handlers demand `ManageAttendees`; workspace handlers and queries
+  demand `ConductAppointments` scoped to the caller's type.
+- **#3 (Task 17; still open for Task 21).** A missing or malformed `staff_id` is 403 everywhere
+  except `/api/me` — against the API catalogue's 401. Task 21's conventions implement the same
+  rule at the endpoint layer.
+- **#6 (Task 18).** The email log carries the dispatcher's `claimCount`, `notBefore` and
+  `correlationId`; Task 18's migration adds them.
+- **#7 (Task 18).** Delivery is at-least-once, with the SMTP-crash window stated explicitly;
+  duplicates are harmless because links regenerate deterministically.
+
 ## 9. Standing rules that have bitten already
 
 - **Check whether the column already exists before adding one.** Task 8's statusChangedAt looked
@@ -394,22 +419,23 @@ LINT_PLANS
 - If a domain concept changes, edit `docs/ontology.ttl`, run `node scripts/build-ontology.mjs`, and
   commit both files with the change.
 
-## 10. Contradictions still open
+## 10. Contradictions
 
-Put each to the user when its task is reached; do not decide it alone. The full original list of
+Put each open one to the user when its task is reached; do not decide it alone. Rows marked
+settled point at the binding §8 entry — do not re-raise them. The full original list of
 fourteen is in this file's history at commit `2b192ca`.
 
 | # | Contradiction | Task |
 | --- | --- | --- |
 | 1 | The seed brief has an appointment type that is active but unmanaged, and an inactive type, yet also lists events and proposals that would need them | 28 |
-| 2 | The used-token table versus FR-6.5 idempotency: a replayed confirmation must return the existing booking, not write a second one | 15 |
-| 3 | A missing `staff_id` is 401 in the API catalogue and 403 everywhere except `/api/me` in the security document | 17, 21 |
-| 4 | Task 16's workspace capability wording conflicts with Coordinator recovery needing `ManageAttendees` | 16 |
-| 5 | Attendee CRUD, import and boundary work is under-allocated between Tasks 12 and 20; Task 20 probably needs lettered splits | 12, 20 |
-| 6 | `EmailLog` lacks the outbox attempt, backoff and correlation fields the design's dispatcher needs, and the cancellation replacement context | 18 |
-| 7 | An SMTP crash after send but before marking sent cannot give exactly-once delivery; the design should say at-least-once | 18 |
+| 2 | **Settled in Phase 3 (§8):** a replayed confirmation is refused as a conflict naming the existing booking | 15 |
+| 3 | A missing `staff_id` is 403 everywhere except `/api/me` (§8); Task 21's endpoint layer still has to implement the same rule | 17, 21 |
+| 4 | **Settled in Phase 3 (§8):** recovery demands `ManageAttendees`, workspace stays under `ConductAppointments` | 16 |
+| 5 | **Settled in Phase 3 (§8):** Task 12 owns reference data and settings only; Task 20 is split into 20a/20b | 12, 20 |
+| 6 | **Settled in Phase 3 (§8):** the email log carries `claimCount`, `notBefore` and `correlationId` | 18 |
+| 7 | **Settled in Phase 3 (§8):** delivery is at-least-once, crash window stated | 18 |
 | 8 | Task 32's 500 same-IP confirmations collide with the 30-per-minute attendee rate limit | 32 |
-| 9 | Settings that apply only to future invitations may need snapshot fields the ontology does not define | 12 |
+| 9 | **Settled in Phase 3 (§8):** invites snapshot the three settings values at issue | 12 |
 | 10 | London and Dublin share an offset, so they cannot demonstrate zone-dependent ordering; use a genuinely different zone such as `Asia/Tokyo` | wherever ordering is proved. **Applied in Task 11**, whose ordering cases pair London with Tokyo; still open for later tasks that prove an ordering |
 
 ## 11. Next steps
