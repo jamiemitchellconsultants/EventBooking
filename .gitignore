@@ -56,5 +56,11 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# macOS Finder metadata
+# macOS Finder metadata, at every depth. A pattern with no slash already matches in
+# any directory, so the first line alone is enough; the rest are spelled out so that
+# is plain to a reader, and cover the AppleDouble companion Finder leaves on
+# non-HFS volumes.
 .DS_Store
+**/.DS_Store
+._.DS_Store
+**/._.DS_Store
