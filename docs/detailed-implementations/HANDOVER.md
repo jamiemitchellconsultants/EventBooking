@@ -34,14 +34,24 @@ names. The master plan says what each task is; this handover says how far it has
 | --- | --- |
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
-| Phase 2 — master Tasks 9–11 | **Written.** Tasks 9a, 9b, 10 and 11 written, replayed and committed. Prototype-verified, like Phases 0 and 1. Its pull request is not open yet |
+| Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
 | Phases 3–7 — master Tasks 12–33 | Not authored. Hand-authored, no prototype |
 
-Phases 0 and 1 are **merged into `main`** — pull request #15, branch
-`docs/detailed-implementations`, plus its narrative proposal #16. Nothing is outstanding on that
-branch and no pull request is open. Phase 2 starts from a fresh branch off `origin/main`.
-**Recompute the AI-fingerprint and update the pull-request body after every push to the branch**,
-or the `ai-fingerprint` check fails on the stale hash:
+Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
+for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
+outstanding on either branch. Phase 3 starts from a fresh branch off `origin/main`.
+
+Two things about that merge are worth carrying forward, because both cost a cycle here:
+
+- **A phase branch is finished when its pull request merges.** A later commit pushed to it goes
+  nowhere — it is not on `main`, and the merged pull request will not pick it up. Anything found
+  after the merge needs a fresh branch off the updated `main` and a pull request of its own. This
+  entry is one.
+- **Recompute the AI-fingerprint and update the pull-request body after every push to the branch**,
+  or the `ai-fingerprint` check fails on the stale hash. Editing the body immediately after a push
+  can still fail, because the check re-runs on the `edited` event against whichever head GitHub has
+  registered, which lags the push by a few seconds. Wait until the pull request reports the head
+  you just pushed, then update the body.
 
 ```bash
 MERGE_BASE=$(git merge-base origin/main HEAD)
@@ -404,12 +414,9 @@ fourteen is in this file's history at commit `2b192ca`.
 
 ## 11. Next steps
 
-1. **Phase 2 is written.** All four documents — 9a, 9b, 10 and 11 — are verified in the prototype
-   and replayed into the independent checkout, at 1570 tests. What remains is the phase's **pull
-   request**, which is the master plan's own gate for Task 11. Give it the three narrative headings
-   and the `narrative-required` label — supplying a body replaces the repository template wholesale,
-   so carry both those sections and the `AI-Fingerprint:` footer yourself — and recompute the
-   fingerprint after every push to the branch.
+1. **Phase 2 is done.** All four documents — 9a, 9b, 10 and 11 — are verified in the prototype,
+   replayed into the independent checkout at 1570 tests, and merged through pull request #17. There
+   is nothing left owing on it.
 2. **Phases 3–7 (Tasks 12–33)** are hand-authored: complete code and tests written straight into the
    documents, no prototype. Task 12 is the reference-data and settings handlers.
 3. Several transitional constructs now come due in Phase 3 and in Tasks 12–15. Read section 8's
