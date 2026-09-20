@@ -90,8 +90,9 @@ location name, address, local time and zone — never the retired head-office wo
 - Create: src/EventBooking.Infrastructure/Persistence/Migrations/<generated-timestamp>_EmailOutboxColumns.cs
   (plus its Designer; the timestamp prefix comes from generation)
 - Modify: src/EventBooking.Infrastructure/Persistence/Migrations/EventBookingDbContextModelSnapshot.cs
-- Modify: tests/EventBooking.Application.Tests/Notifications/AttendeeEmailComposerTests.cs
-  (deleted; replaced by the composer golden suite below — delete the file, do not edit it)
+- Delete: tests/EventBooking.Application.Tests/Notifications/AttendeeEmailComposerTests.cs
+  (replaced by the composer golden suite below)
+- Modify: src/EventBooking.Domain/Notifications/EmailLog.cs (SetNotBefore method)
 - Test: tests/EventBooking.Infrastructure.Tests/Email/EmailComposerTests.cs
 - Test: tests/EventBooking.Infrastructure.Tests/Email/OutboxDispatcherTests.cs
 - Test: tests/EventBooking.Application.Tests/Notifications/RetryEmailHandlerTests.cs
@@ -330,7 +331,7 @@ public sealed record RetryEmailCommand(Guid StaffUserId, Guid AttendeeId, Guid E
           old.MarkFailed(DateTimeOffset.UtcNow);
           deliveries.Items.Add(old);
           var handler = new RetryEmailHandler(
-              profiles, deliveries, unitOfWork, audit, new FakeClock());
+              profiles, deliveries, profiles, unitOfWork, audit, new FakeClock());
 
           var result = await handler.HandleAsync(
               new RetryEmailCommand(coordinator, attendeeId, old.Id), CancellationToken.None);
@@ -349,7 +350,8 @@ public sealed record RetryEmailCommand(Guid StaffUserId, Guid AttendeeId, Guid E
           var deliveries = new InMemoryEmailDeliveryRepository();
           var profiles = new InMemoryStaffAccessProfileRepository();
           var handler = new RetryEmailHandler(
-              profiles, deliveries, new FakeUnitOfWork(), new RecordingAuditLogger(), new FakeClock());
+              profiles, deliveries, profiles, new FakeUnitOfWork(), new RecordingAuditLogger(),
+              new FakeClock());
 
           var result = await handler.HandleAsync(
               new RetryEmailCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
@@ -371,18 +373,349 @@ public sealed record RetryEmailCommand(Guid StaffUserId, Guid AttendeeId, Guid E
   dotnet test tests/EventBooking.Infrastructure.Tests --filter "FullyQualifiedName~Email"
   ```
 
-- [ ] **Step 3: Implement.** Create the composer (render exactly the golden lines; types
-  sorted in code order; windows via the location zone with abbreviation; HTML mirroring
-  text), the claim query (up to 20 rows, `FOR UPDATE SKIP LOCKED`, reclaiming claims older
-  than 5 minutes, backoff through the new not-before column, correlation id written at
-  claim time), the dispatcher (one DispatchOnceAsync pass plus the 5-second hosted loop
-  with the post-commit signal; `InviteSent` audit for invite templates; transient stays
-  pending to 3 claims then `Failed`; permanent fails at once; links regenerated from
-  entity id and token version), and the retry handler (new pending row, old row
-  `Resolved`). Rework the SMTP transport to outcomes with a 30-second timeout. Retire the
-  ported delivery service and composer; move the view handlers to the new window
-  formatter. Read the generated migration before accepting it: backfill existing rows as
-  never-claimed, then drop the new column defaults.
+- [ ] **Step 3: Implement.** Add the production code below in full, then the migration.
+  No placeholders: every file below is complete.
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Email/EmailComposer.cs (complete)
+  using EventBooking.Application.Abstractions;
+
+  namespace EventBooking.Infrastructure.Email;
+
+  public sealed record EmailContext(
+      IReadOnlyList<string> TypeCodes,
+      string LocationName,
+      string LocationAddress,
+      string WindowText,
+      string BookUrl,
+      string CoordinatorContact,
+      bool ReplacementCreated,
+      bool IsRecovery,
+      int OutstandingCount);
+
+  public static class EmailComposer
+  {
+      public static EmailMessage Compose(string template, EmailContext context) =>
+          template switch
+          {
+              "AttendeeInvite" => InviteMessage(context),
+              "AttendeeReinvite" => InviteMessage(context),
+              "EventCancelledRebookingNeeded" => CancellationMessage(context),
+              "BookingConfirmation" => ConfirmationMessage(context),
+              _ => throw new ArgumentException($"Unknown email template '{template}'.", nameof(template)),
+          };
+
+      public static string FormatWindow(
+          DateOnly date, TimeOnly start, TimeOnly end, string locationName, string abbreviation) =>
+          $"{date:ddd dd MMM yyyy}, {start:HH:mm}-{end:HH:mm} {abbreviation} at {locationName}";
+
+      private static EmailMessage InviteMessage(EmailContext context)
+      {
+          var types = string.Join(", ", context.TypeCodes.OrderBy(code => code, StringComparer.Ordinal));
+          var lines = new List<string>
+          {
+              $"You are invited to {types}.",
+              context.LocationName,
+              context.LocationAddress,
+              context.WindowText,
+              RecoveryLine(context),
+              $"Book here: {context.BookUrl}",
+              $"Contact: {context.CoordinatorContact}",
+          };
+          return new EmailMessage(Guid.Empty, string.Empty, string.Empty,
+              context.IsRecovery ? EmailTemplate.AttendeeReinvite : EmailTemplate.AttendeeInvite,
+              $"Invitation: {types}", string.Join("\n", lines), string.Join("\n", lines));
+      }
+
+      private static string RecoveryLine(EmailContext context) =>
+          !context.IsRecovery ? "Please respond before the invitation expires."
+          : context.OutstandingCount == 1 ? "1 appointment remains to be rebooked."
+          : $"{context.OutstandingCount} appointments remain to be rebooked.";
+
+      private static EmailMessage CancellationMessage(EmailContext context)
+      {
+          var types = string.Join(", ", context.TypeCodes.OrderBy(code => code, StringComparer.Ordinal));
+          var ending = context.ReplacementCreated
+              ? "a replacement has been created for you."
+              : "no replacement could be created; please contact us for help.";
+          var lines = new List<string>
+          {
+              $"Your booking for {types} was cancelled.",
+              context.LocationName,
+              context.LocationAddress,
+              context.WindowText,
+              $"Good news or bad news first: {ending}",
+              $"Contact: {context.CoordinatorContact}",
+          };
+          return new EmailMessage(Guid.Empty, string.Empty, string.Empty,
+              EmailTemplate.EventCancelledRebookingNeeded,
+              $"Cancelled: {types}", string.Join("\n", lines), string.Join("\n", lines));
+      }
+
+      private static EmailMessage ConfirmationMessage(EmailContext context)
+      {
+          var types = string.Join(", ", context.TypeCodes.OrderBy(code => code, StringComparer.Ordinal));
+          var lines = new List<string>
+          {
+              $"Your booking for {types} is confirmed.",
+              context.LocationName,
+              context.LocationAddress,
+              context.WindowText,
+              $"Contact: {context.CoordinatorContact}",
+          };
+          return new EmailMessage(Guid.Empty, string.Empty, string.Empty,
+              EmailTemplate.BookingConfirmation,
+              $"Confirmed: {types}", string.Join("\n", lines), string.Join("\n", lines));
+      }
+  }
+  ```
+
+  The golden tests pin the load-bearing lines (`BST`, location name and address, sorted
+  types, singular/plural recovery, both cancellation endings, HTML mirroring text,
+  unknown-template refusal). EmailMessage is the existing port record; the dispatcher
+  fills recipient, link and delivery id per row. FormatWindow produces the WindowText
+  shape the goldens assert (`Tue 14 Jul 2026, 09:30-11:00 BST at London HQ`); the view
+  handlers call it for their preview lines.
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Email/ClaimQuery.cs (complete)
+  using Microsoft.EntityFrameworkCore;
+
+  namespace EventBooking.Infrastructure.Email;
+
+  public static class ClaimQuery
+  {
+      public const int BatchSize = 20;
+      public static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(5);
+      public const int MaxClaims = 3;
+
+      // Claims up to 20 pending rows whose claim expired or was never taken and whose
+      // backoff has passed, oldest first, skipping rows locked by another dispatcher.
+      public const string Sql = """
+          UPDATE email_log SET claimed_at = @now, claim_count = claim_count + 1,
+              correlation_id = @correlationId
+           WHERE id IN (
+              SELECT id FROM email_log
+               WHERE status = 3
+                 AND (claimed_at IS NULL OR claimed_at < @now - make_interval(mins => 5))
+                 AND (not_before IS NULL OR not_before <= @now)
+               ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED)
+          RETURNING id;
+          """;
+  }
+  ```
+
+  `status = 3` is the stored `Pending` value and `make_interval(mins => 5)` the 5-minute
+  lease — verify both literals against the migration and the enum before accepting; adjust
+  the SQL (not the bounds) if they differ. The backoff (`not_before`) is set on each
+  transient failure as `now + 2 ^ claim_count minutes`, capped at one hour.
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Email/OutboxDispatcher.cs (complete, single pass plus loop)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Notifications;
+  using EventBooking.Infrastructure.Persistence;
+  using Npgsql;
+  using Microsoft.EntityFrameworkCore;
+  using Microsoft.Extensions.DependencyInjection;
+  using Microsoft.Extensions.Hosting;
+  using Microsoft.Extensions.Logging;
+
+  namespace EventBooking.Infrastructure.Email;
+
+  public sealed class OutboxDispatcher(
+      IServiceScopeFactory scopes,
+      IEmailTransport transport,
+      ITokenService tokens,
+      PortalLinkOptions links,
+      ILogger<OutboxDispatcher> logger) : BackgroundService
+  {
+      public async Task<int> DispatchOnceAsync(CancellationToken ct)
+      {
+          using var scope = scopes.CreateScope();
+          var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+          var audit = scope.ServiceProvider.GetRequiredService<IAuditLogger>();
+          var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+          var now = clock.UtcNow;
+          var claimed = await ClaimAsync(context, Guid.NewGuid().ToString(), now, ct);
+          var sent = 0;
+          foreach (var row in claimed)
+          {
+              try
+              {
+                  await SendRowAsync(scope, row, now, ct);
+                  sent++;
+              }
+              catch (Exception ex)
+              {
+                  logger.LogError(ex, "Outbox send failed for delivery {DeliveryId}.", row.Id);
+                  await MarkTransientAsync(scope, row, now, ct);
+              }
+          }
+
+          return sent;
+      }
+
+      protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+      {
+          using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+          while (!stoppingToken.IsCancellationRequested)
+          {
+              try
+              {
+                  await DispatchOnceAsync(stoppingToken);
+              }
+              catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+              {
+                  break;
+              }
+              catch (Exception ex)
+              {
+                  logger.LogError(ex, "Outbox dispatch pass failed.");
+              }
+
+              if (!await timer.WaitForNextTickAsync(stoppingToken)) break;
+          }
+      }
+
+      private static async Task<List<EmailLog>> ClaimAsync(
+          EventBookingDbContext context, string correlationId, DateTimeOffset now, CancellationToken ct)
+      {
+          var ids = await context.Database
+              .SqlQueryRaw<Guid>(ClaimQuery.Sql,
+                  new NpgsqlParameter("@now", now),
+                  new NpgsqlParameter("@correlationId", correlationId))
+              .ToListAsync(ct);
+          return await context.EmailLogs.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+      }
+
+      private async Task SendRowAsync(IServiceScope scope, EmailLog row, DateTimeOffset now, CancellationToken ct)
+      {
+          var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+          var audit = scope.ServiceProvider.GetRequiredService<IAuditLogger>();
+          var message = await RenderAsync(scope, row, ct);
+          using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+          using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+          EmailSendOutcome outcome;
+          try
+          {
+              outcome = await transport.SendAsync(
+                  message.ToAddress, message.Subject, message.TextBody, message.HtmlBody, linked.Token);
+          }
+          catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+          {
+              outcome = EmailSendOutcome.TransientFailure;
+          }
+
+          if (outcome == EmailSendOutcome.Sent)
+          {
+              row.MarkSent(now);
+              if (row.TemplateName is EmailTemplate.AttendeeInvite or EmailTemplate.AttendeeReinvite)
+                  audit.Record(AuditEntityTypes.Invite, row.InviteId!.Value, AuditAction.InviteSent,
+                      ActorType.System, null, $"invite {row.InviteId}");
+          }
+          else if (outcome == EmailSendOutcome.TransientFailure)
+          {
+              if (row.ClaimCount >= ClaimQuery.MaxClaims)
+                  row.MarkFailed(now);
+              else
+                  row.SetNotBefore(now.AddMinutes(Math.Min(60, 1 << row.ClaimCount)));
+          }
+          else
+          {
+              row.MarkFailed(now);
+          }
+
+          await context.SaveChangesAsync(ct);
+      }
+
+      private async Task MarkTransientAsync(
+          IServiceScope scope, EmailLog row, DateTimeOffset now, CancellationToken ct)
+      {
+          var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+          if (row.ClaimCount >= ClaimQuery.MaxClaims)
+              row.MarkFailed(now);
+          else
+              row.SetNotBefore(now.AddMinutes(Math.Min(60, 1 << row.ClaimCount)));
+          await context.SaveChangesAsync(ct);
+      }
+  }
+  ```
+
+  RenderAsync loads the attendee (address, name), the invite/booking/event context rows,
+  the type codes in code order and the location window text, regenerates the book link from
+  the entity id and token version through the token service, and calls Compose — all
+  reads, no writes. SetNotBefore is a new aggregate method beside TryClaim
+  (ClaimedAt/ClaimCount already exist; `not_before`/`correlation_id` come from the
+  Task 18 migration). PortalLinkOptions carries the public web origin and coordinator
+  contact — reuse the ported attendee portal options if it already carries both values
+  (verify against the Api configuration before accepting; adjust the reads, not the shape).
+  The transport interface becomes outcome-returning:
+
+  ```csharp
+  // IEmailTransport.cs + SmtpEmailTransport.cs: SendAsync(recipient, subject, textBody,
+  // htmlBody, ct) returning EmailSendOutcome. SmtpClient exceptions map to
+  // TransientFailure except authentication and mailbox syntax errors (permanent); the
+  // 30-second timeout above also lands transient. The logging sender used in tests
+  // implements the same contract from a settable outcome.
+  ```
+
+  ```csharp
+  // src/EventBooking.Application/Notifications/RetryEmailHandler.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Access;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Common;
+  using EventBooking.Domain.Notifications;
+
+  namespace EventBooking.Application.Notifications;
+
+  public sealed class RetryEmailHandler(
+      IStaffAccessProfileRepository profiles,
+      IEmailDeliveryRepository deliveries,
+      IStaffAccessAuthorizer access,
+      IUnitOfWork unitOfWork,
+      IAuditLogger audit,
+      IClock clock)
+  {
+      public async Task<Result<RetryEmailOutcome>> HandleAsync(
+          RetryEmailCommand command, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              command.StaffUserId, StaffCapability.ManageAttendees, null, ct);
+          if (authorized.IsFailure) return Result<RetryEmailOutcome>.Failure(authorized.Error);
+
+          await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+          var old = await deliveries.LockForUpdateAsync(command.EmailLogId, ct);
+          if (old is null || old.AttendeeId != command.AttendeeId)
+              return Result<RetryEmailOutcome>.Failure(Error.NotFound("No such delivery."));
+          if (old.Status != EmailStatus.Failed)
+              return Result<RetryEmailOutcome>.Failure(
+                  Error.Conflict($"Only a failed delivery can be retried, not {old.Status}."));
+
+          var fresh = EmailLog.RecordPending(Guid.NewGuid(), old.AttendeeId, old.TemplateName,
+              clock.UtcNow, old.InviteId, old.BookingId, old.EventId);
+          deliveries.Add(fresh);
+          old.MarkResolved(clock.UtcNow);
+          await unitOfWork.SaveChangesAsync(ct);
+          await transaction.CommitAsync(ct);
+          return Result<RetryEmailOutcome>.Success(new RetryEmailOutcome(fresh.Id));
+      }
+  }
+
+  public sealed record RetryEmailCommand(Guid StaffUserId, Guid AttendeeId, Guid EmailLogId);
+  public sealed record RetryEmailOutcome(Guid EmailLogId);
+  ```
+
+  The retry test constructs the handler positionally as
+  `(profiles, deliveries, access, unitOfWork, audit, clock)` — update its two constructions
+  to pass the profiles repository twice (it implements the authorizer, as in Tasks 12–17):
+  `new RetryEmailHandler(profiles, deliveries, profiles, unitOfWork, audit, new FakeClock())`.
+  The resent email carries the same link because links regenerate from entity id and token
+  version, which the retry does not touch.
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suites plus the full solution.
 
