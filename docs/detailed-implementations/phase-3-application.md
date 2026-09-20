@@ -5,7 +5,7 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: Tasks 12–15 written; Tasks 16–20 not yet authored.** Phase 3 is hand-authored: complete code
+**Status: Tasks 12–16 written; Tasks 17–20 not yet authored.** Phase 3 is hand-authored: complete code
 and complete tests are written straight into each document, with no prototype, because the
 executing model compiles and test-drives them itself.
 
@@ -47,7 +47,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 3 | Task 14 — invite engine | [phase-3c-invite-engine.md](phase-3c-invite-engine.md) | `feat(app): location-restricted invite engine` |
 | 4 | Task 15 — booking, cancellation and event cancellation | [phase-3d-booking-cancellation.md](phase-3d-booking-cancellation.md) | `feat(app): booking and cancellation over N capacity rows` |
 | 4 | Task 15 — booking, cancellation and event cancellation | not yet authored | `feat(app): booking and cancellation over N capacity rows` |
-| 5 | Task 16 — recovery and the appointment workspace | not yet authored | `feat(app): recovery and workspace across locations` |
+| 5 | Task 16 — recovery and the appointment workspace | [phase-3e-recovery-workspace.md](phase-3e-recovery-workspace.md) | `feat(app): recovery and workspace across locations` |
 | 6 | Task 17 — staff identity, role sync and authorization | not yet authored | `feat(auth): provider-neutral OIDC with per-request role sync` |
 | 7 | Task 18 — notification outbox and templates | not yet authored | `feat(email): durable outbox dispatcher and location-aware templates` |
 | 8 | Task 19 — background jobs | not yet authored | `feat(jobs): advisory-locked invite sweep` |
