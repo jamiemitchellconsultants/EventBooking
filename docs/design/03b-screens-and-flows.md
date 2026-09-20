@@ -377,9 +377,13 @@ sequenceDiagram
     C->>API: POST /api/events/{id}/cancel
     API-->>C: 409 confirmation-required {activeBookings: 3}
     C->>API: POST /api/events/{id}/cancel?confirm=true
-    API->>DB: lock event; for each booking (attendee id order): lock attendee, capacity; cancel booking; +1 capacity
+    API->>DB: read affected attendee ids (no locks held)
+    API->>DB: per attendee in id order: lock attendee, then event, then EventCapacity by ascending type
+    API->>DB: re-validate under lock; cancel booking; +1 capacity on the booking's types
     API->>DB: issue replacement Invite from original InviteLocations (or AwaitingAvailability)
     API->>DB: insert EmailLog Pending (EventCancelledRebookingNeeded, AttendeeInvite)
     API-->>C: 200 {cancelled: 3, reinvited: 2, awaitingAvailability: 1}
     Outbox->>DB: claim Pending (SKIP LOCKED); send via SMTP; mark Sent/Failed
 ```
+
+The locks are taken in the order [design 01 fixes](01-domain-model.md#lock-ordering) — `Attendee`, `EventProposal`, `Event`, `EventCapacity` — for every attendee, rather than taking the event once up front. Reading the affected attendee identifiers before any lock is held is what makes that possible; each booking is then re-validated under its own locks, because the unlocked read may already be stale.
