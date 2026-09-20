@@ -88,6 +88,9 @@ cd /private/tmp/eventbooking-detail.6yx6zE/verify
 dotnet test tests/EventBooking.Domain.Tests --filter "FullyQualifiedName~YourNewTests"
 # 2. Implement. Then the whole suite, with warnings as errors.
 dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
+# 2a. Only if the task changes the schema. Read the generated migration before accepting it.
+dotnet ef migrations add <Name> --project src/EventBooking.Infrastructure \
+  --startup-project src/EventBooking.Api
 # 3. Snapshot the prototype.
 cd /private/tmp/eventbooking-detail.6yx6zE && node snapshots.mjs task-N
 # 4. Add task N's entry to task-configs.json (copy the shape of an existing entry), then package.
@@ -116,6 +119,10 @@ Generators, in `/private/tmp/eventbooking-detail.6yx6zE`:
   of the plan directory it writes into; point it at whichever checkout you are authoring in before
   running it.
 - `pack-retirement.mjs` — the older Phase 0 packager for Tasks 3a–3d. Leave it alone.
+- The snapshot JSONs double as a recovery point. Any file can be restored to its state at the end
+  of task N with
+  `node -e "require('fs').writeFileSync('verify/'+p, require('./task-N.json')[p])"`, which is how
+  a model snapshot dirtied by a discarded migration gets put back.
 - Transformation scripts (`retire-location-config.mjs`, `widen-event-window.mjs` and so on) are
   one-shot records of what each task did. **Never re-run one against the current prototype.**
 
@@ -157,16 +164,40 @@ Settled by the user, and binding:
    cross-aggregate row in `docs/design/01-domain-model.md`, both of which locked the event first,
    are corrected.
 
-Taken while authoring, and binding on later tasks:
+Taken while authoring, and binding on later tasks. Each is grouped under the task that settled it,
+so a later task can see what it inherits without re-reading the whole list.
+
+**Task 4 — the event window**
+
+- The time-zone abstraction the domain calls is declared in the **domain** project, not the
+  application project as design 04 lists it, because domain rules depend on its answers and
+  dependencies point inward. Infrastructure implements it with NodaTime.
+
+**Task 6 — negotiation**
+
+- The predecessor's Admin fallback for withdrawing a proposal is removed: FR-2.9 judges withdrawal
+  by the proposing type and Admin holds no negotiation capability. The null-scope gate (FR-10.7)
+  therefore arrives early in the negotiation handlers.
+- A proposal that is no longer `Open` produces a **conflict** carrying its current status, per
+  FR-2.11 and the `proposal-not-open` error, where the predecessor returned a validation error.
+- One proposal builder is shared by every test project, linked from `tests/TestSupport/` with a
+  global using, because proposals now need a location, a listed type set and a proposing type. It
+  has since grown a location constant and a cancel-before-start helper; add to it rather than
+  reinventing either in a suite.
+
+**Task 7 — capacity**
 
 - A headcount adjustment below the type's active-booking count is a **returned outcome** carrying
   the minimum the row would accept, per FR-3.6, while a non-positive total or one above 1000 still
   throws. A malformed request and a decision the domain is reporting are different results.
 - Cancelling an `Event` is judged on the window's **start instant**, not its date. The zone is the
   transitional location's until Phase 3.
-- Task 7's charge and release methods are domain API the booking and cancellation handlers do not
-  call yet; they still work on the rows their repository locked. **Task 10's ordered-lock helpers
-  are where those handlers adopt them** — do not rework the handlers earlier.
+- The charge and release methods are domain API the booking and cancellation handlers do not call
+  yet; they still work on the rows their repository locked. **Task 10's ordered-lock helpers are
+  where those handlers adopt them** — do not rework the handlers earlier.
+
+**Task 8 — invites and the attendee lifecycle**
+
 - **The book token stays a stored hash until Task 9.** The master plan puts design 06's
   `tokenVersion` counter in Task 8; the user settled that it moves to Task 9 instead, where the
   fresh schema writes the column once alongside the HMAC token service. The predecessor's hash is
@@ -174,20 +205,15 @@ Taken while authoring, and binding on later tasks:
 - The legal `AttendeeStatus` moves live in the aggregate as a set, exposed through a pure
   predicate. **Callers ask the set rather than restating the rule**: that is how the invite issuer
   tells FR-5.4's parked attendee from FR-5.7's failed re-issue.
+- `NotYetInvited` to `NotYetInvited` is **not** a legal move. Design 01's last row reads "any
+  except `Booked`", which would admit it, but the table lists *changes*, and the only self-move it
+  names is `Invited` to `Invited` for an automatic re-issue. Task 14 relies on this.
 - statusChangedAt is the aggregate's own property, stamped from an instant the caller supplies.
   The predecessor's save-changes interceptor and EF shadow property are retired; the column and its
   inherited migration are unchanged.
-
-- The time-zone abstraction the domain calls is declared in the **domain** project, not the
-  application project as design 04 lists it, because domain rules depend on its answers and
-  dependencies point inward. Infrastructure implements it with NodaTime.
-- The predecessor's Admin fallback for withdrawing a proposal is removed: FR-2.9 judges withdrawal
-  by the proposing type and Admin holds no negotiation capability. The null-scope gate (FR-10.7)
-  therefore arrives early in the negotiation handlers.
-- A proposal that is no longer `Open` produces a **conflict** carrying its current status, per
-  FR-2.11 and the `proposal-not-open` error, where the predecessor returned a validation error.
-- One proposal builder is shared by every test project, linked from `tests/TestSupport/` with a
-  global using, because proposals now need a location, a listed type set and a proposing type.
+- An invited `Attendee` never drops back to `AwaitingAvailability`. The inherited expiry path did,
+  and is corrected to `NoResponseNeedsFollowUp` per FR-5.7 — which is what Task 14's own test list
+  then expects.
 
 ### Transitional constructs, and when each retires
 
@@ -195,18 +221,30 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 
 | Construct | Retires in |
 | --- | --- |
-| The single-zone clock and its transitional member names | When handlers carry a `Location` (Phase 3) |
-| Event cancellation reading its zone from the transitional-location constant | Phase 3 |
-| Invites restricted to the transitional location, because no command carries a Coordinator's selection | Task 12 |
-| The stored book-token hash, in place of design 06's `tokenVersion` | Task 9 |
-| The fixed three invite options, in place of `inviteOptionCount` | Task 12, read by Task 14 |
-| The transitional-location constant in the application layer | Task 13 |
+| The single-zone clock and its transitional member names | Phase 3, when handlers carry a `Location` |
 | The predecessor's fixed appointment-type identifiers and seeded rows | Phase 3 |
-| `inviteOptionCount` present but not editable | Task 12 |
 | The inherited migration chain and its guard tests | Task 9 |
+| The stored book-token hash, in place of design 06's `tokenVersion` | Task 9 |
+| `inviteOptionCount` stored but not editable | Task 12 |
+| The transitional-location constant in the negotiation and capacity handlers | Task 13 |
+| Invites restricted to the transitional location, because no command carries a Coordinator's selection | Task 14, whose InviteAttendee takes location ids |
+| The invite's fixed three options, in place of the stored `inviteOptionCount` | Task 14 |
+| Event cancellation reading its zone from the transitional-location constant | Phase 3 |
 
 ## 9. Standing rules that have bitten already
 
+- **Check whether the column already exists before adding one.** Task 8's statusChangedAt looked
+  like a new field and a new migration; the predecessor already had `status_changed_at`, written
+  from a save-changes interceptor through an EF shadow property. Grep the configurations and the
+  migrations for the column name first. A property the domain should own but infrastructure writes
+  behind its back is a mapping change, not a schema change.
+- **A `HasOne<T>()` to an unmapped aggregate invents a table.** Task 8's first `invite_location`
+  migration silently created a second `Location` table, because the `Location` aggregate Task 5
+  added to the domain is not persisted until Task 9. Read every generated migration before
+  accepting it. If one has to be discarded, `dotnet ef migrations remove` needs a live database and
+  will fail here: delete the two migration files by hand, then restore
+  `EventBookingDbContextModelSnapshot.cs` from the previous task's snapshot JSON before
+  regenerating, or the next migration diffs against a dirty model.
 - **EF migration defaults are wrong by default.** Every task that added a column got a generated
   backfill of `0`, `false` or an empty GUID, each of which misdescribes rows that already exist.
   Set the true historical value, then drop the column default with a raw SQL statement so new rows
