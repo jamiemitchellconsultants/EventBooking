@@ -19,11 +19,12 @@ GetReadiness. The Events tab is bounded to end instants between 7 days ago and 6
 and filters by location; awaiting-availability rows show the required type codes.
 
 **Architecture:** Read models are parameterised SQL projections, keyset-paginated
-(`cursor`/`limit`, limit 1–200 default 50, `{ items, nextCursor }`). Every attendee read
-model refuses an Admin-shaped caller — even when the capability check is bypassed in the
-test, the model itself refuses. Attendee reads never emit personal data beyond name and email
-on the row itself, and never identifiers of other aggregates. No domain entity leaves the
-handler.
+(`cursor`/`limit`, limit 1–200 default 50, `{ items, nextCursor }`). The cursor payload is
+the sort key plus id, base64url-encoded; Task 21 wraps it with an HMAC, so Task 20 treats
+cursors as opaque strings it produces and parses but never trusts for authorization. Every
+attendee read model takes the caller shape and refuses an Admin-shaped caller itself — even
+when the capability check is bypassed, the model refuses. Attendee rows never carry
+identifiers of other aggregates. No domain entity leaves the handler.
 
 **Tech Stack:** .NET 10, xUnit, EF Core, PostgreSQL Testcontainers.
 
@@ -34,9 +35,10 @@ handler.
 ## Global constraints
 
 Exactly one StaffCapability per handler; attendee reads demand an attendee-facing capability
-an Admin does not hold. Audit pagination returns non-overlapping pages under concurrent
-inserts (keyset, not offset). The attendee list with 50,000 rows returns a page in under 300
-ms (on-demand performance test, same tagging as Task 11's budget test).
+an Admin does not hold. Keyset pagination returns non-overlapping pages under concurrent
+inserts (never offset). The attendee list with 50,000 rows returns a page in under 300 ms
+(on-demand performance test, same tagging as Task 11's budget test: `Trait("Category",
+"Performance")`, still run in the full suite).
 
 ## Review focus
 
@@ -50,11 +52,19 @@ just the handler — the test bypasses the capability check and still gets refus
 
 **Files:**
 
-- Create: src/EventBooking.Application/Dashboards/DashboardHandlers.cs
+- Create: src/EventBooking.Application/Dashboards/DashboardHandlers.cs (new file; the
+  ported file below is deleted first, so there is exactly one DashboardHandlers.cs only if
+  the ported name differs — the ported file is GetDashboardsHandler.cs, deleted here)
+- Delete: src/EventBooking.Application/Dashboards/GetDashboardsHandler.cs
+- Delete: src/EventBooking.Application/Dashboards/GetEventOperationsHandler.cs (operations
+  board superseded by the Task 16 workspace)
 - Create: src/EventBooking.Application/Attendees/AttendeeListHandlers.cs
+- Modify: src/EventBooking.Application/Attendees/ListAttendeesHandler.cs (deleted; replaced
+  by the file above — delete, do not edit)
+- Create: src/EventBooking.Application/ReadModels/CallerShape.cs
+- Create: src/EventBooking.Application/ReadModels/AttendeeCursor.cs (payload contract)
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs
-- Delete: the ported dashboard, attendee-list and readiness files they replace
 - Test: tests/EventBooking.Application.Tests/Dashboards/DashboardHandlerTests.cs
 - Test: tests/EventBooking.Application.Tests/Attendees/AttendeeListHandlerTests.cs
 - Test: tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs
@@ -62,124 +72,222 @@ just the handler — the test bypasses the capability check and still gets refus
 
 **Interfaces:**
 
-These complete types define the changed public boundary and its domain behavior. Apply them
-after the failing test, not before.
+```csharp
+namespace EventBooking.Application.ReadModels;
+
+// What every Task 20 read model needs to refuse the wrong caller by itself. Resolved once
+// per request from the access profile; Admin-shaped means IsAdmin regardless of scope.
+public sealed record CallerShape(Guid StaffUserId, bool IsAdmin, IReadOnlySet<string> Roles);
+
+// Cursor payload contract (Task 21 adds the HMAC wrapper). Opaque to callers: the sort
+// key plus the row id, base64url-encoded, joined by a dot.
+public static class AttendeeCursor
+{
+    public static string Encode(string sortKey, Guid id);
+    public static bool TryDecode(string? cursor, out string sortKey, out Guid id);
+}
+```
 
 ```csharp
 namespace EventBooking.Application.Dashboards;
 
-// One query, three tabs with counts plus the failed/pending email counts.
-// The Events tab bounds end instants to 7 days ago through 60 days ahead.
-public sealed record GetDashboardsQuery(
-    Guid StaffUserId,
-    Guid? LocationId); // null means every location
-
+public sealed record GetDashboardsQuery(Guid StaffUserId, Guid? LocationId);
 public sealed record DashboardTabCounts(
-    int AwaitingAvailability,
-    int Invited,
-    int Booked,
-    int NeedsFollowUp);
-
+    int AwaitingAvailability, int Invited, int Booked, int NeedsFollowUp);
 public sealed record DashboardsView(
-    DashboardTabCounts Events,      // event-side pipeline counts
-    DashboardTabCounts Attendees,   // attendee-side pipeline counts
-    DashboardTabCounts Recovery,    // recovery pipeline counts
-    int FailedEmails,
-    int PendingEmails);
+    DashboardTabCounts Events, DashboardTabCounts Attendees, DashboardTabCounts Recovery,
+    int FailedEmails, int PendingEmails);
 ```
 
 ```csharp
 namespace EventBooking.Application.Attendees;
 
-// Cursor pagination only. Filters combine; readiness and latest delivery
-// status are projected per row. Refuses an Admin-shaped caller in the read
-// model itself (FR-12.3 buckets apply in Task 20b; the refusal lives here).
 public sealed record ListAttendeesQuery(
-    Guid StaffUserId,
-    string? Cursor,
-    int Limit,                     // 1-200, default 50
-    string? Status,                // null means all
-    Guid? AttendeeGroupId,         // null means all
-    string? Readiness,             // null means all
-    string? NameOrEmailPrefix);    // null means all
-
+    Guid StaffUserId, string? Cursor, int Limit, string? Status,
+    Guid? AttendeeGroupId, string? Readiness, string? NameOrEmailPrefix);
 public sealed record AttendeeListItem(
-    string Name,
-    string Email,
-    string Status,
-    string GroupCode,
-    string Readiness,
-    IReadOnlyList<string> RequiredTypeCodes, // awaiting-availability rows
-    string? LatestDeliveryStatus,            // null when never invited
-    string Cursor);                          // opaque sort key + HMAC
-
-public sealed record AttendeeListView(
-    IReadOnlyList<AttendeeListItem> Items,
-    string? NextCursor);           // null on the last page
+    string Name, string Email, string Status, string GroupCode, string Readiness,
+    IReadOnlyList<string> RequiredTypeCodes, string? LatestDeliveryStatus, string Cursor);
+public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, string? NextCursor);
 ```
 
-- [ ] **Step 1: Write the failing tests.** Create the four test files. Required cases, one
-  test per rule:
+- [ ] **Step 1: Write the failing tests.** Create the four test files below in full. The
+  Application suites drive the handlers with an in-memory query double honouring the same
+  bounds; the Infrastructure suites assert the SQL against real PostgreSQL.
 
   ```csharp
-  // tests/EventBooking.Application.Tests/Dashboards/DashboardHandlerTests.cs
-  // (representative file — the other three follow the same shape)
+  // tests/EventBooking.Application.Tests/Dashboards/DashboardHandlerTests.cs (complete)
   using EventBooking.Application.Common;
   using EventBooking.Application.Dashboards;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Application.Tests.Fakes;
 
   namespace EventBooking.Application.Tests.Dashboards;
 
   public sealed class DashboardHandlerTests
   {
-      // The Events tab excludes events ending 8 days ago and 61 days
-      // ahead, and filters by location.
       [Fact]
       public async Task Events_tab_is_bounded_and_location_filtered()
       {
-          var fixture = DashboardFixture.Create()
+          var queries = new MemoryDashboardQueries()
               .WithEventEnding(daysFromNow: -8)
               .WithEventEnding(daysFromNow: 61)
               .WithEventEnding(daysFromNow: 30, location: "TOKYO");
-          var query = new GetDashboardsQuery(
-              fixture.CoordinatorUserId, fixture.LondonLocationId);
+          var handler = new GetDashboardsHandler(
+              queries, new InMemoryStaffAccessProfileRepository(), new FakeClock(),
+              DashboardTestZones.Instance);
 
-          var result = await fixture.GetAsync(query, CancellationToken.None);
+          var result = await handler.HandleAsync(
+              new GetDashboardsQuery(Guid.NewGuid(), queries.LondonLocationId),
+              CancellationToken.None);
 
           Assert.True(result.IsSuccess);
           Assert.Equal(0, result.Value.Events.AwaitingAvailability);
       }
 
-      // An Admin calling GetDashboards is refused by the read model even
-      // when the capability check is bypassed in the test.
       [Fact]
       public async Task Admin_is_refused_by_the_read_model_itself()
       {
-          var fixture = DashboardFixture.Create().BypassCapabilityCheck();
-          var query = new GetDashboardsQuery(
-              fixture.AdminUserId, LocationId: null);
+          var queries = new OpenDashboardQueries();
+          var handler = new GetDashboardsHandler(
+              queries, new InMemoryStaffAccessProfileRepository(), new FakeClock(),
+              DashboardTestZones.Instance);
 
-          var result = await fixture.GetAsync(query, CancellationToken.None);
+          var result = await handler.HandleAsync(
+              new GetDashboardsQuery(Guid.NewGuid(), null), CancellationToken.None);
 
-          Assert.Equal("forbidden", result.Error.Type);
+          Assert.True(result.IsFailure);
+          Assert.Equal("forbidden", result.Error.Code);
+      }
+
+      [Fact]
+      public async Task Email_counts_travel_with_the_tabs()
+      {
+          var queries = new MemoryDashboardQueries().WithEmails(failed: 2, pending: 5);
+          var handler = new GetDashboardsHandler(
+              queries, new InMemoryStaffAccessProfileRepository(), new FakeClock(),
+              DashboardTestZones.Instance);
+
+          var result = await handler.HandleAsync(
+              new GetDashboardsQuery(Guid.NewGuid(), null), CancellationToken.None);
+
+          Assert.True(result.IsSuccess);
+          Assert.Equal(2, result.Value.FailedEmails);
+          Assert.Equal(5, result.Value.PendingEmails);
       }
   }
   ```
 
-  The remaining suites cover: awaiting-availability rows showing the required type codes;
-  attendee-list filters combining (status, group, readiness, prefix); audit-free pagination
-  returning non-overlapping pages under concurrent inserts; the 50,000-row page under 300
-  ms (tagged `Category=Performance`, runs in the full suite per Task 11's rule).
+  MemoryDashboardQueries is a private sealed class in the same file implementing the
+  dashboard query port from settable rows (events with end offsets and locations, email
+  counts) and exposing LondonLocationId. DashboardTestZones is a private stub in the
+  same file with IsKnownZone true for the test zones and InstantOf treating local
+  time as UTC (ordering only — the bound tests use offsets, not zones).
+  OpenDashboardQueries is a second double in the same file whose caller shape is
+  Admin-shaped regardless of input. Write both doubles in full in the file. The committed
+  handler constructor is `(queries, profiles, clock, zones)`.
 
-- [ ] **Step 2: Run.** Expected: FAIL — the dashboard and attendee-list handlers do not
-  exist.
+  ```csharp
+  // tests/EventBooking.Application.Tests/Attendees/AttendeeListHandlerTests.cs (complete)
+  using EventBooking.Application.Attendees;
+  using EventBooking.Application.Common;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Application.Tests.Fakes;
+
+  namespace EventBooking.Application.Tests.Attendees;
+
+  public sealed class AttendeeListHandlerTests
+  {
+      [Fact]
+      public async Task Filters_combine_and_required_codes_show_on_awaiting_rows()
+      {
+          var queries = new MemoryAttendeeQueries()
+              .WithAttendee("Amy", "amy@example.invalid", "AwaitingAvailability", "NHS", ["MED", "IND"])
+              .WithAttendee("Bo", "bo@example.invalid", "Invited", "NHS", ["MED"]);
+          var handler = new ListAttendeesHandler(
+              queries, new InMemoryStaffAccessProfileRepository());
+
+          var result = await handler.HandleAsync(new ListAttendeesQuery(
+              Guid.NewGuid(), null, 50, "AwaitingAvailability", null, null, "a"),
+              CancellationToken.None);
+
+          Assert.True(result.IsSuccess);
+          var item = Assert.Single(result.Value.Items);
+          Assert.Equal("Amy", item.Name);
+          Assert.Equal(["IND", "MED"], item.RequiredTypeCodes.Order().ToList());
+          Assert.NotNull(item.Cursor);
+      }
+
+      [Fact]
+      public async Task Pages_do_not_overlap_under_concurrent_inserts()
+      {
+          var queries = new MemoryAttendeeQueries().WithAttendees(30);
+          var handler = new ListAttendeesHandler(
+              queries, new InMemoryStaffAccessProfileRepository());
+
+          var first = await handler.HandleAsync(
+              new ListAttendeesQuery(Guid.NewGuid(), null, 10, null, null, null, null),
+              CancellationToken.None);
+          queries.WithAttendees(10);
+          var second = await handler.HandleAsync(
+              new ListAttendeesQuery(Guid.NewGuid(), first.Value.NextCursor, 10, null, null, null, null),
+              CancellationToken.None);
+
+          Assert.True(second.IsSuccess);
+          Assert.Empty(first.Value.Items.Select(i => i.Cursor)
+              .Intersect(second.Value.Items.Select(i => i.Cursor)));
+      }
+
+      [Fact]
+      public async Task Admin_caller_is_refused_by_the_model()
+      {
+          var queries = new AdminShapedAttendeeQueries();
+          var handler = new ListAttendeesHandler(
+              queries, new InMemoryStaffAccessProfileRepository());
+
+          var result = await handler.HandleAsync(
+              new ListAttendeesQuery(Guid.NewGuid(), null, 50, null, null, null, null),
+              CancellationToken.None);
+
+          Assert.True(result.IsFailure);
+          Assert.Equal("forbidden", result.Error.Code);
+      }
+  }
+  ```
+
+  MemoryAttendeeQueries is a private sealed class in the same file honouring every
+  filter, keyset order (name, id) and cursor round-trip through the payload contract.
+  AdminShapedAttendeeQueries always reports an Admin caller. The readiness per row comes
+  from the ported readiness calculator over the attendee's status and delivery state; the
+  latest delivery status is null when never invited.
+
+  ```csharp
+  // tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs and
+  // tests/EventBooking.Infrastructure.Tests/Queries/AttendeeListQueryTests.cs (complete,
+  // real PostgreSQL 16): seed events just inside and outside each bound edge (7 days ago
+  // / 60 days ahead, end instants), across two locations; assert the tab counts, the
+  // location filter, combined attendee filters, cursor round-trip with concurrent
+  // inserts, and the 50,000-row page under 300 ms (Trait Category Performance, seeded
+  // mostly outside the filters so the index decides). Follow the Task 9b fixture pattern.
+  ```
+
+- [ ] **Step 2: Run.** Expected: FAIL to compile — the dashboard and attendee-list handlers
+  do not exist.
 
   ```bash
   dotnet test tests/EventBooking.Application.Tests --filter "FullyQualifiedName~Dashboards|FullyQualifiedName~Attendees"
   ```
 
-- [ ] **Step 3: Implement.** Create the handler and query files; delete the ported files.
-  Bound the Events tab in SQL, not in memory. Refuse Admin-shaped callers in the read
-  model. Paginate by keyset.
+- [ ] **Step 3: Implement.** Create the handler, shape, cursor and query files; delete the
+  three ported files. The Events-tab end-instant bound is a SQL pre-filter plus an exact
+  handler check: there is no stored end instant (PostgreSQL cannot evaluate IANA rules
+  deterministically, per design 04), so SQL filters `start_utc` to the widened window —
+  now minus 7 days minus the 720-minute maximum duration, through now plus 60 days — and
+  the handler drops rows whose resolver-computed end instant falls outside the true
+  7-day/60-day bounds. Refuse Admin-shaped callers in the read model (the query takes the
+  caller shape and refuses before reading). Paginate by keyset on (name, id). Project
+  required type codes only on awaiting-availability rows; latest delivery status from the
+  newest outbox row or null.
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suites plus the full solution.
 
@@ -187,25 +295,20 @@ public sealed record AttendeeListView(
   dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
   ```
 
-  Expect Application and Infrastructure counts to rise. A count that does not match after
-  the change is a signal to read the diff, not to adjust the number.
+  Expect Application and Infrastructure counts to rise. A count that does not match the
+  executor's own before/after diff is a signal to read the diff, not to adjust the number.
 
-- [ ] **Step 5: Commit and push.**
+- [ ] **Step 5: Commit and push** the executor's code — not the plan documents — under the
+  master plan's message:
 
   ```bash
   test -z "$(git status --porcelain --ignored=no | grep -v '^??')"
-  node --input-type=module <<'LINT_PLANS'
-  import fs from 'node:fs';
-  import {execFileSync} from 'node:child_process';
-  const directory = 'docs/detailed-implementations';
-  const files = fs.readdirSync(directory).filter(name => name.endsWith('.md')).map(name => directory + '/' + name);
-  process.stdout.write(execFileSync('node', ['scripts/check-ontology-terms.mjs', '--also', ...files], {encoding:'utf8', maxBuffer:1e7}));
-  LINT_PLANS
-  git add docs/detailed-implementations/phase-3i-dashboards-attendees.md docs/detailed-implementations/phase-3-application.md docs/detailed-implementations/HANDOVER.md
+  dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
+  git add src/EventBooking.Application/Dashboards/ src/EventBooking.Application/Attendees/AttendeeListHandlers.cs src/EventBooking.Application/ReadModels/ src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs tests/EventBooking.Application.Tests/Dashboards/ tests/EventBooking.Application.Tests/Attendees/AttendeeListHandlerTests.cs tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs tests/EventBooking.Infrastructure.Tests/Queries/AttendeeListQueryTests.cs
   git diff --cached --name-only
   git diff --cached
   test -n "$EXECUTOR_COAUTHOR"
-  git commit -m "docs(plans): Task 20a dashboards and attendee list
+  git commit -m "feat(app): bounded dashboards and attendee list
 
   Co-authored-by: $EXECUTOR_COAUTHOR"
   git push
