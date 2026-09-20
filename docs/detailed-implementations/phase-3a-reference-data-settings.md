@@ -347,8 +347,8 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
 
           Assert.True(result.IsFailure);
           Assert.Equal("in-use", result.Error.Code);
-          Assert.Equal(1, result.Error.Data!["openProposals"]);
-          Assert.Equal(2, result.Error.Data!["futureEvents"]);
+          Assert.Equal(1L, result.Error.Data!["openProposals"]);
+          Assert.Equal(2L, result.Error.Data!["futureEvents"]);
           Assert.Equal("Europe/London", _locations.Items.Single().TimeZoneId);
           Assert.Single(_audit.Entries);
       }
@@ -366,7 +366,7 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
 
           Assert.True(result.IsFailure);
           Assert.Equal("version-conflict", result.Error.Code);
-          Assert.Equal(1, result.Error.Data!["currentVersion"]);
+          Assert.Equal(1L, result.Error.Data!["currentVersion"]);
           Assert.Equal("London HQ", _locations.Items.Single().Name);
       }
 
@@ -444,7 +444,7 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
 
           Assert.True(result.IsFailure);
           Assert.Equal("in-use", result.Error.Code);
-          Assert.Equal(2, result.Error.Data!["activeGroups"]);
+          Assert.Equal(2L, result.Error.Data!["activeGroups"]);
           Assert.True(_types.Items.Single().IsActive);
       }
 
@@ -578,7 +578,7 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
 
           Assert.True(result.IsFailure);
           Assert.Equal("requirements-locked", result.Error.Code);
-          Assert.Equal(1, result.Error.Data!["blockingMembers"]);
+          Assert.Equal(1L, result.Error.Data!["blockingMembers"]);
           Assert.Equal([_fit, _med].Order().ToList(), member.RequiredAppointmentTypeIds.Order().ToList());
           Assert.Equal(AttendeeStatus.Invited, member.Status);
           Assert.Single(_audit.Entries);
@@ -599,7 +599,7 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
 
           Assert.True(result.IsFailure);
           Assert.Equal("in-use", result.Error.Code);
-          Assert.Equal(3, result.Error.Data!["members"]);
+          Assert.Equal(3L, result.Error.Data!["members"]);
           Assert.True(_groups.Items.Single().IsActive);
       }
   }
@@ -692,7 +692,7 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
 
           Assert.True(result.IsFailure);
           Assert.Equal("version-conflict", result.Error.Code);
-          Assert.Equal(1, result.Error.Data!["currentVersion"]);
+          Assert.Equal(1L, result.Error.Data!["currentVersion"]);
       }
   }
   ```

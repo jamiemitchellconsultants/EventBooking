@@ -435,8 +435,8 @@ public static Error CapacityBelowBookings(string message, int minimum, int curre
 
           Assert.True(result.IsFailure);
           Assert.Equal("capacity-below-bookings", result.Error.Code);
-          Assert.Equal(5, result.Error.Data!["minimum"]);
-          Assert.Equal(6, result.Error.Data!["currentTotal"]);
+          Assert.Equal(5L, result.Error.Data!["minimum"]);
+          Assert.Equal(6L, result.Error.Data!["currentTotal"]);
       }
 
       [Fact]
