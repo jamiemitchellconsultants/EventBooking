@@ -245,7 +245,8 @@ public interface ILocationRepository
 Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken);
 ```
 
-- [ ] **Step 1: Write the failing tests.** Create the six test files below in full.
+- [ ] **Step 1: Write the failing tests.** Create the seven test files below in full
+  (four Application suites, shared doubles, two Infrastructure suites).
   Shared doubles live in `tests/EventBooking.Application.Tests/ReferenceData/ReferenceDataTestDoubles.cs`
   (new file): TestZones implements IEventWindowZones with IsKnownZone true for
   `Europe/London` and `Asia/Tokyo` (other members throw), and MemoryBlocking implements the
@@ -697,11 +698,147 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
   }
   ```
 
-  The two Infrastructure suites assert the blocking counts against real PostgreSQL 16
-  (ReferenceDataBlockingQueryTests: open/future counts per location and type, member and
-  blocking-member counts per group) and the member re-derivation path end to end
-  (ReplaceAttendeeGroupRequirementsTests: the two-member supersede case through the real
-  handler with EF repositories). Both follow the SchemaTests fixture pattern from Task 9b.
+  ```csharp
+  // tests/EventBooking.Infrastructure.Tests/Queries/ReferenceDataBlockingQueryTests.cs (complete)
+  using EventBooking.Application.ReferenceData;
+  using EventBooking.Domain.AppointmentTypes;
+  using EventBooking.Domain.Attendees;
+  using EventBooking.Domain.AttendeeGroups;
+  using EventBooking.Domain.Bookings;
+  using EventBooking.Domain.Events;
+  using EventBooking.Domain.Invites;
+  using EventBooking.Domain.Locations;
+  using EventBooking.Infrastructure.Persistence.Queries;
+
+  namespace EventBooking.Infrastructure.Tests.Queries;
+
+  public sealed class ReferenceDataBlockingQueryTests : PostgresBlockingHarness
+  {
+      [Fact]
+      public async Task Location_usage_counts_open_proposals_and_future_events()
+      {
+          var location = await SeedLocationAsync("LONDON_HQ", "Europe/London");
+          await SeedOpenProposalAsync(location.Id);
+          await SeedOpenProposalAsync(location.Id);
+          await SeedFutureEventAsync(location.Id);
+          var queries = new ReferenceDataBlockingQueries(Context);
+
+          var usage = await queries.LocationUsageAsync(location.Id, CancellationToken.None);
+
+          Assert.Equal(new LocationUsage(2, 1), usage);
+      }
+
+      [Fact]
+      public async Task Type_usage_counts_proposals_events_and_mapped_groups()
+      {
+          var (type, location) = await SeedTypeWithProposalEventAndGroupAsync();
+
+          var usage = await new ReferenceDataBlockingQueries(Context)
+              .AppointmentTypeUsageAsync(type.Id, CancellationToken.None);
+
+          Assert.Equal(new AppointmentTypeUsage(1, 1, 1), usage);
+      }
+
+      [Fact]
+      public async Task Group_counts_distinguish_members_from_blocking_members()
+      {
+          var group = await SeedGroupWithTwoMembersAsync(blockActiveBooking: true);
+
+          var queries = new ReferenceDataBlockingQueries(Context);
+
+          Assert.Equal(2, await queries.AttendeeGroupMemberCountAsync(group.Id, CancellationToken.None));
+          Assert.Equal(1, await queries.AttendeeGroupBlockingMemberCountAsync(group.Id, CancellationToken.None));
+      }
+
+      [Fact]
+      public async Task Empty_references_count_zero()
+      {
+          var location = await SeedLocationAsync("EMPTY", "Europe/London");
+          var queries = new ReferenceDataBlockingQueries(Context);
+
+          Assert.Equal(LocationUsage.None, await queries.LocationUsageAsync(location.Id, CancellationToken.None));
+      }
+  }
+  ```
+
+  PostgresBlockingHarness extends the Task 9b fixture (container, migrated context as
+  Context): seed helpers insert locations, proposals (Open), events (Active with future
+  start instants), groups with mappings, attendees, a pending invite on one member and an
+  active original booking on the other. The group helper returns the group after adding
+  two members — one holding a pending initial invite, one holding an active original
+  booking — which is exactly the blocking distinction the third test asserts.
+
+  ```csharp
+  // tests/EventBooking.Infrastructure.Tests/Groups/ReplaceAttendeeGroupRequirementsTests.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Application.ReferenceData;
+  using EventBooking.Domain.Access;
+  using EventBooking.Domain.Attendees;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Invites;
+
+  namespace EventBooking.Infrastructure.Tests.Groups;
+
+  public sealed class ReplaceAttendeeGroupRequirementsTests : PostgresBlockingHarness
+  {
+      [Fact]
+      public async Task Replacement_rederives_both_members_and_supersedes_in_one_save()
+      {
+          var admin = Guid.NewGuid();
+          Profiles.Add(StaffAccessProfile.Create(admin, Role.Admin, null));
+          var group = await SeedGroupWithTwoMembersAsync(blockActiveBooking: false);
+          var added = await AddTypeAsync("IND", "Induction");
+          var handler = new UpdateAttendeeGroupHandler(
+              GroupRepository, TypeRepository, AttendeeRepository, InviteRepository,
+              Profiles, Queries, UnitOfWork, Audit, Clock);
+
+          var result = await handler.HandleAsync(new UpdateAttendeeGroupCommand(
+              admin, group.Id, null, [MedId, added.Id], 1), CancellationToken.None);
+
+          Assert.True(result.IsSuccess);
+          var members = await MembersOfAsync(group.Id);
+          Assert.All(members, m => Assert.Equal(
+              [MedId, added.Id].Order().ToList(),
+              m.RequiredAppointmentTypeIds.Order().ToList()));
+          Assert.All(members, m => Assert.Equal(
+              AttendeeStatus.NotYetInvited, m.Status));
+          Assert.Equal(InviteStatus.Superseded,
+              (await InviteForAsync(members[0].Id)).Status);
+          Assert.Equal(1, SaveCount);
+      }
+
+      [Fact]
+      public async Task Replacement_with_active_booking_is_refused_and_changes_nothing()
+      {
+          var admin = Guid.NewGuid();
+          Profiles.Add(StaffAccessProfile.Create(admin, Role.Admin, null));
+          var group = await SeedGroupWithTwoMembersAsync(blockActiveBooking: true);
+          var added = await AddTypeAsync("IND", "Induction");
+          var before = await GroupVersionAsync(group.Id);
+          var handler = new UpdateAttendeeGroupHandler(
+              GroupRepository, TypeRepository, AttendeeRepository, InviteRepository,
+              Profiles, Queries, UnitOfWork, Audit, Clock);
+
+          var result = await handler.HandleAsync(new UpdateAttendeeGroupCommand(
+              admin, group.Id, null, [MedId, added.Id], 1), CancellationToken.None);
+
+          Assert.True(result.IsFailure);
+          Assert.Equal("requirements-locked", result.Error.Code);
+          Assert.Equal(before, await GroupVersionAsync(group.Id));
+      }
+  }
+  ```
+
+  The harness exposes the real EF repositories (GroupRepository, TypeRepository,
+  AttendeeRepository, InviteRepository), the real blocking queries (Queries), a
+  recording audit (Audit), a fake clock (Clock), a fake unit of work counting saves
+  (SaveCount), the in-memory authorizer profiles (Profiles), the MED type id
+  (MedId), per-group member/invite readers (MembersOfAsync, InviteForAsync,
+  GroupVersionAsync), and the type/group seed helpers used above. `SeedGroupWithTwoMembersAsync(false)`
+  leaves both members booking-free; with `true` one member holds an active original
+  booking. `SaveCount == 1` proves the re-derivation committed in one save.
 
 - [ ] **Step 2: Run.** Expected: FAIL to compile — the handlers, the repository methods,
   the blocking port, the new Error factories and the new audit members do not exist.
