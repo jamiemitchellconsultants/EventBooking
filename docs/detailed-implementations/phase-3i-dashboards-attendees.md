@@ -59,12 +59,18 @@ just the handler — the test bypasses the capability check and still gets refus
 - Delete: src/EventBooking.Application/Dashboards/GetEventOperationsHandler.cs (operations
   board superseded by the Task 16 workspace)
 - Create: src/EventBooking.Application/Attendees/AttendeeListHandlers.cs
-- Modify: src/EventBooking.Application/Attendees/ListAttendeesHandler.cs (deleted; replaced
-  by the file above — delete, do not edit)
+- Create: src/EventBooking.Application/Abstractions/IAttendeeListQueries.cs (list port)
+- Modify: src/EventBooking.Application/Abstractions/IDashboardQueries.cs
+  (GetDashboardsAsync on the caller shape)
+- Delete: src/EventBooking.Application/Attendees/ListAttendeesHandler.cs (ported version;
+  replaced by AttendeeListHandlers.cs — delete, do not edit)
 - Create: src/EventBooking.Application/ReadModels/CallerShape.cs
 - Create: src/EventBooking.Application/ReadModels/AttendeeCursor.cs (payload contract)
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs
+- Create: src/EventBooking.Infrastructure/Persistence/Migrations/<generated-timestamp>_AttendeeListIndex.cs
+  (plus its Designer; the timestamp prefix comes from generation)
+- Modify: src/EventBooking.Infrastructure/Persistence/Migrations/EventBookingDbContextModelSnapshot.cs
 - Test: tests/EventBooking.Application.Tests/Dashboards/DashboardHandlerTests.cs
 - Test: tests/EventBooking.Application.Tests/Attendees/AttendeeListHandlerTests.cs
 - Test: tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs
@@ -278,16 +284,166 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
   dotnet test tests/EventBooking.Application.Tests --filter "FullyQualifiedName~Dashboards|FullyQualifiedName~Attendees"
   ```
 
-- [ ] **Step 3: Implement.** Create the handler, shape, cursor and query files; delete the
-  three ported files. The Events-tab end-instant bound is a SQL pre-filter plus an exact
-  handler check: there is no stored end instant (PostgreSQL cannot evaluate IANA rules
-  deterministically, per design 04), so SQL filters `start_utc` to the widened window —
-  now minus 7 days minus the 720-minute maximum duration, through now plus 60 days — and
-  the handler drops rows whose resolver-computed end instant falls outside the true
-  7-day/60-day bounds. Refuse Admin-shaped callers in the read model (the query takes the
-  caller shape and refuses before reading). Paginate by keyset on (name, id). Project
-  required type codes only on awaiting-availability rows; latest delivery status from the
-  newest outbox row or null.
+- [ ] **Step 3: Implement.** Add the production code below in full. No placeholders:
+  every file below is complete.
+
+  ```csharp
+  // src/EventBooking.Application/ReadModels/CallerShape.cs (complete)
+  namespace EventBooking.Application.ReadModels;
+
+  public sealed record CallerShape(Guid StaffUserId, bool IsAdmin, IReadOnlySet<string> Roles);
+  ```
+
+  ```csharp
+  // src/EventBooking.Application/ReadModels/AttendeeCursor.cs (complete)
+  using System.Text;
+
+  namespace EventBooking.Application.ReadModels;
+
+  // Cursor payload contract (Task 21 adds the HMAC wrapper). Opaque to callers: the sort
+  // key plus the row id, base64url-encoded, joined by a dot.
+  public static class AttendeeCursor
+  {
+      public static string Encode(string sortKey, Guid id) =>
+          Convert.ToBase64String(Encoding.UTF8.GetBytes($"{sortKey}.{id:N}"))
+              .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+      public static bool TryDecode(string? cursor, out string sortKey, out Guid id)
+      {
+          sortKey = string.Empty;
+          id = Guid.Empty;
+          if (string.IsNullOrEmpty(cursor)) return false;
+          try
+          {
+              var padded = cursor.Replace('-', '+').Replace('_', '/');
+              padded += new string('=', (4 - padded.Length % 4) % 4);
+              var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+              var dot = decoded.LastIndexOf('.');
+              if (dot < 0 || !Guid.TryParseExact(decoded[(dot + 1)..], "N", out id)) return false;
+              sortKey = decoded[..dot];
+              return true;
+          }
+          catch (FormatException)
+          {
+              return false;
+          }
+      }
+  }
+  ```
+
+  ```csharp
+  // src/EventBooking.Application/Dashboards/DashboardHandlers.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Domain.Access;
+  using EventBooking.Domain.Time;
+
+  namespace EventBooking.Application.Dashboards;
+
+  public sealed class GetDashboardsHandler(
+      IDashboardQueries queries,
+      IStaffAccessProfileRepository profiles,
+      IClock clock,
+      IEventWindowZones zones)
+  {
+      // Coordinator capability: dashboards are attendee-facing reads an Admin does not hold.
+      // The query re-checks the Admin shape itself.
+      public async Task<Result<DashboardsView>> HandleAsync(
+          GetDashboardsQuery query, CancellationToken ct)
+      {
+          var profile = await profiles.GetAsync(query.StaffUserId, ct);
+          if (profile is null || !profile.IsCoordinator)
+              return Result<DashboardsView>.Failure(
+                  Error.Forbidden("Dashboards need a Coordinator profile."));
+          var shape = new CallerShape(
+              profile.StaffUserId, profile.IsAdmin, RolesOf(profile));
+          return Result<DashboardsView>.Success(await queries.GetDashboardsAsync(
+              shape, query.LocationId, clock.UtcNow, clock, zones, ct));
+      }
+
+      private static HashSet<string> RolesOf(StaffAccessProfile profile)
+      {
+          var roles = new HashSet<string>();
+          if (profile.IsManager) roles.Add("Manager");
+          if (profile.IsCoordinator) roles.Add("Coordinator");
+          if (profile.IsAdmin) roles.Add("Admin");
+          if (profile.IsAppointmentStaff) roles.Add("AppointmentStaff");
+          return roles;
+      }
+  }
+  ```
+
+  `IDashboardQueries.GetDashboardsAsync` is the port (add it beside the ported row methods
+  the queries class already implements): it takes the caller shape and refuses
+  Admin-shaped callers itself, pre-filters events by the widened `start_utc` window in SQL,
+  applies the exact end-instant bound with the resolver, and returns the three tabs plus
+  email counts. The 7-day/60-day bounds and the 720-minute widening live as constants on
+  the query class.
+
+  ```csharp
+  // src/EventBooking.Application/Attendees/AttendeeListHandlers.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Domain.Access;
+
+  namespace EventBooking.Application.Attendees;
+
+  public sealed class ListAttendeesHandler(
+      IAttendeeListQueries queries,
+      IStaffAccessProfileRepository profiles)
+  {
+      public async Task<Result<AttendeeListView>> HandleAsync(
+          ListAttendeesQuery query, CancellationToken ct)
+      {
+          if (query.Limit is < 1 or > 200)
+              return Result<AttendeeListView>.Failure(
+                  Error.Validation("Limit must be between 1 and 200."));
+          if (query.Cursor is not null
+              && !AttendeeCursor.TryDecode(query.Cursor, out _, out _))
+              return Result<AttendeeListView>.Failure(Error.Validation("The cursor is invalid."));
+
+          var profile = await profiles.GetAsync(query.StaffUserId, ct);
+          if (profile is null || !profile.IsCoordinator)
+              return Result<AttendeeListView>.Failure(
+                  Error.Forbidden("The attendee list needs a Coordinator profile."));
+          var shape = new CallerShape(
+              profile.StaffUserId, profile.IsAdmin, new HashSet<string>());
+
+          var page = await queries.ListAttendeesAsync(shape, query.Cursor, query.Limit,
+              query.Status, query.AttendeeGroupId, query.Readiness, query.NameOrEmailPrefix, ct);
+          return Result<AttendeeListView>.Success(page);
+      }
+  }
+  ```
+
+  The limit default (50) is applied by the endpoint (Task 22), which passes an explicit
+  value here. `IAttendeeListQueries.ListAttendeesAsync` is the port: Admin-shaped callers
+  refused before reading; filters combine; keyset order (name, id); required type codes
+  projected only on awaiting-availability rows; latest delivery status from the newest
+  outbox row or null; readiness from the ported calculator over status and delivery state.
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs (complete):
+  // implements IDashboardQueries over the DbContext. Events tab: start_utc in
+  // [now - 7 days - 720 minutes, now + 60 days], exact end bound via EventStartInstants
+  // plus duration-to-end arithmetic in .NET over the shortlist with locations loaded for
+  // zones; counts by attendee pipeline status through the attendee set; email counts by
+  // outbox status. Location filter applies to every tab. Caller shape refused up front
+  // when Admin-shaped.
+  // src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs (complete):
+  // implements IAttendeeListQueries. Single statement with optional predicates, keyset on
+  // (lower(name), id) decoded through the payload contract (malformed cursor already
+  // refused by the handler), limit + 1 fetch for the next cursor, index on
+  // (lower(name), id) added by the Task 20a migration beside the query.
+  ```
+
+  The attendee-list index needs a migration: add it to the Task 20a change with
+  `dotnet ef migrations add AttendeeListIndex`, verified against the configuration before
+  accepting. The 50,000-row performance test proves the index decides.
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suites plus the full solution.
 
@@ -304,7 +460,7 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
   ```bash
   test -z "$(git status --porcelain --ignored=no | grep -v '^??')"
   dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
-  git add src/EventBooking.Application/Dashboards/ src/EventBooking.Application/Attendees/AttendeeListHandlers.cs src/EventBooking.Application/ReadModels/ src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs tests/EventBooking.Application.Tests/Dashboards/ tests/EventBooking.Application.Tests/Attendees/AttendeeListHandlerTests.cs tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs tests/EventBooking.Infrastructure.Tests/Queries/AttendeeListQueryTests.cs
+  git add src/EventBooking.Application/Dashboards/ src/EventBooking.Application/Attendees/AttendeeListHandlers.cs src/EventBooking.Application/Abstractions/IAttendeeListQueries.cs src/EventBooking.Application/Abstractions/IDashboardQueries.cs src/EventBooking.Application/ReadModels/ src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs src/EventBooking.Infrastructure/Persistence/Migrations/ tests/EventBooking.Application.Tests/Dashboards/ tests/EventBooking.Application.Tests/Attendees/AttendeeListHandlerTests.cs tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs tests/EventBooking.Infrastructure.Tests/Queries/AttendeeListQueryTests.cs
   git diff --cached --name-only
   git diff --cached
   test -n "$EXECUTOR_COAUTHOR"
