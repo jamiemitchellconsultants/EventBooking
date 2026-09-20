@@ -401,7 +401,7 @@ public sealed record StaffMeView(
           profiles.Items.Add(StaffAccessProfile.Create(jo, Role.Manager, null));
           await identities.UpsertAsync(sam, new StaffId("S100"), "Sam", DateTimeOffset.UtcNow,
               CancellationToken.None);
-          var handler = new StaffScopeHandler(profiles, identities, unitOfWork, audit);
+          var handler = new StaffScopeHandler(profiles, identities, unitOfWork, audit, profiles);
 
           var result = await handler.HandleAsync(
               new SetStaffScopeCommand(Admin, jo, MedType, 1), CancellationToken.None);
@@ -421,7 +421,7 @@ public sealed record StaffMeView(
           var sam = Guid.NewGuid();
           profiles.Items.Add(StaffAccessProfile.Create(Admin, Role.Admin, null));
           profiles.Items.Add(StaffAccessProfile.Create(sam, Role.Manager, MedType));
-          var handler = new StaffScopeHandler(profiles, identities, unitOfWork, audit);
+          var handler = new StaffScopeHandler(profiles, identities, unitOfWork, audit, profiles);
 
           var result = await handler.HandleAsync(
               new SetStaffScopeCommand(Admin, sam, null, 1), CancellationToken.None);
@@ -438,7 +438,7 @@ public sealed record StaffMeView(
           var jo = Guid.NewGuid();
           profiles.Items.Add(StaffAccessProfile.Create(Admin, Role.Admin, null));
           profiles.Items.Add(StaffAccessProfile.Create(jo, Role.Manager, null));
-          var handler = new StaffScopeHandler(profiles, identities, unitOfWork, audit);
+          var handler = new StaffScopeHandler(profiles, identities, unitOfWork, audit, profiles);
 
           var result = await handler.HandleAsync(
               new SetStaffScopeCommand(Admin, jo, MedType, 99), CancellationToken.None);
@@ -541,15 +541,222 @@ public sealed record StaffMeView(
   dotnet test tests/EventBooking.Application.Tests --filter "FullyQualifiedName~Access"
   ```
 
-- [ ] **Step 3: Implement.** Create `StaffScopeHandler.cs`, `MeHandler.cs` and
-  `AuthClaimOptions.cs` as specified above; restructure the authorizer around the
-  capability table (behaviour identical, plus the `ManageReferenceData` row, plus an
-  AllCapabilities member listing every `StaffCapability` name for the generated test);
-  remove the EnsureKnown guard from profile validation; rework Api.Auth to provider-neutral
-  OIDC (authority, audience and HTTPS metadata from configuration); keep MapInboundClaims
-  disabled. The scope handler locks all profiles (LockAllAsync), displaces the current
-  holder of the type if any, sets the target scope through Replace, audits
-  `StaffAccessChanged` as the acting Admin, and returns the displaced display name.
+- [ ] **Step 3: Implement.** Add the production code below in full, then the OIDC
+  rework. No placeholders: every file below is complete.
+
+  ```csharp
+  // src/EventBooking.Application/Access/CapabilityMatrix.cs (complete)
+  namespace EventBooking.Application.Access;
+
+  public sealed record CapabilityGrant(string Capability, string Role, bool NeedsScope);
+
+  public static class CapabilityMatrix
+  {
+      public static IReadOnlyList<CapabilityGrant> Grants { get; } =
+      [
+          new("ManageReferenceData", "Admin", false),
+          new("ManageSettings", "Admin", false),
+          new("ManageStaffAccess", "Admin", false),
+          new("ManageAttendees", "Coordinator", false),
+          new("ViewAttendeeDashboards", "Coordinator", false),
+          new("ViewAttendeeAudit", "Coordinator", false),
+          new("ViewEventAudit", "Admin", false),
+          new("ViewEventAudit", "Coordinator", false),
+          new("ManageEventNegotiation", "Manager", true),
+          new("ViewEventOperations", "Admin", false),
+          new("ViewEventOperations", "Coordinator", false),
+          new("ViewEventOperations", "Manager", false),
+          new("ViewEventOperations", "AppointmentStaff", false),
+          new("CancelEvent", "Admin", false),
+          new("CancelEvent", "Coordinator", false),
+          new("CancelEvent", "Manager", true),
+          new("ConductAppointments", "Manager", true),
+          new("ConductAppointments", "AppointmentStaff", true),
+      ];
+
+      public static IReadOnlyList<string> AllCapabilities { get; } =
+      [
+          "ManageReferenceData", "ManageSettings", "ManageStaffAccess", "ManageAttendees",
+          "ViewAttendeeDashboards", "ViewAttendeeAudit", "ViewEventAudit",
+          "ManageEventNegotiation", "ViewEventOperations", "CancelEvent", "ConductAppointments",
+      ];
+  }
+  ```
+
+  Restructure `StaffAccessAuthorizer.IsAllowed` to answer from the table: grant when any
+  row matches a held role with the scope rule satisfied (scoped rows need a non-null
+  profile scope; unscoped rows ignore scope), plus the two standing rules (an Admin role
+  never grants the three attendee-data capabilities even if a refactor mislabels a row; a
+  profile whose scoped roles lack a scope grants nothing unless another held role grants
+  the capability through an unscoped row). Behaviour is otherwise identical to the
+  ported switch, plus the ManageReferenceData row.
+
+  ```csharp
+  // src/EventBooking.Application/Access/StaffScopeHandler.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Access;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Common;
+
+  namespace EventBooking.Application.Access;
+
+  public sealed class StaffScopeHandler(
+      IStaffAccessProfileRepository profiles,
+      IStaffIdentityRepository identities,
+      IUnitOfWork unitOfWork,
+      IAuditLogger audit,
+      IStaffAccessAuthorizer access)
+  {
+      public async Task<Result<SetStaffScopeOutcome>> HandleAsync(
+          SetStaffScopeCommand command, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              command.StaffUserId, StaffCapability.ManageStaffAccess, null, ct);
+          if (authorized.IsFailure) return Result<SetStaffScopeOutcome>.Failure(authorized.Error);
+
+          await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+          var target = await profiles.GetAsync(command.TargetStaffUserId, ct);
+          if (target is null)
+              return Result<SetStaffScopeOutcome>.Failure(Error.NotFound("No such staff profile."));
+          if (target.Version != command.ExpectedVersion)
+              return Result<SetStaffScopeOutcome>.Failure(
+                  Error.VersionConflict("The staff profile changed under you.", target.Version));
+          if (command.AppointmentTypeId is not null && !target.IsManager)
+              return Result<SetStaffScopeOutcome>.Failure(
+                  Error.Validation("Only a Manager profile can hold an appointment-type scope."));
+
+          string? displacedName = null;
+          if (command.AppointmentTypeId is { } typeId)
+          {
+              var holder = (await profiles.LockAllAsync(ct))
+                  .SingleOrDefault(p => p.AppointmentTypeId == typeId
+                      && p.StaffUserId != target.StaffUserId
+                      && p.IsManager);
+              if (holder is not null)
+              {
+                  var identity = (await identities.ListAsync(ct))
+                      .SingleOrDefault(i => i.StaffUserId == holder.StaffUserId);
+                  displacedName = identity?.DisplayName ?? identity?.StaffId.Value;
+                  if (holder.RemoveManagerRole())
+                      profiles.Remove(holder);
+                  else
+                      holder.Replace(holder.RolesForReplace(), null);
+              }
+          }
+
+          try
+          {
+              target.Replace(target.RolesForReplace(), command.AppointmentTypeId);
+          }
+          catch (DomainException ex)
+          {
+              await transaction.RollbackAsync(ct);
+              return Result<SetStaffScopeOutcome>.Failure(Error.Validation(ex.Message));
+          }
+
+          audit.Record(AuditEntityTypes.StaffAccessProfile, target.StaffUserId,
+              AuditAction.StaffAccessChanged, ActorType.Staff, command.StaffUserId.ToString(),
+              command.AppointmentTypeId is null
+                  ? "scope cleared"
+                  : $"scope {command.AppointmentTypeId}");
+          await unitOfWork.SaveChangesAsync(ct);
+          await transaction.CommitAsync(ct);
+          return Result<SetStaffScopeOutcome>.Success(new SetStaffScopeOutcome(
+              target.StaffUserId, command.AppointmentTypeId, displacedName));
+      }
+  }
+  ```
+
+  RolesForReplace does not exist on the aggregate: the handler needs the target's roles
+  as a collection. `StaffAccessProfile` exposes IsManager, IsCoordinator, IsAdmin,
+  IsAppointmentStaff — reconstruct the set inline instead:
+
+  ```csharp
+  // (replace both RolesForReplace call sites above)
+  private static List<Role> RolesOf(StaffAccessProfile profile)
+  {
+      var roles = new List<Role>();
+      if (profile.IsManager) roles.Add(Role.Manager);
+      if (profile.IsCoordinator) roles.Add(Role.Coordinator);
+      if (profile.IsAdmin) roles.Add(Role.Admin);
+      if (profile.IsAppointmentStaff) roles.Add(Role.AppointmentStaff);
+      return roles;
+  }
+  // holder: holder.RemoveManagerRole() ... else holder.Replace(RolesOf(holder), null);
+  // target: target.Replace(RolesOf(target), command.AppointmentTypeId);
+  ```
+
+  Replace re-validates, so clearing the only MED Manager (null scope on a Manager-only
+  profile) stays valid — the null-scope rule lives in the authorizer, not the domain —
+  and assigning a scope to a non-Manager is refused by the handler before Replace runs.
+  RemoveManagerRole returns true when no roles remain; the row is then dropped, matching
+  the sync handler's removal semantics.
+
+  ```csharp
+  // src/EventBooking.Application/Access/MeHandler.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Access;
+
+  namespace EventBooking.Application.Access;
+
+  public sealed class MeHandler(
+      IStaffAccessProfileRepository profiles,
+      IStaffIdentityRepository identities,
+      IUnitOfWork unitOfWork)
+  {
+      public async Task<Result<StaffMeView>> HandleAsync(
+          Guid staffUserId, string? staffIdValue, string? displayName,
+          IReadOnlySet<Role> roles, string staffIdPattern, CancellationToken ct)
+      {
+          if (staffIdValue is null
+              || !StaffId.TryParse(staffIdValue, out var staffId, staffIdPattern))
+              return Result<StaffMeView>.Success(new StaffMeView(
+                  displayName, null, roles.Select(r => r.ToString()).ToList(), null, [],
+                  "No usable staff_id: sign in with an identity carrying one."));
+
+          var profile = await profiles.GetAsync(staffUserId, ct);
+          if (profile is null)
+              return Result<StaffMeView>.Success(new StaffMeView(
+                  displayName, staffId.Value, roles.Select(r => r.ToString()).ToList(), null, [],
+                  "No staff profile: no roles have been synced for this identity."));
+
+          var capabilities = CapabilityMatrix.Grants
+              .Where(g => profile.HasRole(Enum.Parse<Role>(g.Role))
+                  && (!g.NeedsScope || profile.AppointmentTypeId is not null))
+              .Select(g => g.Capability)
+              .Distinct()
+              .ToList();
+          return Result<StaffMeView>.Success(new StaffMeView(
+              displayName, staffId.Value, roles.Select(r => r.ToString()).ToList(),
+              profile.AppointmentTypeId, capabilities, null));
+      }
+  }
+  ```
+
+  MeHandler never writes — the recorder middleware owns identity refresh. The Api endpoint
+  adapts the caller accessor to its parameters (anonymous callers land in the no-role view
+  instead of a 401).
+
+  ```csharp
+  // src/EventBooking.Api/Auth/AuthClaimOptions.cs (complete)
+  namespace EventBooking.Api.Auth;
+
+  public sealed class AuthClaimOptions
+  {
+      public string StaffIdClaim { get; set; } = "staff_id";
+      public string NameClaim { get; set; } = "name";
+      public string RolesClaim { get; set; } = "roles";
+      public string StaffIdPattern { get; set; } = Domain.Access.StaffId.DefaultPattern;
+  }
+  ```
+
+  Bind from `Auth__Claims__StaffId/Name/Roles` plus `Identity__StaffIdPattern`, and read
+  them in HttpContextCallerAccessor instead of its constants. Rework
+  LocalAuthenticationExtensions to the provider-neutral section (`Auth__Authority`,
+  `Auth__Audience`, HTTPS metadata from configuration, defaulting off only for the local
+  stack); keep MapInboundClaims disabled so the literal roles lookup keeps working.
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suites plus the full solution.
 
