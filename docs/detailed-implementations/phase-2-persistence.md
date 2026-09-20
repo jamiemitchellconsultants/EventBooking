@@ -5,8 +5,8 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: in progress.** Task 9a is written, verified and replayed. Tasks 9b, 10 and 11 are not yet
-authored; do not start the phase expecting to finish it.
+**Status: in progress.** Tasks 9a and 9b are written, verified and replayed — master Task 9 is
+complete. Tasks 10 and 11 are not yet authored; do not start the phase expecting to finish it.
 
 **Goal:** Give the generalised domain a schema of its own — one fresh initial migration with the
 constraints the design names, database roles that keep the audit trail append-only, ordered row-lock
@@ -40,7 +40,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | Order | Task | Document | Commit message |
 | --- | --- | --- | --- |
 | 1 | Task 9a — deterministic attendee links and the version counter | [phase-2a-attendee-tokens.md](phase-2a-attendee-tokens.md), with `phase-2a-edits-001.md` … `-032.md` | `feat(security): deterministic attendee tokens with a stored version counter` |
-| 2 | Task 9b — the fresh schema and database roles | not yet authored | `feat(persistence): fresh initial schema with capacity and role constraints` |
+| 2 | Task 9b — the fresh schema and database roles | [phase-2b-fresh-schema.md](phase-2b-fresh-schema.md), with `phase-2b-edits-001.md` … `-026.md` | `feat(persistence): fresh initial schema with capacity and role constraints` |
 | 3 | Task 10 — unit of work, ordered lock helpers, concurrency harness | not yet authored | `feat(persistence): ordered row-lock helpers and concurrency harness` |
 | 4 | Task 11 — invite eligibility query | not yet authored | `feat(persistence): relational-division invite eligibility query` |
 
@@ -54,6 +54,7 @@ away from the squash keeps each document reviewable and lets each one be replaye
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | End of Phase 1 (Task 8) | 358 | 424 | 175 | 232 | 35 | 241 | 75 | 1540 |
 | Task 9a | 360 | 424 | 174 | 232 | 35 | 241 | 75 | 1541 |
+| Task 9b — end of master Task 9 | 360 | 424 | 176 | 232 | 35 | 241 | 75 | 1543 |
 
 Each figure comes from a full `dotnet build EventBooking.sln -warnaserror` followed by every test
 project, with Docker running and no skipped tests. Each task was additionally replayed from its own
@@ -61,7 +62,9 @@ documents into an independent checkout.
 
 Infrastructure drops by one at Task 9a. The predecessor's token tests covered a random nonce and a
 stored hash, and neither exists any more; the replacements cover the purpose, the version and the
-canonical encoding instead.
+canonical encoding instead. It rises by two at Task 9b despite five inherited-migration guard tests
+retiring with the chain they pinned: fifteen schema tests take their place, and what the guards
+protected is now asserted as a live constraint rather than as a step in a chain.
 
 ## Sequencing notes
 
@@ -83,6 +86,24 @@ The migration Task 9a adds is deliberately short-lived: **Task 9b deletes the en
 including it**, and writes one initial migration that carries `token_version` and
 `manage_token_version` from the start. Nothing between the two tasks depends on the intermediate
 chain, and the guard tests that pin the inherited migrations retire with it.
+
+Task 9b settled four things that Tasks 10 and 11 inherit:
+
+- **Seed rows live in the model, not in migration SQL.** The predecessor inserted the three
+  appointment types, the five attendee groups and their requirement mappings from raw SQL inside
+  named migrations. They move into the model's seed data, so the single migration stays regenerable
+  rather than hand-patched. The transitional `Location` joins them, for the same reason: the rest of
+  the schema references it and nothing manages locations until Phase 3.
+- **The roles script runs before the migration, and its absence is not fatal.** The migration grants
+  to roles it deliberately does not create, because a deployment owns who logs in. Both roles are
+  `NOLOGIN`; a deployment attaches its own login role and a test reaches them with `SET ROLE`.
+- **`start_utc` is nullable until Task 11.** It is a derived column, and Task 11's repository is
+  what computes it. A non-nullable column would take a silent `0001-01-01` for every row nothing has
+  computed yet — and the eligibility query filters on `start_utc`, so a wrong instant would quietly
+  hide the event instead of failing.
+- **The capacity check gained its third predicate.** The inherited constraint allowed a total of
+  zero. The master plan's `ck_event_capacity_bounds` does not, and the schema tests prove all three
+  directions.
 
 ## Pull request
 
