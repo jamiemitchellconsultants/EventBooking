@@ -1,7 +1,8 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 20 September 2026, after Phase 1 Task 7. Written for an agent starting with no context:
-read this file, then the governing inputs it lists, before touching anything.
+Updated 20 September 2026, after Phase 1 Task 8, which completes the phase. Written for an agent
+starting with no context: read this file, then the governing inputs it lists, before touching
+anything.
 
 ## 1. What the assignment is
 
@@ -33,11 +34,11 @@ names. The master plan says what each task is; this handover says how far it has
 | Part | State |
 | --- | --- |
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
-| Phase 1 — master Tasks 4–8 | Tasks 4, 5, 6, 7 complete and replayed. **Task 8 remains** |
+| Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | Not authored. Prototype-verified, like Phases 0 and 1 |
 | Phases 3–7 — master Tasks 12–33 | Not authored. Hand-authored, no prototype |
 
-Branch `docs/detailed-implementations`, seven commits ahead of `origin/main`, all pushed. Nothing
+Branch `docs/detailed-implementations`, eight commits ahead of `origin/main`, all pushed. Nothing
 is merged and **no pull request exists for the plans yet**; that comes last (section 9).
 
 Documents written so far:
@@ -45,7 +46,7 @@ Documents written so far:
 | Phase | Overview | Task documents |
 | --- | --- | --- |
 | 0 | `phase-0-port-and-strip.md` | `phase-0a-import.md` + `phase-0a-files.md` + 83 source volumes; `phase-0b-vocabulary.md` + 115 edit volumes; `phase-0c-identity.md`; `phase-0d-retire-import.md`; `phase-0e-required-groups.md`; `phase-0f-retired-location-config.md`, each with their own edit volumes |
-| 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, each with edit volumes |
+| 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -55,8 +56,8 @@ phase overview: task order, evidence table, review checklist, pull-request gate.
 | Path | What it is |
 | --- | --- |
 | `/private/tmp/eventbooking-detail.6yx6zE` | Authoring scratch: generators, snapshots, build and test logs |
-| `/private/tmp/eventbooking-detail.6yx6zE/verify` | **The prototype.** At Task 7, green |
-| `/private/tmp/eventbooking-plan-replay.MkPSRw` | **Independent replay checkout.** At Task 7, green. It has a symlink `docs/detailed-implementations` to the plan directory of whichever checkout is being authored in — repoint it if you work in a different worktree |
+| `/private/tmp/eventbooking-detail.6yx6zE/verify` | **The prototype.** At Task 8, green |
+| `/private/tmp/eventbooking-plan-replay.MkPSRw` | **Independent replay checkout.** At Task 8, green. It has a symlink `docs/detailed-implementations` to the plan directory of whichever checkout is being authored in — repoint it if you work in a different worktree |
 | `/Users/jamesmitchell/.codex/handoffs/eventbooking-detailed-plans-2026-09-20/` | Archives of the first authoring session, plus the original request |
 
 If the scratch directories are gone, extract `authoring-scratch.tar.gz` and
@@ -65,7 +66,7 @@ hard-coded paths in the generators. Use the physical `/private/tmp` paths, never
 two aliases produced duplicate MSBuild graph errors.
 
 Snapshots are JSON maps of repository-relative path to file contents: `task-1.json` …
-`task-7.json`. A generator diffs two snapshots to produce one task's edit volumes.
+`task-8.json`. A generator diffs two snapshots to produce one task's edit volumes.
 
 ## 5. Method, as the user settled it
 
@@ -95,7 +96,7 @@ node pack-task.mjs N
 cd /private/tmp/eventbooking-plan-replay.MkPSRw
 python3 - <<'EXTRACT'
 import re
-doc = open('docs/detailed-implementations/phase-1d-capacity.md').read()   # the new document
+doc = open('docs/detailed-implementations/phase-1e-invites.md').read()   # the new document
 m = re.search(r"<<'TASK_PAYLOAD'\n(.*?)\nTASK_PAYLOAD", doc, re.S)
 open('.replay.mjs', 'w').write(m.group(1))
 EXTRACT
@@ -121,7 +122,7 @@ Generators, in `/private/tmp/eventbooking-detail.6yx6zE`:
 ## 7. Verification evidence
 
 Every figure is a full `dotnet build EventBooking.sln -warnaserror` followed by every test project,
-with Docker running and no skipped tests. Tasks 1–7 were each additionally replayed from their own
+with Docker running and no skipped tests. Tasks 1–8 were each additionally replayed from their own
 documents into the independent checkout.
 
 | Checkpoint | Domain | Application | Infrastructure | API | MCP | Web | Seed | Total |
@@ -137,6 +138,7 @@ documents into the independent checkout.
 | Task 5 | 289 | 422 | 173 | 232 | 35 | 241 | 75 | 1467 |
 | Task 6 | 306 | 422 | 173 | 232 | 35 | 241 | 75 | 1484 |
 | Task 7 | 320 | 424 | 173 | 232 | 35 | 241 | 75 | 1500 |
+| Task 8 — end of Phase 1 | 358 | 424 | 175 | 232 | 35 | 241 | 75 | 1540 |
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
@@ -165,6 +167,16 @@ Taken while authoring, and binding on later tasks:
 - Task 7's charge and release methods are domain API the booking and cancellation handlers do not
   call yet; they still work on the rows their repository locked. **Task 10's ordered-lock helpers
   are where those handlers adopt them** — do not rework the handlers earlier.
+- **The book token stays a stored hash until Task 9.** The master plan puts design 06's
+  `tokenVersion` counter in Task 8; the user settled that it moves to Task 9 instead, where the
+  fresh schema writes the column once alongside the HMAC token service. The predecessor's hash is
+  load-bearing in 62 files, and doing it in Task 8 would rewrite them twice.
+- The legal `AttendeeStatus` moves live in the aggregate as a set, exposed through a pure
+  predicate. **Callers ask the set rather than restating the rule**: that is how the invite issuer
+  tells FR-5.4's parked attendee from FR-5.7's failed re-issue.
+- statusChangedAt is the aggregate's own property, stamped from an instant the caller supplies.
+  The predecessor's save-changes interceptor and EF shadow property are retired; the column and its
+  inherited migration are unchanged.
 
 - The time-zone abstraction the domain calls is declared in the **domain** project, not the
   application project as design 04 lists it, because domain rules depend on its answers and
@@ -185,6 +197,9 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 | --- | --- |
 | The single-zone clock and its transitional member names | When handlers carry a `Location` (Phase 3) |
 | Event cancellation reading its zone from the transitional-location constant | Phase 3 |
+| Invites restricted to the transitional location, because no command carries a Coordinator's selection | Task 12 |
+| The stored book-token hash, in place of design 06's `tokenVersion` | Task 9 |
+| The fixed three invite options, in place of `inviteOptionCount` | Task 12, read by Task 14 |
 | The transitional-location constant in the application layer | Task 13 |
 | The predecessor's fixed appointment-type identifiers and seeded rows | Phase 3 |
 | `inviteOptionCount` present but not editable | Task 12 |
@@ -239,15 +254,13 @@ fourteen is in this file's history at commit `2b192ca`.
 
 ## 11. Next steps
 
-1. **Task 8 — location-restricted invites and the closed `AttendeeStatus` transition table.**
-2. Write the Phase 1 pull-request gate into `phase-1-domain.md`, in the shape
-   `phase-0-port-and-strip.md` uses, and mark the phase decision-bearing.
-3. **Phase 2 (Tasks 9–11)** stays prototype-verified: the fresh schema, the ordered-lock helpers
-   and concurrency harness, and the relational-division eligibility query.
-4. **Phases 3–7 (Tasks 12–33)** are hand-authored.
-5. Last of all, open one pull request for the plan documents: recompute the AI-fingerprint, carry
+1. **Phase 2 (Tasks 9–11)** stays prototype-verified: the fresh schema — which also lands design
+   06's `tokenVersion` in place of the inherited token hash — the ordered-lock helpers and
+   concurrency harness, and the relational-division eligibility query.
+2. **Phases 3–7 (Tasks 12–33)** are hand-authored.
+3. Last of all, open one pull request for the plan documents: recompute the AI-fingerprint, carry
    the three narrative headings for the decisions actually settled, and label it
    `narrative-required`.
 
-Do not claim the assignment is complete while Tasks 8–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 9–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.

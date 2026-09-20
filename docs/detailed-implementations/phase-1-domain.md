@@ -5,8 +5,8 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: in progress.** Tasks 4, 5, 6 and 7 are written and verified. Task 8 is not yet
-authored; do not start the phase expecting to finish it.
+**Status: complete.** All five task documents are written, verified and replayed. Work through
+them in order, then open the pull request the last section describes.
 
 **Goal:** Generalise the domain itself — variable-length windows read in a location's zone,
 Admin-managed reference data, N-type negotiation, N-row capacity, and location-restricted invites —
@@ -41,7 +41,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 2 | Task 5 — reference-data aggregates and settings | [phase-1b-reference-data.md](phase-1b-reference-data.md), with `phase-1b-edits-001.md` … `-005.md` | `feat(domain): Admin-managed Location, AppointmentType and AttendeeGroup` |
 | 3 | Task 6 — N-type negotiation | [phase-1c-negotiation.md](phase-1c-negotiation.md), with `phase-1c-edits-001.md` … `-025.md` | `feat(domain): negotiate an EventProposal across any number of types` |
 | 4 | Task 7 — capacity generalised to N rows | [phase-1d-capacity.md](phase-1d-capacity.md), with `phase-1d-edits-001.md` … `-009.md` | `feat(domain): N-row EventCapacity charging only required types` |
-| 5 | Task 8 — invites with locations, and the closed status table | not yet authored | `feat(domain): location-restricted invites and closed attendee transitions` |
+| 5 | Task 8 — invites with locations, and the closed status table | [phase-1e-invites.md](phase-1e-invites.md), with `phase-1e-edits-001.md` … `-034.md` | `feat(domain): location-restricted invites and closed attendee transitions` |
 
 ## Verification evidence
 
@@ -52,12 +52,14 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | Task 5 | 289 | 422 | 173 | 232 | 35 | 241 | 75 | 1467 |
 | Task 6 | 306 | 422 | 173 | 232 | 35 | 241 | 75 | 1484 |
 | Task 7 | 320 | 424 | 173 | 232 | 35 | 241 | 75 | 1500 |
+| Task 8 — end of Phase 1 | 358 | 424 | 175 | 232 | 35 | 241 | 75 | 1540 |
 
 Each figure comes from a full `dotnet build EventBooking.sln -warnaserror` followed by every test
 project, with Docker running and no skipped tests. Each task was additionally replayed from its own
 documents into an independent checkout.
 
 ## Sequencing notes for Tasks 5–8
+
 
 Two decisions taken while authoring Task 4 constrain what follows. They are recorded here so the
 later tasks do not re-open them:
@@ -110,3 +112,92 @@ Task 7 settled three more:
 The charge and release methods this task adds are domain API that the booking and cancellation
 handlers do not call yet: they still work on the rows their repository locked. Task 10's
 ordered-lock helpers are what let them adopt these.
+
+Task 8 closes the phase, and settled three things of its own:
+
+- **The status table is the rule, not a comment beside it.** The legal moves live in `Attendee` as
+  a set, exposed through a pure predicate. A method added later cannot widen the table by accident,
+  and the invite issuer asks the same set rather than restating FR-5.4 and FR-5.7 in its own words.
+- **An invited `Attendee` never drops back to `AwaitingAvailability`.** Design 01 does not list
+  that move; FR-5.7 sends a failed automatic re-issue to `NoResponseNeedsFollowUp`. The inherited
+  expiry path did the former, and is corrected.
+- **The status stamp belongs to the aggregate.** The predecessor wrote statusChangedAt from an
+  infrastructure save-changes interceptor through an EF shadow property, which put an ontology
+  attribute out of the domain's reach. The column and its migration are unchanged; the value now
+  comes from the caller's instant and the interceptor is retired.
+
+One thing the master plan asks of Task 8 is **deliberately deferred**: design 06 replaces the
+stored book-token hash with a `tokenVersion` counter, and the master plan puts that in Task 8. The
+hash is load-bearing in 62 files, and Task 9 rewrites the column anyway in the fresh schema, so the
+switch happens there, with the HMAC token service, rather than twice.
+
+## Pull request
+
+Phase 1 is decision-bearing: it puts D2, D4 and D15 into code, and carries D3 and D7 further. The
+pull request therefore carries the `narrative-required` label and the three narrative headings,
+spelled exactly as `.github/pull_request_template.md` spells them. Supplying a body replaces that
+template wholesale, so the body below carries those headings and the fingerprint footer itself.
+
+```bash
+cat > /tmp/phase-1-body.md <<'PHASE_1_BODY'
+## Change
+
+Generalises the domain: event windows carry a duration and are read in a location's time zone,
+reference data becomes Admin-managed, negotiation runs across any number of appointment types,
+capacity becomes one row per listed type charged only where required, and invites are restricted to
+the locations a Coordinator chose while the attendee status table becomes closed.
+
+Five commits, one per task document under `docs/detailed-implementations/`. Full suite: 1540
+passing, zero skipped.
+
+## Narrative classification
+
+- Apply `narrative-required` when this PR makes a meaningful product, architecture, governance,
+  operational, correction, or experimental decision.
+- Leave the label off for mechanical changes that do not alter project intent.
+
+## Narrative Context
+
+The ported predecessor assumed three fixed appointment types, one site, one four-hour window shape
+and a lifecycle whose illegal transitions were unstated. Every later phase — persistence, handlers,
+API, screens — reads those assumptions, so they have to go before anything is built on top of them.
+
+## Narrative Decision
+
+Generalise the domain first and prove it with domain tests, before any persistence or API work.
+An `EventProposal` lists 1 to 20 appointment types and is judged by the proposing type rather than
+the person (D2); an `Invite` is restricted to the `Location`s the Coordinator chose (D4); and the
+`AttendeeStatus` transitions become a closed table that refuses anything design 01 does not list
+(D15). Reference data becomes Admin-managed and `inviteOptionCount` becomes stored state (D3, D7).
+Two rules move inward to the aggregate that owns them: a headcount adjustment reports the minimum
+it would accept rather than throwing, and the attendee status stamp leaves an infrastructure
+interceptor for the `Attendee` itself.
+
+## Narrative Consequences
+
+The domain no longer names three types, one site or one window length, and Phase 2 can write a
+fresh schema against it. Scaffolding survives on purpose and is scheduled: the single-zone clock
+and the transitional-location constant retire in Phase 3, the inherited migration chain and the
+stored book-token hash in Task 9, and `inviteOptionCount` becomes editable in Task 12. The charge
+and release methods Task 7 adds are not yet called by the booking handlers; Task 10's ordered-lock
+helpers are where they are adopted.
+
+---
+
+AI-Fingerprint: sha256:FINGERPRINT
+PHASE_1_BODY
+
+MERGE_BASE=$(git merge-base origin/main HEAD)
+FINGERPRINT=$(git diff "$MERGE_BASE" HEAD | shasum -a 256 | cut -c1-12)
+sed -i '' "s/FINGERPRINT/$FINGERPRINT/" /tmp/phase-1-body.md
+node scripts/check-ontology-terms.mjs --also /tmp/phase-1-body.md
+gh pr create --base main --title "Phase 1: generalise the domain" \
+  --label narrative-required --body-file /tmp/phase-1-body.md
+```
+
+On Linux, use `sha256sum` in place of `shasum -a 256`, and `sed -i` without the empty argument.
+Recompute the fingerprint and update the body after any further push to the branch, or the
+`ai-fingerprint` check fails on the stale value.
+
+Do not merge the pull request yourself: code-owner review and the required checks stand. Once it has
+merged, start Phase 2 from a fresh branch cut from the updated `main`.
