@@ -63,8 +63,7 @@ namespace EventBooking.Application.Audit;
 
 public sealed record SearchAuditQuery(
     Guid StaffUserId, string? Cursor, int Limit, string? EntityType, string? Action,
-    DateTimeOffset? From, DateTimeOffset? To, Guid? EntityId,
-    IReadOnlyList<string> Buckets);
+    DateTimeOffset? From, DateTimeOffset? To, Guid? EntityId);
 public sealed record AuditRow(
     Guid Id, string EntityType, string Action, string ActorType,
     DateTimeOffset OccurredAt, string Cursor);
@@ -84,6 +83,7 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
   using EventBooking.Application.Common;
   using EventBooking.Application.ReadModels;
   using EventBooking.Application.Tests.Fakes;
+  using EventBooking.Domain.Access;
 
   namespace EventBooking.Application.Tests.Audit;
 
@@ -95,11 +95,13 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
           var queries = new MemoryAuditQueries()
               .WithRow("Attendee", "InviteCreated")
               .WithRow("Event", "EventConfirmed");
-          var handler = new SearchAuditHandler(queries, new InMemoryStaffAccessProfileRepository());
+          var profiles = new InMemoryStaffAccessProfileRepository();
+          var auditor = Guid.NewGuid();
+          profiles.Items.Add(StaffAccessProfile.Create(auditor, Role.Admin, null));
+          var handler = new SearchAuditHandler(queries, profiles);
 
           var result = await handler.HandleAsync(new SearchAuditQuery(
-              Guid.NewGuid(), null, 50, null, null, null, null, null,
-              Buckets: ["event"]), CancellationToken.None);
+              auditor, null, 50, null, null, null, null, null), CancellationToken.None);
 
           Assert.True(result.IsSuccess);
           Assert.DoesNotContain(result.Value.Items, r => r.EntityType == "Attendee");
@@ -112,11 +114,13 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
           var queries = new MemoryAuditQueries()
               .WithRow("Location", "LocationCreated")
               .WithRow("SystemSettings", "SystemSettingsChanged");
-          var handler = new SearchAuditHandler(queries, new InMemoryStaffAccessProfileRepository());
+          var profiles = new InMemoryStaffAccessProfileRepository();
+          var auditor = Guid.NewGuid();
+          profiles.Items.Add(StaffAccessProfile.Create(auditor, Role.Admin, null));
+          var handler = new SearchAuditHandler(queries, profiles);
 
           var result = await handler.HandleAsync(new SearchAuditQuery(
-              Guid.NewGuid(), null, 50, null, null, null, null, null,
-              Buckets: ["event"]), CancellationToken.None);
+              auditor, null, 50, null, null, null, null, null), CancellationToken.None);
 
           Assert.Equal(2, result.Value.Items.Count);
       }
@@ -125,11 +129,13 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
       public async Task No_returned_row_carries_personal_data()
       {
           var queries = new MemoryAuditQueries().WithFullHistory();
-          var handler = new SearchAuditHandler(queries, new InMemoryStaffAccessProfileRepository());
+          var profiles = new InMemoryStaffAccessProfileRepository();
+          var auditor = Guid.NewGuid();
+          profiles.Items.Add(StaffAccessProfile.Create(auditor, Role.Coordinator, null));
+          var handler = new SearchAuditHandler(queries, profiles);
 
           var result = await handler.HandleAsync(new SearchAuditQuery(
-              Guid.NewGuid(), null, 200, null, null, null, null, null,
-              Buckets: ["event", "attendee"]), CancellationToken.None);
+              auditor, null, 200, null, null, null, null, null), CancellationToken.None);
 
           Assert.True(result.IsSuccess);
           Assert.DoesNotContain(result.Value.Items, r => r.ContainsPersonalData());
@@ -139,15 +145,17 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
       public async Task Pages_do_not_overlap_under_concurrent_inserts()
       {
           var queries = new MemoryAuditQueries().WithRows(30);
-          var handler = new SearchAuditHandler(queries, new InMemoryStaffAccessProfileRepository());
+          var profiles = new InMemoryStaffAccessProfileRepository();
+          var auditor = Guid.NewGuid();
+          profiles.Items.Add(StaffAccessProfile.Create(auditor, Role.Coordinator, null));
+          var handler = new SearchAuditHandler(queries, profiles);
 
           var first = await handler.HandleAsync(new SearchAuditQuery(
-              Guid.NewGuid(), null, 10, null, null, null, null, null,
-              Buckets: ["event", "attendee"]), CancellationToken.None);
+              auditor, null, 10, null, null, null, null, null), CancellationToken.None);
           queries.WithRows(10);
           var second = await handler.HandleAsync(new SearchAuditQuery(
-              Guid.NewGuid(), first.Value.NextCursor, 10, null, null, null, null, null,
-              Buckets: ["event", "attendee"]), CancellationToken.None);
+              auditor, first.Value.NextCursor, 10, null, null, null, null, null),
+              CancellationToken.None);
 
           Assert.Empty(first.Value.Items.Select(i => i.Cursor)
               .Intersect(second.Value.Items.Select(i => i.Cursor)));
@@ -155,14 +163,13 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
   }
   ```
 
-  SearchAuditQuery gains a final Buckets parameter (`IReadOnlyList<string>`, values
-  `event` and/or `attendee`) — the handler resolves it from the caller's capabilities and
-  the tests pass it explicitly to prove the query filters without the handler. Update the
-  Interfaces record accordingly. MemoryAuditQueries is a private sealed class in the same
-  file: rows carry entity type, action, actor, instant and details; bucket derivation
-  follows the Architecture list above; keyset order is (occurred at, id) with cursor
-  round-trip; ContainsPersonalData scans details for `@` and for any name in the seeded
-  history. WithFullHistory seeds every action Tasks 12–19 emit.
+  The handler resolves buckets from the caller's capabilities; the query re-enforces
+  them, and the Infrastructure suite proves the SQL filters without any handler.
+  MemoryAuditQueries is a private sealed class in the same file: rows carry entity type,
+  action, actor, instant and details; bucket derivation follows the Architecture list
+  above; keyset order is (occurred at, id) with cursor round-trip; ContainsPersonalData
+  scans details for `@` and for any name in the seeded history. WithFullHistory seeds
+  every action Tasks 12–19 emit. Write all three doubles in full in the file.
 
   ```csharp
   // tests/EventBooking.Infrastructure.Tests/Queries/AuditSearchQueryTests.cs (complete,
@@ -179,13 +186,116 @@ public sealed record GetEventHistoryQuery(Guid StaffUserId, Guid EventId, string
   dotnet test tests/EventBooking.Application.Tests --filter "FullyQualifiedName~Audit"
   ```
 
-- [ ] **Step 3: Implement.** Create the handler and query files; delete the two ported
-  files. The handler resolves the caller's buckets from its capabilities (`ViewEventAudit`
-  → event, `ViewAttendeeAudit` → attendee; neither → forbidden) and passes them with the
-  FR-12.2 filters to the query; the query enforces buckets in SQL (`WHERE bucket IN
-  (...)` derived from a `CASE` over entity type) and paginates by keyset on (occurred at,
-  id). Histories are the same query constrained to one entity id, demanding their own
-  bucket. Cursors reuse the Task 20a payload contract.
+- [ ] **Step 3: Implement.** Add the production code below in full. No placeholders:
+  every file below is complete.
+
+  ```csharp
+  // src/EventBooking.Application/Audit/AuditSearchHandlers.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Domain.Access;
+
+  namespace EventBooking.Application.Audit;
+
+  public sealed class SearchAuditHandler(
+      IAuditSearchQueries queries,
+      IStaffAccessAuthorizer access)
+  {
+      public async Task<Result<AuditSearchView>> HandleAsync(
+          SearchAuditQuery query, CancellationToken ct)
+      {
+          if (query.Limit is < 1 or > 200)
+              return Result<AuditSearchView>.Failure(
+                  Error.Validation("Limit must be between 1 and 200."));
+
+          var eventAccess = await access.AuthorizeAsync(
+              query.StaffUserId, StaffCapability.ViewEventAudit, null, ct);
+          var attendeeAccess = await access.AuthorizeAsync(
+              query.StaffUserId, StaffCapability.ViewAttendeeAudit, null, ct);
+          if (eventAccess.IsFailure && attendeeAccess.IsFailure)
+              return Result<AuditSearchView>.Failure(
+                  Error.Forbidden("Audit search needs an audit capability."));
+          var shape = ShapeOf(
+              eventAccess.IsSuccess ? eventAccess.Value : attendeeAccess.Value);
+          var buckets = new List<string>();
+          if (eventAccess.IsSuccess) buckets.Add("event");
+          if (attendeeAccess.IsSuccess) buckets.Add("attendee");
+
+          var page = await queries.SearchAsync(shape, buckets, query.Cursor, query.Limit,
+              query.EntityType, query.Action, query.From, query.To, query.EntityId, ct);
+          return Result<AuditSearchView>.Success(page);
+      }
+
+      private static CallerShape ShapeOf(StaffAccessContext context) => new(
+          context.StaffUserId, context.Roles.Contains(Role.Admin),
+          context.Roles.Select(r => r.ToString()).ToHashSet());
+  }
+
+  public sealed class AttendeeHistoryHandler(
+      IAuditSearchQueries queries,
+      IStaffAccessAuthorizer access)
+  {
+      public async Task<Result<AuditSearchView>> HandleAsync(
+          GetAttendeeHistoryQuery query, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              query.StaffUserId, StaffCapability.ViewAttendeeAudit, null, ct);
+          if (authorized.IsFailure) return Result<AuditSearchView>.Failure(authorized.Error);
+          var page = await queries.HistoryAsync(ShapeOf(authorized.Value), ["attendee"],
+              query.AttendeeId, query.Cursor, query.Limit, ct);
+          return Result<AuditSearchView>.Success(page);
+      }
+
+      private static CallerShape ShapeOf(StaffAccessContext context) => new(
+          context.StaffUserId, context.Roles.Contains(Role.Admin),
+          context.Roles.Select(r => r.ToString()).ToHashSet());
+  }
+
+  public sealed class EventHistoryHandler(
+      IAuditSearchQueries queries,
+      IStaffAccessAuthorizer access)
+  {
+      public async Task<Result<AuditSearchView>> HandleAsync(
+          GetEventHistoryQuery query, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              query.StaffUserId, StaffCapability.ViewEventAudit, null, ct);
+          if (authorized.IsFailure) return Result<AuditSearchView>.Failure(authorized.Error);
+          var page = await queries.HistoryAsync(ShapeOf(authorized.Value), ["event"],
+              query.EventId, query.Cursor, query.Limit, ct);
+          return Result<AuditSearchView>.Success(page);
+      }
+
+      private static CallerShape ShapeOf(StaffAccessContext context) => new(
+          context.StaffUserId, context.Roles.Contains(Role.Admin),
+          context.Roles.Select(r => r.ToString()).ToHashSet());
+  }
+  ```
+
+  The tests construct the handlers with the profiles fake (which implements the
+  authorizer, as in Tasks 12–17) — update the three constructions in the Application test
+  file to `new SearchAuditHandler(queries, profiles)`. The bucket derivation is the
+  handler's only authorization logic, and the query re-enforces it: the search query takes
+  the caller shape plus the bucket list and refuses Admin-shaped callers asking for the
+  attendee bucket (and any caller asking for a bucket outside its shape) before reading.
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Queries/AuditSearchQueries.cs (complete):
+  // implements the audit search port over the audit set. Bucket CASE over entity type:
+  // Location, AppointmentType, AttendeeGroup, SystemSettings, EventProposal, Event,
+  // BookingAppointment, StaffAccessProfile -> event; Attendee, Invite, Booking ->
+  // attendee. WHERE bucket IN (buckets) AND optional entity/action/from/to/entity-id
+  // predicates, keyset on (occurred_at, id) decoded through the Task 20a payload
+  // contract (malformed cursor refused by the handler first — add the same explicit
+  // cursor check the attendee list has), limit + 1 fetch for the next cursor. Verify the
+  // audit timestamp and entity-type column names against the audit configuration before
+  // accepting; adjust the column reads, not the rule. HistoryAsync adds entity_id = id
+  // on top of the search. An index on (occurred_at, id) already exists from the Task 9b
+  // initial schema — verify, and only then skip a new migration; if it does not exist,
+  // add one the same way as Task 20a.
+  ```
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suites plus the full solution.
 
