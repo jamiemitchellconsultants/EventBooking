@@ -5,8 +5,8 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: in progress.** Tasks 9a, 9b and 10 are written, verified and replayed. Task 11 is not yet
-authored; do not start the phase expecting to finish it.
+**Status: complete.** Tasks 9a, 9b, 10 and 11 are written, verified and replayed. The phase's pull
+request is the last step.
 
 **Goal:** Give the generalised domain a schema of its own — one fresh initial migration with the
 constraints the design names, database roles that keep the audit trail append-only, ordered row-lock
@@ -42,7 +42,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 1 | Task 9a — deterministic attendee links and the version counter | [phase-2a-attendee-tokens.md](phase-2a-attendee-tokens.md), with `phase-2a-edits-001.md` … `-032.md` | `feat(security): deterministic attendee tokens with a stored version counter` |
 | 2 | Task 9b — the fresh schema and database roles | [phase-2b-fresh-schema.md](phase-2b-fresh-schema.md), with `phase-2b-edits-001.md` … `-026.md` | `feat(persistence): fresh initial schema with capacity and role constraints` |
 | 3 | Task 10 — unit of work, ordered lock helpers, concurrency harness | [phase-2c-ordered-locks.md](phase-2c-ordered-locks.md), with `phase-2c-edits-001.md` … `-002.md` | `feat(persistence): ordered row-lock helpers and concurrency harness` |
-| 4 | Task 11 — invite eligibility query | not yet authored | `feat(persistence): relational-division invite eligibility query` |
+| 4 | Task 11 — invite eligibility query and the derived start instant | [phase-2d-invite-eligibility.md](phase-2d-invite-eligibility.md), with `phase-2d-edits-001.md` … `-016.md` | `feat(persistence): relational-division invite eligibility query` |
 
 Master Task 9 is split into two documents. The user settled that design 06's version counter moves
 out of Task 8 and lands here, so the fresh schema writes the column once; splitting the token change
@@ -56,10 +56,19 @@ away from the squash keeps each document reviewable and lets each one be replaye
 | Task 9a | 360 | 424 | 174 | 232 | 35 | 241 | 75 | 1541 |
 | Task 9b — end of master Task 9 | 360 | 424 | 176 | 232 | 35 | 241 | 75 | 1543 |
 | Task 10 | 360 | 424 | 190 | 232 | 35 | 241 | 75 | 1557 |
+| Task 11 — end of Phase 2 | 360 | 421 | 206 | 232 | 35 | 241 | 75 | 1570 |
 
 Each figure comes from a full `dotnet build EventBooking.sln -warnaserror` followed by every test
 project, with Docker running and no skipped tests. Each task was additionally replayed from its own
 documents into an independent checkout.
+
+Application drops by three at Task 11 while Infrastructure rises by sixteen, and the two movements
+are the same movement. Eight cases in the eligible-event suite asserted the selection rule against
+objects in memory; the rule now lives in one SQL statement, so eleven cases assert it against a real
+PostgreSQL instead, and what is left on the Application side is five cases about the adapter — which
+filters it passes and that it keeps the order the query chose. The remaining five Infrastructure
+cases are the two performance cases, two on the derived start instant and one on the column's
+not-null constraint.
 
 Infrastructure drops by one at Task 9a. The predecessor's token tests covered a random nonce and a
 stored hash, and neither exists any more; the replacements cover the purpose, the version and the
@@ -120,6 +129,38 @@ Task 10 settled three things Task 11 and Phase 3 inherit:
   builds four helpers. Extending the ladder is Task 15's business, when the real booking handler
   adopts the helpers.
 
+Task 11 settled four things Phase 3 inherits:
+
+- **The eligibility rule lives in the database.** Relational division, one statement, behind an
+  Application port that returns identifiers rather than aggregates — a query that only proposes
+  candidates must not look like a read of authoritative state, and capacity is re-checked under
+  lock at booking time anyway. The Application-side finder stays as the adapter its five callers
+  already reach the rule through, and hydrates what the query chose without re-ordering it.
+- **`start_utc` is written by the repository, and by the context for everyone else.** The repository
+  computes it from the `EventWindow` and the `Location`'s zone as it adds the `Event`, which is what
+  the master plan asks for. It is not the only writer: the demo seeder and a good many suites add
+  `Event`s straight through the context, so the context fills in any it finds unstamped at save
+  time. One function computes it; two entry points call it; the column cannot be left empty by a
+  path that has not heard of the rule.
+- **The migration computes the historical value rather than defaulting it.** EF's generated backfill
+  was `0001-01-01`. PostgreSQL evaluates IANA rules itself, so the true instant of every existing
+  row is `(date + start_time) AT TIME ZONE` the location's zone, and the migration refuses outright
+  if any row is left over rather than storing an instant nothing computed.
+- **A reset has to put the transitional `Location` back.** It is seeded by the migration, and both
+  the test fixture and the demo reseeder truncated it away and never restored it. Nothing needed it
+  before; every derived start instant does.
+
+One thing about Task 11's performance suite is worth stating, because its two assertions look like
+two ways of saying the same thing and are not. Dropping the eligibility index turns the plan's
+bitmap scan into a sequential one, which the EXPLAIN case catches — and the p95 case does not: at
+fifty thousand rows the scan of the `Event` table is not where the time goes, and the budget still
+passes at 17 ms. What the budget catches is the shape this task replaced, which takes some 680 ms
+on the same data. Both assertions were verified by making them fail. The scenario itself also had to
+be corrected: the master plan seeds two thousand active events and nothing else, and against a table
+where every row qualifies PostgreSQL is right to scan sequentially, so the index is never used and
+the assertion cannot hold. The suite seeds those two thousand among forty-nine thousand finished,
+cancelled and other-site events instead.
+
 One thing about the harness is worth stating, because the obvious version of the test does not
 work: with the event locks in place, two attempts naming the same two events in opposite orders
 serialise on the event rows before they ever reach a capacity row, so that test passes whether or
@@ -135,8 +176,8 @@ headings, spelled exactly as `.github/pull_request_template.md` spells them. Sup
 replaces that template wholesale, so carry those headings and the `AI-Fingerprint:` footer in the
 body yourself, exactly as [Phase 1](phase-1-domain.md#pull-request) shows.
 
-Open it only after Task 11, which is the master plan's own gate for this phase. Recompute the
-fingerprint and update the body after any further push to the branch, or the `ai-fingerprint` check
-fails on the stale value.
+Task 11 is the master plan's own gate for this phase, and it is written, so the pull request is what
+remains. Recompute the fingerprint and update the body after any further push to the branch, or the
+`ai-fingerprint` check fails on the stale value.
 
 Do not merge the pull request yourself: code-owner review and the required checks stand.

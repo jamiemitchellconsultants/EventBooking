@@ -1,6 +1,6 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 20 September 2026, after Phase 2 Task 10. Written for an agent starting with no context:
+Updated 20 September 2026, after Phase 2 Task 11. Written for an agent starting with no context:
 read this file, then the governing inputs it lists, before touching anything.
 
 ## 1. What the assignment is
@@ -34,7 +34,7 @@ names. The master plan says what each task is; this handover says how far it has
 | --- | --- |
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
-| Phase 2 — master Tasks 9–11 | **In progress.** Tasks 9a, 9b and 10 written, replayed and committed; 11 not authored. Prototype-verified, like Phases 0 and 1 |
+| Phase 2 — master Tasks 9–11 | **Written.** Tasks 9a, 9b, 10 and 11 written, replayed and committed. Prototype-verified, like Phases 0 and 1. Its pull request is not open yet |
 | Phases 3–7 — master Tasks 12–33 | Not authored. Hand-authored, no prototype |
 
 Phases 0 and 1 are **merged into `main`** — pull request #15, branch
@@ -54,7 +54,7 @@ Documents written so far:
 | --- | --- | --- |
 | 0 | `phase-0-port-and-strip.md` | `phase-0a-import.md` + `phase-0a-files.md` + 83 source volumes; `phase-0b-vocabulary.md` + 115 edit volumes; `phase-0c-identity.md`; `phase-0d-retire-import.md`; `phase-0e-required-groups.md`; `phase-0f-retired-location-config.md`, each with their own edit volumes |
 | 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
-| 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes |
+| 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes; `phase-2d-invite-eligibility.md` + 16 edit volumes |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -74,8 +74,8 @@ hard-coded paths in the generators. Use the physical `/private/tmp` paths, never
 two aliases produced duplicate MSBuild graph errors.
 
 Snapshots are JSON maps of repository-relative path to file contents: `task-1.json` …
-`task-8.json`, then `task-9a.json`, `task-9b.json` and `task-10.json`. A generator diffs two
-snapshots to produce one task's edit volumes.
+`task-8.json`, then `task-9a.json`, `task-9b.json`, `task-10.json` and `task-11.json`. A generator
+diffs two snapshots to produce one task's edit volumes.
 
 ## 5. Method, as the user settled it
 
@@ -138,7 +138,7 @@ Generators, in `/private/tmp/eventbooking-detail.6yx6zE`:
 ## 7. Verification evidence
 
 Every figure is a full `dotnet build EventBooking.sln -warnaserror` followed by every test project,
-with Docker running and no skipped tests. Tasks 1–10 were each additionally replayed from their own
+with Docker running and no skipped tests. Tasks 1–11 were each additionally replayed from their own
 documents into the independent checkout.
 
 | Checkpoint | Domain | Application | Infrastructure | API | MCP | Web | Seed | Total |
@@ -158,6 +158,7 @@ documents into the independent checkout.
 | Task 9a | 360 | 424 | 174 | 232 | 35 | 241 | 75 | 1541 |
 | Task 9b — end of master Task 9 | 360 | 424 | 176 | 232 | 35 | 241 | 75 | 1543 |
 | Task 10 | 360 | 424 | 190 | 232 | 35 | 241 | 75 | 1557 |
+| Task 11 — end of Phase 2 | 360 | 421 | 206 | 232 | 35 | 241 | 75 | 1570 |
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
@@ -281,6 +282,49 @@ so a later task can see what it inherits without re-reading the whole list.
   ordering is the same shuffle with the event locks removed; it was verified by deleting the
   domain's capacity ordering function and watching it deadlock.
 
+**Task 11 — the eligibility query**
+
+- **The rule moved into the database, and the Application tests moved with it.** Eight cases in the
+  eligible-event suite asserted the selection rule against objects in memory. They are gone: eleven
+  cases assert it against a real PostgreSQL instead, and what is left on the Application side is
+  five cases about the adapter. That is the whole of the Application count's drop from 424 to 421.
+- **The port returns identifiers, not aggregates.** The finder hydrates them through the repository
+  and keeps the order the query chose. A query that only proposes candidates must not look like a
+  read of authoritative state, and capacity is re-checked under lock at booking time regardless.
+- **The design's statement needed one change and one guard.** `status` is stored as an integer by
+  this model, not the string design 04 writes, so the comparison is against the integer. And the
+  required type identifiers are de-duplicated before the statement runs: `cardinality` on a
+  parameter with a repeat exceeds anything the group could count, and would reject every `Event`.
+- **`start_utc` has two writers and one rule.** The repository computes it as it adds the `Event`,
+  which is what the master plan asks for; the context fills in any unstamped `Event` at save time,
+  because the demo seeder and some thirty test sites add `Event`s straight through the context and
+  a derived not-null column cannot depend on which path inserted the row. Both call one function.
+  It is normalised to UTC there: the resolver answers with the `Location`'s own offset, and
+  PostgreSQL refuses any offset but zero for a timestamp with time zone.
+- **The column's CLR type stays nullable although the column is not.** That is what makes an
+  unstamped row distinguishable from one stamped with a default, which is what the save-time
+  backstop looks for.
+- **A reset must restore the transitional `Location`.** It is seeded by the migration, and both the
+  PostgreSQL test fixture and the demo reseeder truncated it away without putting it back. Nothing
+  needed it before; every derived start instant does.
+- **The phase now has two migrations, and the initial one is not rewritten.** It is committed, and
+  a chain is what keeps it regenerable. The schema test that asserted a single migration asserts
+  both, by name.
+- **The master plan's performance scenario proves nothing as written.** Two thousand active events
+  and nothing else is a table where every row qualifies, and PostgreSQL is right to scan it
+  sequentially — so the index is never used and the EXPLAIN assertion cannot hold. The suite seeds
+  those two thousand among forty-nine thousand finished, cancelled and other-site events, and the
+  plan then uses `ix_event_eligibility`.
+- **The two performance assertions are not two ways of saying the same thing.** Verified by making
+  each fail. Dropping the index turns the bitmap scan into a sequential one and fails the EXPLAIN
+  case; the p95 case still passes at 17 ms, because at this size the scan of the `Event` table is
+  not where the time goes. What the budget catches is the in-memory shape this task replaced, which
+  takes some 680 ms on the same data — more than thirteen times the budget.
+- **The budget test is tagged, not skipped.** `Trait("Category", "Performance")` lets a run exclude
+  it with `--filter "Category!=Performance"`. It still runs in the full suite, because a budget
+  nothing ever runs is not a budget, and because this project's checkpoints require zero skipped
+  tests.
+
 ### Transitional constructs, and when each retires
 
 The prototype deliberately carries scaffolding. Each is named in the code and must go at its task:
@@ -290,12 +334,12 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 | The single-zone clock and its transitional member names | Phase 3, when handlers carry a `Location` |
 | The predecessor's fixed appointment-type identifiers and seeded rows | Phase 3 |
 | The seeded transitional `Location` row, and `event.location_id` without a foreign key to it | Phase 3 |
-| `start_utc` nullable, because nothing computes it yet | Task 11 |
+| `start_utc` nullable, because nothing computes it yet | Retired in Task 11 |
 | The inherited migration chain and its guard tests | Retired in Task 9b |
 | The stored book-token hash, in place of design 06's `tokenVersion` | Retired in Task 9a |
 | `inviteOptionCount` stored but not editable | Task 12 |
 | The transitional-location constant in the negotiation and capacity handlers | Task 13 |
-| Invites restricted to the transitional location, because no command carries a Coordinator's selection | Task 14, whose InviteAttendee takes location ids |
+| Invites restricted to the transitional location, because no command carries a Coordinator's selection | Task 14, whose InviteAttendee takes location ids. The eligibility port already takes a location set; the adapter passes the one identifier |
 | The invite's fixed three options, in place of the stored `inviteOptionCount` | Task 14 |
 | Event cancellation reading its zone from the transitional-location constant | Phase 3 |
 
@@ -356,21 +400,22 @@ fourteen is in this file's history at commit `2b192ca`.
 | 7 | An SMTP crash after send but before marking sent cannot give exactly-once delivery; the design should say at-least-once | 18 |
 | 8 | Task 32's 500 same-IP confirmations collide with the 30-per-minute attendee rate limit | 32 |
 | 9 | Settings that apply only to future invitations may need snapshot fields the ontology does not define | 12 |
-| 10 | London and Dublin share an offset, so they cannot demonstrate zone-dependent ordering; use a genuinely different zone such as `Asia/Tokyo` | wherever ordering is proved |
+| 10 | London and Dublin share an offset, so they cannot demonstrate zone-dependent ordering; use a genuinely different zone such as `Asia/Tokyo` | wherever ordering is proved. **Applied in Task 11**, whose ordering cases pair London with Tokyo; still open for later tasks that prove an ordering |
 
 ## 11. Next steps
 
-1. **Phase 2 (Task 11)** stays prototype-verified. Tasks 9a, 9b and 10 are done: the deterministic
-   attendee link, the fresh schema with its constraints and roles, and the ordered row-lock helpers
-   with their concurrency harness. What remains is **Task 11**, the relational-division eligibility
-   query behind an Application port, with its tagged performance test — and it is also where
-   `start_utc` is computed, written in the same transaction as the insert, and the column becomes
-   required. Task 11 closes the phase and opens its pull request.
-2. **Phases 3–7 (Tasks 12–33)** are hand-authored.
-3. Phase 2 opens its own pull request when its tasks are written. Give it the three narrative
-   headings and the `narrative-required` label — supplying a body replaces the repository template
-   wholesale, so carry both those sections and the `AI-Fingerprint:` footer yourself — and
-   recompute the fingerprint after every push to the branch.
+1. **Phase 2 is written.** All four documents — 9a, 9b, 10 and 11 — are verified in the prototype
+   and replayed into the independent checkout, at 1570 tests. What remains is the phase's **pull
+   request**, which is the master plan's own gate for Task 11. Give it the three narrative headings
+   and the `narrative-required` label — supplying a body replaces the repository template wholesale,
+   so carry both those sections and the `AI-Fingerprint:` footer yourself — and recompute the
+   fingerprint after every push to the branch.
+2. **Phases 3–7 (Tasks 12–33)** are hand-authored: complete code and tests written straight into the
+   documents, no prototype. Task 12 is the reference-data and settings handlers.
+3. Several transitional constructs now come due in Phase 3 and in Tasks 12–15. Read section 8's
+   table before starting any of them; Task 15 in particular inherits three separate debts — the
+   booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and `Booking`
+   levels, and Task 7's charge and release methods finally being called.
 
-Do not claim the assignment is complete while Tasks 11–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 12–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
