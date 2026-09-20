@@ -215,7 +215,7 @@ internal static class DemoEventFactory
 **Context you need**
 
 - Decision D6 and master Task 3 remove direct event import from every public surface.
-- FR-3.1: an Event is created only by final acceptance of an EventProposal.
+- FR-2.6 (quoted): "When a `ProposalAcceptance` makes the number of distinct accepted types equal the number of listed types, the system shall, in the same transaction: set the proposal `Confirmed`; create an `Active` `Event` with the proposal’s `Location` and `EventWindow`…" An Event therefore has exactly one origin: acceptance of its EventProposal.
 - An Event therefore always has a non-null ProposalId; no imported-event factory remains.
 - FR-4.3 attendee CSV import remains supported: removing event import must not remove that separate operation.
 - The ImportEvents capability and EventImported and StaffAccessRemoved audit members are retired.

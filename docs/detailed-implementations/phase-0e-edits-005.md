@@ -1,0 +1,1315 @@
+# 00e — Require an attendee group, edits 5 (Task 3c)
+
+[← Overview](README.md) · [Ontology](../ontology.md)
+
+Cross-layer exact before and after files. A file with only a before side is deleted; a file with only an after side is created. Numbered parts concatenate without omitted code.
+
+## after — src/EventBooking.Web/Pages/Attendees.razor — 1/1
+
+<!-- retirement-file: {"id":11,"file":"src/EventBooking.Web/Pages/Attendees.razor","beforeSha":"1c194da4c4afa4869e218c33d58934df7535776a54441904740d6662d24ca4fb","afterSha":"0d3a171628204a410527dfe7872dad20d56d7d4a285185c474de8e7489f88344","side":"after","part":1,"parts":1} -->
+
+`````text
+@page "/attendees"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using EventBooking.Web.Services
+@inject AttendeesClient AttendeesApi
+@inject DashboardsClient Dashboards
+@inject TransitionalLocationTimePresentation TimePresentation
+
+<PageTitle>Attendees</PageTitle>
+
+<section class="page attendees-page" aria-labelledby="attendees-heading">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Coordination</span>
+            <h1 id="attendees-heading">Attendees</h1>
+            <p>Manage people and the attendee groups that set their appointments.</p>
+        </div>
+        <div class="attendees-toolbar" aria-label="Attendee list controls">
+            <label class="field-label">
+                Status
+                <select @bind="_statusFilter" @bind:after="ReloadAsync"
+                        title="Filters the list to one point in the invitation journey.">
+                    <option value="">Any status</option>
+                    @foreach (var (value, label) in StatusChoices)
+                    {
+                        <option value="@value">@label</option>
+                    }
+                </select>
+            </label>
+            <label class="search-field" for="attendee-search">
+                <span class="visually-hidden">Search attendees</span>
+                <input id="attendee-search" @bind="_search" @bind:eventItem="oninput"
+                       placeholder="Search by name or email…" />
+            </label>
+            <button class="button button-quiet button-icon-search" @onclick="ReloadAsync" disabled="@(_busy || _isLoading)"
+                    title="Applies the status filter and search term.">
+                Search
+            </button>
+            <label class="button button-quiet upload-button" for="attendee-csv"
+                   title="The header line must read exactly: name,email,attendee_group. The whole file is accepted or rejected.">
+                Upload CSV
+            </label>
+            <InputFile id="attendee-csv" class="visually-hidden" OnChange="OnFileChosenAsync" accept=".csv,text/csv" disabled="@_busy" />
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="banner @(_deleteAwaitingConfirmation.HasValue ? "warning" : "error")" role="alert">
+            @_error
+        </div>
+    }
+
+    @if (_importErrors.Count > 0)
+    {
+        <div class="banner error" role="alert">
+            <strong>Nothing was imported.</strong> Fix the file and try again.
+            <ul class="import-errors">
+                @foreach (var error in _importErrors)
+                {
+                    <li><strong>Line @error.LineNumber:</strong> @error.Message</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (_isLoading)
+    {
+        <div class="card loading-block" role="status">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+            <span class="visually-hidden">Loading attendees…</span>
+        </div>
+    }
+    else if (_attendees is null)
+    {
+        <div class="card">
+            <div class="empty-state">
+                <strong>Couldn’t load attendees.</strong>
+                <p>The attendee list could not be fetched. Try again to reload it.</p>
+                <button class="button" @onclick="ReloadAsync">Try again</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Email</th>
+                            <th scope="col" title="The appointment types the attendee's attendee group requires.">Required types</th>
+                            <th scope="col" title="Where the attendee has reached in the invitation journey.">Status</th>
+                            <th scope="col" title="Whether the attendee still has appointments outstanding before they can start.">Readiness</th>
+                            <th scope="col" title="The last invitation or confirmation email sent, and whether it was delivered.">Delivery</th>
+                            <th scope="col" title="The attendee's active bookings, and the actions that cancel them.">Booking</th>
+                            <th scope="col" title="Every recorded change for this attendee, with who made it.">History</th>
+                            <th scope="col" class="actions-column">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="attendee-add-row">
+                            <td data-label="Name">
+                                <label class="visually-hidden" for="new-attendee-name">Full name</label>
+                                <input id="new-attendee-name" @bind="_newName" placeholder="Full name" />
+                            </td>
+                            <td data-label="Email">
+                                <label class="visually-hidden" for="new-attendee-email">Email address</label>
+                                <input id="new-attendee-email" type="email" @bind="_newEmail" placeholder="name@example.com" />
+                            </td>
+                            <td data-label="Required types">
+                                <label class="visually-hidden" for="new-attendee-group">Employee group</label>
+                                <select id="new-attendee-group" class="group-select" @bind="_newAttendeeGroupId" disabled="@_busy" required
+                                        title="The attendee group decides which appointment types this attendee must attend.">
+                                    <option value="">Select an attendee group</option>
+                                    @foreach (var group in _groups)
+                                    {
+                                        <option value="@group.AttendeeGroupId">@group.Name</option>
+                                    }
+                                </select>
+                                <div class="chip-row group-preview" aria-live="polite">
+                                    @foreach (var type in SelectedGroupTypes(_newAttendeeGroupId))
+                                    {
+                                        <span class="chip">@type.Code</span>
+                                    }
+                                </div>
+                            </td>
+                            <td data-label="Status"><span class="attendee-status status-new">New attendee</span></td>
+                            <td data-label="Readiness"><span>—</span></td>
+                            <td data-label="Delivery"><span>—</span></td>
+                            <td data-label="Booking"><span>—</span></td>
+                            <td data-label="History"><span>—</span></td>
+                            <td data-label="Actions">
+                                <button class="button button-primary button-small" @onclick="CreateAsync" disabled="@_busy"
+                                        title="Adds the attendee without inviting them yet.">
+                                    Save attendee
+                                </button>
+                            </td>
+                        </tr>
+
+                        @foreach (var attendee in _attendees)
+                        {
+                            var editing = _editingId == attendee.AttendeeId;
+                            var awaitingDeleteConfirmation = _deleteAwaitingConfirmation == attendee.AttendeeId;
+                            <tr @key="attendee.AttendeeId" class="@(editing ? "attendee-edit-row" : awaitingDeleteConfirmation ? "awaiting-confirmation" : null)">
+                                @if (editing)
+                                {
+                                    <td data-label="Name">
+                                        <label class="visually-hidden" for="edit-attendee-name">Full name</label>
+                                        <input id="edit-attendee-name" @bind="_editName" />
+                                    </td>
+                                    <td data-label="Email">
+                                        <label class="visually-hidden" for="edit-attendee-email">Email address</label>
+                                        <input id="edit-attendee-email" type="email" @bind="_editEmail" />
+                                    </td>
+                                    <td data-label="Required types">
+                                        <label class="visually-hidden" for="edit-attendee-group">Employee group</label>
+                                        <select id="edit-attendee-group" class="group-select" @bind="_editAttendeeGroupId" disabled="@_busy" required
+                                            title="Changing the group changes the appointment types this attendee must attend.">
+                                            <option value="">Select an attendee group</option>
+                                            @foreach (var group in _groups)
+                                            {
+                                                <option value="@group.AttendeeGroupId">@group.Name</option>
+                                            }
+                                        </select>
+                                        <div class="chip-row group-preview" aria-live="polite">
+                                            @foreach (var type in SelectedGroupTypes(_editAttendeeGroupId))
+                                            {
+                                                <span class="chip">@type.Code</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td data-label="Status"><span class="attendee-status @AttendeePresentation.StatusCssClass(attendee.Status)">@attendee.StatusDisplay</span></td>
+                                    <td data-label="Readiness"><span>—</span></td>
+                                    <td data-label="Delivery">
+                                        @if (_emailStatus.TryGetValue(attendee.AttendeeId, out var email))
+                                        {
+                                            <span class="@(email.Status == "Failed" ? "error" : email.Status == "Pending" ? "warning" : "")">
+                                                @email.TemplateDisplay @TimePresentation.Format(email.SentAt)
+                                            </span>
+                                            @if (email.Status is "Failed" or "Pending" && email.CanRetry)
+                                            {
+                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId)" disabled="@_busy"
+                                                        title="Sends the same email again to the same address.">Resend</button>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                    <td data-label="Booking"><span>—</span></td>
+                                    <td data-label="History"><AuditHistory AttendeeId="@attendee.AttendeeId" /></td>
+                                    <td data-label="Actions">
+                                        <div class="row-actions">
+                                            <button class="button button-primary button-small" @onclick="SaveEditAsync" disabled="@_busy"
+                                                    title="Saves the edited details. Existing invitations are not resent.">Save</button>
+                                            <button class="button button-quiet button-small" @onclick="CancelEdit" disabled="@_busy">Cancel</button>
+                                        </div>
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td data-label="Name">@attendee.Name</td>
+                                    <td data-label="Email"><a href="mailto:@attendee.Email">@attendee.Email</a></td>
+                                    <td data-label="Required types">
+                                        <div class="chip-row">
+                                            @foreach (var requiredType in attendee.RequiredAppointmentTypes)
+                                            {
+                                                <span class="chip">@requiredType.Code</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td data-label="Status"><span class="attendee-status @AttendeePresentation.StatusCssClass(attendee.Status)">@attendee.StatusDisplay</span></td>
+                                    <td data-label="Readiness">
+                                        @if (_readiness.TryGetValue(attendee.AttendeeId, out var readiness))
+                                        {
+                                            var expanded = _expandedReadiness.Contains(attendee.AttendeeId);
+                                            <button class="button button-small readiness-badge @AttendeePresentation.ReadinessCssClass(readiness.Code)"
+                                                    @onclick="() => ToggleReadinessAsync(attendee.AttendeeId)"
+                                                    aria-expanded="@(expanded ? "true" : "false")"
+                                                    aria-controls="@(expanded ? $"readiness-{attendee.AttendeeId}" : null)">
+                                                <span aria-hidden="true">@AttendeePresentation.ReadinessIcon(readiness.Code)</span>
+                                                @readiness.Display
+                                            </button>
+                                            @if (expanded)
+                                            {
+                                                <div class="readiness-detail" id="readiness-@attendee.AttendeeId">
+                                                    @if (readiness.OutstandingAppointmentTypes.Count == 0)
+                                                    {
+                                                        <span>@readiness.Display</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>@readiness.Display:</span>
+                                                        <ul class="readiness-types">
+                                                            @foreach (var type in readiness.OutstandingAppointmentTypes)
+                                                            {
+                                                                <li>@type.Name@(type.IsRecoverable ? " (recoverable)" : null)</li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                    @if (readiness.OutstandingAppointmentTypes.Any(type => type.IsRecoverable)
+                                                        && !_pendingRecoveryInvites.ContainsKey(attendee.AttendeeId))
+                                                    {
+                                                        <button class="button button-small" @onclick="() => StartRecoveryAsync(attendee.AttendeeId, RecoverableTypeNames(readiness))" disabled="@_busy"
+                                                                title="Emails a fresh booking link covering only the appointments the attendee still owes.">Arrange missed appointments</button>
+                                                    }
+                                                    @if (_pendingRecoveryInvites.ContainsKey(attendee.AttendeeId))
+                                                    {
+                                                        <button class="button button-small button-danger" @onclick="() => CancelRecoveryAsync(attendee.AttendeeId)" disabled="@_busy">
+                                                            @(_recoveryCancelAwaitingConfirmation == attendee.AttendeeId ? "Confirm cancel" : "Cancel recovery")
+                                                        </button>
+                                                    }
+                                                    @if (_recoveryOutcomes.TryGetValue(attendee.AttendeeId, out var recoveryOutcome))
+                                                    {
+                                                        <span class="recovery-outcome" role="status">@recoveryOutcome</span>
+                                                    }
+                                                    @if (_recoveryErrors.TryGetValue(attendee.AttendeeId, out var recoveryError))
+                                                    {
+                                                        <span class="recovery-error" role="alert">@recoveryError</span>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                        else if (_readinessLoading.Contains(attendee.AttendeeId))
+                                        {
+                                            <span class="readiness-loading" role="status" aria-live="polite">Loading readiness…</span>
+                                        }
+                                        else if (_readinessErrors.TryGetValue(attendee.AttendeeId, out var readinessError))
+                                        {
+                                            <span class="readiness-error" role="alert">@readinessError</span>
+                                            <button class="button button-small" @onclick="() => LoadReadinessAsync(attendee.AttendeeId)" disabled="@_busy">Try again</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="button button-quiet button-small readiness-badge status-neutral"
+                                                    @onclick="() => ToggleReadinessAsync(attendee.AttendeeId)"
+                                                    title="Checks which appointments this attendee still owes before they can start."
+                                                    aria-expanded="false">
+                                                <span aria-hidden="true">?</span> Check readiness
+                                            </button>
+                                        }
+                                    </td>
+                                    <td data-label="Delivery">
+                                        @if (_emailStatus.TryGetValue(attendee.AttendeeId, out var email))
+                                        {
+                                            <span class="@(email.Status == "Failed" ? "error" : email.Status == "Pending" ? "warning" : "")">
+                                                @email.TemplateDisplay @TimePresentation.Format(email.SentAt)
+                                            </span>
+                                            @if (email.Status is "Failed" or "Pending" && email.CanRetry)
+                                            {
+                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId)" disabled="@_busy"
+                                                        title="Sends the same email again to the same address.">Resend</button>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                    <td data-label="Booking">
+                                        @{
+                                            var bookingsExpanded = _expandedBookings.Contains(attendee.AttendeeId);
+                                            var attendeeBookings = _bookings.TryGetValue(attendee.AttendeeId, out var loaded) ? loaded : null;
+                                        }
+                                        <button class="button button-quiet button-small booking-badge"
+                                                @onclick="() => ToggleBookingsAsync(attendee.AttendeeId)"
+                                                aria-expanded="@(bookingsExpanded ? "true" : "false")"
+                                                aria-controls="@(bookingsExpanded ? $"bookings-{attendee.AttendeeId}" : null)"
+                                                title="Shows the attendee's active bookings and the actions that cancel them.">
+                                            @BookingSummary(attendeeBookings)
+                                        </button>
+                                        @if (bookingsExpanded)
+                                        {
+                                            <div class="booking-detail" id="bookings-@attendee.AttendeeId">
+                                                @if (_bookingsLoading.Contains(attendee.AttendeeId))
+                                                {
+                                                    <span class="booking-loading" role="status" aria-live="polite">Loading bookings…</span>
+                                                }
+                                                else if (attendeeBookings is { Count: 0 })
+                                                {
+                                                    <span>No active bookings.</span>
+                                                }
+                                                else if (attendeeBookings is not null)
+                                                {
+                                                    <ul class="booking-list">
+                                                        @foreach (var booking in attendeeBookings)
+                                                        {
+                                                            <li>
+                                                                <span class="booking-window">
+                                                                    @booking.EventDate.ToString("dd MMM yyyy")
+                                                                    @booking.EventStartTime.ToString("HH\\:mm")–@booking.EventEndTime.ToString("HH\\:mm")
+                                                                    @(booking.IsOriginal ? null : " (recovery)")
+                                                                </span>
+                                                                <button class="button button-danger button-small"
+                                                                        @onclick="() => CancelBookingAsync(attendee.AttendeeId, booking.BookingId, false)"
+                                                                        disabled="@_busy"
+                                                                        title="Cancels this booking and releases its places.">
+                                                                    @(_bookingCancelAwaitingConfirmation == booking.BookingId ? "Confirm cancel" : "Cancel booking")
+                                                                </button>
+                                                                @if (booking.IsOriginal)
+                                                                {
+                                                                    <button class="button button-small"
+                                                                            @onclick="() => CancelBookingAsync(attendee.AttendeeId, booking.BookingId, true)"
+                                                                            disabled="@_busy"
+                                                                            title="Cancels this booking and emails a fresh booking link.">
+                                                                        @(_bookingRebookAwaitingConfirmation == booking.BookingId ? "Confirm cancel" : "Cancel & rebook")
+                                                                    </button>
+                                                                }
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+
+                                                @if (_bookingOutcomes.TryGetValue(attendee.AttendeeId, out var bookingOutcome))
+                                                {
+                                                    <span class="booking-outcome" role="status">@bookingOutcome</span>
+                                                }
+                                                @if (_bookingErrors.TryGetValue(attendee.AttendeeId, out var bookingError))
+                                                {
+                                                    <span class="booking-error" role="alert">@bookingError</span>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                    <td data-label="History"><AuditHistory AttendeeId="@attendee.AttendeeId" /></td>
+                                    <td data-label="Actions">
+                                        <div class="row-actions">
+                                            <button class="button button-small button-icon-edit" @onclick="() => StartEdit(attendee)" disabled="@(_busy || _editingId.HasValue)"
+                                                    title="Change the name, email address or attendee group.">Edit</button>
+                                            <button class="button button-primary button-small" @onclick="() => InviteAsync(attendee)" disabled="@(_busy || _editingId.HasValue)"
+                                                    title="Emails a single-use booking link showing only the windows this attendee can take.">Invite now</button>
+                                            <button class="button button-danger button-small button-icon-delete" @onclick="() => DeleteAsync(attendee.AttendeeId)" disabled="@(_busy || _editingId.HasValue)"
+                                                    title="Removes the attendee. Press a second time to confirm.">
+                                                @(awaitingDeleteConfirmation ? "Confirm delete" : "Delete")
+                                            </button>
+                                        </div>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_attendees.Count == 0)
+            {
+                <div class="empty-state">
+                    <strong>No attendees yet</strong>
+                    <p>Add one above, or upload a CSV to bring in several at once.</p>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private const int MaximumUploadBytes = 1024 * 1024;
+    private const string UnexpectedError = "Something went wrong. Please try again.";
+
+    private List<AttendeeDto>? _attendees;
+    private List<AttendeeGroupOptionDto> _groups = [];
+    private List<ImportErrorDto> _importErrors = [];
+    private string? _error;
+    private bool _busy;
+    private bool _isLoading = true;
+
+    private string _search = string.Empty;
+    private int? _statusFilter;
+    private IReadOnlyDictionary<Guid, AttendeeEmailStatusDto> _emailStatus =
+        new Dictionary<Guid, AttendeeEmailStatusDto>();
+    private readonly Dictionary<Guid, AttendeeReadinessDto> _readiness = new();
+    private readonly HashSet<Guid> _expandedReadiness = new();
+    private readonly HashSet<Guid> _readinessLoading = new();
+    private readonly Dictionary<Guid, string> _readinessErrors = new();
+    private readonly Dictionary<Guid, Guid> _pendingRecoveryInvites = new();
+    private readonly Dictionary<Guid, string> _recoveryOutcomes = new();
+    private readonly Dictionary<Guid, string> _recoveryErrors = new();
+    private Guid? _recoveryCancelAwaitingConfirmation;
+    private readonly Dictionary<Guid, List<AttendeeBookingDto>> _bookings = new();
+    private readonly HashSet<Guid> _expandedBookings = new();
+    private readonly HashSet<Guid> _bookingsLoading = new();
+    private readonly Dictionary<Guid, string> _bookingOutcomes = new();
+    private readonly Dictionary<Guid, string> _bookingErrors = new();
+    private Guid? _bookingCancelAwaitingConfirmation;
+    private Guid? _bookingRebookAwaitingConfirmation;
+
+    private static readonly (int Value, string Label)[] StatusChoices =
+    [
+        (1, "Not yet invited"),
+        (2, "Awaiting availability"),
+        (3, "Invited (pending response)"),
+        (4, "Booked"),
+        (5, "No response - needs follow-up"),
+    ];
+    private string _newName = string.Empty;
+    private string _newEmail = string.Empty;
+    private string _newAttendeeGroupId = string.Empty;
+    private Guid? _deleteAwaitingConfirmation;
+    private Guid? _editingId;
+    private string _editName = string.Empty;
+    private string _editEmail = string.Empty;
+    private string _editAttendeeGroupId = string.Empty;
+
+    // Visible to the component's test assembly so its busy-event guard can be exercised directly.
+    internal bool IsBusyForTesting
+    {
+        get => _busy;
+        set => _busy = value;
+    }
+
+    internal string? ErrorForTesting => _error;
+
+    internal bool IsReadinessExpandedForTesting(Guid attendeeId) =>
+        _expandedReadiness.Contains(attendeeId);
+
+    internal AttendeeReadinessDto? ReadinessForTesting(Guid attendeeId) =>
+        _readiness.TryGetValue(attendeeId, out var readiness) ? readiness : null;
+
+    internal string? ReadinessErrorForTesting(Guid attendeeId) =>
+        _readinessErrors.TryGetValue(attendeeId, out var error) ? error : null;
+
+    internal Task ToggleReadinessForTestingAsync(Guid attendeeId) =>
+        ToggleReadinessAsync(attendeeId);
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ToggleReadinessAsync(Guid attendeeId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (_expandedReadiness.Contains(attendeeId))
+        {
+            _expandedReadiness.Remove(attendeeId);
+            return;
+        }
+
+        _expandedReadiness.Add(attendeeId);
+        if (!_readiness.ContainsKey(attendeeId))
+        {
+            await LoadReadinessAsync(attendeeId);
+        }
+    }
+
+    private async Task LoadReadinessAsync(Guid attendeeId)
+    {
+        if (_busy || _readinessLoading.Contains(attendeeId))
+        {
+            return;
+        }
+
+        _readinessLoading.Add(attendeeId);
+        _readinessErrors.Remove(attendeeId);
+
+        try
+        {
+            var outcome = await AttendeesApi.GetReadinessAsync(attendeeId, CancellationToken.None);
+            if (outcome.IsSuccess && outcome.Value is not null)
+            {
+                _readiness[attendeeId] = outcome.Value;
+            }
+            else
+            {
+                _readinessErrors[attendeeId] = outcome.ErrorMessage ?? UnexpectedError;
+            }
+        }
+        catch (Exception)
+        {
+            _readinessErrors[attendeeId] = UnexpectedError;
+        }
+        finally
+        {
+            _readinessLoading.Remove(attendeeId);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _isLoading = true;
+
+        try
+        {
+            var attendeesTask = AttendeesApi.ListAsync(_statusFilter, _search, CancellationToken.None);
+            var dashboardsTask = Dashboards.GetAsync(CancellationToken.None);
+            var groupsTask = AttendeesApi.ListGroupsAsync(CancellationToken.None);
+            await Task.WhenAll(attendeesTask, dashboardsTask, groupsTask);
+
+            var outcome = attendeesTask.Result;
+            if (outcome.IsSuccess)
+            {
+                _attendees = outcome.Value;
+                _error = null;
+            }
+            else
+            {
+                _error = outcome.ErrorMessage ?? UnexpectedError;
+            }
+
+            var groupsOutcome = groupsTask.Result;
+            if (groupsOutcome.IsSuccess)
+            {
+                _groups = groupsOutcome.Value ?? [];
+            }
+            else if (_error is null)
+            {
+                _error = groupsOutcome.ErrorMessage ?? UnexpectedError;
+            }
+
+            _emailStatus = dashboardsTask.Result.Value?.EmailStatuses
+                .ToDictionary(e => e.AttendeeId)
+                ?? new Dictionary<Guid, AttendeeEmailStatusDto>();
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private IReadOnlyList<AppointmentTypeSummaryDto> SelectedGroupTypes(string groupIdValue) =>
+        Guid.TryParse(groupIdValue, out var groupId)
+            ? _groups.FirstOrDefault(group => group.AttendeeGroupId == groupId)?.RequiredAppointmentTypes
+                ?? []
+            : [];
+
+    private static Guid? ParseAttendeeGroupId(string value) =>
+        Guid.TryParse(value, out var groupId) ? groupId : null;
+
+    private async Task CreateAsync()
+    {
+        await RunAsync(
+            () => AttendeesApi.CreateAsync(
+                _newName, _newEmail, ParseAttendeeGroupId(_newAttendeeGroupId), CancellationToken.None),
+            () =>
+            {
+                _newName = string.Empty;
+                _newEmail = string.Empty;
+                _newAttendeeGroupId = string.Empty;
+                return Task.CompletedTask;
+            });
+    }
+
+    private void StartEdit(AttendeeDto attendee)
+    {
+        _editingId = attendee.AttendeeId;
+        _editName = attendee.Name;
+        _editEmail = attendee.Email;
+        _editAttendeeGroupId = attendee.AttendeeGroupId.ToString();
+    }
+
+    private void CancelEdit() => _editingId = null;
+
+    private Task SaveEditAsync()
+    {
+        var id = _editingId!.Value;
+        return RunAsync(
+            () => AttendeesApi.UpdateAsync(
+                id, _editName, _editEmail, ParseAttendeeGroupId(_editAttendeeGroupId), CancellationToken.None),
+            () =>
+            {
+                _editingId = null;
+                return Task.CompletedTask;
+            });
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var confirm = _deleteAwaitingConfirmation == id;
+        _busy = true;
+
+        try
+        {
+            var outcome = await AttendeesApi.DeleteAsync(id, confirm, CancellationToken.None);
+            if (!outcome.IsSuccess && outcome.StatusCode == 409 && !confirm)
+            {
+                _deleteAwaitingConfirmation = id;
+                _error = $"{outcome.ErrorMessage ?? UnexpectedError} Click Delete again to confirm.";
+                return;
+            }
+
+            _deleteAwaitingConfirmation = null;
+            _error = outcome.IsSuccess ? null : outcome.ErrorMessage ?? UnexpectedError;
+            if (outcome.IsSuccess)
+            {
+                await ReloadAsync();
+            }
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task InviteAsync(AttendeeDto attendee)
+    {
+        return RunAsync(() => AttendeesApi.TriggerInviteAsync(attendee.AttendeeId, CancellationToken.None));
+    }
+
+    private Task RetryEmailAsync(Guid id) =>
+        RunAsync(() => AttendeesApi.RetryEmailAsync(id, CancellationToken.None));
+
+    private static List<string> RecoverableTypeNames(AttendeeReadinessDto readiness) =>
+        readiness.OutstandingAppointmentTypes
+            .Where(type => type.IsRecoverable)
+            .Select(type => type.Name)
+            .ToList();
+
+    private static string DescribeRecoveryScope(IReadOnlyList<string> names, int selectedCount)
+    {
+        var count = Math.Max(selectedCount, names.Count);
+        var noun = count == 1 ? "missed appointment" : "missed appointments";
+        return names.Count == 0
+            ? $"{count} {noun}"
+            : $"{count} {noun}: {string.Join(", ", names)}";
+    }
+
+    private async Task StartRecoveryAsync(Guid attendeeId, List<string> recoverableNames)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _recoveryErrors.Remove(attendeeId);
+
+        try
+        {
+            var outcome = await AttendeesApi.StartRecoveryAsync(attendeeId, CancellationToken.None);
+            if (!outcome.IsSuccess || outcome.Value is null)
+            {
+                _recoveryErrors[attendeeId] = outcome.ErrorMessage ?? UnexpectedError;
+                return;
+            }
+
+            var result = outcome.Value;
+            var scope = DescribeRecoveryScope(recoverableNames, result.AppointmentTypeIds.Count);
+            if (result.InviteId == Guid.Empty)
+            {
+                _recoveryOutcomes[attendeeId] = $"No appointments are available yet for {scope}.";
+                return;
+            }
+
+            _pendingRecoveryInvites[attendeeId] = result.InviteId;
+            _recoveryOutcomes[attendeeId] = result.EmailSent
+                ? $"Recovery started for {scope}. Email sent."
+                : $"Recovery started for {scope}, but the email could not be sent.";
+        }
+        catch (Exception)
+        {
+            _recoveryErrors[attendeeId] = UnexpectedError;
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await LoadReadinessAsync(attendeeId);
+    }
+
+    /// <summary>Collapsed label: nothing to act on reads as a dash, otherwise the active count.</summary>
+    private static string BookingSummary(List<AttendeeBookingDto>? bookings) => bookings switch
+    {
+        null => "Bookings",
+        { Count: 0 } => "No active booking",
+        { Count: 1 } => "1 active booking",
+        _ => $"{bookings.Count} active bookings",
+    };
+
+    private async Task ToggleBookingsAsync(Guid attendeeId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (_expandedBookings.Contains(attendeeId))
+        {
+            _expandedBookings.Remove(attendeeId);
+            return;
+        }
+
+        _expandedBookings.Add(attendeeId);
+        if (!_bookings.ContainsKey(attendeeId))
+        {
+            await LoadBookingsAsync(attendeeId);
+        }
+    }
+
+    private async Task LoadBookingsAsync(Guid attendeeId)
+    {
+        if (_bookingsLoading.Contains(attendeeId))
+        {
+            return;
+        }
+
+        _bookingsLoading.Add(attendeeId);
+        _bookingErrors.Remove(attendeeId);
+
+        try
+        {
+            var outcome = await AttendeesApi.GetBookingsAsync(attendeeId, CancellationToken.None);
+            if (outcome is { IsSuccess: true, Value: not null })
+            {
+                _bookings[attendeeId] = outcome.Value;
+            }
+            else
+            {
+                _bookingErrors[attendeeId] = outcome.ErrorMessage ?? UnexpectedError;
+            }
+        }
+        catch (Exception)
+        {
+            _bookingErrors[attendeeId] = UnexpectedError;
+        }
+        finally
+        {
+            _bookingsLoading.Remove(attendeeId);
+            StateHasChanged();
+        }
+    }
+
+    // Each action confirms on its own second click, and the two actions never share a pending
+    // confirmation: arming one disarms the other.
+    private async Task CancelBookingAsync(Guid attendeeId, Guid bookingId, bool rebook)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var armed = rebook
+            ? _bookingRebookAwaitingConfirmation == bookingId
+            : _bookingCancelAwaitingConfirmation == bookingId;
+        if (!armed)
+        {
+            _bookingCancelAwaitingConfirmation = rebook ? null : bookingId;
+            _bookingRebookAwaitingConfirmation = rebook ? bookingId : null;
+            return;
+        }
+
+        _bookingCancelAwaitingConfirmation = null;
+        _bookingRebookAwaitingConfirmation = null;
+        _busy = true;
+        _bookingErrors.Remove(attendeeId);
+        _bookingOutcomes.Remove(attendeeId);
+
+        try
+        {
+            var outcome = await AttendeesApi.CancelBookingAsync(
+                attendeeId, bookingId, rebook, CancellationToken.None);
+            if (outcome is not { IsSuccess: true, Value: not null })
+            {
+                _bookingErrors[attendeeId] = outcome.ErrorMessage ?? UnexpectedError;
+                return;
+            }
+
+            _bookingOutcomes[attendeeId] = CancellationMessage(outcome.Value);
+        }
+        catch (Exception)
+        {
+            _bookingErrors[attendeeId] = UnexpectedError;
+            return;
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        _bookings.Remove(attendeeId);
+        await LoadBookingsAsync(attendeeId);
+        await ReloadAsync();
+    }
+
+    /// <summary>Distinguishes a plain cancellation from a delivered and an undelivered replacement.</summary>
+    private static string CancellationMessage(CancelAttendeeBookingDto outcome)
+    {
+        if (!outcome.Reinvited)
+        {
+            return "Booking cancelled.";
+        }
+
+        return outcome.DeliveryStatus == "Sent"
+            ? "Booking cancelled; replacement invite sent."
+            : "Booking cancelled; replacement invite could not be delivered.";
+    }
+
+    private async Task CancelRecoveryAsync(Guid attendeeId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (_recoveryCancelAwaitingConfirmation != attendeeId)
+        {
+            _recoveryCancelAwaitingConfirmation = attendeeId;
+            return;
+        }
+
+        _recoveryCancelAwaitingConfirmation = null;
+        if (!_pendingRecoveryInvites.TryGetValue(attendeeId, out var inviteId))
+        {
+            return;
+        }
+
+        _busy = true;
+        _recoveryErrors.Remove(attendeeId);
+
+        try
+        {
+            var outcome = await AttendeesApi.CancelRecoveryAsync(
+                attendeeId, inviteId, CancellationToken.None);
+            if (!outcome.IsSuccess)
+            {
+                _recoveryErrors[attendeeId] = outcome.ErrorMessage ?? UnexpectedError;
+                return;
+            }
+
+            _pendingRecoveryInvites.Remove(attendeeId);
+            _recoveryOutcomes[attendeeId] = "Recovery cancelled.";
+        }
+        catch (Exception)
+        {
+            _recoveryErrors[attendeeId] = UnexpectedError;
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await LoadReadinessAsync(attendeeId);
+    }
+
+    internal async Task OnFileChosenAsync(InputFileChangeEventArgs args)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _importErrors = [];
+        _error = null;
+        _busy = true;
+
+        try
+        {
+            if (!args.File.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                _error = "Choose a CSV file to upload.";
+                return;
+            }
+
+            if (args.File.Size > MaximumUploadBytes)
+            {
+                _error = "The CSV must be 1 MiB or smaller.";
+                return;
+            }
+
+            using var stream = args.File.OpenReadStream(MaximumUploadBytes);
+            using var reader = new StreamReader(stream);
+            var csv = await reader.ReadToEndAsync();
+            var outcome = await AttendeesApi.ImportAsync(csv, CancellationToken.None);
+            _error = outcome.IsSuccess ? null : outcome.ErrorMessage ?? UnexpectedError;
+
+            if (outcome.IsSuccess && outcome.Value is { Accepted: false } import)
+            {
+                _importErrors = import.Errors.ToList();
+            }
+            else if (outcome.IsSuccess)
+            {
+                await ReloadAsync();
+            }
+        }
+        catch (Exception)
+        {
+            _error = "The CSV could not be read or uploaded. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync<T>(Func<Task<ApiOutcome<T>>> action, Func<Task>? onSuccess = null)
+    {
+        _busy = true;
+
+        try
+        {
+            var outcome = await action();
+            _error = outcome.IsSuccess ? null : outcome.ErrorMessage ?? UnexpectedError;
+            if (outcome.IsSuccess)
+            {
+                if (onSuccess is not null)
+                {
+                    await onSuccess();
+                }
+
+                await ReloadAsync();
+            }
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
+`````
+
+## before — src/EventBooking.Web/Services/AttendeePresentation.cs — 1/1
+
+<!-- retirement-file: {"id":12,"file":"src/EventBooking.Web/Services/AttendeePresentation.cs","beforeSha":"2cbbf2117cf275acca6932ebef8a837bf13e64486007f1572e325861cc461404","afterSha":"cd4d470f0ee51595f509319734413586d2917c60d77f044904753fdde574753a","side":"before","part":1,"parts":1} -->
+
+`````csharp
+namespace EventBooking.Web.Services;
+
+/// <summary>Maps the API's raw attendee status value to the attendee-list visual state.</summary>
+internal static class AttendeePresentation
+{
+    // AttendeeStatus is serialized as its documented numeric value across the API boundary.
+    private const int NotYetInvited = 1;
+    private const int AwaitingAvailability = 2;
+    private const int Invited = 3;
+    private const int Booked = 4;
+    private const int NoResponseNeedsFollowUp = 5;
+
+    internal static string StatusCssClass(int rawStatus) => rawStatus switch
+    {
+        NotYetInvited => "status-new",
+        AwaitingAvailability or NoResponseNeedsFollowUp => "status-warning",
+        Booked => "status-success",
+        Invited => "status-neutral",
+        _ => "status-neutral",
+    };
+
+    /// <summary>Maps the API's readiness code to the attendee-list badge style.</summary>
+    internal static string ReadinessCssClass(string code) => code switch
+    {
+        "Ready" => "status-success",
+        "AttendeeGroupUnassigned" or "RequirementSnapshotMismatch" or "AppointmentsOutstanding" => "status-warning",
+        "NoActiveBooking" => "status-neutral",
+        _ => "status-neutral",
+    };
+
+    /// <summary>Maps the API's readiness code to its badge glyph.</summary>
+    internal static string ReadinessIcon(string code) => code switch
+    {
+        "Ready" => "✓",
+        "AttendeeGroupUnassigned" => "!",
+        "NoActiveBooking" => "○",
+        "RequirementSnapshotMismatch" => "≠",
+        "AppointmentsOutstanding" => "•",
+        _ => "?",
+    };
+}
+`````
+
+## after — src/EventBooking.Web/Services/AttendeePresentation.cs — 1/1
+
+<!-- retirement-file: {"id":12,"file":"src/EventBooking.Web/Services/AttendeePresentation.cs","beforeSha":"2cbbf2117cf275acca6932ebef8a837bf13e64486007f1572e325861cc461404","afterSha":"cd4d470f0ee51595f509319734413586d2917c60d77f044904753fdde574753a","side":"after","part":1,"parts":1} -->
+
+`````csharp
+namespace EventBooking.Web.Services;
+
+/// <summary>Maps the API's raw attendee status value to the attendee-list visual state.</summary>
+internal static class AttendeePresentation
+{
+    // AttendeeStatus is serialized as its documented numeric value across the API boundary.
+    private const int NotYetInvited = 1;
+    private const int AwaitingAvailability = 2;
+    private const int Invited = 3;
+    private const int Booked = 4;
+    private const int NoResponseNeedsFollowUp = 5;
+
+    internal static string StatusCssClass(int rawStatus) => rawStatus switch
+    {
+        NotYetInvited => "status-new",
+        AwaitingAvailability or NoResponseNeedsFollowUp => "status-warning",
+        Booked => "status-success",
+        Invited => "status-neutral",
+        _ => "status-neutral",
+    };
+
+    /// <summary>Maps the API's readiness code to the attendee-list badge style.</summary>
+    internal static string ReadinessCssClass(string code) => code switch
+    {
+        "Ready" => "status-success",
+        "RequirementSnapshotMismatch" or "AppointmentsOutstanding" => "status-warning",
+        "NoActiveBooking" => "status-neutral",
+        _ => "status-neutral",
+    };
+
+    /// <summary>Maps the API's readiness code to its badge glyph.</summary>
+    internal static string ReadinessIcon(string code) => code switch
+    {
+        "Ready" => "✓",
+        "NoActiveBooking" => "○",
+        "RequirementSnapshotMismatch" => "≠",
+        "AppointmentsOutstanding" => "•",
+        _ => "?",
+    };
+}
+`````
+
+## before — src/EventBooking.Web/Services/AttendeesClient.cs — 1/1
+
+<!-- retirement-file: {"id":13,"file":"src/EventBooking.Web/Services/AttendeesClient.cs","beforeSha":"232ed7e56281f88f80ce96b6427d449e7ac3e0d26d8f1d72976960f825fefd1d","afterSha":"9efae87e950589686fda7d641064fc0c4f2840473e67aec1c2d2471afef39659","side":"before","part":1,"parts":1} -->
+
+`````csharp
+using System.Net.Http.Json;
+using System.Text;
+
+namespace EventBooking.Web.Services;
+
+public sealed record AppointmentTypeSummaryDto(string Code, string Name);
+
+public sealed record AttendeeGroupOptionDto(
+    Guid AttendeeGroupId,
+    string Code,
+    string Name,
+    IReadOnlyList<AppointmentTypeSummaryDto> RequiredAppointmentTypes);
+
+public sealed record AttendeeDto(
+    Guid AttendeeId,
+    string Name,
+    string Email,
+    Guid? AttendeeGroupId,
+    string? AttendeeGroupCode,
+    string? AttendeeGroupName,
+    bool RequiresAttendeeGroupReconciliation,
+    IReadOnlyList<AppointmentTypeSummaryDto> RequiredAppointmentTypes,
+    int Status,
+    string StatusDisplay);
+
+public sealed record ImportErrorDto(int LineNumber, string Message);
+
+public sealed record ImportOutcomeDto(
+    bool Accepted,
+    int ImportedCount,
+    IReadOnlyList<ImportErrorDto> Errors);
+
+/// <summary>Reports the durable result of a template-aware email retry.</summary>
+/// <param name="DeliveryStatus">The provider outcome of the replacement attempt.</param>
+/// <param name="DeliveryId">The new durable delivery identifier.</param>
+public sealed record EmailRetryDto(string DeliveryStatus, Guid DeliveryId);
+
+/// <summary>Minimum canonical detail for one incomplete appointment type.</summary>
+/// <param name="Code">The canonical appointment-type code.</param>
+/// <param name="Name">The canonical appointment-type name.</param>
+/// <param name="IsRecoverable">Whether recovery can currently be started for this type.</param>
+public sealed record OutstandingAppointmentTypeDto(string Code, string Name, bool IsRecoverable);
+
+/// <summary>Durable delivery outcome for one started recovery invite.</summary>
+/// <param name="InviteId">The new recovery Invite identifier, or empty when awaiting availability.</param>
+/// <param name="AppointmentTypeIds">The recoverable snapshot offered, or awaiting availability.</param>
+/// <param name="EmailSent">Whether the post-commit provider attempt completed successfully.</param>
+public sealed record RecoveryInviteOutcomeDto(
+    Guid InviteId,
+    IReadOnlyList<Guid> AppointmentTypeIds,
+    bool EmailSent);
+
+/// <summary>One active booking a coordinator may cancel; carries no management token.</summary>
+/// <param name="BookingId">The booking identifier used to target a cancellation.</param>
+/// <param name="IsOriginal">True for the original booking; false for an active recovery booking.</param>
+/// <param name="EventDate">The date of the confirmed window the booking holds.</param>
+/// <param name="EventStartTime">The start of the confirmed window the booking holds.</param>
+/// <param name="EventEndTime">The end of the confirmed window the booking holds.</param>
+public sealed record AttendeeBookingDto(
+    Guid BookingId,
+    bool IsOriginal,
+    DateOnly EventDate,
+    TimeOnly EventStartTime,
+    TimeOnly EventEndTime);
+
+/// <summary>Coordinator-facing outcome of cancelling one attendee booking.</summary>
+/// <param name="Reinvited">Whether a replacement invite was created for the attendee.</param>
+/// <param name="InviteCreated">The explicit replacement-invite creation state.</param>
+/// <param name="DeliveryStatus">The provider outcome, or Unavailable when no replacement invite exists.</param>
+/// <param name="DeliveryId">The durable replacement delivery identifier, when one was staged.</param>
+public sealed record CancelAttendeeBookingDto(
+    bool Reinvited,
+    bool InviteCreated,
+    string? DeliveryStatus,
+    Guid? DeliveryId);
+
+/// <summary>Coordinator-facing readiness for one attendee.</summary>
+/// <param name="AttendeeId">The stable attendee identifier.</param>
+/// <param name="Code">The stable machine-readable readiness reason.</param>
+/// <param name="Display">The Coordinator-facing explanation.</param>
+/// <param name="OutstandingAppointmentTypes">Incomplete current appointment types.</param>
+public sealed record AttendeeReadinessDto(
+    Guid AttendeeId,
+    string Code,
+    string Display,
+    IReadOnlyList<OutstandingAppointmentTypeDto> OutstandingAppointmentTypes);
+
+public sealed class AttendeesClient(HttpClient http)
+{
+    public async Task<ApiOutcome<List<AttendeeDto>>> ListAsync(
+        int? status, string? search, CancellationToken cancellationToken)
+    {
+        var parameters = new List<string>();
+        if (status is not null)
+        {
+            parameters.Add($"status={status.Value}");
+        }
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            parameters.Add($"search={Uri.EscapeDataString(search)}");
+        }
+
+        var route = parameters.Count == 0
+            ? "/api/attendees"
+            : $"/api/attendees?{string.Join("&", parameters)}";
+
+        using var response = await http.GetAsync(route, cancellationToken);
+        return await ApiCall.ReadAsync<List<AttendeeDto>>(response, cancellationToken);
+    }
+
+    public async Task<ApiOutcome<List<AttendeeGroupOptionDto>>> ListGroupsAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("/api/attendee-groups", cancellationToken);
+        return await ApiCall.ReadAsync<List<AttendeeGroupOptionDto>>(response, cancellationToken);
+    }
+
+    public async Task<ApiOutcome<Guid>> CreateAsync(
+        string name, string email, Guid? attendeeGroupId, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(
+            "/api/attendees",
+            new { Name = name, Email = email, AttendeeGroupId = attendeeGroupId },
+            cancellationToken);
+
+        return await ApiCall.ReadAsync<Guid>(response, cancellationToken);
+    }
+
+    public async Task<ApiOutcome<bool>> UpdateAsync(
+        Guid id, string name, string email, Guid? attendeeGroupId, CancellationToken cancellationToken)
+    {
+        using var response = await http.PutAsJsonAsync(
+            $"/api/attendees/{id}",
+            new { Name = name, Email = email, AttendeeGroupId = attendeeGroupId },
+            cancellationToken);
+
+        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+    }
+
+    public async Task<ApiOutcome<bool>> DeleteAsync(
+        Guid id, bool confirm, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync(
+            $"/api/attendees/{id}?confirm={(confirm ? "true" : "false")}", cancellationToken);
+
+        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+    }
+
+    public async Task<ApiOutcome<ImportOutcomeDto>> ImportAsync(
+        string csv, CancellationToken cancellationToken)
+    {
+        using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
+        using var response = await http.PostAsync("/api/attendees/import", content, cancellationToken);
+
+        return await ApiCall.ReadAsync<ImportOutcomeDto>(response, cancellationToken);
+    }
+
+    public async Task<ApiOutcome<bool>> TriggerInviteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"/api/attendees/{id}/invite", null, cancellationToken);
+        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+    }
+
+    /// <summary>Retries the latest failed or pending delivery using its server-side template.</summary>
+    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync($"/api/attendees/{id}/email-retry", null, cancellationToken);
+        return await ApiCall.ReadAsync<EmailRetryDto>(response, cancellationToken);
+    }
+
+    /// <summary>Starts one recovery invite for the attendee's missed appointments.</summary>
+    public async Task<ApiOutcome<RecoveryInviteOutcomeDto>> StartRecoveryAsync(
+        Guid attendeeId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync(
+            $"/api/attendees/{attendeeId}/recovery-invites", null, cancellationToken);
+        return await ApiCall.ReadAsync<RecoveryInviteOutcomeDto>(response, cancellationToken);
+    }
+
+    /// <summary>Cancels one pending recovery invite without touching bookings.</summary>
+    public async Task<ApiOutcome<bool>> CancelRecoveryAsync(
+        Guid attendeeId,
+        Guid inviteId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync(
+            $"/api/attendees/{attendeeId}/recovery-invites/{inviteId}", cancellationToken);
+        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+    }
+
+    /// <summary>Lists the attendee's active bookings for the cancellation workflow.</summary>
+    /// <param name="attendeeId">The attendee whose bookings are listed.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The active bookings, or the failure the API reported.</returns>
+    public async Task<ApiOutcome<List<AttendeeBookingDto>>> GetBookingsAsync(
+        Guid attendeeId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync(
+            $"/api/attendees/{attendeeId}/bookings", cancellationToken);
+        return await ApiCall.ReadAsync<List<AttendeeBookingDto>>(response, cancellationToken);
+    }
+
+    /// <summary>
+    /// Cancels one of the attendee's active bookings. Requesting a replacement invite is valid
+    /// only for the original booking; the API refuses it for a recovery booking.
+    /// </summary>
+    /// <param name="attendeeId">The attendee the booking belongs to.</param>
+    /// <param name="bookingId">The booking to cancel.</param>
+    /// <param name="rebook">Whether to issue a replacement invite.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    /// <returns>The cancellation outcome, or the failure the API reported.</returns>
+    public async Task<ApiOutcome<CancelAttendeeBookingDto>> CancelBookingAsync(
+        Guid attendeeId,
+        Guid bookingId,
+        bool rebook,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel",
+            new { Rebook = rebook },
+            cancellationToken);
+        return await ApiCall.ReadAsync<CancelAttendeeBookingDto>(response, cancellationToken);
+    }
+
+    /// <summary>Gets internal readiness for a visible Attendee.</summary>
+    public async Task<ApiOutcome<AttendeeReadinessDto>> GetReadinessAsync(
+        Guid attendeeId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync(
+            $"/api/attendees/{attendeeId}/readiness", cancellationToken);
+        return await ApiCall.ReadAsync<AttendeeReadinessDto>(response, cancellationToken);
+    }
+}
+`````

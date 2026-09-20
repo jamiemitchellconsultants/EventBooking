@@ -1,6 +1,8 @@
 # EventBooking detailed implementation plans
 
-**In-progress authoring checkpoint — not ready for end-to-end execution.** Tasks 1, 2, 3a and 3b are documented; Task 3c packaging, Task 3d and Phases 1–7 remain unfinished. Read [the authoring handover](HANDOVER.md) before continuing this work.
+**Phase 0 is complete and executable. Phases 1–7 are not yet written.** Tasks 1, 2 and 3a–3d are documented, implemented and replayed from these documents into an independent checkout, ending at a green build and 1402 passing tests. Master Tasks 4–33 still have to be authored; read [the authoring handover](HANDOVER.md) before continuing that work.
+
+Start at [phase-0-port-and-strip.md](phase-0-port-and-strip.md), which gives the branch, the task order and the phase pull request.
 
 Execute the master plan's phases in this order: 0 port and strip (Tasks 1–3), 1 domain (4–8), 2 persistence (9–11), 3 application (12–20), 4 API and MCP (21–23), 5 web (24–27), 6 seed and deployment (28–31), 7 verification and documentation (32–33). Lettered tasks retain their parent's number and commit message. Read and execute one task at a time using superpowers:executing-plans.
 
@@ -52,6 +54,6 @@ Use superpowers:systematic-debugging for a failing test or build. Keep the regre
 
 ## Verification evidence
 
-The unmodified predecessor's full suite passed in this session: Domain 230, Application 451, Infrastructure 158, Api 225, Mcp 34, Web 251 and SeedData 76; total 1425, zero failures and zero skipped tests. The runtime was .NET SDK 10.0.400 with Docker 29.4.3. This is the baseline for accounting for removed provider tests and added port regressions; it is not evidence that a future implementation is complete.
+Phase 0's own checkpoint evidence is in [phase-0-port-and-strip.md](phase-0-port-and-strip.md#verification-evidence). The unmodified predecessor's full suite passed in this session: Domain 230, Application 451, Infrastructure 158, Api 225, Mcp 34, Web 251 and SeedData 76; total 1425, zero failures and zero skipped tests. The runtime was .NET SDK 10.0.400 with Docker 29.4.3. This is the baseline for accounting for removed provider tests and added port regressions; it is not evidence that a future implementation is complete.
 
 The governing inputs are the [decision record](../superpowers/specs/2026-09-19-eventbooking-design.md), [design package](../design/README.md), [master plan](../superpowers/plans/2026-09-19-eventbooking-implementation.md) and [ontology](../ontology.md). The design wins on detail; the spec wins on decisions. Canonical names come from the ontology.
