@@ -1,8 +1,7 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 20 September 2026, after Phase 1 Task 8, which completes the phase. Written for an agent
-starting with no context: read this file, then the governing inputs it lists, before touching
-anything.
+Updated 20 September 2026, after Phase 2 Task 9a. Written for an agent starting with no context:
+read this file, then the governing inputs it lists, before touching anything.
 
 ## 1. What the assignment is
 
@@ -35,13 +34,14 @@ names. The master plan says what each task is; this handover says how far it has
 | --- | --- |
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
-| Phase 2 — master Tasks 9–11 | Not authored. Prototype-verified, like Phases 0 and 1 |
+| Phase 2 — master Tasks 9–11 | **In progress.** Task 9a written, replayed and committed; 9b, 10 and 11 not authored. Prototype-verified, like Phases 0 and 1 |
 | Phases 3–7 — master Tasks 12–33 | Not authored. Hand-authored, no prototype |
 
-Branch `docs/detailed-implementations`, ten commits ahead of `origin/main`, all pushed, with an
-open pull request covering what is authored so far. Nothing is merged. **Recompute the
-AI-fingerprint and update the pull-request body after every further push to this branch**, or the
-`ai-fingerprint` check fails on the stale hash:
+Phases 0 and 1 are **merged into `main`** — pull request #15, branch
+`docs/detailed-implementations`, plus its narrative proposal #16. Nothing is outstanding on that
+branch and no pull request is open. Phase 2 starts from a fresh branch off `origin/main`.
+**Recompute the AI-fingerprint and update the pull-request body after every push to the branch**,
+or the `ai-fingerprint` check fails on the stale hash:
 
 ```bash
 MERGE_BASE=$(git merge-base origin/main HEAD)
@@ -54,6 +54,7 @@ Documents written so far:
 | --- | --- | --- |
 | 0 | `phase-0-port-and-strip.md` | `phase-0a-import.md` + `phase-0a-files.md` + 83 source volumes; `phase-0b-vocabulary.md` + 115 edit volumes; `phase-0c-identity.md`; `phase-0d-retire-import.md`; `phase-0e-required-groups.md`; `phase-0f-retired-location-config.md`, each with their own edit volumes |
 | 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
+| 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -63,8 +64,8 @@ phase overview: task order, evidence table, review checklist, pull-request gate.
 | Path | What it is |
 | --- | --- |
 | `/private/tmp/eventbooking-detail.6yx6zE` | Authoring scratch: generators, snapshots, build and test logs |
-| `/private/tmp/eventbooking-detail.6yx6zE/verify` | **The prototype.** At Task 8, green |
-| `/private/tmp/eventbooking-plan-replay.MkPSRw` | **Independent replay checkout.** At Task 8, green. It has a symlink `docs/detailed-implementations` to the plan directory of whichever checkout is being authored in — repoint it if you work in a different worktree |
+| `/private/tmp/eventbooking-detail.6yx6zE/verify` | **The prototype.** At Task 9a, green |
+| `/private/tmp/eventbooking-plan-replay.MkPSRw` | **Independent replay checkout.** At Task 9a, green. It has a symlink `docs/detailed-implementations` to the plan directory of whichever checkout is being authored in — repoint it if you work in a different worktree |
 | `/Users/jamesmitchell/.codex/handoffs/eventbooking-detailed-plans-2026-09-20/` | Archives of the first authoring session, plus the original request |
 
 If the scratch directories are gone, extract `authoring-scratch.tar.gz` and
@@ -73,7 +74,8 @@ hard-coded paths in the generators. Use the physical `/private/tmp` paths, never
 two aliases produced duplicate MSBuild graph errors.
 
 Snapshots are JSON maps of repository-relative path to file contents: `task-1.json` …
-`task-8.json`. A generator diffs two snapshots to produce one task's edit volumes.
+`task-8.json`, then `task-9a.json`. A generator diffs two snapshots to produce one task's edit
+volumes.
 
 ## 5. Method, as the user settled it
 
@@ -136,7 +138,7 @@ Generators, in `/private/tmp/eventbooking-detail.6yx6zE`:
 ## 7. Verification evidence
 
 Every figure is a full `dotnet build EventBooking.sln -warnaserror` followed by every test project,
-with Docker running and no skipped tests. Tasks 1–8 were each additionally replayed from their own
+with Docker running and no skipped tests. Tasks 1–9a were each additionally replayed from their own
 documents into the independent checkout.
 
 | Checkpoint | Domain | Application | Infrastructure | API | MCP | Web | Seed | Total |
@@ -153,6 +155,7 @@ documents into the independent checkout.
 | Task 6 | 306 | 422 | 173 | 232 | 35 | 241 | 75 | 1484 |
 | Task 7 | 320 | 424 | 173 | 232 | 35 | 241 | 75 | 1500 |
 | Task 8 — end of Phase 1 | 358 | 424 | 175 | 232 | 35 | 241 | 75 | 1540 |
+| Task 9a | 360 | 424 | 174 | 232 | 35 | 241 | 75 | 1541 |
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
@@ -222,6 +225,24 @@ so a later task can see what it inherits without re-reading the whole list.
   and is corrected to `NoResponseNeedsFollowUp` per FR-5.7 — which is what Task 14's own test list
   then expects.
 
+**Task 9a — deterministic attendee links**
+
+- **Master Task 9 is split into two documents**, 9a (the token) and 9b (the schema squash), the way
+  Phase 0 split master Task 3. The user's decision that the fresh schema writes the counter once is
+  what fixes the order: the token change comes first, and 9b deletes the whole inherited chain
+  including the short-lived migration 9a adds.
+- **A resend reuses the current link.** Design 06 says so, and a deterministic token is what makes
+  it possible. The predecessor rotated on every retry because it had thrown the raw token away. The
+  retry path no longer touches the counter, and the tests that asserted rotation now assert that it
+  does not move.
+- **Attendee lookups are primary-key reads.** Verify the signature, load by the identifier the token
+  carries, then require that the row's stored version matches. The four hash-keyed repository
+  methods are gone, along with the two unique hash indexes; the two remaining manage-token reads
+  take a booking id.
+- **Only the canonical base64url spelling verifies.** The token's last character carries two
+  significant bits, so three other spellings decode to the same bytes; accepting them would make one
+  link answer to four URLs.
+
 ### Transitional constructs, and when each retires
 
 The prototype deliberately carries scaffolding. Each is named in the code and must go at its task:
@@ -230,8 +251,8 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 | --- | --- |
 | The single-zone clock and its transitional member names | Phase 3, when handlers carry a `Location` |
 | The predecessor's fixed appointment-type identifiers and seeded rows | Phase 3 |
-| The inherited migration chain and its guard tests | Task 9 |
-| The stored book-token hash, in place of design 06's `tokenVersion` | Task 9 |
+| The inherited migration chain and its guard tests | Task 9b |
+| The stored book-token hash, in place of design 06's `tokenVersion` | Retired in Task 9a |
 | `inviteOptionCount` stored but not editable | Task 12 |
 | The transitional-location constant in the negotiation and capacity handlers | Task 13 |
 | Invites restricted to the transitional location, because no command carries a Coordinator's selection | Task 14, whose InviteAttendee takes location ids |
@@ -299,13 +320,19 @@ fourteen is in this file's history at commit `2b192ca`.
 
 ## 11. Next steps
 
-1. **Phase 2 (Tasks 9–11)** stays prototype-verified: the fresh schema — which also lands design
-   06's `tokenVersion` in place of the inherited token hash — the ordered-lock helpers and
-   concurrency harness, and the relational-division eligibility query.
+1. **Phase 2 (Tasks 9b–11)** stays prototype-verified. Task 9a has landed design 06's
+   `tokenVersion` in place of the inherited token hash. What remains: **Task 9b**, which deletes
+   every migration under `Persistence/Migrations/` — including 9a's — writes one fresh initial
+   migration carrying `token_version` and `manage_token_version` from the start, adds the `Location`
+   configuration the domain has had since Task 5, applies the constraints the master plan lists, and
+   adds `Persistence/Sql/roles.sql` applied by the SeedData CLI before migrating; then **Task 10**
+   (ordered-lock helpers and the concurrency harness) and **Task 11** (the relational-division
+   eligibility query).
 2. **Phases 3–7 (Tasks 12–33)** are hand-authored.
-3. The plan branch's pull request is already open and carries the three narrative headings and the
-   `narrative-required` label. Keep its body's fingerprint current as later phases land on the
-   branch, and extend its narrative sections as further decisions are settled.
+3. Phase 2 opens its own pull request when its tasks are written. Give it the three narrative
+   headings and the `narrative-required` label — supplying a body replaces the repository template
+   wholesale, so carry both those sections and the `AI-Fingerprint:` footer yourself — and
+   recompute the fingerprint after every push to the branch.
 
-Do not claim the assignment is complete while Tasks 9–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 9b–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
