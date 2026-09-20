@@ -150,8 +150,8 @@ public static Error CapacityBelowBookings(string message, int minimum, int curre
 
   ```csharp
   // tests/EventBooking.Application.Tests/Negotiation/RecordAcceptanceHandlerTests.cs
-  // (representative file — propose, withdraw, board and adjust suites follow the same
-  // fixture and assertion style; their cases are listed after this file)
+  // (complete; the propose, withdraw, board and adjust suites below are complete files
+  // in the same style on the shared fixture)
   using EventBooking.Application.Common;
   using EventBooking.Application.Negotiation;
 
