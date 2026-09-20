@@ -1,8 +1,8 @@
 # EventBooking detailed implementation plans
 
-**Phase 0 is complete and executable. Phases 1–7 are not yet written.** Tasks 1, 2 and 3a–3d are documented, implemented and replayed from these documents into an independent checkout, ending at a green build and 1402 passing tests. Master Tasks 4–33 still have to be authored; read [the authoring handover](HANDOVER.md) before continuing that work.
+**Phase 0 is complete and executable. Phase 1 is in progress; Phases 2–7 are not yet written.** Tasks 1, 2 and 3a–3d are documented, implemented and replayed from these documents into an independent checkout, ending at a green build and 1402 passing tests. Master Tasks 4–33 still have to be authored; read [the authoring handover](HANDOVER.md) before continuing that work.
 
-Start at [phase-0-port-and-strip.md](phase-0-port-and-strip.md), which gives the branch, the task order and the phase pull request.
+Start at [phase-0-port-and-strip.md](phase-0-port-and-strip.md), which gives the branch, the task order and the phase pull request. [phase-1-domain.md](phase-1-domain.md) carries Phase 1, where Task 4 is written and verified and Tasks 5–8 are still to be authored.
 
 Execute the master plan's phases in this order: 0 port and strip (Tasks 1–3), 1 domain (4–8), 2 persistence (9–11), 3 application (12–20), 4 API and MCP (21–23), 5 web (24–27), 6 seed and deployment (28–31), 7 verification and documentation (32–33). Lettered tasks retain their parent's number and commit message. Read and execute one task at a time using superpowers:executing-plans.
 
