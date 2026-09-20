@@ -66,6 +66,7 @@ Documents written so far:
 | 0 | `phase-0-port-and-strip.md` | `phase-0a-import.md` + `phase-0a-files.md` + 83 source volumes; `phase-0b-vocabulary.md` + 115 edit volumes; `phase-0c-identity.md`; `phase-0d-retire-import.md`; `phase-0e-required-groups.md`; `phase-0f-retired-location-config.md`, each with their own edit volumes |
 | 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
 | 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes; `phase-2d-invite-eligibility.md` + 16 edit volumes |
+| 3 | `phase-3-application.md` | `phase-3a-reference-data-settings.md`, `phase-3b-negotiation.md`, `phase-3c-invite-engine.md`, `phase-3d-booking-cancellation.md`, `phase-3e-recovery-workspace.md`, `phase-3f-staff-authorization.md`, `phase-3g-notification-outbox.md`, `phase-3h-background-jobs.md`, `phase-3i-dashboards-attendees.md`, `phase-3j-audit-search.md` (hand-authored, unexecuted; Task 20 split into 20a/20b) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
