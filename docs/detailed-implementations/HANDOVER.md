@@ -38,8 +38,15 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 2 — master Tasks 9–11 | Not authored. Prototype-verified, like Phases 0 and 1 |
 | Phases 3–7 — master Tasks 12–33 | Not authored. Hand-authored, no prototype |
 
-Branch `docs/detailed-implementations`, eight commits ahead of `origin/main`, all pushed. Nothing
-is merged and **no pull request exists for the plans yet**; that comes last (section 9).
+Branch `docs/detailed-implementations`, ten commits ahead of `origin/main`, all pushed, with an
+open pull request covering what is authored so far. Nothing is merged. **Recompute the
+AI-fingerprint and update the pull-request body after every further push to this branch**, or the
+`ai-fingerprint` check fails on the stale hash:
+
+```bash
+MERGE_BASE=$(git merge-base origin/main HEAD)
+git diff "$MERGE_BASE" HEAD | shasum -a 256 | cut -c1-12
+```
 
 Documents written so far:
 
@@ -296,9 +303,9 @@ fourteen is in this file's history at commit `2b192ca`.
    06's `tokenVersion` in place of the inherited token hash — the ordered-lock helpers and
    concurrency harness, and the relational-division eligibility query.
 2. **Phases 3–7 (Tasks 12–33)** are hand-authored.
-3. Last of all, open one pull request for the plan documents: recompute the AI-fingerprint, carry
-   the three narrative headings for the decisions actually settled, and label it
-   `narrative-required`.
+3. The plan branch's pull request is already open and carries the three narrative headings and the
+   `narrative-required` label. Keep its body's fingerprint current as later phases land on the
+   branch, and extend its narrative sections as further decisions are settled.
 
 Do not claim the assignment is complete while Tasks 9–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
