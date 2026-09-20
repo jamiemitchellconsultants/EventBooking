@@ -5,7 +5,9 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: Tasks 12–19 written; Task 20 not yet authored.** Phase 3 is hand-authored: complete code
+**Status: complete.** Tasks 12–20 are written, including the Task 20a/20b split. Phase 3 is
+hand-authored: complete code and tests are written straight into each document, with no
+prototype, because the executing model compiles and test-drives them itself. complete code
 and complete tests are written straight into each document, with no prototype, because the
 executing model compiles and test-drives them itself.
 
@@ -51,7 +53,13 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 6 | Task 17 — staff identity, role sync and authorization | [phase-3f-staff-authorization.md](phase-3f-staff-authorization.md) | `feat(auth): provider-neutral OIDC with per-request role sync` |
 | 7 | Task 18 — notification outbox and templates | [phase-3g-notification-outbox.md](phase-3g-notification-outbox.md) | `feat(email): durable outbox dispatcher and location-aware templates` |
 | 8 | Task 19 — background jobs | [phase-3h-background-jobs.md](phase-3h-background-jobs.md) | `feat(jobs): advisory-locked invite sweep` |
-| 9 | Task 20 — dashboards, attendee list and audit search | not yet authored (probably needs lettered splits) | `feat(app): bounded dashboards and bucketed audit search` |
+| 9 | Task 20a — dashboards, attendee list and readiness | [phase-3i-dashboards-attendees.md](phase-3i-dashboards-attendees.md) | `feat(app): bounded dashboards and attendee list` |
+| 10 | Task 20b — audit search, histories, phase gate | [phase-3j-audit-search.md](phase-3j-audit-search.md) | `feat(app): bucketed audit search` |
+
+Master Task 20 is split into two documents. The user settled contradiction #5 (attendee CRUD,
+import and boundary work under-allocated) as lettered splits: 20a carries the dashboards, the
+attendee list and readiness, and 20b carries the audit search with the phase's
+pull-request gate.
 
 ## Verification evidence
 
