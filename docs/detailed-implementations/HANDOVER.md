@@ -75,16 +75,18 @@ with Docker running and no skipped tests.
   false and empty defaults have misdescribed existing rows in three tasks so far, and each one was
   corrected by hand, with the column default dropped afterwards.
 
-## Questions waiting on the user
+## Questions the user has settled
 
-1. **Who may withdraw a proposal (blocks Task 6).** FR-2.9 gives that to "the current Manager of
-   the proposer's type", but `EventProposal` records only `createdByManagerUserId`. Either the
-   proposer's `AppointmentType` joins the proposal in `docs/ontology.ttl`, or the rule is derived
-   from the proposer's own `ProposalAcceptance`. This is an ontology change, so it is settled
-   before Task 6 is authored.
-2. **Lock order versus the cancellation flow (blocks Task 7).** The documented order is `Attendee`,
-   `EventProposal`, `Event`, then `EventCapacity`, but the cancellation sequence in design 03b
-   takes the event first and then finds its attendees.
+1. **Who may withdraw a proposal (Task 6).** `proposerAppointmentTypeId` is now part of
+   `EventProposal` in `docs/ontology.ttl`, with the invariant that withdrawal of the proposal and of
+   the proposer's own acceptance is judged against that type, never against
+   `createdByManagerUserId`. Task 6 implements it, and the fresh schema in Task 9 carries the
+   column.
+2. **Lock order versus the cancellation flow (Task 7).** The documented order wins:
+   `Attendee`, `EventProposal`, `Event`, `EventCapacity`. Event cancellation reads the affected
+   attendee identifiers without locks, then takes each booking's locks in that order and
+   re-validates under lock. The sequence diagram in `docs/design/03b-screens-and-flows.md` is
+   corrected to match, as part of Task 7.
 
 The full list of fourteen contradictions the first authoring session found is preserved in this
 file's history at commit `2b192ca`, and each remaining one is raised as its task is reached.
@@ -92,7 +94,7 @@ file's history at commit `2b192ca`, and each remaining one is raised as its task
 ## Next steps
 
 1. Package Task 5 from `task-4.json` to `task-5.json` and replay it in the replay checkout.
-2. Put question 1 to the user, then author Task 6 (N-type negotiation).
+2. Author Task 6 (N-type negotiation), implementing `proposerAppointmentTypeId`.
 3. Continue Tasks 7 and 8, then write the Phase 1 pull-request gate into
    `phase-1-domain.md` in the shape Phase 0 uses.
 4. Phase 2 (Tasks 9–11) stays prototype-verified. Phase 3 onward is hand-authored.

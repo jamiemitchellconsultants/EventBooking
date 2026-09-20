@@ -40,7 +40,9 @@
     kit:hasProperty "durationMinutes" ;
     kit:hasProperty "status" ;
     kit:hasProperty "createdByManagerUserId" ;
+    kit:hasProperty "proposerAppointmentTypeId" ;
     kit:invariant "Becomes `Confirmed`, creating its `Event` and one `EventCapacity` per listed `AppointmentType` from each `ProposalAcceptance` headcount, in the same transaction that records the final missing acceptance. A proposal whose list has one entry is confirmed on creation." ;
+    kit:invariant "`proposerAppointmentTypeId` names the proposing Manager's own `AppointmentType`, which is always listed and whose `ProposalAcceptance` is recorded at creation. Withdrawing the whole proposal, and withdrawing that acceptance, are judged against this type rather than against `createdByManagerUserId`, so the type's current Manager inherits both from a predecessor." ;
     kit:invariant "Every listed `AppointmentType` must be active and have a current Manager when the proposal is created; the `Location` must be active; the `EventWindow` must start in the future. An `Open` proposal whose window has started is withdrawn by the system." .
 
 :EventProposalAppointmentType a owl:Class ;
