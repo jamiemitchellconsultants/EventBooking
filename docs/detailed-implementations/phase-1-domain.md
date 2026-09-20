@@ -5,7 +5,7 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: in progress.** Tasks 4, 5 and 6 are written and verified. Tasks 7 and 8 are not yet
+**Status: in progress.** Tasks 4, 5, 6 and 7 are written and verified. Task 8 is not yet
 authored; do not start the phase expecting to finish it.
 
 **Goal:** Generalise the domain itself — variable-length windows read in a location's zone,
@@ -40,7 +40,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 1 | Task 4 — variable-length windows in the location's zone | [phase-1a-event-window.md](phase-1a-event-window.md), with `phase-1a-edits-001.md` … `-028.md` | `feat(domain): variable-length EventWindow in the location's time zone` |
 | 2 | Task 5 — reference-data aggregates and settings | [phase-1b-reference-data.md](phase-1b-reference-data.md), with `phase-1b-edits-001.md` … `-005.md` | `feat(domain): Admin-managed Location, AppointmentType and AttendeeGroup` |
 | 3 | Task 6 — N-type negotiation | [phase-1c-negotiation.md](phase-1c-negotiation.md), with `phase-1c-edits-001.md` … `-025.md` | `feat(domain): negotiate an EventProposal across any number of types` |
-| 4 | Task 7 — capacity generalised to N rows | not yet authored | `feat(domain): N-row EventCapacity charging only required types` |
+| 4 | Task 7 — capacity generalised to N rows | [phase-1d-capacity.md](phase-1d-capacity.md), with `phase-1d-edits-001.md` … `-009.md` | `feat(domain): N-row EventCapacity charging only required types` |
 | 5 | Task 8 — invites with locations, and the closed status table | not yet authored | `feat(domain): location-restricted invites and closed attendee transitions` |
 
 ## Verification evidence
@@ -51,9 +51,10 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | Task 4 | 258 | 422 | 173 | 232 | 35 | 241 | 75 | 1436 |
 | Task 5 | 289 | 422 | 173 | 232 | 35 | 241 | 75 | 1467 |
 | Task 6 | 306 | 422 | 173 | 232 | 35 | 241 | 75 | 1484 |
+| Task 7 | 320 | 424 | 173 | 232 | 35 | 241 | 75 | 1500 |
 
 Each figure comes from a full `dotnet build EventBooking.sln -warnaserror` followed by every test
-project, with Docker running and no skipped tests. Task 4 was additionally replayed from its own
+project, with Docker running and no skipped tests. Each task was additionally replayed from its own
 documents into an independent checkout.
 
 ## Sequencing notes for Tasks 5–8
@@ -87,10 +88,25 @@ Two further decisions were taken in Task 6:
   (FR-10.7) therefore arrives early in these handlers: a scoped role with no scope is refused
   rather than crashing.
 
-Task 7 still has to settle one thing, which the user has decided but not yet applied:
+Task 7 settled three more:
 
-- **Lock ordering versus the cancellation flow.** The documented order — `Attendee`,
+- **Lock ordering versus the cancellation flow, applied.** The documented order — `Attendee`,
   `EventProposal`, `Event`, `EventCapacity` — wins. Event cancellation reads the affected attendee
   identifiers without locks, then takes each booking's locks in that order and re-validates under
-  lock. The sequence diagram in [design 03b](../design/03b-screens-and-flows.md) is corrected to
-  match as part of Task 7.
+  lock. The sequence diagram in [design 03b](../design/03b-screens-and-flows.md) locked the `Event`
+  first and is corrected, along with the matching row in
+  [design 01](../design/01-domain-model.md)'s cross-aggregate table, which carried the same
+  ordering. Both corrections live in this repository; neither file exists in the executor's
+  checkout.
+- **A refusal and a bad request are different results.** A headcount below the type's
+  active-booking count is returned as an outcome carrying the minimum, because FR-3.6 has to tell
+  the Manager what it would accept. A non-positive total, or one above 1000, is still thrown: it is
+  a malformed request, not a decision the domain is reporting.
+- **Cancellation is judged on the window's start instant, not its date.** Task 4 supplied the
+  instant and this is its first `Event`-level caller, so an event that began earlier today can no
+  longer be cancelled while one later today still can. The zone is the transitional location's
+  until Phase 3 gives each handler the `Event`'s own `Location`.
+
+The charge and release methods this task adds are domain API that the booking and cancellation
+handlers do not call yet: they still work on the rows their repository locked. Task 10's
+ordered-lock helpers are what let them adopt these.

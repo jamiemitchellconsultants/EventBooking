@@ -88,7 +88,7 @@ These commands span aggregates by necessity. Each is still one database transact
 | RecordAcceptance, when it completes the set | `EventProposal` → new `Event` with its `EventCapacity` rows |
 | ConfirmBooking | `Attendee`, `Invite`, new `Booking`, `EventCapacity` |
 | CancelBooking | `Attendee`, `Booking`, `EventCapacity`, and optionally a new `Invite` |
-| CancelEvent | `Event`, and for each affected attendee in id order: `Attendee`, `Booking`, `EventCapacity`, new `Invite` |
+| CancelEvent | For each affected attendee in id order, in lock order: `Attendee`, `Event`, `EventCapacity`, then `Booking` and a new `Invite` |
 | DeleteAttendee | `Attendee`, pending `Invite`s, active `Booking`s (original and recovery), `EventCapacity` |
 | ReplaceAttendeeGroupRequirements | `AttendeeGroup`, each member's `AttendeeRequirement` and pending initial `Invite` |
 
