@@ -1,6 +1,6 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 20 September 2026, after Phase 2 Task 9b, which completes master Task 9. Written for an agent starting with no context:
+Updated 20 September 2026, after Phase 2 Task 10. Written for an agent starting with no context:
 read this file, then the governing inputs it lists, before touching anything.
 
 ## 1. What the assignment is
@@ -34,7 +34,7 @@ names. The master plan says what each task is; this handover says how far it has
 | --- | --- |
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
-| Phase 2 — master Tasks 9–11 | **In progress.** Tasks 9a and 9b written, replayed and committed — master Task 9 is done; 10 and 11 not authored. Prototype-verified, like Phases 0 and 1 |
+| Phase 2 — master Tasks 9–11 | **In progress.** Tasks 9a, 9b and 10 written, replayed and committed; 11 not authored. Prototype-verified, like Phases 0 and 1 |
 | Phases 3–7 — master Tasks 12–33 | Not authored. Hand-authored, no prototype |
 
 Phases 0 and 1 are **merged into `main`** — pull request #15, branch
@@ -54,7 +54,7 @@ Documents written so far:
 | --- | --- | --- |
 | 0 | `phase-0-port-and-strip.md` | `phase-0a-import.md` + `phase-0a-files.md` + 83 source volumes; `phase-0b-vocabulary.md` + 115 edit volumes; `phase-0c-identity.md`; `phase-0d-retire-import.md`; `phase-0e-required-groups.md`; `phase-0f-retired-location-config.md`, each with their own edit volumes |
 | 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
-| 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes |
+| 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -64,8 +64,8 @@ phase overview: task order, evidence table, review checklist, pull-request gate.
 | Path | What it is |
 | --- | --- |
 | `/private/tmp/eventbooking-detail.6yx6zE` | Authoring scratch: generators, snapshots, build and test logs |
-| `/private/tmp/eventbooking-detail.6yx6zE/verify` | **The prototype.** At Task 9b, green |
-| `/private/tmp/eventbooking-plan-replay.MkPSRw` | **Independent replay checkout.** At Task 9b, green. It has a symlink `docs/detailed-implementations` to the plan directory of whichever checkout is being authored in — repoint it if you work in a different worktree |
+| `/private/tmp/eventbooking-detail.6yx6zE/verify` | **The prototype.** At Task 10, green |
+| `/private/tmp/eventbooking-plan-replay.MkPSRw` | **Independent replay checkout.** At Task 10, green. It has a symlink `docs/detailed-implementations` to the plan directory of whichever checkout is being authored in — repoint it if you work in a different worktree |
 | `/Users/jamesmitchell/.codex/handoffs/eventbooking-detailed-plans-2026-09-20/` | Archives of the first authoring session, plus the original request |
 
 If the scratch directories are gone, extract `authoring-scratch.tar.gz` and
@@ -74,8 +74,8 @@ hard-coded paths in the generators. Use the physical `/private/tmp` paths, never
 two aliases produced duplicate MSBuild graph errors.
 
 Snapshots are JSON maps of repository-relative path to file contents: `task-1.json` …
-`task-8.json`, then `task-9a.json` and `task-9b.json`. A generator diffs two snapshots to produce
-one task's edit volumes.
+`task-8.json`, then `task-9a.json`, `task-9b.json` and `task-10.json`. A generator diffs two
+snapshots to produce one task's edit volumes.
 
 ## 5. Method, as the user settled it
 
@@ -138,7 +138,7 @@ Generators, in `/private/tmp/eventbooking-detail.6yx6zE`:
 ## 7. Verification evidence
 
 Every figure is a full `dotnet build EventBooking.sln -warnaserror` followed by every test project,
-with Docker running and no skipped tests. Tasks 1–9b were each additionally replayed from their own
+with Docker running and no skipped tests. Tasks 1–10 were each additionally replayed from their own
 documents into the independent checkout.
 
 | Checkpoint | Domain | Application | Infrastructure | API | MCP | Web | Seed | Total |
@@ -157,6 +157,7 @@ documents into the independent checkout.
 | Task 8 — end of Phase 1 | 358 | 424 | 175 | 232 | 35 | 241 | 75 | 1540 |
 | Task 9a | 360 | 424 | 174 | 232 | 35 | 241 | 75 | 1541 |
 | Task 9b — end of master Task 9 | 360 | 424 | 176 | 232 | 35 | 241 | 75 | 1543 |
+| Task 10 | 360 | 424 | 190 | 232 | 35 | 241 | 75 | 1557 |
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
@@ -263,6 +264,23 @@ so a later task can see what it inherits without re-reading the whole list.
 - **The five inherited-migration guard tests are gone** with the chain they pinned. What they
   protected is asserted directly by the fifteen schema tests, against a real PostgreSQL 16.
 
+**Task 10 — ordered row locks**
+
+- **The order lives in one class.** Every row lock goes through `Persistence/Locking/`, including
+  the repository methods earlier handlers already call, so those handlers gained the guard without
+  being touched — and none of them trips it.
+- **The guard is on in Debug, off in a released build.** The tracker records the level either way.
+  A lock order no test has reached should not become a 500 for whoever hits it first.
+- **Only the four documented levels are tracked.** `Invite` and `Booking` locks sit between the
+  attendee and the event in the real handlers, but the design names four and this task builds four.
+  **Extending the ladder is Task 15's**, when the booking handler adopts the helpers — and that is
+  also where Task 7's charge and release methods are finally called.
+- **The obvious two-event deadlock test does not work.** With the event locks in place, two
+  attempts naming the same events in opposite orders serialise on the event rows before reaching a
+  capacity row, so that test passes whether or not the rows are ordered. The scenario that pins the
+  ordering is the same shuffle with the event locks removed; it was verified by deleting the
+  domain's capacity ordering function and watching it deadlock.
+
 ### Transitional constructs, and when each retires
 
 The prototype deliberately carries scaffolding. Each is named in the code and must go at its task:
@@ -342,18 +360,17 @@ fourteen is in this file's history at commit `2b192ca`.
 
 ## 11. Next steps
 
-1. **Phase 2 (Tasks 10–11)** stays prototype-verified. Master Task 9 is done: 9a landed design
-   06's `tokenVersion` in place of the inherited token hash, and 9b replaced the 34-migration
-   inherited chain with one initial schema, its constraints and its database roles. What remains:
-   **Task 10**, the unit-of-work ordered-lock helpers and the concurrency harness, whose booking
-   and cancellation handlers finally adopt Task 7's charge and release methods; then **Task 11**,
-   the relational-division eligibility query, which is also where `start_utc` is computed, written
-   in the same transaction as the insert, and the column becomes required.
+1. **Phase 2 (Task 11)** stays prototype-verified. Tasks 9a, 9b and 10 are done: the deterministic
+   attendee link, the fresh schema with its constraints and roles, and the ordered row-lock helpers
+   with their concurrency harness. What remains is **Task 11**, the relational-division eligibility
+   query behind an Application port, with its tagged performance test — and it is also where
+   `start_utc` is computed, written in the same transaction as the insert, and the column becomes
+   required. Task 11 closes the phase and opens its pull request.
 2. **Phases 3–7 (Tasks 12–33)** are hand-authored.
 3. Phase 2 opens its own pull request when its tasks are written. Give it the three narrative
    headings and the `narrative-required` label — supplying a body replaces the repository template
    wholesale, so carry both those sections and the `AI-Fingerprint:` footer yourself — and
    recompute the fingerprint after every push to the branch.
 
-Do not claim the assignment is complete while Tasks 10–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 11–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.

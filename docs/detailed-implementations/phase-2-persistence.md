@@ -5,8 +5,8 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: in progress.** Tasks 9a and 9b are written, verified and replayed — master Task 9 is
-complete. Tasks 10 and 11 are not yet authored; do not start the phase expecting to finish it.
+**Status: in progress.** Tasks 9a, 9b and 10 are written, verified and replayed. Task 11 is not yet
+authored; do not start the phase expecting to finish it.
 
 **Goal:** Give the generalised domain a schema of its own — one fresh initial migration with the
 constraints the design names, database roles that keep the audit trail append-only, ordered row-lock
@@ -41,7 +41,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | --- | --- | --- | --- |
 | 1 | Task 9a — deterministic attendee links and the version counter | [phase-2a-attendee-tokens.md](phase-2a-attendee-tokens.md), with `phase-2a-edits-001.md` … `-032.md` | `feat(security): deterministic attendee tokens with a stored version counter` |
 | 2 | Task 9b — the fresh schema and database roles | [phase-2b-fresh-schema.md](phase-2b-fresh-schema.md), with `phase-2b-edits-001.md` … `-026.md` | `feat(persistence): fresh initial schema with capacity and role constraints` |
-| 3 | Task 10 — unit of work, ordered lock helpers, concurrency harness | not yet authored | `feat(persistence): ordered row-lock helpers and concurrency harness` |
+| 3 | Task 10 — unit of work, ordered lock helpers, concurrency harness | [phase-2c-ordered-locks.md](phase-2c-ordered-locks.md), with `phase-2c-edits-001.md` … `-002.md` | `feat(persistence): ordered row-lock helpers and concurrency harness` |
 | 4 | Task 11 — invite eligibility query | not yet authored | `feat(persistence): relational-division invite eligibility query` |
 
 Master Task 9 is split into two documents. The user settled that design 06's version counter moves
@@ -55,6 +55,7 @@ away from the squash keeps each document reviewable and lets each one be replaye
 | End of Phase 1 (Task 8) | 358 | 424 | 175 | 232 | 35 | 241 | 75 | 1540 |
 | Task 9a | 360 | 424 | 174 | 232 | 35 | 241 | 75 | 1541 |
 | Task 9b — end of master Task 9 | 360 | 424 | 176 | 232 | 35 | 241 | 75 | 1543 |
+| Task 10 | 360 | 424 | 190 | 232 | 35 | 241 | 75 | 1557 |
 
 Each figure comes from a full `dotnet build EventBooking.sln -warnaserror` followed by every test
 project, with Docker running and no skipped tests. Each task was additionally replayed from its own
@@ -104,6 +105,27 @@ Task 9b settled four things that Tasks 10 and 11 inherit:
 - **The capacity check gained its third predicate.** The inherited constraint allowed a total of
   zero. The master plan's `ck_event_capacity_bounds` does not, and the schema tests prove all three
   directions.
+
+Task 10 settled three things Task 11 and Phase 3 inherit:
+
+- **The order is a property of one class, not of each handler.** Every row lock goes through the
+  helpers, including the repository methods handlers written in earlier phases already call, so
+  those handlers gained the guard without being touched — and none of them trips it, which is the
+  first evidence that the documented order is the one the code was already taking.
+- **The guard is on in Debug and off in a released build.** The tracker records the level either
+  way; what a released build does not do is turn a lock order no test has ever reached into a 500
+  for the attendee who happened to hit it.
+- **Only the four documented levels are tracked.** `Invite` and `Booking` locks sit between the
+  attendee and the event in the real handlers, but the design names four levels and this task
+  builds four helpers. Extending the ladder is Task 15's business, when the real booking handler
+  adopts the helpers.
+
+One thing about the harness is worth stating, because the obvious version of the test does not
+work: with the event locks in place, two attempts naming the same two events in opposite orders
+serialise on the event rows before they ever reach a capacity row, so that test passes whether or
+not the capacity rows are ordered. The scenario that actually pins the ordering is the same shuffle
+with the event locks removed — remove the domain's capacity ordering function and it deadlocks
+within seconds, which is how it was verified.
 
 ## Pull request
 
