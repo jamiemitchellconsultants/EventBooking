@@ -5,7 +5,7 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: Task 12 written; Tasks 13–20 not yet authored.** Phase 3 is hand-authored: complete code
+**Status: Tasks 12 and 13 written; Tasks 14–20 not yet authored.** Phase 3 is hand-authored: complete code
 and complete tests are written straight into each document, with no prototype, because the
 executing model compiles and test-drives them itself.
 
@@ -43,7 +43,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | Order | Task | Document | Commit message |
 | --- | --- | --- | --- |
 | 1 | Task 12 — reference-data and settings handlers | [phase-3a-reference-data-settings.md](phase-3a-reference-data-settings.md) | `feat(app): reference-data and settings use cases` |
-| 2 | Task 13 — negotiation and capacity-adjustment handlers | not yet authored | `feat(app): N-way negotiation with serialised confirmation` |
+| 2 | Task 13 — negotiation and capacity-adjustment handlers | [phase-3b-negotiation.md](phase-3b-negotiation.md) | `feat(app): N-way negotiation with serialised confirmation` |
 | 3 | Task 14 — invite engine | not yet authored | `feat(app): location-restricted invite engine` |
 | 4 | Task 15 — booking, cancellation and event cancellation | not yet authored | `feat(app): booking and cancellation over N capacity rows` |
 | 5 | Task 16 — recovery and the appointment workspace | not yet authored | `feat(app): recovery and workspace across locations` |

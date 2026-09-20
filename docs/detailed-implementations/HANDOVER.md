@@ -35,7 +35,7 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
-| Phases 3–7 — master Tasks 12–33 | Task 12 authored (hand-authored, unexecuted). Tasks 13–33 not authored |
+| Phases 3–7 — master Tasks 12–33 | Tasks 12–13 authored (hand-authored, unexecuted). Tasks 14–33 not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -423,6 +423,9 @@ fourteen is in this file's history at commit `2b192ca`.
    counts are expectations for the executor, not observed figures. Contradictions #5
    (reference-data only; attendee work stays with Task 20 splits) and #9 (settings snapshot
    fields added to the ontology's invite) were settled with the user before writing.
+   Task 13 (negotiation and capacity handlers) is written as `phase-3b-negotiation.md`; it
+   retires the transitional-location constant and the fixed appointment-type identifiers in the
+   negotiation handlers.
 3. Several transitional constructs now come due in Phase 3 and in Tasks 12–15. Read section 8's
    table before starting any of them; Task 15 in particular inherits three separate debts — the
    booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and `Booking`
