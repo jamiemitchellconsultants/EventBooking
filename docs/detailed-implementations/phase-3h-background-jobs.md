@@ -55,6 +55,10 @@ start — proving the start-instant judgement, not a date comparison.
 - Create: src/EventBooking.Infrastructure/Jobs/AdvisoryLock.cs
 - Create: src/EventBooking.Application/Jobs/SweepSteps.cs (ISweepSteps plus SweepRunner:
   one RunOnceAsync pass over the three item sets, aggregating metrics)
+- Modify: src/EventBooking.Application/Abstractions/IBookingRepository.cs
+  (ListConcludingCandidatesAsync: active non-original bookings)
+- Modify: src/EventBooking.Infrastructure/Persistence/Repositories/Repositories.cs (same method)
+- Modify: tests/EventBooking.Application.Tests/Fakes/InMemoryRepositories.cs (same method)
 - Delete: the ported batch expiry handler if it still exists after Task 14 (it was deleted
   there; if any reference remains, remove it here — the sweep calls the per-item handler)
 - Test: tests/EventBooking.Infrastructure.Tests/Jobs/SweepServiceTests.cs
@@ -196,16 +200,225 @@ lock); the sweep holds its scope for the whole run.
   dotnet test tests/EventBooking.Infrastructure.Tests --filter "FullyQualifiedName~Jobs"
   ```
 
-- [ ] **Step 3: Implement.** Rewrite InviteSweepService around PeriodicTimer with the
-  interval from `IConfiguration["Jobs:SweepInterval"]` defaulting to 15 minutes; each tick
-  opens a scope, tries the advisory lock (skip on failure, counting a skipped run
-  distinctly from a zero-item run), lists the three item sets (expired pending invites via
-  ListPendingExpiredAsync, open proposals, active recovery bookings with terminal
-  appointments — the last through the bookings and appointments ports), and runs each item
-  through ISweepSteps in its own scope and transaction, catching per item into the
-  failure count with a log line. Emit runs, failures and items-processed metrics through
-  the injected logger scopes (counts on the returned metrics record, which the tests
-  assert). Wire the interval from configuration with the 15-minute default.
+- [ ] **Step 3: Implement.** Add the production code below in full. No placeholders:
+  every file below is complete.
+
+  ```csharp
+  // src/EventBooking.Application/Jobs/SweepSteps.cs (complete: steps plus the runner)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Common;
+  using EventBooking.Application.Invites;
+  using EventBooking.Application.Recovery;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Bookings;
+  using EventBooking.Domain.Common;
+  using EventBooking.Domain.Events;
+  using EventBooking.Domain.Time;
+  using Microsoft.Extensions.Logging;
+
+  namespace EventBooking.Application.Jobs;
+
+  public sealed class SweepSteps(
+      IInviteRepository invites,
+      IAttendeeRepository attendees,
+      IEventProposalRepository proposals,
+      ILocationRepository locations,
+      IBookingRepository bookings,
+      IBookingAppointmentRepository appointments,
+      IEventEligibilityQuery eligibility,
+      ISystemSettingsRepository settings,
+      IEmailDeliveryRepository emails,
+      IUnitOfWork unitOfWork,
+      IAuditLogger audit,
+      IClock clock,
+      IEventWindowZones zones,
+      IInviteIssuer issuer,
+      ILogger<SweepSteps> logger) : ISweepSteps
+  {
+      public async Task ExpireOneAsync(Guid inviteId, CancellationToken ct)
+      {
+          var handler = new ExpireInviteHandler(invites, attendees, eligibility, settings,
+              emails, unitOfWork, audit, clock, issuer);
+          var result = await handler.HandleAsync(new ExpireInviteCommand(inviteId), ct);
+          if (result.IsFailure)
+              throw new DomainException(result.Error.Message);
+      }
+
+      public async Task WithdrawOneAsync(Guid proposalId, CancellationToken ct)
+      {
+          await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+          var proposal = await proposals.LockForUpdateAsync(proposalId, ct);
+          if (proposal is null) return;
+          var location = await locations.GetAsync(proposal.LocationId, ct);
+          if (location is null) return;
+          if (proposal.TryWithdrawStarted(zones, location.TimeZoneId, clock.UtcNow))
+          {
+              audit.Record(AuditEntityTypes.EventProposal, proposal.Id,
+                  AuditAction.ProposalWithdrawn, ActorType.System, null, "window started");
+              await unitOfWork.SaveChangesAsync(ct);
+          }
+
+          await transaction.CommitAsync(ct);
+      }
+
+      public async Task ConcludeOneAsync(Guid bookingId, CancellationToken ct)
+      {
+          var handler = new ConcludeRecoveryHandler(bookings, appointments, unitOfWork, audit);
+          var result = await handler.HandleAsync(bookingId, ct);
+          if (result.IsFailure)
+              throw new DomainException(result.Error.Message);
+      }
+  }
+
+  public sealed class SweepRunner(ISweepSteps steps, ILogger<SweepRunner> logger)
+  {
+      public async Task<(bool Started, SweepMetrics Metrics)> RunOnceAsync(
+          Func<CancellationToken, Task<bool>> tryAcquire,
+          Func<CancellationToken, Task<IReadOnlyList<Guid>>> expiredInvites,
+          Func<CancellationToken, Task<IReadOnlyList<Guid>>> openProposals,
+          Func<CancellationToken, Task<IReadOnlyList<Guid>>> concludingBookings,
+          CancellationToken ct)
+      {
+          if (!await tryAcquire(ct))
+              return (false, new SweepMetrics(0, 0, 0, 0));
+
+          var metrics = new SweepMetrics(0, 0, 0, 0);
+          metrics = await RunItemsAsync(expiredInvites,
+              (id, token) => steps.ExpireOneAsync(id, token), ct, metrics,
+              (m, n) => m with { ExpiredInvites = n });
+          metrics = await RunItemsAsync(openProposals,
+              (id, token) => steps.WithdrawOneAsync(id, token), ct, metrics,
+              (m, n) => m with { WithdrawnProposals = n });
+          metrics = await RunItemsAsync(concludingBookings,
+              (id, token) => steps.ConcludeOneAsync(id, token), ct, metrics,
+              (m, n) => m with { ConcludedRecoveries = n });
+          return (true, metrics);
+      }
+
+      private async Task<SweepMetrics> RunItemsAsync(
+          Func<CancellationToken, Task<IReadOnlyList<Guid>>> list,
+          Func<Guid, CancellationToken, Task> run,
+          CancellationToken ct, SweepMetrics metrics,
+          Func<SweepMetrics, int, SweepMetrics> set)
+      {
+          var done = 0;
+          foreach (var id in await list(ct))
+          {
+              try
+              {
+                  await run(id, ct);
+                  done++;
+              }
+              catch (Exception ex)
+              {
+                  logger.LogError(ex, "Sweep item failed.");
+                  metrics = metrics with { Failures = metrics.Failures + 1 };
+              }
+          }
+
+          return set(metrics, done);
+      }
+  }
+  ```
+
+  Item failures surface as exceptions from the steps (a handled refusal stays a result
+  inside the handler; a throw is the unexpected case the run counts and logs).
+  SweepMetrics is a record: the `with` expressions accumulate per step. The unused
+  logger on SweepSteps is intentional — per-item failures log in the runner, step-level
+  context logs here as the steps grow; if the unused-parameter warning bites, drop the
+  parameter (it is not load-bearing).
+
+  ```csharp
+  // src/EventBooking.Api/InviteSweepService.cs (complete rewrite)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Jobs;
+  using EventBooking.Domain.Bookings;
+  using EventBooking.Infrastructure.Jobs;
+  using EventBooking.Infrastructure.Persistence;
+  using Microsoft.Extensions.Configuration;
+  using Microsoft.Extensions.DependencyInjection;
+  using Microsoft.Extensions.Hosting;
+  using Microsoft.Extensions.Logging;
+
+  namespace EventBooking.Api;
+
+  public sealed class InviteSweepService(
+      IServiceScopeFactory scopes,
+      IConfiguration configuration,
+      ILogger<InviteSweepService> logger) : BackgroundService
+  {
+      private static readonly TimeSpan DefaultInterval = TimeSpan.FromMinutes(15);
+
+      protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+      {
+          var interval = configuration.GetValue<TimeSpan?>("Jobs:SweepInterval") ?? DefaultInterval;
+          using var timer = new PeriodicTimer(interval);
+          do
+          {
+              try
+              {
+                  using var scope = scopes.CreateScope();
+                  var runner = scope.ServiceProvider.GetRequiredService<SweepRunner>();
+                  var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+                  var invites = scope.ServiceProvider.GetRequiredService<IInviteRepository>();
+                  var proposals = scope.ServiceProvider.GetRequiredService<IEventProposalRepository>();
+                  var bookings = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+                  var appointments =
+                      scope.ServiceProvider.GetRequiredService<IBookingAppointmentRepository>();
+                  var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+
+                  var (started, metrics) = await runner.RunOnceAsync(
+                      token => AdvisoryLock.TryAcquireSweepLockAsync(context, token),
+                      async token => (await invites.ListPendingExpiredAsync(clock.UtcNow, token))
+                          .Select(i => i.Id).ToList(),
+                      async token => (await proposals.ListOpenAsync(token))
+                          .Select(p => p.Id).ToList(),
+                      token => ConcludingAsync(bookings, appointments, token),
+                      stoppingToken);
+
+                  if (started)
+                      logger.LogInformation(
+                          "Sweep: {Expired} expired, {Withdrawn} withdrawn, {Concluded} concluded, {Failures} failed.",
+                          metrics.ExpiredInvites, metrics.WithdrawnProposals,
+                          metrics.ConcludedRecoveries, metrics.Failures);
+              }
+              catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+              {
+                  break;
+              }
+              catch (Exception ex)
+              {
+                  logger.LogError(ex, "The invite sweep failed.");
+              }
+          }
+          while (await timer.WaitForNextTickAsync(stoppingToken));
+      }
+
+      // Recovery bookings that are still active with every appointment terminal. Read
+      // without locks here; each item re-validates under its own lock in its transaction.
+      private static async Task<IReadOnlyList<Guid>> ConcludingAsync(
+          IBookingRepository bookings,
+          IBookingAppointmentRepository appointments,
+          CancellationToken ct)
+      {
+          var ids = new List<Guid>();
+          foreach (var booking in await bookings.ListConcludingCandidatesAsync(ct))
+          {
+              var rows = await appointments.ListForBookingAsync(booking.Id, ct);
+              if (rows.Count > 0 && rows.All(a =>
+                      a.Status is BookingAppointmentStatus.Completed or BookingAppointmentStatus.NoShow))
+                  ids.Add(booking.Id);
+          }
+
+          return ids;
+      }
+  }
+  ```
+
+  ListConcludingCandidatesAsync is a new booking port method returning active
+  non-original bookings — add it to IBookingRepository plus the EF repository and the
+  in-memory fake (Files entries below). `BookingAppointmentStatus` needs its domain
+  namespace import (on the file above).
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suite plus the full solution.
 
@@ -222,7 +435,7 @@ lock); the sweep holds its scope for the whole run.
   ```bash
   test -z "$(git status --porcelain --ignored=no | grep -v '^??')"
   dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
-  git add src/EventBooking.Api/InviteSweepService.cs src/EventBooking.Infrastructure/Jobs/AdvisoryLock.cs src/EventBooking.Application/Jobs/SweepSteps.cs tests/EventBooking.Infrastructure.Tests/Jobs/SweepServiceTests.cs
+  git add src/EventBooking.Api/InviteSweepService.cs src/EventBooking.Infrastructure/Jobs/AdvisoryLock.cs src/EventBooking.Application/Jobs/SweepSteps.cs src/EventBooking.Application/Abstractions/IBookingRepository.cs src/EventBooking.Infrastructure/Persistence/Repositories/Repositories.cs tests/EventBooking.Application.Tests/Fakes/InMemoryRepositories.cs tests/EventBooking.Infrastructure.Tests/Jobs/SweepServiceTests.cs
   git diff --cached --name-only
   git diff --cached
   test -n "$EXECUTOR_COAUTHOR"
