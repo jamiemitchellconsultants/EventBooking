@@ -36,7 +36,7 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
-| Phase 4 — master Tasks 21–23 | **In progress.** Tasks 21, 22a and 22b written; master Task 22 split into 22a/22b (see §8). Hand-authored, like Phase 3, and never executed |
+| Phase 4 — master Tasks 21–23 | **Written, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). Hand-authored, like Phase 3, so no build or test has ever run against them |
 | Phases 5–7 — master Tasks 24–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
@@ -68,7 +68,7 @@ Documents written so far:
 | 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
 | 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes; `phase-2d-invite-eligibility.md` + 16 edit volumes |
 | 3 | `phase-3-application.md` | `phase-3a-reference-data-settings.md`, `phase-3b-negotiation.md`, `phase-3c-invite-engine.md`, `phase-3d-booking-cancellation.md`, `phase-3e-recovery-workspace.md`, `phase-3f-staff-authorization.md`, `phase-3g-notification-outbox.md`, `phase-3h-background-jobs.md`, `phase-3i-dashboards-attendees.md`, `phase-3j-audit-search.md` (hand-authored, unexecuted; Task 20 split into 20a/20b) |
-| 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b). Still to write: `phase-4d-mcp-parity.md` (23, phase gate) |
+| 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b), `phase-4d-mcp-parity.md` (23, phase gate) (hand-authored, unexecuted) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -647,7 +647,7 @@ fourteen is in this file's history at commit `2b192ca`.
    no code. The EF migrations in Tasks 12, 18 and 20a are generate-and-review by the Phase 2
    convention rather than embedded, which is correct and not a gap.
 
-3. **Phase 4 (Tasks 21–23) is in progress, and stays hand-authored.** Follow section 6a's loop, and
+3. **Phase 4 (Tasks 21–23) is written, and stayed hand-authored.** Follow section 6a's loop, and
    run both of its sweeps per task rather than per phase. The phase overview is
    `phase-4-api-and-mcp.md`.
 
@@ -665,8 +665,13 @@ fourteen is in this file's history at commit `2b192ca`.
      index, `_links` and Task 23's tool list all read from. Its catalogue test parses design
      05's own tables: forty-five staff operations with a tool, ten anonymous or token routes
      without one, and `GET /metrics` as the single route design 05's tables do not name.
-   - **One document remains**: `phase-4d-mcp-parity.md` (Task 23), which carries the phase's
-     pull-request gate.
+   - **Task 23 is written** (`phase-4d-mcp-parity.md`), and carries the phase's pull-request
+     gate. Forty-five tools over the same handlers, with names, descriptions and hints read
+     from the shared catalogue so the two surfaces cannot describe themselves differently.
+
+   Phase 4 is therefore complete as authored and has never been executed. Its pull request has
+   not been opened: the phase branch is `claude/phase-4-api-and-mcp`, and Task 23's Step 6
+   carries the gate, the narrative requirements and the fingerprint recipe.
 
 4. **Decide the method for Phase 5 before writing Task 24, and put the decision to the user.** Phase
    4 is thin wiring over handlers that already exist, which is why it stays hand-authored. Phase 5

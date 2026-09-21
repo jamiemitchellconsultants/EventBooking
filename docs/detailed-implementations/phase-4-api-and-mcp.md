@@ -5,7 +5,7 @@
 > Use superpowers:executing-plans. Execute one task document at a time, in the order below. Every
 > task ends with its own commit and push on the same phase branch.
 
-**Status: Tasks 21, 22a and 22b written.** Phase 4 is hand-authored, like Phase 3: complete code and tests are
+**Status: complete.** All four documents are written — Tasks 21, 22a, 22b and 23. Phase 4 is hand-authored, like Phase 3: complete code and tests are
 written straight into each document, with no prototype, because the executing model compiles and
 test-drives them itself. That method was settled deliberately for this phase — Tasks 21 to 23 are
 endpoint and tool wiring over handlers Phase 3 already specifies, so the code is thin and
@@ -52,7 +52,7 @@ export EXECUTOR_COAUTHOR="Your Harness <harness@example.invalid>"
 | 1 | Task 21 — API conventions | [phase-4a-api-conventions.md](phase-4a-api-conventions.md) | `feat(api): pagination, error catalogue, rate limits and config validation` |
 | 2 | Task 22a — the read models the catalogue needs | [phase-4b-event-read-models.md](phase-4b-event-read-models.md) | `feat(api): full EventBooking endpoint catalogue` |
 | 3 | Task 22b — the endpoint catalogue | [phase-4c-endpoint-catalogue.md](phase-4c-endpoint-catalogue.md) | `feat(api): full EventBooking endpoint catalogue` |
-| 4 | Task 23 — MCP parity, phase gate | phase-4d-mcp-parity.md | `feat(mcp): tool parity with the REST catalogue` |
+| 4 | Task 23 — MCP parity, phase gate | [phase-4d-mcp-parity.md](phase-4d-mcp-parity.md) | `feat(mcp): tool parity with the REST catalogue` |
 
 Master Task 22 is split into two documents, the way master Task 20 was split into 20a and 20b.
 The reason is in the sequencing notes below. Both carry the master plan's single commit message,
@@ -88,8 +88,8 @@ neither and filters by whichever the caller holds — a Manager sees their own t
 Admin or a Coordinator sees every type — with the filter enforced in the query rather than only
 in the handler, so bypassing the capability check still filters.
 
-**Task 21 settles six contradictions**, listed in its own document and recorded in the handover's
-section 8. The one every later task inherits is contradiction #3: a missing or malformed
+**Phase 4 settles eight contradictions** — six in Task 21 and two more in Task 22a — each listed
+in its own document and recorded in the handover's section 8. The one every later task inherits is contradiction #3: a missing or malformed
 `staff_id` is 403 everywhere except `GET /api/me`, and `unauthenticated` stays 401 for a missing
 or invalid bearer token. The other five close the error catalogue, which is what Tasks 22b and 23
 render every refusal through.
