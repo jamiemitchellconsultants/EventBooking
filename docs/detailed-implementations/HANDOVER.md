@@ -103,6 +103,11 @@ diffs two snapshots to produce one task's edit volumes.
   requirement it cited, a lock order that trips the guard Task 15 installs, and nine blocks that
   described code instead of being it. Budget a review pass that reads the code as code, and run the
   mechanical sweeps in section 9 before asking anyone to read prose.
+- **Phase 4 stays hand-authored; Phase 5 decides for itself.** Tasks 21–23 are endpoint and tool
+  wiring over handlers Phase 3 already specifies, so the code is thin and repetitive and the method
+  fits. Phase 5 is the web work, where the code is dense and its failure modes are visual, and the
+  method is an open question rather than a settled one — section 11 carries the checkpoint. Do not
+  let the answer be decided by momentum at the point someone starts writing Task 24.
 - **Every contradiction between the spec, the design package and the master plan goes to the user**
   as it comes up (section 8). Do not settle one quietly.
 - Test-driven throughout: write the failing test, watch it fail for the right reason, implement,
@@ -153,6 +158,73 @@ Generators, in `/private/tmp/eventbooking-detail.6yx6zE`:
   a model snapshot dirtied by a discarded migration gets put back.
 - Transformation scripts (`retire-location-config.mjs`, `widen-event-window.mjs` and so on) are
   one-shot records of what each task did. **Never re-run one against the current prototype.**
+
+## 6a. The loop for one hand-authored task
+
+Phases 3 to 7 have no prototype, so nothing catches a mistake before the executor does. These steps
+replace the compiler, and each one exists because its absence cost something in Phase 3.
+
+1. **Read the requirement the task cites, before writing its tests.** Not the master plan's summary
+   of it — the FR itself, and the screen in design 03b if it has one. Task 20a declared a dashboard
+   of three tabs that do not exist in FR-13.1, and nothing caught it: its Application tests drove a
+   memory fake, and its Infrastructure test was a prose description. Tests written against an
+   invented shape agree with it perfectly.
+2. **Write the code, not a description of the code.** A fenced block whose contents are all comment
+   lines is a description, however the marker line labels it. Nine blocks in Phase 3 said
+   `(complete)` and carried none.
+3. **Sweep mechanically, while authoring.** Both of these take seconds and both found real defects
+   after the fact, which is the expensive time to find them:
+
+````bash
+# Every Create:/Modify: entry must have its code somewhere in the document.
+# Hand-authored phases only: in Phases 0-2 the code lives in separate edit volumes,
+# so a Files entry there legitimately has no code beside it and every one would
+# report as a gap.
+python3 - <<'GAPS'
+import re, glob, os
+for f in sorted(glob.glob("docs/detailed-implementations/phase-[3-7]*.md")):
+    txt = open(f).read()
+    code = "\n".join(re.findall(r'```csharp\n(.*?)```', txt, re.S))
+    # EF-generated migrations and the model snapshot are generated and reviewed, not
+    # embedded (the Phase 2 convention), so their absence is correct.
+    generated = ('<generated-timestamp>', 'EventBookingDbContextModelSnapshot')
+    missing = [stem for stem in
+               (m.group(2).rsplit('/', 1)[-1][:-3]
+                for m in re.finditer(r'^- (Create|Modify): (\S+\.cs)', txt, re.M))
+               if stem not in code and not stem.startswith(generated)]
+    if missing:
+        print(f"{os.path.basename(f)}: {', '.join(missing)}")
+GAPS
+
+# No async method may lack an await. CS1998 is a warning, and the solution builds
+# with -warnaserror, so one instance stops the executor with an error that has
+# nothing to do with their task.
+python3 - <<'ASYNC'
+import re, glob, os
+meth = re.compile(
+    r'^(\s*)(?:public|private|internal|protected)(?:\s+(?:sealed|static|override|virtual|new))*'
+    r'\s+async\s+(?:Task|ValueTask)[^\n=]*\n(.*?)(?=^\1(?:public|private|internal|protected|\})|\Z)',
+    re.S | re.M)
+for f in sorted(glob.glob("docs/detailed-implementations/phase-*.md")):
+    for b in re.findall(r'```csharp\n(.*?)```', open(f).read(), re.S):
+        for m in meth.finditer(b):
+            if 'await' not in m.group(2):
+                print(f"{os.path.basename(f)}: {re.search(r'(\w+)\s*\(', m.group(0)).group(1)}")
+ASYNC
+````
+
+A clean sweep only means something if the detector engaged: print how many methods it matched, not
+just how many failed. Run over Phases 0–2 the async sweep matches 7,978 methods and clears every
+one, which is what a compiler-verified phase should look like and confirms the sweep works.
+
+4. **Resolve anything the document would tell its executor to verify.** They have no repository and
+   cannot verify anything. Task 20b's description said to check a column name against the audit
+   configuration; the name it assumed was wrong, and the executor had no way to discover that. Read
+   the prototype at `/private/tmp/eventbooking-detail.6yx6zE/verify` and write the answer in.
+5. **State the counts as expectations.** No build has run, so no figure is observed. Say so in the
+   document's own Step 4, and add no row to section 7's table.
+6. Then the usual: update the phase overview, this handover and `README.md`, lint the plan
+   directory explicitly, stage explicit paths, commit and push.
 
 ## 7. Verification evidence
 
@@ -515,11 +587,21 @@ fourteen is in this file's history at commit `2b192ca`.
    20a are generate-and-review by the Phase 2 convention rather than embedded, which is correct and
    not a gap.
 
-3. **Phases 4–7 (Tasks 21–33) are not authored.** They are hand-authored too, so read section 5 on
-   what that costs and section 9's mechanical sweeps before writing, not after. Task 21 is the API
-   surface, and it inherits contradiction #3's settlement: the endpoint layer still has to implement
-   the 403 rule section 8 records.
-4. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
+3. **Phase 4 (Tasks 21–23) is next, and stays hand-authored.** Follow section 6a's loop. Task 21 is
+   the API surface and inherits contradiction #3's settlement: the endpoint layer still has to
+   implement the 403 rule section 8 records.
+4. **Decide the method for Phase 5 before writing Task 24, and put the decision to the user.** Phase
+   4 is thin wiring over handlers that already exist, which is why it stays hand-authored. Phase 5
+   is the web work: dense components whose failure modes are visual, where neither of section 6a's
+   sweeps helps much and a reviewer reading markup cannot tell a working page from a plausible one.
+   The options are to carry on hand-authoring and budget a heavier review, or to bring the prototype
+   back for Phase 5 and generate its documents from before/after snapshots the way Phases 0–2 were
+   built. The prototype still exists and is green at Task 11, so the second is available rather than
+   theoretical — but it would first have to be brought forward through Tasks 12–23. Weigh that cost
+   against what a phase of unverified bUnit components is worth. This is a user decision, not an
+   authoring one.
+5. **Phases 6–7 (Tasks 28–33)** inherit whatever Phase 5 settles.
+6. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
    section 8's table before starting any of them; Task 15 in particular inherits three separate
    debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and
    `Booking` levels, and Task 7's charge and release methods finally being called.
