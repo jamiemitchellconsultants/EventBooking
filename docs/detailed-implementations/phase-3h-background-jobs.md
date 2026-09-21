@@ -415,10 +415,46 @@ lock); the sweep holds its scope for the whole run.
   }
   ```
 
-  ListConcludingCandidatesAsync is a new booking port method returning active
-  non-original bookings — add it to IBookingRepository plus the EF repository and the
-  in-memory fake (Files entries below). `BookingAppointmentStatus` needs its domain
-  namespace import (on the file above).
+  `BookingAppointmentStatus` needs its domain namespace import (on the file above).
+  ListConcludingCandidatesAsync is a new booking port method; all three files are
+  complete below.
+
+  ```csharp
+  // src/EventBooking.Application/Abstractions/IBookingRepository.cs: add
+  /// <summary>
+  /// Active recovery bookings — every non-original row still open. The sweep then asks the
+  /// appointment port which of them have nothing left outstanding; the terminal-appointment
+  /// test is not expressible here without joining a second aggregate.
+  /// </summary>
+  /// <param name="cancellationToken">The cancellation token.</param>
+  Task<IReadOnlyList<Booking>> ListConcludingCandidatesAsync(CancellationToken cancellationToken);
+  ```
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Repositories/Repositories.cs — on
+  // BookingRepository. Unlocked by design: the sweep re-validates each item under its own
+  // lock in its own transaction, so a row that concludes between the read and the write is
+  // refused there rather than double-concluded.
+  /// <inheritdoc/>
+  public async Task<IReadOnlyList<Booking>> ListConcludingCandidatesAsync(
+      CancellationToken cancellationToken) =>
+      await context.Bookings
+          .AsNoTracking()
+          .Where(b => b.Status == BookingStatus.Active && b.RecoveryOfBookingId != null)
+          .OrderBy(b => b.Id)
+          .ToListAsync(cancellationToken);
+  ```
+
+  ```csharp
+  // tests/EventBooking.Application.Tests/Fakes/InMemoryRepositories.cs — on
+  // InMemoryBookingRepository, ordered the same way so a sweep test sees a stable sequence.
+  public Task<IReadOnlyList<Booking>> ListConcludingCandidatesAsync(
+      CancellationToken cancellationToken) =>
+      Task.FromResult<IReadOnlyList<Booking>>(
+          [.. Items
+              .Where(b => b.Status == BookingStatus.Active && b.RecoveryOfBookingId != null)
+              .OrderBy(b => b.Id)]);
+  ```
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suite plus the full solution.
 

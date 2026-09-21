@@ -1421,9 +1421,78 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
   settings page. Update the two endpoint files to construct SaveSystemSettingsCommand
   and project `result.Value` (`inviteExpiryDays`, `maxAutoRetryCount`, `inviteOptionCount`,
   `version`); the failure mapping is unchanged.
-  - `src/EventBooking.Api/Endpoints/AdminEndpoints.cs`: settings-save endpoint builds the
-    new command and projects the versioned result.
-  - `src/EventBooking.Mcp/Tools/AdminTools.cs`: same projection for the tool result.
+  - `src/EventBooking.Api/Endpoints/AdminEndpoints.cs` and
+    `src/EventBooking.Mcp/Tools/AdminTools.cs`, both complete below.
+
+  ```csharp
+  // src/EventBooking.Api/Endpoints/AdminEndpoints.cs — the settings save only. The request
+  // gains the option count and the expected version; the GET, the group and every other
+  // endpoint in the file are untouched, and the failure mapping stays ToResponse().
+  public sealed record UpdateSettingsRequest(
+      int InviteExpiryDays,
+      int MaxAutoRetryCount,
+      int InviteOptionCount,
+      long ExpectedVersion);
+
+  group.MapPut("/settings", async (
+      UpdateSettingsRequest request,
+      ICallerAccessor caller,
+      AdminSettingsHandler handler,
+      CancellationToken cancellationToken) =>
+  {
+      var result = await handler.SaveAsync(
+          new SaveSystemSettingsCommand(
+              caller.RequireStaffUserId(),
+              request.InviteExpiryDays,
+              request.MaxAutoRetryCount,
+              request.InviteOptionCount,
+              request.ExpectedVersion),
+          cancellationToken);
+
+      // The versioned result is projected, not swallowed: the settings page needs the new
+      // version to send with its next save, and a caller that never sees it can only ever
+      // collide on the second one.
+      return result.IsSuccess
+          ? Results.Ok(new
+          {
+              inviteExpiryDays = result.Value.InviteExpiryDays,
+              maxAutoRetryCount = result.Value.MaxAutoRetryCount,
+              inviteOptionCount = result.Value.InviteOptionCount,
+              version = result.Value.Version,
+          })
+          : result.ToResponse();
+  })
+      .WithAgentMetadata("updateSettings")
+      .Produces(200)
+      .ProducesProblem(400)
+      .ProducesProblem(403)
+      .ProducesProblem(409);
+  ```
+
+  ```csharp
+  // src/EventBooking.Mcp/Tools/AdminTools.cs — the update tool only. Same command, same
+  // projection; the tool returns the values rather than a sentence, for the same reason.
+  [McpServerTool(Name = "update_settings", Title = "Update settings", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
+  [Description("Update the invite expiry window, the re-issue limit and the number of options per invite. Caller must be an admin; overwrites all three.")]
+  public async Task<SystemSettingsResult> UpdateSettingsAsync(
+      ICallerAccessor caller,
+      AdminSettingsHandler handler,
+      [Description("Invite expiry window in days.")] int inviteExpiryDays,
+      [Description("Maximum number of times an unanswered invite is automatically re-issued.")] int maxAutoRetryCount,
+      [Description("How many event options each invite offers, 1 to 5.")] int inviteOptionCount,
+      [Description("The version last read, for optimistic concurrency.")] long expectedVersion,
+      CancellationToken cancellationToken)
+  {
+      var result = await handler.SaveAsync(
+          new SaveSystemSettingsCommand(
+              caller.RequireStaffUserId(), inviteExpiryDays, maxAutoRetryCount,
+              inviteOptionCount, expectedVersion),
+          cancellationToken);
+      result.ThrowIfFailure();
+      return result.Value;
+  }
+  ```
+
   - `tests/EventBooking.Application.Tests/Settings/AdminSettingsAccessProfileTests.cs`:
     update positional SettingsView and UpdateSettingsCommand constructions for the new
     parameters.

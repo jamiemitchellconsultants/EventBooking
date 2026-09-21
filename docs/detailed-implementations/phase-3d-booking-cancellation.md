@@ -171,6 +171,36 @@ Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationT
 Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken);
 ```
 
+```csharp
+// src/EventBooking.Infrastructure/Persistence/Repositories/Repositories.cs — add both to
+// BookingRepository. Unlocked reads: the replay refusal re-checks under the booking lock,
+// and the count is a consequence reported back to a Coordinator, not a gate.
+/// <inheritdoc/>
+public Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationToken) =>
+    context.Bookings
+        .AsNoTracking()
+        .SingleOrDefaultAsync(b => b.InviteId == inviteId, cancellationToken);
+
+/// <inheritdoc/>
+public Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
+    context.Bookings
+        .AsNoTracking()
+        .CountAsync(
+            b => b.AttendeeId == attendeeId && b.Status == BookingStatus.Active,
+            cancellationToken);
+```
+
+```csharp
+// tests/EventBooking.Application.Tests/Fakes/InMemoryRepositories.cs — the same two over
+// InMemoryBookingRepository's Items, with the same semantics so a handler cannot pass
+// against the fake and fail against SQL.
+public Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationToken) =>
+    Task.FromResult(Items.SingleOrDefault(b => b.InviteId == inviteId));
+
+public Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
+    Task.FromResult(Items.Count(b => b.AttendeeId == attendeeId && b.Status == BookingStatus.Active));
+```
+
 - [ ] **Step 1: Write the failing tests.** Create the four test files below in full. The
   fixture mints real tokens through the fake token service, builds events through the
   Task 6/7 domain (proposal, acceptances, `Event.CreateFrom`), and issues invites through
