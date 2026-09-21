@@ -348,13 +348,251 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
   latest delivery status is null when never invited.
 
   ```csharp
-  // tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs and
-  // tests/EventBooking.Infrastructure.Tests/Queries/AttendeeListQueryTests.cs (complete,
-  // real PostgreSQL 16): seed events just inside and outside each bound edge (7 days ago
-  // / 60 days ahead, end instants), across two locations; assert the tab counts, the
-  // location filter, combined attendee filters, cursor round-trip with concurrent
-  // inserts, and the 50,000-row page under 300 ms (Trait Category Performance, seeded
-  // mostly outside the filters so the index decides). Follow the Task 9b fixture pattern.
+  // tests/EventBooking.Infrastructure.Tests/Queries/DashboardQueryTests.cs (complete)
+  using EventBooking.Application.Dashboards;
+  using EventBooking.Application.Events;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Domain.Attendees;
+  using EventBooking.Domain.Events;
+  using EventBooking.Domain.Locations;
+  using EventBooking.Infrastructure.Persistence.Queries;
+  using EventBooking.Infrastructure.Time;
+
+  namespace EventBooking.Infrastructure.Tests.Queries;
+
+  [Collection("postgres")]
+  public class DashboardQueryTests(PostgresFixture fixture)
+  {
+      private static readonly IEventWindowZones Zones = new NodaTimeEventWindowZones();
+      private static readonly DateTimeOffset Now = new(2026, 7, 15, 12, 0, 0, TimeSpan.Zero);
+      private static readonly CallerShape Coordinator =
+          new(Guid.NewGuid(), false, new HashSet<string> { "Coordinator" });
+
+      // The bound is on the END instant, so each edge is seeded with an event whose end
+      // falls just inside and just outside. An event starting inside the window but ending
+      // outside it is the case a start-only filter would wrongly keep.
+      [Fact]
+      public async Task The_events_tab_is_bounded_by_end_instant_at_both_edges()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          var inside = await AddEventAsync(context, Now.AddDays(30));
+          await AddEventAsync(context, Now.AddDays(-8));
+          await AddEventAsync(context, Now.AddDays(61));
+
+          var view = await Query(context).GetDashboardsAsync(
+              Coordinator, null, Now, Zones, CancellationToken.None);
+
+          Assert.Equal(inside, Assert.Single(view.Events.Rows).EventId);
+          Assert.Equal(1, view.Events.Count);
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      public async Task The_location_filter_narrows_the_events_tab_only()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          var tokyo = await AddTokyoAsync(context);
+          var london = await AddEventAsync(context, Now.AddDays(10));
+          await AddEventAsync(context, Now.AddDays(10), locationId: tokyo);
+          await AddAttendeeAsync(context, "Amy", AttendeeStatus.AwaitingAvailability);
+
+          var view = await Query(context).GetDashboardsAsync(
+              Coordinator, TransitionalLocation.Id, Now, Zones, CancellationToken.None);
+
+          Assert.Equal(london, Assert.Single(view.Events.Rows).EventId);
+          // The attendee tabs are untouched by a location filter: an attendee awaiting
+          // availability has no event, so no location.
+          Assert.Equal(1, view.AwaitingAvailability.Count);
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      public async Task Each_attendee_tab_is_one_status_with_its_count()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          await AddAttendeeAsync(context, "Amy", AttendeeStatus.AwaitingAvailability);
+          await AddAttendeeAsync(context, "Ben", AttendeeStatus.AwaitingAvailability);
+          await AddAttendeeAsync(context, "Cat", AttendeeStatus.NoResponseNeedsFollowUp);
+          await AddAttendeeAsync(context, "Dan", AttendeeStatus.Booked);
+
+          var view = await Query(context).GetDashboardsAsync(
+              Coordinator, null, Now, Zones, CancellationToken.None);
+
+          Assert.Equal(2, view.AwaitingAvailability.Count);
+          Assert.Equal(1, view.NoResponse.Count);
+          // Booked appears in neither tab: FR-13.1 names three tabs, and a booked attendee
+          // is in none of them.
+          Assert.DoesNotContain(
+              view.AwaitingAvailability.Rows.Concat(view.NoResponse.Rows),
+              r => r.Name == "Dan");
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      public async Task An_admin_shaped_caller_reads_nothing_even_here()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+          await AddAttendeeAsync(context, "Amy", AttendeeStatus.AwaitingAvailability);
+
+          var view = await Query(context).GetDashboardsAsync(
+              new CallerShape(Guid.NewGuid(), true, new HashSet<string> { "Admin" }),
+              null, Now, Zones, CancellationToken.None);
+
+          Assert.Equal(0, view.AwaitingAvailability.Count);
+          Assert.Empty(view.Events.Rows);
+
+          await fixture.ResetAsync();
+      }
+
+      // Helpers: AddEventAsync builds an event ending at the given instant through the
+      // Task 6/7 domain and the Task 11 repository, so start_utc is written the way
+      // production writes it. AddTokyoAsync seeds the second location. AddAttendeeAsync
+      // stamps statusChangedAt so the waiting-since date is real. Follow the Task 9b
+      // fixture pattern for all three.
+  ```
+
+  ```csharp
+  // tests/EventBooking.Infrastructure.Tests/Queries/AttendeeListQueryTests.cs (complete)
+  using EventBooking.Application.Attendees;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Domain.Attendees;
+  using EventBooking.Infrastructure.Persistence.Queries;
+
+  namespace EventBooking.Infrastructure.Tests.Queries;
+
+  [Collection("postgres")]
+  public class AttendeeListQueryTests(PostgresFixture fixture)
+  {
+      private static readonly CallerShape Coordinator =
+          new(Guid.NewGuid(), false, new HashSet<string> { "Coordinator" });
+
+      [Fact]
+      public async Task Filters_combine_rather_than_replacing_one_another()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          var group = await AddGroupAsync(context, "PILOTS");
+          await AddAttendeeAsync(context, "Amy", AttendeeStatus.AwaitingAvailability, group);
+          await AddAttendeeAsync(context, "Amos", AttendeeStatus.Booked, group);
+          await AddAttendeeAsync(context, "Bea", AttendeeStatus.AwaitingAvailability, group);
+
+          var page = await new AttendeeListQueries(context).ListAttendeesAsync(
+              Coordinator, null, 50, "AwaitingAvailability", group, null, "a",
+              CancellationToken.None);
+
+          // Status AND group AND prefix: Amos fails the status, Bea fails the prefix.
+          Assert.Equal("Amy", Assert.Single(page.Items).Name);
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      public async Task The_cursor_round_trips_and_pages_do_not_overlap()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          var group = await AddGroupAsync(context, "PILOTS");
+          foreach (var name in new[] { "Amy", "Ben", "Cat", "Dan", "Eve" })
+              await AddAttendeeAsync(context, name, AttendeeStatus.AwaitingAvailability, group);
+
+          var queries = new AttendeeListQueries(context);
+          var first = await queries.ListAttendeesAsync(
+              Coordinator, null, 2, null, null, null, null, CancellationToken.None);
+          Assert.NotNull(first.NextCursor);
+
+          // A row inserted between the pages sorts before the cursor and must not shift
+          // the second page: that is what keyset paging buys over an offset.
+          await AddAttendeeAsync(context, "Abe", AttendeeStatus.AwaitingAvailability, group);
+
+          var second = await queries.ListAttendeesAsync(
+              Coordinator, first.NextCursor, 2, null, null, null, null, CancellationToken.None);
+
+          Assert.Equal(["Amy", "Ben"], first.Items.Select(i => i.Name));
+          Assert.Equal(["Cat", "Dan"], second.Items.Select(i => i.Name));
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      public async Task Required_codes_show_only_while_awaiting_availability()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          var group = await AddGroupAsync(context, "PILOTS");
+          await AddAttendeeAsync(context, "Amy", AttendeeStatus.AwaitingAvailability, group);
+          await AddAttendeeAsync(context, "Ben", AttendeeStatus.Invited, group);
+
+          var page = await new AttendeeListQueries(context).ListAttendeesAsync(
+              Coordinator, null, 50, null, null, null, null, CancellationToken.None);
+
+          Assert.NotEmpty(page.Items.Single(i => i.Name == "Amy").RequiredTypeCodes);
+          // Once invited, the invite's own snapshot is the authority; showing the live set
+          // beside an invited row would contradict it.
+          Assert.Empty(page.Items.Single(i => i.Name == "Ben").RequiredTypeCodes);
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      public async Task An_admin_shaped_caller_reads_no_attendees()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+          var group = await AddGroupAsync(context, "PILOTS");
+          await AddAttendeeAsync(context, "Amy", AttendeeStatus.AwaitingAvailability, group);
+
+          var page = await new AttendeeListQueries(context).ListAttendeesAsync(
+              new CallerShape(Guid.NewGuid(), true, new HashSet<string> { "Admin" }),
+              null, 50, null, null, null, null, CancellationToken.None);
+
+          Assert.Empty(page.Items);
+
+          await fixture.ResetAsync();
+      }
+
+      [Fact]
+      [Trait("Category", "Performance")]
+      public async Task A_page_of_fifty_thousand_rows_returns_within_its_budget()
+      {
+          await fixture.ResetAsync();
+          await using var context = fixture.NewContext();
+
+          // Seeded mostly outside the filter so the index decides the plan rather than the
+          // table being small enough to scan — the same correction Task 11's performance
+          // scenario needed.
+          await SeedManyAsync(context, awaiting: 2_000, others: 48_000);
+
+          var timer = System.Diagnostics.Stopwatch.StartNew();
+          var page = await new AttendeeListQueries(context).ListAttendeesAsync(
+              Coordinator, null, 50, "AwaitingAvailability", null, null, null,
+              CancellationToken.None);
+          timer.Stop();
+
+          Assert.Equal(50, page.Items.Count);
+          Assert.True(
+              timer.Elapsed.TotalMilliseconds < 300,
+              $"The page took {timer.Elapsed.TotalMilliseconds:F0} ms, above the 300 ms budget.");
+
+          await fixture.ResetAsync();
+      }
+
+      // Helpers: AddGroupAsync seeds a group with requirements; AddAttendeeAsync creates a
+      // attendee through the Task 8 domain with its requirements derived; SeedManyAsync
+      // inserts through SQL, because the aggregate is not what is being measured. Follow
+      // the Task 9b fixture pattern.
   ```
 
 - [ ] **Step 2: Run.** Expected: FAIL to compile — the dashboard and attendee-list handlers
