@@ -500,7 +500,9 @@ wording it overrides:
 ### Phase 4 settlements (binding on later tasks)
 
 Settled with the user while authoring Phase 4, each against the master plan, spec or design
-wording it overrides:
+wording it overrides. **The numbering continues section 10's contradictions table rather than
+this section's own list**, which is why it resumes at #11 and not at #8: a settlement and the
+contradiction it closes carry one number between them.
 
 - **#11 (Task 22).** **Master Task 22 splits into 22a and 22b.** Seven of design 05's endpoints
   have no Phase 3 handler behind them — the filtered `Event` and `EventProposal` lists, the
@@ -539,6 +541,17 @@ wording it overrides:
   06 needs them: `Proxy__Networks`, without which "forwarded headers are trusted only from the
   configured reverse-proxy network" cannot be implemented, and `RateLimiting__TokenPerMinute` and
   `__StaffPerMinute` beside the attendee limit the table does name.
+
+- **#19 (Task 21).** **Task 21 restores the build before it does anything else.** Phase 3
+  reshaped ListAttendeesQuery and GetDashboardsQuery and deleted seven handlers without
+  updating their call sites in the Api and Mcp projects, so `dotnet build` fails on `main` and
+  every Phase 4 task gates its commit on a green solution. The repair is removal, not rework:
+  Task 21 deletes the orphaned routes and tools, and the ported suites that drive them, because
+  Tasks 22b and 23 replace all of them with design 05's surface — writing a second
+  implementation of a route that is about to be deleted would be work thrown away twice. The one
+  exception is the attendee list, which Task 21 repairs onto Phase 3's paged query because its
+  own pagination suite drives it. The consequence is that the suite count falls at Task 21 and
+  rises again at Tasks 22b and 23; that is intended, not a regression to reconcile.
 
 **Found while authoring Task 21, and still open.** Phase 3's transitional-construct table retires
 the single-zone clock "when handlers carry a `Location`", but **no Phase 3 document removes it**:
@@ -630,6 +643,7 @@ fourteen is in this file's history at commit `2b192ca`.
 | 16 | **Settled in Phase 4 (§8):** `last-admin` is reachable from staff-access, not from role sync | 21 |
 | 17 | **Settled in Phase 4 (§8):** the error catalogue gains four slugs design 05's table omits | 21 |
 | 18 | **Settled in Phase 4 (§8):** the outbox correlation identifier is the request's where one exists | 18, 21 |
+| 19 | **Settled in Phase 4 (§8):** Phase 3 left the Api and Mcp projects uncompilable; Task 21 restores the build by removal before adding anything | 12–20, 21 |
 
 ## 11. Next steps
 
@@ -651,9 +665,9 @@ fourteen is in this file's history at commit `2b192ca`.
    run both of its sweeps per task rather than per phase. The phase overview is
    `phase-4-api-and-mcp.md`.
 
-   - **Task 21 is written** (`phase-4a-api-conventions.md`). It implements contradiction #3's
-     403 rule at the endpoint layer and settles five more, all recorded in section 8 as #14 to
-     #18. It also found, and did not fix, the single-zone clock Phase 3's table claimed to
+   - **Task 21 is written** (`phase-4a-api-conventions.md`). It opens by restoring the build
+     Phase 3 left broken (settlement #19), then implements contradiction #3's 403 rule at the
+     endpoint layer and settles five more, all recorded in section 8 as #14 to #18. It also found, and did not fix, the single-zone clock Phase 3's table claimed to
      retire; that is recorded in section 8 too.
    - **Task 22a is written** (`phase-4b-event-read-models.md`). It adds the filtered `Event`
      and `EventProposal` reads, the single-`Event` read, the cancellable list, `includeInactive`

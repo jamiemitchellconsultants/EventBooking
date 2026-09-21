@@ -54,8 +54,21 @@ An endpoint calls exactly one handler and holds no rule. Two-step destructive ac
 returned — a translation, not a decision. Every cursor crossing the boundary is wrapped and
 unwrapped by Task 21's signed codec, so an Application-level cursor never reaches a caller
 unsigned. A missing or malformed `staff_id` is 403 on every route but `GET /api/me`
-(contradiction #3). Attendee token routes are anonymous, carry both attendee rate-limit policies
-and appear in no tool list.
+(contradiction #3). Attendee token routes are anonymous, and carry both attendee rate limits —
+the address one globally and the token one through endpoint metadata, because two
+RequireRateLimiting calls do not compose — and appear in no tool list.
+
+**Which lists carry a cursor, and which do not.** Every list answers in Task 21's
+`{ items, nextCursor }` envelope, so one client reads them all the same way. Only the unbounded
+ones carry a real keyset: attendees, events, event proposals and the audit search, each of which
+grows with use and each of which design 05 gives a cursor. The reference-data lists
+(`/api/locations`, `/api/appointment-types`, `/api/attendee-groups`), the staff-access list and
+the workspace event list return every row with `nextCursor` null, deliberately: design 05 names
+no cursor for any of them, the first three are bounded by how many sites and types an
+organisation has, staff access is bounded by its staff, and Task 15 already bounds the workspace
+to a date window. A keyset over a set that cannot grow past a page buys nothing and costs the
+executor a query it would have to invent. If one of these ever does grow, the envelope is
+already the right shape to add a cursor to without changing a caller.
 
 ## Review focus
 
@@ -83,7 +96,7 @@ Admin get different link sets from the same representation.
 - Modify: src/EventBooking.Api/Endpoints/EventEndpoints.cs (design 05's event routes)
 - Modify: src/EventBooking.Api/Endpoints/AttendeeEndpoints.cs (design 05's attendee routes)
 - Create: src/EventBooking.Api/Endpoints/DashboardEndpoints.cs
-- Modify: src/EventBooking.Api/Endpoints/AuditEndpoints.cs (design 05's audit routes)
+- Create: src/EventBooking.Api/Endpoints/AuditEndpoints.cs (design 05's audit routes; Task 21 deleted the ported file, whose handlers Task 20b removed)
 - Modify: src/EventBooking.Api/Endpoints/AppointmentWorkspaceEndpoints.cs (design 05's routes)
 - Modify: src/EventBooking.Api/Endpoints/BookingEndpoints.cs (the book token only)
 - Create: src/EventBooking.Api/Endpoints/ManageEndpoints.cs
@@ -91,6 +104,7 @@ Admin get different link sets from the same representation.
 - Create: src/EventBooking.Api/Contracts/ApiResponses.cs (the shared response records)
 - Create: src/EventBooking.Api/Contracts/CallerCapabilities.cs (the capability set behind `_links`)
 - Modify: src/EventBooking.Application/Access/StaffAccessAuthorizer.cs (the matrix predicate made internal)
+- Modify: src/EventBooking.Application/EventBooking.Application.csproj (InternalsVisibleTo the Api project)
 - Delete: src/EventBooking.Api/Endpoints/AdminEndpoints.cs (split into settings and staff access)
 - Delete: src/EventBooking.Api/Contracts/AdministrationHypermediaResponses.cs
 - Delete: src/EventBooking.Api/Contracts/AttendeeHypermediaResponses.cs
@@ -105,6 +119,11 @@ Admin get different link sets from the same representation.
 - Test: tests/EventBooking.Api.Tests/Catalogue/AttendeeEndpointTests.cs
 - Test: tests/EventBooking.Api.Tests/Catalogue/TokenEndpointTests.cs
 - Test: tests/EventBooking.Api.Tests/Catalogue/LinkTests.cs
+- Delete: tests/EventBooking.Api.Tests/ManageBookingEndpointTests.cs (the manage routes move to /api/manage)
+- Delete: tests/EventBooking.Api.Tests/StaffIdentityRecorderTests.cs (drives /api/admin/staff-access, which this task splits out)
+- Delete: tests/EventBooking.Api.Tests/AttendeeReadinessEndpointTests.cs (readiness moves to ViewAttendeeDashboards, settlement #13)
+- Delete: tests/EventBooking.Api.Tests/OpenApiContractTests.cs (asserts the ported document; DesignCatalogueTests replaces it)
+- Delete: tests/EventBooking.Api.Tests/AgentOperationCatalogTests.cs (asserts the ported catalogue, which this task rewrites)
 
 The four ported hypermedia response files are deleted, not edited: they project the predecessor's
 view shapes, every one of which has been replaced by a Phase 3 or Task 22a result. One new file
@@ -2081,10 +2100,30 @@ public sealed record EventProposalResponse(
   }
   ```
 
-  `StaffAccessAuthorizer.IsAllowed` is the ported private predicate, made internal and exposed
-  through an internal-visible-to shim for the API project — the same table the authorizer itself
-  answers from, so a link can never advertise a capability the handler would refuse. Duplicating
-  the matrix here instead is how the two would drift.
+  `StaffAccessAuthorizer.IsAllowed` is the ported predicate, made internal and made visible to
+  the API project — the same table the authorizer itself answers from, so a link can never
+  advertise a capability the handler would refuse. Duplicating the matrix here instead is how the
+  two would drift. Two edits, both one line:
+
+  ```csharp
+  // src/EventBooking.Application/Access/StaffAccessAuthorizer.cs — the predicate Task 20b
+  // restructured onto the capability table. Only the modifier changes.
+  //
+  // Was:  private static bool IsAllowed(StaffAccessProfile profile, StaffCapability capability)
+  // Now:  internal static bool IsAllowed(StaffAccessProfile profile, StaffCapability capability)
+  //
+  // The two-argument overload below it stays private: it is the table lookup, and nothing
+  // outside the authorizer has the role flags it takes.
+  ```
+
+  ```xml
+  <!-- src/EventBooking.Application/EventBooking.Application.csproj — add to the existing
+       ItemGroup, or as one of its own. The Api project is the only consumer; the MCP surface
+       reads capabilities through the same endpoint catalogue rather than the predicate. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="EventBooking.Api" />
+  </ItemGroup>
+  ```
 
   ```csharp
   // src/EventBooking.Api/Contracts/ApiResponses.cs (complete — the projections; the records
@@ -2500,8 +2539,78 @@ public sealed record EventProposalResponse(
   The appointment-type and attendee-group files are this file with three substitutions each: the
   route prefix, the handler trio, and the request bodies design 05 gives them — `{code, name}`
   and `{name, isActive, expectedVersion}` for types, `{code, name, appointmentTypeIds[]}` and
-  `{name, isActive, appointmentTypeIds[], expectedVersion}` for groups. Their list rows project
-  through `ApiResponses.AppointmentType` and `ApiResponses.AttendeeGroup` above.
+  `{name, isActive, appointmentTypeIds[], expectedVersion}` for groups. Their single-row
+  responses project through `ApiResponses.AppointmentType` and `ApiResponses.AttendeeGroup`
+  above, which take the handlers' result records; their list rows need their own projection,
+  because a list item is not a result — the same split LocationListResponse makes.
+
+  ```csharp
+  /// <summary>One row of the appointment-type list.</summary>
+  /// <param name="Id">The identifier.</param>
+  /// <param name="Code">The canonical code.</param>
+  /// <param name="Name">The display name.</param>
+  /// <param name="IsActive">Whether the type is in use.</param>
+  /// <param name="ManagerDisplayName">The managing staff member, when one is assigned.</param>
+  /// <param name="Links">The affordances the caller holds.</param>
+  public sealed record AppointmentTypeListResponse(
+      Guid Id, string Code, string Name, bool IsActive, string? ManagerDisplayName,
+      [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+      IReadOnlyDictionary<string, ApiLink> Links)
+  {
+      /// <summary>Projects one list row.</summary>
+      /// <param name="item">The application row.</param>
+      /// <param name="capabilities">The caller's capabilities.</param>
+      /// <returns>The response row.</returns>
+      public static AppointmentTypeListResponse From(
+          AppointmentTypeListItem item, IReadOnlySet<string> capabilities)
+      {
+          ArgumentNullException.ThrowIfNull(item);
+          return new AppointmentTypeListResponse(
+              item.Id, item.Code, item.Name, item.IsActive, item.ManagerDisplayName,
+              CallerLinks.For(
+                  capabilities,
+                  new LinkCandidate(
+                      "self", "listAppointmentTypes", "/api/appointment-types", null),
+                  new LinkCandidate(
+                      "update", "updateAppointmentType", $"/api/appointment-types/{item.Id}",
+                      nameof(StaffCapability.ManageReferenceData))));
+      }
+  }
+
+  /// <summary>One row of the attendee-group list.</summary>
+  /// <param name="Id">The identifier.</param>
+  /// <param name="Code">The canonical code.</param>
+  /// <param name="Name">The display name.</param>
+  /// <param name="IsActive">Whether the group is in use.</param>
+  /// <param name="RequirementTypeIds">The appointment types its members must attend.</param>
+  /// <param name="MemberCount">How many attendees belong to it.</param>
+  /// <param name="Links">The affordances the caller holds.</param>
+  public sealed record AttendeeGroupListResponse(
+      Guid Id, string Code, string Name, bool IsActive,
+      IReadOnlyList<Guid> RequirementTypeIds, int MemberCount,
+      [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+      IReadOnlyDictionary<string, ApiLink> Links)
+  {
+      /// <summary>Projects one list row.</summary>
+      /// <param name="item">The application row.</param>
+      /// <param name="capabilities">The caller's capabilities.</param>
+      /// <returns>The response row.</returns>
+      public static AttendeeGroupListResponse From(
+          AttendeeGroupListItem item, IReadOnlySet<string> capabilities)
+      {
+          ArgumentNullException.ThrowIfNull(item);
+          return new AttendeeGroupListResponse(
+              item.Id, item.Code, item.Name, item.IsActive, item.RequirementTypeIds,
+              item.MemberCount,
+              CallerLinks.For(
+                  capabilities,
+                  new LinkCandidate("self", "listAttendeeGroups", "/api/attendee-groups", null),
+                  new LinkCandidate(
+                      "update", "updateAttendeeGroup", $"/api/attendee-groups/{item.Id}",
+                      nameof(StaffCapability.ManageReferenceData))));
+      }
+  }
+  ```
 
   ```csharp
   // src/EventBooking.Api/Endpoints/AppointmentTypeEndpoints.cs — the two bodies and the three
@@ -3144,7 +3253,7 @@ public sealed record EventProposalResponse(
       return Results.Ok(new Page<object>(
           [.. result.Value.Items.Select(x => (object)new
           {
-              x.Name, x.Email, x.Status, x.GroupCode, x.Readiness, x.RequiredTypeCodes,
+              x.Id, x.Name, x.Email, x.Status, x.GroupCode, x.Readiness, x.RequiredTypeCodes,
               x.LatestDeliveryStatus,
               cursor = cursors.Protect(x.Cursor),
           })],
@@ -3292,7 +3401,7 @@ public sealed record EventProposalResponse(
       .WithAgentMetadata("listAttendeeBookings");
 
   group.MapPost("/{id:guid}/email-retry", async (Guid id, ICallerAccessor caller,
-      RetryNewestEmailHandler handler, CancellationToken ct) =>
+      RetryEmailHandler handler, CancellationToken ct) =>
       (await handler.HandleAsync(new RetryNewestEmailCommand(caller.RequireStaffUserId(), id), ct)).ToResponse())
       .WithAgentMetadata("retryAttendeeEmail");
 
@@ -3301,9 +3410,13 @@ public sealed record EventProposalResponse(
       (await handler.HandleAsync(new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), id), ct)).ToResponse())
       .WithAgentMetadata("getAttendeeReadiness");
 
-  public sealed record SaveAttendeeRequest(string Name, string Email, Guid AttendeeGroupId);
-  public sealed record LocationIdsRequest(IReadOnlyList<Guid> LocationIds);
-  public sealed record AdditionalLocationIdsRequest(IReadOnlyList<Guid> AdditionalLocationIds);
+  // These three go at class scope beside the file's other request records, not here among the
+  // registrations: C# has no local type declarations. SaveAttendeeRequest already exists on the
+  // ported file with nullable members — keep that one declaration and keep it nullable, because
+  // the update route sends only the fields it changes and SaveAttendeeHandler validates them.
+  //     public sealed record SaveAttendeeRequest(string? Name, string? Email, Guid? AttendeeGroupId);
+  //     public sealed record LocationIdsRequest(IReadOnlyList<Guid> LocationIds);
+  //     public sealed record AdditionalLocationIdsRequest(IReadOnlyList<Guid> AdditionalLocationIds);
   ```
 
   ```csharp

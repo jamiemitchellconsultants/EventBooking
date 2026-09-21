@@ -75,9 +75,13 @@ import test uses, which is the only way "refused identically" means anything.
 - Test: tests/EventBooking.Mcp.Tests/ListShapeTests.cs
 - Test: tests/EventBooking.Mcp.Tests/RefusalParityTests.cs
 - Test: tests/EventBooking.Mcp.Tests/McpClient.cs (the JSON-RPC helper the three suites share)
+- Delete: tests/EventBooking.Mcp.Tests/VocabularyToolTests.cs (asserts the ported tool names)
 
-The ported suites that drive deleted tools go with them: the vocabulary tool test, the agent
-surface parity test and the two per-area tool tests are replaced by the three suites above.
+The ported suites that drive deleted tools go with them. Task 21 already deleted six of them —
+the four per-area suites, the transport suite that names the ported tools in a literal array,
+and the agent-surface parity suite — when its build restoration removed the tools behind them.
+The vocabulary suite is the one that outlives Task 21, because this task is where the tool names
+themselves are rewritten. The three suites below replace all seven.
 
 **Interfaces:**
 
@@ -311,28 +315,48 @@ public sealed class McpClient(HttpClient client)
   public sealed class ListShapeTests(McpFactory factory)
   {
       /// <summary>
-      /// The list tools and the arguments each needs to answer. A tool absent from this table
-      /// fails the completeness case below, so adding a list tool without covering it is not
-      /// something review has to catch.
+      /// The list tools, each with the field its rows are identified by and the field that
+      /// states where the row stands. A tool absent from this table fails the completeness case
+      /// below, so adding a list tool without covering it is not something review has to catch.
+      ///
+      /// The columns are named rather than guessed at: each comes from the view record the tool
+      /// returns — LocationListItem, AppointmentTypeListItem and AttendeeGroupListItem from
+      /// Task 12, EventView and EventProposalListItem from Task 22a, AttendeeListItem from
+      /// Task 20 with the identifier Task 21 added, WorkspaceEventView from Task 15 with the
+      /// status Task 22a added, and AuditRow from Task 20b. An audit row has no name and no
+      /// status: it is labelled by the action it records and stated by the actor that caused it,
+      /// and demanding a name of it would only prove the table had been written to fit.
       /// </summary>
-      public static TheoryData<string> ListTools =>
+      public static TheoryData<string, string, string> ListTools =>
+      new()
+      {
+          { "list_locations", "name", "isActive" },
+          { "list_appointment_types", "name", "isActive" },
+          { "list_attendee_groups", "code", "isActive" },
+          { "list_event_proposals", "locationName", "status" },
+          { "list_events", "locationName", "status" },
+          { "list_cancellable_events", "locationName", "status" },
+          { "list_attendees", "name", "status" },
+          { "list_workspace_events", "locationName", "status" },
+          { "search_audit", "action", "actorType" },
+      };
+
+      /// <summary>
+      /// The two list tools whose rows come from views neither this phase nor Task 20 defines —
+      /// the staff-access list and the ported attendee-booking summary. They are held to the
+      /// weaker rule below rather than to invented column names, and they are named here so
+      /// that the completeness case still covers every list tool.
+      /// </summary>
+      public static TheoryData<string> UntypedListTools =>
       [
-          "list_locations",
-          "list_appointment_types",
-          "list_attendee_groups",
           "list_staff_access",
-          "list_event_proposals",
-          "list_events",
-          "list_cancellable_events",
-          "list_attendees",
           "list_attendee_bookings",
-          "list_workspace_events",
-          "search_audit",
       ];
 
       [Theory]
       [MemberData(nameof(ListTools))]
-      public async Task EveryRowCarriesAnIdentifierANameOrCodeAndAStatus(string tool)
+      public async Task EveryRowCarriesItsIdentifierItsLabelAndItsState(
+          string tool, string label, string state)
       {
           var world = await GivenSeededWorldAsync(tool);
           var client = new McpClient(factory.CreateClient());
@@ -343,10 +367,61 @@ public sealed class McpClient(HttpClient client)
           Assert.NotEmpty(rows);
           Assert.All(rows, row =>
           {
-              Assert.True(HasAny(row, "id", "eventId", "proposalId", "attendeeId", "staffUserId"));
-              Assert.True(HasAny(row, "name", "code", "locationName"));
-              Assert.True(HasAny(row, "status", "isActive", "readiness", "appointmentStatus"));
+              Assert.True(
+                  HasAny(row, "id", "eventId", "proposalId", "attendeeId", "staffUserId",
+                      "bookingId"),
+                  $"{tool} returned a row an agent cannot act on: {row}");
+              AssertPresent(row, label, tool);
+              AssertPresent(row, state, tool);
           });
+      }
+
+      /// <summary>
+      /// The weaker rule for the two rows this phase does not define: an identifier, and at
+      /// least two further fields with something in them. It still fails a row an agent cannot
+      /// tell apart, without asserting column names taken from nowhere.
+      /// </summary>
+      /// <param name="tool">The tool name.</param>
+      /// <returns>A task tracking the case.</returns>
+      [Theory]
+      [MemberData(nameof(UntypedListTools))]
+      public async Task AnUntypedRowIsStillDistinguishable(string tool)
+      {
+          var world = await GivenSeededWorldAsync(tool);
+          var client = new McpClient(factory.CreateClient());
+
+          var result = await client.CallAsync(tool, ArgumentsFor(tool, world));
+
+          var rows = Rows(result);
+          Assert.NotEmpty(rows);
+          Assert.All(rows, row =>
+          {
+              Assert.True(
+                  HasAny(row, "id", "eventId", "proposalId", "attendeeId", "staffUserId",
+                      "bookingId"),
+                  $"{tool} returned a row with no identifier: {row}");
+              Assert.True(
+                  row.EnumerateObject().Count(
+                      property => property.Value.ValueKind is not JsonValueKind.Null
+                          && property.Value.ToString().Length > 0) >= 3,
+                  $"{tool} returned a row with nothing in it but an identifier: {row}");
+          });
+      }
+
+      /// <summary>Asserts one named field is present and carries something.</summary>
+      /// <param name="row">The row.</param>
+      /// <param name="field">The camel-cased field name.</param>
+      /// <param name="tool">The tool, for the failure message.</param>
+      private static void AssertPresent(JsonElement row, string field, string tool)
+      {
+          Assert.True(
+              row.TryGetProperty(field, out var value),
+              $"{tool} rows carry no {field}: {row}");
+          Assert.False(
+              value.ValueKind is JsonValueKind.Null
+                  || (value.ValueKind is JsonValueKind.String
+                      && string.IsNullOrWhiteSpace(value.GetString())),
+              $"{tool} returned an empty {field}: {row}");
       }
 
       /// <summary>Every tool whose name begins with list, plus the audit search, is covered above.</summary>
@@ -362,7 +437,12 @@ public sealed class McpClient(HttpClient client)
               .Where(name => name.StartsWith("list_", StringComparison.Ordinal) || name == "search_audit")
               .ToHashSet(StringComparer.Ordinal);
 
-          Assert.Empty(listed.Except(ListTools.Select(row => (string)row[0]!)));
+          var covered = ListTools.Select(row => (string)row[0]!)
+              .Concat(UntypedListTools.Select(row => (string)row[0]!))
+              .ToHashSet(StringComparer.Ordinal);
+
+          Assert.Empty(listed.Except(covered));
+          Assert.Empty(covered.Except(listed));
       }
 
       /// <summary>Everything the eleven lists need at least one row of.</summary>
@@ -532,15 +612,17 @@ public sealed class McpClient(HttpClient client)
 
           var envelope = await client.CallRawAsync("list_event_proposals", new { limit = 50 });
 
-          Assert.Contains("forbidden", Failure(envelope), StringComparison.Ordinal);
+          AssertRestWouldRender(envelope, "forbidden", 403);
       }
 
       /// <summary>
-      /// The same file the REST import suite uses, refused the same way. A different file would
-      /// make "identically" a claim about two unrelated inputs.
+      /// The same file the REST import suite uses, refused with the same application error code
+      /// — and that code is then put through the REST catalogue, so this asserts the two
+      /// surfaces answer one refusal identically rather than that both merely said no. Looking
+      /// for the word "validation" in a message would pass for a tool that invented its own.
       /// </summary>
       [Fact]
-      public async Task AnImportOverTheRowLimitIsRefusedAsItIsOverRest()
+      public async Task AnImportOverTheRowLimitRefusesWithTheCodeRestRendersAsValidationFailed()
       {
           factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
           var client = new McpClient(factory.CreateClient());
@@ -548,7 +630,7 @@ public sealed class McpClient(HttpClient client)
 
           var envelope = await client.CallRawAsync("import_attendees", new { csv });
 
-          Assert.Contains("validation", Failure(envelope), StringComparison.Ordinal);
+          AssertRestWouldRender(envelope, "validation-failed", 422);
       }
 
       /// <summary>An Admin gets no attendee data through MCP either (design 06's data gate).</summary>
@@ -560,20 +642,31 @@ public sealed class McpClient(HttpClient client)
 
           var envelope = await client.CallRawAsync("list_attendees", new { limit = 50 });
 
-          Assert.Contains("forbidden", Failure(envelope), StringComparison.Ordinal);
+          AssertRestWouldRender(envelope, "forbidden", 403);
       }
 
-      /// <summary>A token with no staff number is refused here exactly as it is over REST.</summary>
+      /// <summary>
+      /// A token with no staff number is refused exactly as it is over REST — which means 403 on
+      /// the transport, before any tool runs, per contradiction #3. There is no JSON-RPC body to
+      /// read: the shared helper throws on the status, so this case sends the request itself.
+      /// </summary>
       [Fact]
-      public async Task AMissingStaffNumberIsRefused()
+      public async Task AMissingStaffNumberIsForbiddenOnTheTransport()
       {
           factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
           factory.StaffIdClaim = null;
-          var client = new McpClient(factory.CreateClient());
+          var client = factory.CreateClient();
+          using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+          {
+              Content = new StringContent(
+                  "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"tools/list\"}",
+                  System.Text.Encoding.UTF8,
+                  "application/json"),
+          };
 
-          var envelope = await client.CallRawAsync("list_attendees", new { limit = 50 });
+          var response = await client.SendAsync(request);
 
-          Assert.False(string.IsNullOrWhiteSpace(Failure(envelope)));
+          Assert.Equal(System.Net.HttpStatusCode.Forbidden, response.StatusCode);
       }
 
       /// <summary>
@@ -590,6 +683,27 @@ public sealed class McpClient(HttpClient client)
           var result = envelope.GetProperty("result");
           Assert.True(result.GetProperty("isError").GetBoolean());
           return result.GetProperty("content")[0].GetProperty("text").GetString() ?? string.Empty;
+      }
+
+      /// <summary>
+      /// Puts the application error code the tool refused with through the REST catalogue, and
+      /// asserts the slug and status a caller on the other surface would have been given. That
+      /// is what makes "refused identically" a comparison rather than a coincidence, and it is
+      /// only possible because McpErrors keeps the code in front of the message.
+      /// </summary>
+      /// <param name="envelope">The JSON-RPC envelope.</param>
+      /// <param name="slug">The problem type design 05 names.</param>
+      /// <param name="status">The status that slug carries.</param>
+      private static void AssertRestWouldRender(JsonElement envelope, string slug, int status)
+      {
+          var failure = Failure(envelope);
+          var separator = failure.IndexOf(": ", StringComparison.Ordinal);
+          Assert.True(separator > 0, $"The refusal carried no application error code: {failure}");
+
+          var shape = EventBooking.Api.Endpoints.ProblemCatalogue.For(failure[..separator]);
+
+          Assert.Equal(slug, shape.Type);
+          Assert.Equal(status, shape.Status);
       }
 
       /// <summary>One row more than design 08's bound of a thousand.</summary>

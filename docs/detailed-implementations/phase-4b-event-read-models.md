@@ -70,13 +70,13 @@ own the newest failed-delivery selection rather than asking an endpoint to inven
 the retry rule transactional and makes both transports name the same operation.
 
 ```csharp
-// src/EventBooking.Application/Notifications/IEmailDeliveryRepository.cs — add this member to
-// the existing port. The infrastructure implementation orders by CreatedAt descending and locks
-// the selected row with FOR UPDATE, returning null when this attendee has no failed delivery.
-Task<EmailLog?> LockNewestFailedForAttendeeAsync(Guid attendeeId, CancellationToken ct);
-
-// src/EventBooking.Application/Notifications/RetryEmailHandler.cs — replace the public command
-// shape and complete the existing handler using the attendee-first locked lookup.
+// src/EventBooking.Application/Notifications/RetryEmailHandler.cs — replace the command shape
+// and the row it selects. Nothing else changes: the constructor keeps its six parameters, so
+// every existing construction in the suite still compiles, and the status guard stays.
+//
+// The port needs no new member. Task 5's repository already exposes LockLatestForAttendeeAsync,
+// which orders a row that is Failed or Pending ahead of a terminal one, takes FOR UPDATE and
+// returns null for an attendee with no deliveries — exactly the selection this route needs.
 public sealed record RetryNewestEmailCommand(Guid StaffUserId, Guid AttendeeId);
 
 public async Task<Result<RetryEmailOutcome>> HandleAsync(
@@ -87,17 +87,21 @@ public async Task<Result<RetryEmailOutcome>> HandleAsync(
     if (authorized.IsFailure) return Result<RetryEmailOutcome>.Failure(authorized.Error);
 
     await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
-    var newest = await deliveries.LockNewestFailedForAttendeeAsync(command.AttendeeId, ct);
-    if (newest is null) return Result<RetryEmailOutcome>.Failure(
-        Error.NotFound("This attendee has no failed delivery to retry."));
+    var newest = await deliveries.LockLatestForAttendeeAsync(command.AttendeeId, ct);
+    if (newest is null)
+        return Result<RetryEmailOutcome>.Failure(
+            Error.NotFound("This attendee has no delivery to retry."));
+    if (newest.Status != EmailStatus.Failed)
+        return Result<RetryEmailOutcome>.Failure(
+            Error.Conflict($"Only a failed delivery can be retried, not {newest.Status}."));
 
-    var replacement = EmailLog.RecordPending(Guid.NewGuid(), newest.AttendeeId,
-        newest.TemplateName, clock.UtcNow, newest.InviteId, newest.BookingId, newest.EventId);
-    deliveries.Add(replacement);
+    var fresh = EmailLog.RecordPending(Guid.NewGuid(), newest.AttendeeId, newest.TemplateName,
+        clock.UtcNow, newest.InviteId, newest.BookingId, newest.EventId);
+    deliveries.Add(fresh);
     newest.MarkResolved(clock.UtcNow);
     await unitOfWork.SaveChangesAsync(ct);
     await transaction.CommitAsync(ct);
-    return Result<RetryEmailOutcome>.Success(new RetryEmailOutcome(replacement.Id));
+    return Result<RetryEmailOutcome>.Success(new RetryEmailOutcome(fresh.Id));
 }
 ```
 
@@ -111,7 +115,8 @@ public sealed record WorkspaceEventView(
     Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
     TimeOnly StartTime, TimeOnly EndTime, string ZoneAbbreviation, string Status);
 
-// src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs — replace the projection.
+// src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs — replace the projection
+// inside ListWorkspaceEventsHandler.HandleAsync.
 .Select(e => new WorkspaceEventView(e.Id, e.LocationId,
     zoneByLocation[e.LocationId].Name,
     e.Window.Date, e.Window.StartTime, e.Window.EndTime,
@@ -154,7 +159,6 @@ route is refused, rather than silently adjusting their own.
 - Modify: src/EventBooking.Application/ReferenceData/AppointmentTypeHandlers.cs (the same three changes)
 - Modify: src/EventBooking.Application/ReferenceData/AttendeeGroupHandlers.cs (the same three changes)
 - Modify: src/EventBooking.Application/Attendees/GetAttendeeReadinessHandler.cs (ViewAttendeeDashboards)
-- Modify: src/EventBooking.Application/Notifications/IEmailDeliveryRepository.cs (lock the newest failed delivery by attendee)
 - Modify: src/EventBooking.Application/Notifications/RetryEmailHandler.cs (resolve the newest failed delivery from the attendee route)
 - Modify: src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs (project the event status)
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/EventReadQueries.cs
@@ -273,9 +277,10 @@ public sealed record AdjustEventCapacityCommand(
     Guid StaffUserId, Guid EventId, Guid AppointmentTypeId, int TotalHeadcount);
 ```
 
-- [ ] **Step 1: Write the failing tests.** Three files. The Application suite drives the handlers
-  with an in-memory query double; the scope rule itself is proved against real PostgreSQL,
-  because a double that honours the rule proves only that the double honours it.
+- [ ] **Step 1: Write the failing tests.** Three new files and two amended ones. The Application
+  suite drives the handlers with an in-memory query double; the scope rule itself is proved
+  against real PostgreSQL, because a double that honours the rule proves only that the double
+  honours it.
 
   ```csharp
   // tests/EventBooking.Application.Tests/Events/EventReadHandlerTests.cs (complete)
@@ -924,6 +929,87 @@ public sealed record AdjustEventCapacityCommand(
   duplicate the very thing every other suite shares. The re-save afterwards is what recomputes
   `start_utc`, so the ordering cases are reading a derived instant rather than one the test
   invented — which is also what makes the London-and-Tokyo case meaningful.
+
+  ```csharp
+  // tests/EventBooking.Application.Tests/Notifications/RetryEmailHandlerTests.cs — the existing
+  // two cases send RetryEmailCommand with a log identifier the route no longer carries. Replace
+  // the command in both with RetryNewestEmailCommand, keeping every arrangement and assertion,
+  // and add the two cases below. The fakes are Task 18's: InMemoryEmailDeliveryRepository holds
+  // its rows in Items, and the handler is still constructed positionally as
+  // (profiles, deliveries, profiles, unitOfWork, audit, clock).
+  [Fact]
+  public async Task Retry_resolves_the_newest_failed_delivery_without_being_given_its_identifier()
+  {
+      var deliveries = new InMemoryEmailDeliveryRepository();
+      var profiles = new InMemoryStaffAccessProfileRepository();
+      var coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
+      profiles.Items.Add(StaffAccessProfile.Create(coordinator, Role.Coordinator, null));
+      var attendeeId = Guid.NewGuid();
+      var old = EmailLog.RecordPending(Guid.NewGuid(), attendeeId,
+          EmailTemplate.AttendeeInvite, DateTimeOffset.UtcNow, inviteId: Guid.NewGuid());
+      old.MarkFailed(DateTimeOffset.UtcNow);
+      deliveries.Items.Add(old);
+      var handler = new RetryEmailHandler(
+          profiles, deliveries, profiles, new FakeUnitOfWork(), new RecordingAuditLogger(),
+          new FakeClock());
+
+      var result = await handler.HandleAsync(
+          new RetryNewestEmailCommand(coordinator, attendeeId), CancellationToken.None);
+
+      Assert.True(result.IsSuccess);
+      Assert.Equal(EmailStatus.Resolved, old.Status);
+      var fresh = Assert.Single(deliveries.Items.Where(d => d.Id != old.Id));
+      Assert.Equal(EmailStatus.Pending, fresh.Status);
+  }
+
+  /// <summary>
+  /// An attendee whose newest delivery succeeded has nothing to retry. Without this case the
+  /// route would resend the last successful email, which is the failure the ported handler's
+  /// status guard existed to prevent and which the identifier used to make impossible.
+  /// </summary>
+  [Fact]
+  public async Task An_attendee_whose_newest_delivery_did_not_fail_is_refused()
+  {
+      var deliveries = new InMemoryEmailDeliveryRepository();
+      var profiles = new InMemoryStaffAccessProfileRepository();
+      var coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
+      profiles.Items.Add(StaffAccessProfile.Create(coordinator, Role.Coordinator, null));
+      var attendeeId = Guid.NewGuid();
+      var sent = EmailLog.RecordPending(Guid.NewGuid(), attendeeId,
+          EmailTemplate.AttendeeInvite, DateTimeOffset.UtcNow, inviteId: Guid.NewGuid());
+      sent.MarkSent(DateTimeOffset.UtcNow);
+      deliveries.Items.Add(sent);
+      var handler = new RetryEmailHandler(
+          profiles, deliveries, profiles, new FakeUnitOfWork(), new RecordingAuditLogger(),
+          new FakeClock());
+
+      var result = await handler.HandleAsync(
+          new RetryNewestEmailCommand(coordinator, attendeeId), CancellationToken.None);
+
+      Assert.True(result.IsFailure);
+      Assert.Equal("conflict", result.Error.Code);
+  }
+  ```
+
+  ```csharp
+  // tests/EventBooking.Application.Tests/Appointments/WorkspaceHandlerTests.cs — one case added
+  // to Task 15's existing suite, constructed the way its cases already construct the handler.
+  // The status is the aggregate's, so a row cannot describe an event as active after it has
+  // been cancelled.
+  [Fact]
+  public async Task Workspace_rows_carry_the_events_own_status()
+  {
+      var handler = new ListWorkspaceEventsHandler(
+          workspace, events, locations, profiles, new FakeClock(), Zones);
+
+      var result = await handler.HandleAsync(
+          new ListWorkspaceEventsQuery(clinician, null), CancellationToken.None);
+
+      Assert.True(result.IsSuccess);
+      Assert.All(result.Value, row => Assert.False(string.IsNullOrWhiteSpace(row.Status)));
+      Assert.Contains(result.Value, row => row.Status == EventStatus.Active.ToString());
+  }
+  ```
 
 - [ ] **Step 2: Run.** Expected: FAIL.
 

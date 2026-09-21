@@ -124,7 +124,16 @@ And the startup test asserts the message names every missing key, not just the f
 - Create: src/EventBooking.Api/Observability/EventBookingMetrics.cs
 - Create: src/EventBooking.Api/Observability/PrometheusText.cs
 - Modify: src/EventBooking.Api/EventBookingConfiguration.cs (every required setting, key denylist)
-- Modify: src/EventBooking.Api/Program.cs (probes, metrics, middleware order, limiter policies)
+- Modify: src/EventBooking.Api/Endpoints/BookingEndpoints.cs (the ported policy name is no longer registered)
+- Modify: src/EventBooking.Api/Endpoints/EventEndpoints.cs (delete the three Phase 3 orphans)
+- Modify: src/EventBooking.Api/Endpoints/AttendeeEndpoints.cs (delete three orphans; repair the list onto Phase 3's paged query)
+- Delete: src/EventBooking.Api/Endpoints/AuditEndpoints.cs (every route calls a handler Task 20b deleted; Task 22b creates it again)
+- Modify: src/EventBooking.Mcp/Tools/EventTools.cs (delete the three Phase 3 orphans)
+- Modify: src/EventBooking.Mcp/Tools/AttendeeTools.cs (delete the three Phase 3 orphans)
+- Modify: src/EventBooking.Mcp/Tools/OperationsTools.cs (delete the two audit tools; pass the location Phase 3 added)
+- Modify: src/EventBooking.Application/Attendees/AttendeeListHandlers.cs (AttendeeListItem gains its identifier)
+- Modify: src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs (project the identifier)
+- Modify: src/EventBooking.Api/Program.cs (probes, metrics, middleware order, limiter policies, the deleted audit registration)
 - Modify: src/EventBooking.Mcp/Program.cs (the settings record; Task 23 rewrites the rest)
 - Create: src/EventBooking.Application/Abstractions/ICorrelationContext.cs
 - Create: src/EventBooking.Application/Abstractions/IIdempotencyStore.cs
@@ -150,6 +159,25 @@ And the startup test asserts the message names every missing key, not just the f
 - Test: tests/EventBooking.Api.Tests/Conventions/LogRedactionTests.cs
 - Test: tests/EventBooking.Api.Tests/Conventions/EventTimeContractTests.cs
 - Modify: tests/EventBooking.Api.Tests/ApiFactory.cs (a non-denylisted test signing key and every required setting)
+- Modify: tests/EventBooking.Mcp.Tests/McpFactory.cs (the same key change; it sets the denylisted one too)
+- Delete: tests/EventBooking.Api.Tests/EventEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/AuditEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/AttendeeEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/AttendeeHypermediaTests.cs
+- Delete: tests/EventBooking.Api.Tests/AttendeeBookingCancellationEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/RecoveryInviteEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/AuthorizationMatrixTests.cs
+- Delete: tests/EventBooking.Api.Tests/StaffHypermediaTests.cs
+- Delete: tests/EventBooking.Api.Tests/EventCapacityAdjustmentEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/ProposalAcceptanceRevisionEndpointTests.cs
+- Delete: tests/EventBooking.Api.Tests/VocabularySurfaceTests.cs
+- Delete: tests/EventBooking.Api.Tests/ApiDiscoveryTests.cs
+- Delete: tests/EventBooking.Mcp.Tests/EventMcpTests.cs
+- Delete: tests/EventBooking.Mcp.Tests/AttendeeMcpTests.cs
+- Delete: tests/EventBooking.Mcp.Tests/AttendeeParityMcpTests.cs
+- Delete: tests/EventBooking.Mcp.Tests/OperationsMcpTests.cs
+- Delete: tests/EventBooking.Mcp.Tests/McpEndpointTests.cs (hard-codes the ported thirty-five tool names)
+- Delete: tests/EventBooking.Mcp.Tests/AgentSurfaceParityTests.cs (compares tools/list against a catalogue this task does not yet change)
 - Test: tests/EventBooking.Api.Tests/Conventions/HealthAndMetricsTests.cs
 
 **Interfaces:**
@@ -547,7 +575,8 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   namespace EventBooking.Api.Tests.Conventions;
 
   /// <summary>
-  /// Walks the attendee list, which is the one cursor-paged route that exists before Task 22b.
+  /// Walks the attendee list. Step 3 repairs that route onto Phase 3's paged query and this
+  /// task's page contract, which is what makes it the one cursor-paged route before Task 22b.
   /// Three walks: a single page, three pages, and an empty result.
   /// </summary>
   [Collection("api")]
@@ -857,12 +886,14 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           using var host = WithRemoteAddress();
           factory.SignedInAs = null;
           var client = host.CreateClient();
-          var token = UnknownToken();
 
           HttpResponseMessage? last = null;
           for (var attempt = 0; attempt < 31; attempt++)
           {
-              last = await SendAsync(client, $"/api/booking/{token}", "203.0.113.10");
+              // A fresh token each time. Thirty-one requests on one token would be refused by
+              // the ten-per-minute token limit instead, and this case would pass without the
+              // address limiter ever being consulted.
+              last = await SendAsync(client, $"/api/booking/{UnknownToken()}", "203.0.113.10");
           }
 
           Assert.NotNull(last);
@@ -883,13 +914,12 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           using var host = WithRemoteAddress();
           factory.SignedInAs = null;
           var client = host.CreateClient();
-          var token = UnknownToken();
 
           HttpResponseMessage? last = null;
           for (var attempt = 0; attempt < 31; attempt++)
           {
               last = await SendAsync(
-                  client, $"/api/booking/{token}", "203.0.113.20", $"198.51.100.{attempt}");
+                  client, $"/api/booking/{UnknownToken()}", "203.0.113.20", $"198.51.100.{attempt}");
           }
 
           Assert.NotNull(last);
@@ -907,13 +937,12 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           using var host = WithRemoteAddress(proxyNetwork: "203.0.113.0/24");
           factory.SignedInAs = null;
           var client = host.CreateClient();
-          var token = UnknownToken();
 
           HttpResponseMessage? last = null;
           for (var attempt = 0; attempt < 31; attempt++)
           {
               last = await SendAsync(
-                  client, $"/api/booking/{token}", "203.0.113.30", $"198.51.100.{attempt}");
+                  client, $"/api/booking/{UnknownToken()}", "203.0.113.30", $"198.51.100.{attempt}");
           }
 
           Assert.NotNull(last);
@@ -1240,6 +1269,22 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           Assert.Contains(correlation, sink.Text(), StringComparison.Ordinal);
       }
 
+      /// <summary>
+      /// The application's own redaction is only half of it: the framework's request logging
+      /// formats the raw path itself. Program.cs raises that category to Warning, and this is
+      /// what stops a later change quietly putting it back.
+      /// </summary>
+      [Fact]
+      public void TheFrameworksOwnRequestLoggingIsSilencedAtInformation()
+      {
+          var factories = factory.Services.GetRequiredService<ILoggerFactory>();
+
+          var hosting = factories.CreateLogger("Microsoft.AspNetCore.Hosting.Diagnostics");
+
+          Assert.False(hosting.IsEnabled(LogLevel.Information));
+          Assert.True(hosting.IsEnabled(LogLevel.Warning));
+      }
+
       /// <summary>A supplied traceparent is adopted rather than replaced.</summary>
       [Fact]
       public async Task ASuppliedTraceparentBecomesTheCorrelationIdentifier()
@@ -1268,7 +1313,18 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
               }
           }
 
-          public ILogger CreateLogger(string categoryName) => new Sink(_lines);
+          /// <summary>
+      /// Only this application's own categories are captured. The framework's hosting logger
+      /// puts the raw request path on its request scope and EF Core renders parameter names
+      /// like @__p_0 in its command logs; capturing either would make these cases assert
+      /// something about ASP.NET Core rather than about this application's redaction.
+      /// </summary>
+      /// <param name="categoryName">The logger category.</param>
+      /// <returns>The sink, or a logger that records nothing.</returns>
+      public ILogger CreateLogger(string categoryName) =>
+          categoryName.StartsWith("EventBooking", StringComparison.Ordinal)
+              ? new Sink(_lines)
+              : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
           public void Dispose()
           {
@@ -1468,8 +1524,199 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   dotnet test tests/EventBooking.Api.Tests --filter "FullyQualifiedName~Conventions"
   ```
 
-- [ ] **Step 3: Implement.** Every file below is complete. Take them in this order:
-  the catalogue and the writer first, because the rest of the task returns its bodies.
+- [ ] **Step 3: Implement.** Every file this task writes is below in full; the build restoration
+  that opens it is the one part expressed as edits, because deleting a registration is not a file
+  and quoting a ported file back in order to remove six lines from it would hide the change
+  rather than show it. Take them in this order: the build restoration first, because nothing in
+  this task can be compiled or run until it is done, then the catalogue and the writer, because
+  the rest of the task returns their bodies.
+
+  **Restore the build first. Phase 3 left the Api and Mcp projects uncompilable.** Phase 3
+  reshaped and deleted Application handlers without updating their call sites: ListAttendeesQuery
+  went from three members to seven, GetDashboardsQuery gained a location, and
+  GetManagerEventBoardHandler, GetEventOperationsHandler, GetAuditHistoryHandler,
+  GetAuditSearchHandler, AcceptProposalHandler, CancelAttendeeBookingHandler and
+  TriggerInviteHandler were deleted outright. Six ported files still name them, so
+  `dotnet build` fails on `main` before this task adds anything. Nothing in Phase 4 can be
+  compiled or test-driven until that is repaired, which is why it is the first thing this task
+  does rather than something Task 22b gets to later.
+
+  The repair is removal, not rework. Task 22b replaces every one of these files with design 05's
+  surface, so writing a second implementation of a route that is about to be deleted would be
+  work thrown away twice. The two routes this task's own suite drives — the attendee list and
+  the attendee create — are the exception: the list is repaired onto Phase 3's paged query,
+  which is the shape PaginationWalkTests asserts, and the create is untouched by Phase 3.
+
+  ```csharp
+  // src/EventBooking.Api/Endpoints/EventEndpoints.cs — delete three registrations and nothing
+  // else. Each names a handler Phase 3 deleted; Task 22b maps design 05's replacements.
+  //
+  //   group.MapGet("/board", …)                      GetManagerEventBoardHandler is gone.
+  //                                                  Task 13's negotiation board returns as
+  //                                                  GET /api/events in Task 22b.
+  //   group.MapGet("/operations", …)                 Task 20a deleted the operations board
+  //                                                  outright; design 05 has no such route.
+  //   proposals.MapPost("/{id:guid}/acceptance", …)  AcceptProposalHandler is gone. Task 13's
+  //                                                  RecordAcceptanceHandler returns as
+  //                                                  PUT /api/event-proposals/{id}/acceptance
+  //                                                  in Task 22b.
+  //
+  // EventBoardResourceResponse and EventOperationsResourceResponse lose their only callers here.
+  // Leave both files alone: Task 22b deletes them with the rest of the ported hypermedia.
+  ```
+
+  ```csharp
+  // src/EventBooking.Api/Endpoints/AuditEndpoints.cs — delete the file, and delete the
+  // app.MapAuditEndpoints() line from Program.cs below. All three of its routes call
+  // GetAuditHistoryHandler or GetAuditSearchHandler, both deleted in Task 20b, so there is
+  // nothing left in the file to keep. Task 22b creates it again over Task 20b's search handler.
+  ```
+
+  ```csharp
+  // src/EventBooking.Api/Endpoints/AttendeeEndpoints.cs — delete three registrations, and
+  // repair the list.
+  //
+  //   group.MapPost("/{id:guid}/invite", …)          TriggerInviteHandler is gone (Task 14).
+  //   group.MapPost("/{attendeeId:guid}/bookings/{bookingId:guid}/cancel", …)
+  //                                                  CancelAttendeeBookingHandler is gone
+  //                                                  (Task 15).
+  //   group.MapPost("/{id:guid}/email-retry", …)     RetryEmailHandler survives, but Task 22a
+  //                                                  replaces RetryEmailCommand with
+  //                                                  RetryNewestEmailCommand. Deleting the route
+  //                                                  here keeps every Api-project repair in one
+  //                                                  task; Task 22b re-adds all three.
+  //
+  // The list route is repaired rather than deleted, because this task's own pagination suite
+  // drives it. This is Phase 3's query shape and Task 21's page contract, and Task 22b replaces
+  // it again with the filtered version design 05 specifies.
+  //
+  // One Application repair goes with it. Task 20's AttendeeListItem carries no identifier, so a
+  // row cannot be acted on without a second lookup and neither surface can link to it. Add
+  // `Guid Id` as its first member in
+  // src/EventBooking.Application/Attendees/AttendeeListHandlers.cs, and project `a.Id` into it
+  // in src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs. Task 23's
+  // list-shape assertion requires it, and Task 22b's projection carries it.
+  group.MapGet("/", async (
+      Guid? groupId,
+      string? status,
+      string? search,
+      string? cursor,
+      int? limit,
+      ICallerAccessor caller,
+      ListAttendeesHandler handler,
+      PageCursor cursors,
+      CancellationToken cancellationToken) =>
+  {
+      if (!PageRequest.TryBind(cursor, limit, out var page, out var field))
+      {
+          return ResultResponses.ValidationFailed(
+              field!, "out-of-range", "Limit must be between 1 and 200.");
+      }
+
+      string? inner = null;
+      if (page.Cursor is not null && !cursors.TryUnprotect(page.Cursor, out inner!))
+      {
+          return ResultResponses.ValidationFailed(
+              "cursor", "cursor-invalid", "That cursor is not valid.");
+      }
+
+      var result = await handler.HandleAsync(
+          new ListAttendeesQuery(
+              caller.RequireStaffUserId(), inner, page.Limit, status, groupId, null, search),
+          cancellationToken);
+      if (result.IsFailure)
+      {
+          return result.ToResponse();
+      }
+
+      return Results.Ok(new Page<object>(
+          [.. result.Value.Items.Select(x => (object)new
+          {
+              x.Id, x.Name, x.Email, x.Status, x.GroupCode, x.Readiness,
+              cursor = cursors.Protect(x.Cursor),
+          })],
+          result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor)));
+  })
+      .WithAgentMetadata("listAttendees")
+      .Produces(200)
+      .ProducesProblem(403)
+      .ProducesProblem(422);
+  ```
+
+  ```csharp
+  // src/EventBooking.Api/Endpoints/BookingEndpoints.cs — one line. The ported group requires the
+  // policy named by its own BookingEndpoints.RateLimiterPolicy constant, "attendee-links", and
+  // the registrations above no longer include that name, so every attendee request would throw
+  // on an unregistered policy. Point the group at the token policy and delete the constant; the
+  // address allowance reaches these routes through the global limiter, not through metadata.
+  //
+  // Was:  .RequireRateLimiting(RateLimiterPolicy)
+  // Now:  .RequireRateLimiting(TokenPrefixRateLimiterPolicy.PolicyName)
+  //
+  // This is also what makes this task's rate-limit suite meaningful: both allowances are live on
+  // /api/booking/{token} from here, which is what its four cases measure.
+  ```
+
+  ```csharp
+  // src/EventBooking.Mcp/Tools/EventTools.cs — delete get_event_board, get_event_operations and
+  // accept_proposal, the three tools whose handlers are gone. Task 23 rebuilds this file.
+  //
+  // src/EventBooking.Mcp/Tools/AttendeeTools.cs — delete invite_attendee,
+  // cancel_attendee_booking and retry_attendee_email, matching the endpoint deletions above.
+  //
+  // src/EventBooking.Mcp/Tools/OperationsTools.cs — delete its two audit tools, and pass the
+  // location Phase 3 added to the dashboards query:
+  //     new GetDashboardsQuery(caller.RequireStaffUserId(), null)
+  // Task 23 deletes the whole file once its workspace and dashboard tools have their design 05
+  // replacements.
+  ```
+
+  **Then build, and repair whatever else the compiler names.** The seven deletions above are
+  every Phase 3 orphan this task's author could find by reading Phase 3's Files lists against the
+  ported sources, but that search was done by hand and the executor has something better. A call
+  site that Phase 3 reshaped takes the new argument — GetDashboardsQuery is the example, and
+  `src/EventBooking.Api/Endpoints/DashboardEndpoints.cs` is the likely second one. A call site
+  whose handler no longer exists is deleted, and Task 22b puts design 05's version back. Do not
+  invent a replacement handler to satisfy a ported route.
+
+  ```bash
+  dotnet build EventBooking.sln -warnaserror
+  ```
+
+  **Delete the ported suites those routes belonged to.** They are integration tests over the
+  predecessor's route surface, which design 05 replaces almost entirely; Task 22b's catalogue
+  suites are their replacement, and Task 23's are the MCP ones. Leaving them would leave a red
+  suite from here to the end of the phase.
+
+  - `tests/EventBooking.Api.Tests/EventEndpointTests.cs` — drives `/api/events/board` and
+    `/api/events/operations`.
+  - `tests/EventBooking.Api.Tests/AuditEndpointTests.cs` — drives the three deleted audit routes.
+  - `tests/EventBooking.Api.Tests/AttendeeEndpointTests.cs`,
+    `tests/EventBooking.Api.Tests/AttendeeHypermediaTests.cs`,
+    `tests/EventBooking.Api.Tests/AttendeeBookingCancellationEndpointTests.cs`,
+    `tests/EventBooking.Api.Tests/RecoveryInviteEndpointTests.cs` — drive the deleted attendee
+    routes, or assert the bare-array list this task replaces.
+  - `tests/EventBooking.Api.Tests/AuthorizationMatrixTests.cs`,
+    `tests/EventBooking.Api.Tests/StaffHypermediaTests.cs`,
+    `tests/EventBooking.Api.Tests/EventCapacityAdjustmentEndpointTests.cs`,
+    `tests/EventBooking.Api.Tests/ProposalAcceptanceRevisionEndpointTests.cs`,
+    `tests/EventBooking.Api.Tests/VocabularySurfaceTests.cs`,
+    `tests/EventBooking.Api.Tests/ApiDiscoveryTests.cs` — arrange through `/api/events/board` or
+    the old attendee list. Task 22b's DesignCatalogueTests and LinkTests carry the
+    authorization-matrix and hypermedia assertions forward against design 05's surface.
+  - `tests/EventBooking.Mcp.Tests/EventMcpTests.cs`,
+    `tests/EventBooking.Mcp.Tests/AttendeeMcpTests.cs`,
+    `tests/EventBooking.Mcp.Tests/AttendeeParityMcpTests.cs`,
+    `tests/EventBooking.Mcp.Tests/OperationsMcpTests.cs` — drive the deleted tools.
+  - `tests/EventBooking.Mcp.Tests/McpEndpointTests.cs` names the ported thirty-five tools in a
+    literal array, and `tests/EventBooking.Mcp.Tests/AgentSurfaceParityTests.cs` compares the
+    served tool list against a catalogue this task deliberately leaves alone. Both fail the
+    moment a tool is removed, and Task 23's ParityTests is what replaces them.
+
+  The suite count falls before it rises. That is expected and is not a figure to reconcile
+  against Task 11's 1570: Task 22b and Task 23 replace this coverage with suites written against
+  design 05 rather than against the predecessor.
+
 
   **The problem catalogue and the result writer.**
 
@@ -2064,6 +2311,13 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           });
 
           await next(context);
+
+          // One line per request, from a category this application owns. With the framework's
+          // own request logging silenced and scopes unprinted, this is where an operator finds
+          // the correlation identifier — and every member of it is metadata, never request data.
+          logger.LogInformation(
+              "Handled {Method} {Route} as {Status} under {CorrelationId}.",
+              context.Request.Method, route, context.Response.StatusCode, correlationId);
       }
 
       /// <summary>
@@ -3036,6 +3290,28 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   ```
 
   ```csharp
+  // tests/EventBooking.Mcp.Tests/McpFactory.cs — the same change. This factory sets the same
+  // denylisted key, so without it every MCP integration test fails at host start-up rather than
+  // in the case under test.
+  private static readonly string TestSigningKey = Convert.ToBase64String(
+      System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+
+  protected override void ConfigureWebHost(IWebHostBuilder builder)
+  {
+      builder.UseSetting("ConnectionStrings:EventBooking", _container.GetConnectionString());
+      builder.UseSetting("Tokens:SigningKey", TestSigningKey);
+      builder.UseSetting("Auth:Authority", "https://issuer.example.test/");
+      builder.UseSetting("Auth:Audience", "event-booking-tests");
+      builder.UseSetting("Email:Smtp:Host", "smtp.example.test");
+      builder.UseSetting("Email:FromAddress", "events@example.test");
+      builder.UseSetting("Portal:BaseUrl", "https://portal.example.test/");
+      builder.UseSetting("Portal:CoordinatorContact", "events@example.test");
+      builder.UseSetting("Cors:AllowedOrigins:0", "https://web.example.test");
+      // Existing test-authentication and infrastructure overrides continue unchanged.
+  }
+  ```
+
+  ```csharp
   // src/EventBooking.Api/Program.cs (complete, replacing the ported file)
   using System.Diagnostics;
   using System.Net;
@@ -3064,7 +3340,14 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   var settings = EventBookingConfiguration.Read(builder.Configuration);
 
   builder.Logging.ClearProviders();
-  builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+  // Scopes are not rendered, and the hosting category is raised to Warning. Both are about the
+  // same leak: ASP.NET Core logs "Request starting … /api/booking/<token>" at Information and
+  // puts that same raw path on its request scope, and design 08 forbids a token in a log line.
+  // The application cannot redact a message the framework formats, so the message is silenced
+  // and the scope is not printed; the correlation line below carries the route template, the
+  // status and the correlation identifier, which is what the Information level was for.
+  builder.Logging.AddJsonConsole(options => options.IncludeScopes = false);
+  builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 
   builder.Services.AddEventBookingInfrastructure(
       settings.ConnectionString, settings.Clock, settings.Tokens);
@@ -3213,7 +3496,7 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   app.MapMeEndpoints();
   app.MapBookingEndpoints();
   app.MapDashboardEndpoints();
-  app.MapAuditEndpoints();
+  // No app.MapAuditEndpoints(): the ported file is deleted above, and Task 22b creates it again.
   app.MapAppointmentWorkspaceEndpoints();
 
   app.Run();
@@ -3477,10 +3760,13 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   dirty — restore it before regenerating rather than accepting the diff.
 
   **No figure here is observed.** This task is hand-authored and nothing in it has been built or
-  run. Expect the API count to rise by roughly forty cases and every other project to be
-  unchanged except the Application suite, which gains the token-expiry and last-Admin cases. The
-  last measured checkpoint remains Task 11 at 1570; a count that does not match the executor's
-  own before-and-after diff is a signal to read the diff, not to adjust the number.
+  run. The API count moves in both directions here: the conventions suite adds roughly forty
+  cases, and the sixteen ported suites the build restoration deletes remove rather more, so
+  expect the API and MCP totals to fall overall. The Application suite gains the token-expiry
+  and last-Admin cases. The last measured checkpoint remains Task 11 at 1570, and it stops being
+  a useful comparison here: Tasks 22b and 23 rebuild the deleted coverage against design 05. A
+  count that does not match the executor's own before-and-after diff is a signal to read the
+  diff, not to adjust the number.
 
 - [ ] **Step 5: Commit and push** the executor's code — not the plan documents — under the
   master plan's message:
@@ -3488,7 +3774,7 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   ```bash
   test -z "$(git status --porcelain --ignored=no | grep -v '^??')"
   dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
-  git add src/EventBooking.Api/ src/EventBooking.Mcp/Program.cs src/EventBooking.Application/ src/EventBooking.Domain/Notifications/EmailLog.cs src/EventBooking.Infrastructure/ tests/EventBooking.Api.Tests/
+  git add src/EventBooking.Api/ src/EventBooking.Mcp/ src/EventBooking.Application/ src/EventBooking.Domain/Notifications/EmailLog.cs src/EventBooking.Infrastructure/ tests/EventBooking.Api.Tests/ tests/EventBooking.Mcp.Tests/
   git diff --cached --name-only
   git diff --cached
   test -n "$EXECUTOR_COAUTHOR"

@@ -21,13 +21,26 @@ operation an MCP tool and proves the two surfaces cannot drift.
 
 ## Review amendments
 
-The Phase 4 review found gaps that this revision closes before execution: all attendee routes and
-tools are now written as code; the pagination and query fragments use mapped persistence shapes;
-MCP errors retain their stable application code; and test setup creates valid invitation options
-and validated startup configuration. The conventions now compose both attendee rate limits,
-trust forwarded headers only when a proxy network is configured, redact token-bearing paths from
-log scopes, and serialize same-key idempotency requests. These are corrections to the written
-plans; the phase remains unexecuted and has no observed test count.
+Two rounds of review ran against these documents before execution, and both are applied here.
+
+The first closed gaps in what was written: every attendee route and tool is code rather than
+prose, the read-model fragments use the mapped persistence shapes Phases 0–3 actually define,
+MCP failures keep their application error code, the conventions compose both attendee rate
+limits, forwarded headers are trusted only when a proxy network is configured, token-bearing
+paths are kept out of log scopes, and same-key idempotent requests are serialised.
+
+The second found that the phase could not start. **Phase 3 reshaped and deleted Application
+handlers without updating their call sites, so the Api and Mcp projects do not compile on
+`main`** — and every task here gates its commit on a green solution. Task 21 now opens by
+restoring the build, deleting the routes, tools and ported suites whose handlers Phase 3 removed
+and repairing the attendee list onto Phase 3's paged query; the tasks that follow delete the
+ported suites their own rewrites invalidate. The same round supplied the authorizer's visibility
+change, the two reference-data list responses that were used but never declared, the two amended
+Application suites, and cross-surface comparisons in place of two assertions that could not fail.
+Section 8's settlement #19 records the build restoration.
+
+These are corrections to the written plans. The phase remains unexecuted and has no observed test
+count, and Task 21 now deliberately lowers the suite count before Tasks 22b and 23 raise it.
 
 **Architecture:** Phase 4 changes the Api and Mcp projects and their tests, plus the read-model
 queries Task 22a adds in Application and Infrastructure. No endpoint and no tool holds a business
