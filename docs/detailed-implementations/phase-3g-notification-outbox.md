@@ -83,7 +83,7 @@ location name, address, local time and zone — never the retired head-office wo
 - Modify: src/EventBooking.Application/Notifications/RetryEmailHandler.cs (new pending row,
   old row resolved; no immediate send)
 - Modify: src/EventBooking.Application/Bookings/ViewBookingHandler.cs (window formatter
-  from the new composer)
+  from the new composer; complete below)
 - Modify: src/EventBooking.Application/Bookings/ViewInviteHandler.cs (same)
 - Delete: src/EventBooking.Application/Notifications/AttendeeEmailComposer.cs
 - Delete: src/EventBooking.Application/Notifications/EmailDeliveryService.cs
@@ -371,6 +371,32 @@ public sealed record RetryEmailCommand(Guid StaffUserId, Guid AttendeeId, Guid E
 
   ```bash
   dotnet test tests/EventBooking.Infrastructure.Tests --filter "FullyQualifiedName~Email"
+  ```
+
+  ```csharp
+  // src/EventBooking.Application/Bookings/ViewBookingHandler.cs and
+  // src/EventBooking.Application/Bookings/ViewInviteHandler.cs — one call site each.
+  //
+  // Both read the window text from AttendeeEmailComposer, which this task deletes. The new
+  // composer's formatter takes the location's name and zone abbreviation rather than
+  // deriving them, because an event is no longer at one known site: the caller holds the
+  // location and the resolver, so it passes what it already knows.
+  //
+  // Was:
+  //     AttendeeEmailComposer.FormatWindow(eventItem.Window)
+  // Now:
+  //     EmailComposer.FormatWindow(
+  //         eventItem.Window.Date,
+  //         eventItem.Window.StartTime,
+  //         eventItem.Window.EndTime,
+  //         location.Name,
+  //         zones.AbbreviationOf(
+  //             eventItem.Window.StartInstant(zones, location.TimeZoneId), location.TimeZoneId))
+  //
+  // Each handler already loads the event; both gain ILocationRepository and
+  // IEventWindowZones constructor parameters to reach the location and the abbreviation.
+  // Nothing else in either file changes, and the using of the deleted composer goes with
+  // it.
   ```
 
 - [ ] **Step 3: Implement.** Add the production code below in full, then the migration.
