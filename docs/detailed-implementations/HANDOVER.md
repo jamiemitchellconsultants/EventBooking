@@ -35,8 +35,9 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
-| Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Pull request #20 open |
-| Phases 4–7 — master Tasks 21–33 | Not authored |
+| Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
+| Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 is open with its review amendments applied. Hand-authored, like Phase 3, so no build or test has ever run against them |
+| Phases 5–7 — master Tasks 24–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -67,6 +68,7 @@ Documents written so far:
 | 1 | `phase-1-domain.md` | `phase-1a-event-window.md`, `phase-1b-reference-data.md`, `phase-1c-negotiation.md`, `phase-1d-capacity.md`, `phase-1e-invites.md`, each with edit volumes |
 | 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes; `phase-2d-invite-eligibility.md` + 16 edit volumes |
 | 3 | `phase-3-application.md` | `phase-3a-reference-data-settings.md`, `phase-3b-negotiation.md`, `phase-3c-invite-engine.md`, `phase-3d-booking-cancellation.md`, `phase-3e-recovery-workspace.md`, `phase-3f-staff-authorization.md`, `phase-3g-notification-outbox.md`, `phase-3h-background-jobs.md`, `phase-3i-dashboards-attendees.md`, `phase-3j-audit-search.md` (hand-authored, unexecuted; Task 20 split into 20a/20b) |
+| 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b), `phase-4d-mcp-parity.md` (23, phase gate) (hand-authored, unexecuted) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -459,7 +461,7 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 
 | Construct | Retires in |
 | --- | --- |
-| The single-zone clock and its transitional member names | Phase 3, when handlers carry a `Location` |
+| The single-zone clock and its transitional member names | **Not retired in Phase 3, although its table said so.** Task 21 made `Clock:TimeZoneId` optional; the options type and the transitional member survive. Retire with Phase 6's seed rework |
 | The predecessor's fixed appointment-type identifiers and seeded rows | Phase 3 |
 | The seeded transitional `Location` row, and `event.location_id` without a foreign key to it | Phase 3 |
 | `start_utc` nullable, because nothing computes it yet | Retired in Task 11 |
@@ -494,6 +496,69 @@ wording it overrides:
   `correlationId`; Task 18's migration adds them.
 - **#7 (Task 18).** Delivery is at-least-once, with the SMTP-crash window stated explicitly;
   duplicates are harmless because links regenerate deterministically.
+
+### Phase 4 settlements (binding on later tasks)
+
+Settled with the user while authoring Phase 4, each against the master plan, spec or design
+wording it overrides. **The numbering continues section 10's contradictions table rather than
+this section's own list**, which is why it resumes at #11 and not at #8: a settlement and the
+contradiction it closes carry one number between them.
+
+- **#11 (Task 22).** **Master Task 22 splits into 22a and 22b.** Seven of design 05's endpoints
+  have no Phase 3 handler behind them — the filtered `Event` and `EventProposal` lists, the
+  single-`Event` read, the cancellable-`Event` list, `includeInactive` on the three reference-data
+  lists, an update carrying `isActive` where Task 12 splits update from set-active, and the
+  capacity route's appointment-type identifier. Task 22 scopes itself as wiring, so the missing
+  read side goes into 22a and the endpoint catalogue stays pure in 22b. Both carry the master
+  plan's single commit message, as 20a and 20b do.
+- **#12 (Task 22b).** **`GET /api/events` follows Task 20b's audit precedent.** Design 05 gives it
+  either `ManageEventNegotiation` or `ViewEventOperations`, against "exactly one `StaffCapability`
+  per handler". The handler demands neither and filters by whichever the caller holds, with the
+  filter enforced in the query rather than only in the handler.
+- **#13 (Task 22b).** **`GET /api/attendees/{id}/readiness` demands `ViewAttendeeDashboards`**, per
+  design 05, not the ported handler's `ManageAttendees`. The design package wins on detail, and a
+  readiness read belongs with the other dashboard reads.
+- **#14 (Task 21).** **An expired attendee token returns 410 `token-expired`.** Design 05 and
+  design 06 both distinguish it from 404 `token-invalid`; the ported handlers collapsed every
+  token failure into one not-found. A token whose signature verifies, whose row resolves and
+  whose stored version matches, but whose `Invite` has lapsed, is a link the holder knows they
+  were sent. `Used`, `Superseded` and `Cancelled` stay indistinguishable from a forgery.
+- **#15 (Task 21).** **`proposal-not-open` becomes a typed error**, and Task 13's three catch
+  blocks are repointed at it, so the status travels in the problem body rather than only in the
+  message.
+- **#16 (Task 21).** **`last-admin` is reachable from the staff-access endpoint**, not from role
+  synchronisation, which keeps its silent refusal and its alert: a background reconciliation must
+  not fail an unrelated request because of someone else's identity-provider change.
+- **#17 (Task 21).** **The error catalogue gains four slugs design 05's table omits** —
+  `not-found` (404), `requirement-mismatch` (409), `already-confirmed` (409, which is settlement
+  #2 and postdates the design) and `conflict` (409) as the residual generic. Every one of design
+  05's own slugs still has a producing error code, which the catalogue test asserts.
+- **#18 (Task 21).** **The outbox row's correlation identifier is the request's where one
+  exists.** Settlement #6 records the column as the dispatcher's; master Task 21 asks for the
+  request's to be propagated in. Both hold once the dispatcher's claim writes
+  `COALESCE(correlation_id, @correlationId)`, and the stamp itself is write-once.
+- **Two configuration keys design 04's table does not name** are added by Task 21 because design
+  06 needs them: `Proxy__Networks`, without which "forwarded headers are trusted only from the
+  configured reverse-proxy network" cannot be implemented, and `RateLimiting__TokenPerMinute` and
+  `__StaffPerMinute` beside the attendee limit the table does name.
+
+- **#19 (Task 21).** **Task 21 restores the build before it does anything else.** Phase 3
+  reshaped ListAttendeesQuery and GetDashboardsQuery and deleted seven handlers without
+  updating their call sites in the Api and Mcp projects, so `dotnet build` fails on `main` and
+  every Phase 4 task gates its commit on a green solution. The repair is removal, not rework:
+  Task 21 deletes the orphaned routes and tools, and the ported suites that drive them, because
+  Tasks 22b and 23 replace all of them with design 05's surface — writing a second
+  implementation of a route that is about to be deleted would be work thrown away twice. The one
+  exception is the attendee list, which Task 21 repairs onto Phase 3's paged query because its
+  own pagination suite drives it. The consequence is that the suite count falls at Task 21 and
+  rises again at Tasks 22b and 23; that is intended, not a regression to reconcile.
+
+**Found while authoring Task 21, and still open.** Phase 3's transitional-construct table retires
+the single-zone clock "when handlers carry a `Location`", but **no Phase 3 document removes it**:
+`Clock:TimeZoneId`, the clock options type and the transitional member on the system clock all
+survive Phase 3, and the infrastructure registration still asks for them. Task 21 keeps the key,
+made optional and defaulting to `Etc/UTC` because design 04's table does not list it. Removing it
+belongs with Phase 6's seed rework, and the transitional-constructs table above now says so.
 
 ## 9. Standing rules that have bitten already
 
@@ -562,14 +627,23 @@ fourteen is in this file's history at commit `2b192ca`.
 | --- | --- | --- |
 | 1 | The seed brief has an appointment type that is active but unmanaged, and an inactive type, yet also lists events and proposals that would need them | 28 |
 | 2 | **Settled in Phase 3 (§8):** a replayed confirmation is refused as a conflict naming the existing booking | 15 |
-| 3 | A missing `staff_id` is 403 everywhere except `/api/me` (§8); Task 21's endpoint layer still has to implement the same rule | 17, 21 |
+| 3 | **Settled in Phase 3 and implemented in Task 21 (§8):** a missing `staff_id` is 403 everywhere except `/api/me`, and `unauthenticated` stays 401 for a missing or invalid bearer token | 17, 21 |
 | 4 | **Settled in Phase 3 (§8):** recovery demands `ManageAttendees`, workspace stays under `ConductAppointments` | 16 |
 | 5 | **Settled in Phase 3 (§8):** Task 12 owns reference data and settings only; Task 20 is split into 20a/20b | 12, 20 |
 | 6 | **Settled in Phase 3 (§8):** the email log carries `claimCount`, `notBefore` and `correlationId` | 18 |
 | 7 | **Settled in Phase 3 (§8):** delivery is at-least-once, crash window stated | 18 |
 | 8 | Task 32's 500 same-IP confirmations collide with the 30-per-minute attendee rate limit | 32 |
 | 9 | **Settled in Phase 3 (§8):** invites snapshot the three settings values at issue | 12 |
-| 10 | London and Dublin share an offset, so they cannot demonstrate zone-dependent ordering; use a genuinely different zone such as `Asia/Tokyo` | wherever ordering is proved. **Applied in Task 11**, whose ordering cases pair London with Tokyo; still open for later tasks that prove an ordering |
+| 10 | London and Dublin share an offset, so they cannot demonstrate zone-dependent ordering; use a genuinely different zone such as `Asia/Tokyo` | wherever ordering is proved. **Applied in Task 11**, whose ordering cases pair London with Tokyo, and again in Task 21's event-time contract cases; still open for later tasks that prove an ordering |
+| 11 | **Settled in Phase 4 (§8):** master Task 22 splits into 22a and 22b, because seven of design 05's endpoints have no Phase 3 handler | 22 |
+| 12 | **Settled in Phase 4 (§8):** `GET /api/events` follows Task 20b's audit precedent for its two capabilities | 22 |
+| 13 | **Settled in Phase 4 (§8):** attendee readiness demands `ViewAttendeeDashboards`, per design 05 | 22 |
+| 14 | **Settled in Phase 4 (§8):** an expired attendee token returns 410, distinct from 404 | 21 |
+| 15 | **Settled in Phase 4 (§8):** `proposal-not-open` becomes a typed error | 21 |
+| 16 | **Settled in Phase 4 (§8):** `last-admin` is reachable from staff-access, not from role sync | 21 |
+| 17 | **Settled in Phase 4 (§8):** the error catalogue gains four slugs design 05's table omits | 21 |
+| 18 | **Settled in Phase 4 (§8):** the outbox correlation identifier is the request's where one exists | 18, 21 |
+| 19 | **Settled in Phase 4 (§8):** Phase 3 left the Api and Mcp projects uncompilable; Task 21 restores the build by removal before adding anything | 12–20, 21 |
 
 ## 11. Next steps
 
@@ -583,13 +657,37 @@ fourteen is in this file's history at commit `2b192ca`.
    is in section 8; do not re-derive any of it from this list, which is why this entry no longer
    repeats it. Section 7 says why the phase has no test figures and must not be given any.
 
-   What remains on Phase 3 is a code owner's review of #20. The EF migrations in Tasks 12, 18 and
-   20a are generate-and-review by the Phase 2 convention rather than embedded, which is correct and
-   not a gap.
+   Pull request #20 has merged, along with #23, which closed the seven Files entries that carried
+   no code. The EF migrations in Tasks 12, 18 and 20a are generate-and-review by the Phase 2
+   convention rather than embedded, which is correct and not a gap.
 
-3. **Phase 4 (Tasks 21–23) is next, and stays hand-authored.** Follow section 6a's loop. Task 21 is
-   the API surface and inherits contradiction #3's settlement: the endpoint layer still has to
-   implement the 403 rule section 8 records.
+3. **Phase 4 (Tasks 21–23) is written, reviewed, and stayed hand-authored.** Follow section 6a's loop, and
+   run both of its sweeps per task rather than per phase. The phase overview is
+   `phase-4-api-and-mcp.md`.
+
+   - **Task 21 is written** (`phase-4a-api-conventions.md`). It opens by restoring the build
+     Phase 3 left broken (settlement #19), then implements contradiction #3's 403 rule at the
+     endpoint layer and settles five more, all recorded in section 8 as #14 to #18. It also found, and did not fix, the single-zone clock Phase 3's table claimed to
+     retire; that is recorded in section 8 too.
+   - **Task 22a is written** (`phase-4b-event-read-models.md`). It adds the filtered `Event`
+     and `EventProposal` reads, the single-`Event` read, the cancellable list, `includeInactive`
+     on the three reference-data lists, activation folded into the reference-data update, the
+     appointment-type identifier on the capacity adjustment, and settlements #12 and #13. It
+     deletes Task 12's three set-active handlers, which nothing else calls.
+   - **Task 22b is written** (`phase-4c-endpoint-catalogue.md`). Fifty-five operations across
+     fifteen endpoint files, over one shared catalogue that the OpenAPI document, the `/api`
+     index, `_links` and Task 23's tool list all read from. Its catalogue test parses design
+     05's own tables: forty-five staff operations with a tool, ten anonymous or token routes
+     without one, and `GET /metrics` as the single route design 05's tables do not name.
+   - **Task 23 is written** (`phase-4d-mcp-parity.md`), and carries the phase's pull-request
+     gate. Forty-five tools over the same handlers, with names, descriptions and hints read
+     from the shared catalogue so the two surfaces cannot describe themselves differently.
+
+   Phase 4 is therefore complete as authored and has never been executed. Pull request #27 is
+   open from `claude/phase-4-api-and-mcp`; its requested review amendments were applied before
+   execution. Task 23's Step 6 carries the gate, the narrative requirements and the fingerprint
+   recipe.
+
 4. **Decide the method for Phase 5 before writing Task 24, and put the decision to the user.** Phase
    4 is thin wiring over handlers that already exist, which is why it stays hand-authored. Phase 5
    is the web work: dense components whose failure modes are visual, where neither of section 6a's
@@ -606,5 +704,5 @@ fourteen is in this file's history at commit `2b192ca`.
    debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and
    `Booking` levels, and Task 7's charge and release methods finally being called.
 
-Do not claim the assignment is complete while Tasks 21–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 22–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
