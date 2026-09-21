@@ -543,6 +543,65 @@ public sealed record StaffMeView(
   dotnet test tests/EventBooking.Application.Tests --filter "FullyQualifiedName~Access"
   ```
 
+  ```csharp
+  // src/EventBooking.Api.Auth/LocalAuthenticationExtensions.cs — the scheme registration
+  // only; the policy and the rest of the file are untouched.
+  //
+  // Provider-neutral: the section is Auth, not Auth:Local, and the authority, audience and
+  // HTTPS requirement all come from configuration. The predecessor hard-coded
+  // RequireHttpsMetadata = false, which is right for a local realm and wrong everywhere
+  // else, and a deployment had no way to say so.
+  public static AuthenticationBuilder AddEventBookingAuthentication(
+      this IServiceCollection services, IConfiguration configuration)
+  {
+      var auth = configuration.GetSection("Auth");
+
+      return services
+          .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+          .AddJwtBearer(options =>
+          {
+              options.Authority = auth["Authority"];
+              options.Audience = auth["Audience"];
+
+              // Defaults to requiring HTTPS. A local realm opts out explicitly through
+              // Auth__RequireHttpsMetadata=false; nothing opts out by omission.
+              options.RequireHttpsMetadata =
+                  !bool.TryParse(auth["RequireHttpsMetadata"], out var required) || required;
+
+              // Left off deliberately: inbound claim mapping renames the very claims
+              // AuthClaimOptions is configured to find.
+              options.MapInboundClaims = false;
+          });
+  }
+  ```
+
+  ```csharp
+  // src/EventBooking.Api/Auth/HttpContextCallerAccessor.cs — the claim reads only. The
+  // object-identifier claims stay constants: they are the OIDC specification's names, not
+  // this deployment's choice, so there is nothing for an operator to configure.
+  public sealed class HttpContextCallerAccessor(
+      IHttpContextAccessor accessor,
+      ILogger<HttpContextCallerAccessor> logger,
+      IOptions<AuthClaimOptions> claims) : ICallerAccessor
+  {
+      /// <summary>The OIDC subject claim. Specification-fixed, so not configurable.</summary>
+      public const string ObjectIdClaim =
+          "http://schemas.microsoft.com/identity/claims/objectidentifier";
+
+      /// <summary>The short form of the same claim.</summary>
+      public const string ShortObjectIdClaim = "oid";
+
+      private AuthClaimOptions Claims => claims.Value;
+
+      public StaffId? StaffId =>
+          StaffIdOf(accessor.HttpContext?.User, Claims.StaffIdClaim, Claims.StaffIdPattern);
+
+      // The three configurable reads replace the StaffIdClaim, RolesClaim and NameClaim
+      // constants the predecessor held. Every call site that named a constant now names the
+      // matching option; the parsing either side of it is unchanged.
+  }
+  ```
+
 - [ ] **Step 3: Implement.** Add the production code below in full, then the OIDC
   rework. No placeholders: every file below is complete.
 
@@ -754,8 +813,8 @@ public sealed record StaffMeView(
   }
   ```
 
-  Bind from `Auth__Claims__StaffId/Name/Roles` plus `Identity__StaffIdPattern`, and read
-  them in HttpContextCallerAccessor instead of its constants. Rework
+  Bind from `Auth__Claims__StaffId/Name/Roles` plus `Identity__StaffIdPattern`. Both files
+  that read them are complete below. Rework
   LocalAuthenticationExtensions to the provider-neutral section (`Auth__Authority`,
   `Auth__Audience`, HTTPS metadata from configuration, defaulting off only for the local
   stack); keep MapInboundClaims disabled so the literal roles lookup keeps working.

@@ -110,6 +110,8 @@ with old and new values and no names or emails.
   (TestZones, MemoryBlocking)
 - Modify: tests/EventBooking.Application.Tests/Settings/AdminSettingsAccessProfileTests.cs
   (positional SettingsView and UpdateSettingsCommand constructions)
+
+The three Modify entries above are complete below; everything else in each file is untouched.
 - Test: tests/EventBooking.Application.Tests/ReferenceData/LocationHandlerTests.cs
 - Test: tests/EventBooking.Application.Tests/ReferenceData/AppointmentTypeHandlerTests.cs
 - Test: tests/EventBooking.Application.Tests/ReferenceData/AttendeeGroupHandlerTests.cs
@@ -1655,6 +1657,78 @@ Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, Cancellati
   suites). The executor's counts will differ from any number quoted here: what matters is
   green with zero skipped. A count that does not match the executor's own before/after diff
   is a signal to read the diff, not to adjust the number.
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Repositories/Repositories.cs — add this
+  // class; the repositories already in the file are untouched. Same shape as the group
+  // repository it sits beside, so the two read the same way.
+  /// <summary>Persists Admin-managed locations.</summary>
+  /// <param name="context">The context to read and write through.</param>
+  public sealed class LocationRepository(EventBookingDbContext context) : ILocationRepository
+  {
+      /// <summary>Gets a location by identifier, including inactive rows.</summary>
+      public Task<Location?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+          context.Locations.SingleOrDefaultAsync(l => l.Id == id, cancellationToken);
+
+      /// <summary>Gets a location from a trimmed case-insensitive canonical-code input.</summary>
+      public Task<Location?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+      {
+          var normalized = code.Trim().ToUpperInvariant();
+          return context.Locations.SingleOrDefaultAsync(
+              l => l.Code == normalized, cancellationToken);
+      }
+
+      /// <summary>Lists every location, inactive included, ordered by display name.</summary>
+      public async Task<IReadOnlyList<Location>> ListAsync(CancellationToken cancellationToken) =>
+          await context.Locations.OrderBy(l => l.Name).ToListAsync(cancellationToken);
+
+      public void Add(Location location) => context.Locations.Add(location);
+  }
+  ```
+
+  ```csharp
+  // tests/EventBooking.Application.Tests/Fakes/InMemoryRepositories.cs — add this class
+  // beside the other fakes. The code comparison is ordinal against an already-uppercased
+  // input, matching what the EF repository asks the database for.
+  public sealed class InMemoryLocationRepository : ILocationRepository
+  {
+      public List<Location> Items { get; } = [];
+
+      public Task<Location?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+          Task.FromResult(Items.SingleOrDefault(l => l.Id == id));
+
+      public Task<Location?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+      {
+          var normalized = code.Trim().ToUpperInvariant();
+          return Task.FromResult(
+              Items.SingleOrDefault(l => string.Equals(l.Code, normalized, StringComparison.Ordinal)));
+      }
+
+      public Task<IReadOnlyList<Location>> ListAsync(CancellationToken cancellationToken) =>
+          Task.FromResult<IReadOnlyList<Location>>([.. Items.OrderBy(l => l.Name)]);
+
+      public void Add(Location location) => Items.Add(location);
+  }
+  ```
+
+  ```csharp
+  // tests/EventBooking.Application.Tests/Settings/AdminSettingsAccessProfileTests.cs —
+  // this suite constructs SettingsView and the update command positionally, so both gain
+  // the option count and the expected version. Its assertions are unchanged: it covers who
+  // may reach settings, not what settings hold.
+  //
+  // Every construction of the form
+  //     new SettingsView(inviteExpiryDays, maxAutoRetryCount)
+  // becomes
+  //     new SettingsView(inviteExpiryDays, maxAutoRetryCount, inviteOptionCount, version)
+  // and every
+  //     new UpdateSettingsCommand(staffUserId, inviteExpiryDays, maxAutoRetryCount)
+  // becomes
+  //     new SaveSystemSettingsCommand(
+  //         staffUserId, inviteExpiryDays, maxAutoRetryCount, inviteOptionCount, expectedVersion)
+  // with inviteOptionCount 3 and expectedVersion 1, the seeded defaults, so no case in this
+  // suite changes meaning.
+  ```
 
 - [ ] **Step 5: Commit and push** the executor's code — not the plan documents. Stage the
   source and test files this task created or modified, review the cached diff, and commit
