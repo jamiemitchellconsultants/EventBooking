@@ -98,11 +98,29 @@ public static class AttendeeCursor
 namespace EventBooking.Application.Dashboards;
 
 public sealed record GetDashboardsQuery(Guid StaffUserId, Guid? LocationId);
-public sealed record DashboardTabCounts(
-    int AwaitingAvailability, int Invited, int Booked, int NeedsFollowUp);
+
+// FR-13.1's three tabs, each with its row count. The rows are the ported row types,
+// which already carry what the requirement names: the waiting-since date and required
+// codes on awaiting availability, the capacities and active bookings on an event. The
+// count travels beside the rows so a tab badge does not depend on materialising them.
+public sealed record AwaitingAvailabilityTab(
+    int Count, IReadOnlyList<AwaitingAvailabilityRow> Rows);
+public sealed record NoResponseTab(int Count, IReadOnlyList<NoResponseRow> Rows);
+public sealed record EventsTab(int Count, IReadOnlyList<EventOverviewRow> Rows);
+
 public sealed record DashboardsView(
-    DashboardTabCounts Events, DashboardTabCounts Attendees, DashboardTabCounts Recovery,
-    int FailedEmails, int PendingEmails);
+    AwaitingAvailabilityTab AwaitingAvailability,
+    NoResponseTab NoResponse,
+    EventsTab Events,
+    int FailedEmails,
+    int PendingEmails);
+
+// EventOverviewRow gains its location: FR-13.1 says each event row carries one, and the
+// Events tab is filterable by it. The other two ported row types are unchanged.
+public sealed record EventOverviewRow(
+    Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
+    TimeOnly StartTime, TimeOnly EndTime,
+    IReadOnlyList<EventCapacityRow> Capacities, int ActiveBookings);
 ```
 
 ```csharp
@@ -148,7 +166,69 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
               CancellationToken.None);
 
           Assert.True(result.IsSuccess);
-          Assert.Equal(0, result.Value.Events.AwaitingAvailability);
+          // Both out-of-bound events and the Tokyo one are gone, so the tab is empty and
+          // its count agrees with its rows — the count is not computed separately.
+          Assert.Empty(result.Value.Events.Rows);
+          Assert.Equal(0, result.Value.Events.Count);
+      }
+
+      [Fact]
+      public async Task An_event_inside_the_bounds_at_the_named_location_is_kept()
+      {
+          var queries = new MemoryDashboardQueries()
+              .WithEventEnding(daysFromNow: 30);
+          var handler = new GetDashboardsHandler(
+              queries, new InMemoryStaffAccessProfileRepository(), new FakeClock(),
+              DashboardTestZones.Instance);
+
+          var result = await handler.HandleAsync(
+              new GetDashboardsQuery(Guid.NewGuid(), queries.LondonLocationId),
+              CancellationToken.None);
+
+          var row = Assert.Single(result.Value.Events.Rows);
+          Assert.Equal(queries.LondonLocationId, row.LocationId);
+          Assert.Equal(1, result.Value.Events.Count);
+      }
+
+      [Fact]
+      public async Task The_attendee_tabs_are_one_status_each_and_carry_their_counts()
+      {
+          var queries = new MemoryDashboardQueries()
+              .WithAwaitingAvailability("Amy", waitingSince: -12)
+              .WithAwaitingAvailability("Ben", waitingSince: -3)
+              .WithNoResponse("Cat");
+          var handler = new GetDashboardsHandler(
+              queries, new InMemoryStaffAccessProfileRepository(), new FakeClock(),
+              DashboardTestZones.Instance);
+
+          var result = await handler.HandleAsync(
+              new GetDashboardsQuery(Guid.NewGuid(), null), CancellationToken.None);
+
+          Assert.Equal(2, result.Value.AwaitingAvailability.Count);
+          Assert.Equal(2, result.Value.AwaitingAvailability.Rows.Count);
+          // Longest wait first, and the days-waiting figure is derived from the stamp.
+          Assert.Equal("Amy", result.Value.AwaitingAvailability.Rows[0].Name);
+          Assert.Equal(12, result.Value.AwaitingAvailability.Rows[0].DaysWaiting);
+          Assert.Equal(1, result.Value.NoResponse.Count);
+          Assert.Equal("Cat", Assert.Single(result.Value.NoResponse.Rows).Name);
+      }
+
+      [Fact]
+      public async Task A_location_filter_does_not_narrow_the_attendee_tabs()
+      {
+          // An attendee awaiting availability has no event and therefore no location.
+          // Filtering them by one would need a relationship the model does not have.
+          var queries = new MemoryDashboardQueries()
+              .WithAwaitingAvailability("Amy", waitingSince: -1);
+          var handler = new GetDashboardsHandler(
+              queries, new InMemoryStaffAccessProfileRepository(), new FakeClock(),
+              DashboardTestZones.Instance);
+
+          var result = await handler.HandleAsync(
+              new GetDashboardsQuery(Guid.NewGuid(), queries.LondonLocationId),
+              CancellationToken.None);
+
+          Assert.Equal(1, result.Value.AwaitingAvailability.Count);
       }
 
       [Fact]
@@ -360,7 +440,7 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
           var shape = new CallerShape(
               profile.StaffUserId, profile.IsAdmin, RolesOf(profile));
           return Result<DashboardsView>.Success(await queries.GetDashboardsAsync(
-              shape, query.LocationId, clock.UtcNow, clock, zones, ct));
+              shape, query.LocationId, clock.UtcNow, zones, ct));
       }
 
       private static HashSet<string> RolesOf(StaffAccessProfile profile)
@@ -378,9 +458,11 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
   `IDashboardQueries.GetDashboardsAsync` is the port (add it beside the ported row methods
   the queries class already implements): it takes the caller shape and refuses
   Admin-shaped callers itself, pre-filters events by the widened `start_utc` window in SQL,
-  applies the exact end-instant bound with the resolver, and returns the three tabs plus
-  email counts. The 7-day/60-day bounds and the 720-minute widening live as constants on
-  the query class.
+  applies the exact end-instant bound with the resolver, and returns FR-13.1's three tabs —
+  Awaiting availability, No response and Events, each with its row count — plus FR-13.2's
+  failed and pending email counts. The widening is `EventWindow.MaximumDurationMinutes`
+  rather than a repeated 720, so a change to the longest allowed window cannot leave the
+  pre-filter narrower than the rule it is widening for.
 
   ```csharp
   // src/EventBooking.Application/Attendees/AttendeeListHandlers.cs (complete)
@@ -427,14 +509,174 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
   outbox row or null; readiness from the ported calculator over status and delivery state.
 
   ```csharp
-  // src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs — NOT SUPPLIED.
-  // implements IDashboardQueries over the DbContext. Events tab: start_utc in
-  // [now - 7 days - 720 minutes, now + 60 days], exact end bound via EventStartInstants
-  // plus duration-to-end arithmetic in .NET over the shortlist with locations loaded for
-  // zones; counts by attendee pipeline status through the attendee set; email counts by
-  // outbox status. Location filter applies to every tab. Caller shape refused up front
-  // when Admin-shaped.
+  // src/EventBooking.Application/Abstractions/IDashboardQueries.cs — add beside the ported
+  // row methods, which stay for the screens that read one tab at a time.
+  Task<DashboardsView> GetDashboardsAsync(
+      CallerShape shape, Guid? locationId, DateTimeOffset now,
+      IEventWindowZones zones, CancellationToken ct);
   ```
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs (complete) —
+  // the GetDashboardsAsync addition only; the ported row methods in this class are
+  // untouched.
+  /// <inheritdoc />
+  public async Task<DashboardsView> GetDashboardsAsync(
+      CallerShape shape, Guid? locationId, DateTimeOffset now,
+      IEventWindowZones zones, CancellationToken ct)
+  {
+      ArgumentNullException.ThrowIfNull(shape);
+      ArgumentNullException.ThrowIfNull(zones);
+
+      // The read model refuses the Admin shape itself (FR-13: Coordinator, never Admin).
+      // The handler checks for a Coordinator profile, but an Admin who also holds one must
+      // still not read attendee rows, and that rule belongs where the rows are.
+      if (shape.IsAdmin)
+      {
+          return new DashboardsView(
+              new AwaitingAvailabilityTab(0, []), new NoResponseTab(0, []),
+              new EventsTab(0, []), 0, 0);
+      }
+
+      var today = DateOnly.FromDateTime(now.UtcDateTime);
+
+      // The two attendee tabs are one status each (FR-13.1). They carry no location:
+      // an attendee awaiting availability has no event yet, so a location filter cannot
+      // narrow them without inventing a relationship the model does not have. The filter
+      // applies to the Events tab, which is the tab that has one.
+      var awaiting = await AttendeeRowsAsync(
+          AttendeeStatus.AwaitingAvailability, today, ct);
+      var noResponse = await AttendeeRowsAsync(
+          AttendeeStatus.NoResponseNeedsFollowUp, today, ct);
+
+      // Events ending between 7 days ago and 60 days ahead. There is no stored end
+      // instant — PostgreSQL cannot evaluate IANA rules deterministically (design 04) —
+      // so SQL pre-filters start_utc to the widened window and the exact end bound is
+      // applied here over the shortlist, with each event's location zone.
+      var from = now.AddDays(-7);
+      var to = now.AddDays(60);
+      var widenedFrom = from.AddMinutes(-EventWindow.MaximumDurationMinutes);
+
+      var shortlist = await context.Events
+          .AsNoTracking()
+          .Where(e => e.Status == EventStatus.Active)
+          .Where(e => locationId == null || e.LocationId == locationId)
+          .Where(e => EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName) >= widenedFrom
+              && EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName) <= to)
+          .Select(e => new
+          {
+              e.Id,
+              e.LocationId,
+              e.Window.Date,
+              e.Window.StartTime,
+              e.Window.DurationMinutes,
+              Capacities = e.Capacities
+                  .Select(c => new { c.AppointmentTypeId, c.TotalHeadcount, c.RemainingCapacity })
+                  .ToList(),
+              ActiveBookings = context.Bookings
+                  .Count(b => b.EventId == e.Id && b.Status == BookingStatus.Active),
+          })
+          .ToListAsync(ct);
+
+      var locations = await context.Locations
+          .AsNoTracking()
+          .Select(l => new { l.Id, l.Name, l.TimeZoneId })
+          .ToDictionaryAsync(l => l.Id, ct);
+      var typeCodes = await context.AppointmentTypes
+          .AsNoTracking()
+          .Select(t => new { t.Id, t.Code })
+          .ToDictionaryAsync(t => t.Id, t => t.Code, ct);
+
+      var events = new List<EventOverviewRow>();
+      foreach (var row in shortlist)
+      {
+          if (!locations.TryGetValue(row.LocationId, out var location))
+          {
+              continue;
+          }
+
+          var endTime = row.StartTime.Add(TimeSpan.FromMinutes(row.DurationMinutes));
+          var endInstant = zones.InstantOf(row.Date, endTime, location.TimeZoneId);
+          if (endInstant < from || endInstant > to)
+          {
+              continue;
+          }
+
+          events.Add(new EventOverviewRow(
+              row.Id,
+              row.LocationId,
+              location.Name,
+              row.Date,
+              row.StartTime,
+              endTime,
+              [.. row.Capacities
+                  .Where(c => typeCodes.ContainsKey(c.AppointmentTypeId))
+                  .Select(c => new EventCapacityRow(
+                      typeCodes[c.AppointmentTypeId], c.TotalHeadcount, c.RemainingCapacity))
+                  .OrderBy(c => c.Code)],
+              row.ActiveBookings));
+      }
+
+      events = [.. events.OrderBy(e => e.Date).ThenBy(e => e.StartTime).ThenBy(e => e.EventId)];
+
+      // FR-13.2: failed and pending counts come from the latest email per attendee, not
+      // from every row ever written, or one attendee's long retry history would dominate.
+      var latest = await context.EmailLogs
+          .AsNoTracking()
+          .GroupBy(e => e.AttendeeId)
+          .Select(g => g
+              .OrderByDescending(e => e.SentAt)
+              .ThenByDescending(e => e.Id)
+              .Select(e => e.Status)
+              .First())
+          .ToListAsync(ct);
+
+      return new DashboardsView(
+          new AwaitingAvailabilityTab(awaiting.Count, awaiting),
+          new NoResponseTab(noResponse.Count, noResponse),
+          new EventsTab(events.Count, events),
+          latest.Count(status => status == EmailStatus.Failed),
+          latest.Count(status => status == EmailStatus.Pending));
+  }
+
+  private async Task<IReadOnlyList<AwaitingAvailabilityRow>> AttendeeRowsAsync(
+      AttendeeStatus status, DateOnly today, CancellationToken ct)
+  {
+      var rows = await context.Attendees
+          .AsNoTracking()
+          .Where(c => c.Status == status)
+          .Select(c => new
+          {
+              c.Id,
+              c.Name,
+              c.Email,
+              c.StatusChangedAt,
+              Codes = c.Requirements
+                  .Join(context.AppointmentTypes, r => r.AppointmentTypeId, t => t.Id,
+                      (r, t) => t.Code)
+                  .OrderBy(code => code)
+                  .ToList(),
+          })
+          .OrderBy(c => c.StatusChangedAt)
+          .ThenBy(c => c.Id)
+          .ToListAsync(ct);
+
+      return
+      [
+          .. rows.Select(c =>
+          {
+              var since = DateOnly.FromDateTime(c.StatusChangedAt.UtcDateTime);
+              return new AwaitingAvailabilityRow(
+                  c.Id, c.Name, c.Email, c.Codes, since, today.DayNumber - since.DayNumber);
+          }),
+      ];
+  }
+  ```
+
+  The No response tab reuses the same projection and then maps to NoResponseRow, whose
+  GaveUpOn is the same stamped date under a different name; keep one query rather than two
+  that could drift. The ported row methods stay: the screens that read one tab at a time
+  still call them, and Task 22's endpoint chooses.
 
   ```csharp
   // src/EventBooking.Application/Abstractions/IAttendeeListQueries.cs (complete)
