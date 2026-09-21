@@ -19,6 +19,16 @@ identifier, and startup validation. Task 22a adds the read models design 05 asks
 does not supply. Task 22b maps the whole endpoint catalogue over them. Task 23 gives every staff
 operation an MCP tool and proves the two surfaces cannot drift.
 
+## Review amendments
+
+The Phase 4 review found gaps that this revision closes before execution: all attendee routes and
+tools are now written as code; the pagination and query fragments use mapped persistence shapes;
+MCP errors retain their stable application code; and test setup creates valid invitation options
+and validated startup configuration. The conventions now compose both attendee rate limits,
+trust forwarded headers only when a proxy network is configured, redact token-bearing paths from
+log scopes, and serialize same-key idempotency requests. These are corrections to the written
+plans; the phase remains unexecuted and has no observed test count.
+
 **Architecture:** Phase 4 changes the Api and Mcp projects and their tests, plus the read-model
 queries Task 22a adds in Application and Infrastructure. No endpoint and no tool holds a business
 rule: both translate a transport call into a handler call and render what comes back. The

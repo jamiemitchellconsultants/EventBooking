@@ -36,7 +36,7 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
-| Phase 4 — master Tasks 21–23 | **Written, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). Hand-authored, like Phase 3, so no build or test has ever run against them |
+| Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 is open with its review amendments applied. Hand-authored, like Phase 3, so no build or test has ever run against them |
 | Phases 5–7 — master Tasks 24–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
@@ -647,7 +647,7 @@ fourteen is in this file's history at commit `2b192ca`.
    no code. The EF migrations in Tasks 12, 18 and 20a are generate-and-review by the Phase 2
    convention rather than embedded, which is correct and not a gap.
 
-3. **Phase 4 (Tasks 21–23) is written, and stayed hand-authored.** Follow section 6a's loop, and
+3. **Phase 4 (Tasks 21–23) is written, reviewed, and stayed hand-authored.** Follow section 6a's loop, and
    run both of its sweeps per task rather than per phase. The phase overview is
    `phase-4-api-and-mcp.md`.
 
@@ -669,9 +669,10 @@ fourteen is in this file's history at commit `2b192ca`.
      gate. Forty-five tools over the same handlers, with names, descriptions and hints read
      from the shared catalogue so the two surfaces cannot describe themselves differently.
 
-   Phase 4 is therefore complete as authored and has never been executed. Its pull request has
-   not been opened: the phase branch is `claude/phase-4-api-and-mcp`, and Task 23's Step 6
-   carries the gate, the narrative requirements and the fingerprint recipe.
+   Phase 4 is therefore complete as authored and has never been executed. Pull request #27 is
+   open from `claude/phase-4-api-and-mcp`; its requested review amendments were applied before
+   execution. Task 23's Step 6 carries the gate, the narrative requirements and the fingerprint
+   recipe.
 
 4. **Decide the method for Phase 5 before writing Task 24, and put the decision to the user.** Phase
    4 is thin wiring over handlers that already exist, which is why it stays hand-authored. Phase 5

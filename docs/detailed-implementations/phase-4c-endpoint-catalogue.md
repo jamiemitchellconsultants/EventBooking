@@ -3248,12 +3248,63 @@ public sealed record EventProposalResponse(
       .ProducesProblem(409);
   ```
 
-  The remaining nine attendee registrations are plain pass-throughs of the same shape: create and
-  update through the ported save handler, the eligible count through Task 14's counting query,
-  invites and recovery invites through Tasks 14 and 16, the booking list and the email retry
-  through their ported and Task 18 handlers, and readiness through the handler Task 22a repointed
-  at `ViewAttendeeDashboards`. Each binds its route values and body into the command, calls the
-  handler once, and returns `ToResponse()`.
+  ```csharp
+  // The remaining attendee registrations are explicit rather than prose. Each only binds its
+  // transport shape and calls one handler; all authorization and state rules remain in Application.
+  group.MapPost("/", async (SaveAttendeeRequest request, ICallerAccessor caller,
+      SaveAttendeeHandler handler, CancellationToken ct) =>
+      (await handler.CreateAsync(new CreateAttendeeCommand(caller.RequireStaffUserId(),
+          request.Name, request.Email, request.AttendeeGroupId), ct)).ToCreated(id => $"/api/attendees/{id}"))
+      .WithAgentMetadata("createAttendee");
+
+  group.MapPut("/{id:guid}", async (Guid id, SaveAttendeeRequest request, ICallerAccessor caller,
+      SaveAttendeeHandler handler, CancellationToken ct) =>
+      (await handler.UpdateAsync(new UpdateAttendeeCommand(caller.RequireStaffUserId(), id,
+          request.Name, request.Email, request.AttendeeGroupId), ct)).ToResponse())
+      .WithAgentMetadata("updateAttendee");
+
+  group.MapGet("/{id:guid}/eligible-event-count", async (Guid id, Guid[] locationIds,
+      ICallerAccessor caller, CountEligibleEventsHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new CountEligibleEventsQuery(caller.RequireStaffUserId(), id,
+          locationIds), ct)).ToResponse())
+      .WithAgentMetadata("countEligibleEvents");
+
+  group.MapPost("/{id:guid}/invites", async (Guid id, LocationIdsRequest request,
+      ICallerAccessor caller, InviteAttendeeHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new InviteAttendeeCommand(caller.RequireStaffUserId(), id,
+          request.LocationIds), ct)).ToResponse())
+      .WithAgentMetadata("inviteAttendee");
+
+  group.MapPost("/{id:guid}/recovery-invites", async (Guid id, AdditionalLocationIdsRequest request,
+      ICallerAccessor caller, StartRecoveryHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new StartRecoveryCommand(caller.RequireStaffUserId(), id,
+          request.AdditionalLocationIds), ct)).ToResponse())
+      .WithAgentMetadata("startRecoveryInvite");
+
+  group.MapDelete("/{id:guid}/recovery-invites/{inviteId:guid}", async (Guid inviteId,
+      ICallerAccessor caller, CancelRecoveryInviteHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), inviteId), ct)).ToResponse())
+      .WithAgentMetadata("cancelRecoveryInvite");
+
+  group.MapGet("/{id:guid}/bookings", async (Guid id, ICallerAccessor caller,
+      GetAttendeeBookingsHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new GetAttendeeBookingsQuery(caller.RequireStaffUserId(), id), ct)).ToResponse())
+      .WithAgentMetadata("listAttendeeBookings");
+
+  group.MapPost("/{id:guid}/email-retry", async (Guid id, ICallerAccessor caller,
+      RetryNewestEmailHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new RetryNewestEmailCommand(caller.RequireStaffUserId(), id), ct)).ToResponse())
+      .WithAgentMetadata("retryAttendeeEmail");
+
+  group.MapGet("/{id:guid}/readiness", async (Guid id, ICallerAccessor caller,
+      GetAttendeeReadinessHandler handler, CancellationToken ct) =>
+      (await handler.HandleAsync(new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), id), ct)).ToResponse())
+      .WithAgentMetadata("getAttendeeReadiness");
+
+  public sealed record SaveAttendeeRequest(string Name, string Email, Guid AttendeeGroupId);
+  public sealed record LocationIdsRequest(IReadOnlyList<Guid> LocationIds);
+  public sealed record AdditionalLocationIdsRequest(IReadOnlyList<Guid> AdditionalLocationIds);
+  ```
 
   ```csharp
   // src/EventBooking.Api/Endpoints/DashboardEndpoints.cs (complete)
@@ -3476,10 +3527,11 @@ public sealed record EventProposalResponse(
 
   ```csharp
   // src/EventBooking.Api/Endpoints/BookingEndpoints.cs — the two book-token routes, replacing
-  // the ported file's body. Both limiters apply, and neither route carries an agent tool.
+  // the ported file's body. The global attendee-address limiter and this endpoint token-prefix
+  // limiter are composed by the rate-limiting middleware; duplicate endpoint metadata would
+  // select only the final policy.
   var group = app.MapGroup("/api/booking")
       .AllowAnonymous()
-      .RequireRateLimiting(RemoteIpRateLimiterPolicy.PolicyName)
       .RequireRateLimiting(TokenPrefixRateLimiterPolicy.PolicyName);
 
   group.MapGet("/{token}", async (
@@ -3539,7 +3591,6 @@ public sealed record EventProposalResponse(
           ArgumentNullException.ThrowIfNull(app);
           var group = app.MapGroup("/api/manage")
               .AllowAnonymous()
-              .RequireRateLimiting(RemoteIpRateLimiterPolicy.PolicyName)
               .RequireRateLimiting(TokenPrefixRateLimiterPolicy.PolicyName);
 
           group.MapGet("/{token}", async (

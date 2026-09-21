@@ -116,6 +116,7 @@ And the startup test asserts the message names every missing key, not just the f
 - Create: src/EventBooking.Api/Contracts/EventTimeResponse.cs
 - Create: src/EventBooking.Api/Contracts/CallerLinks.cs
 - Create: src/EventBooking.Api/Idempotency/IdempotencyMiddleware.cs
+- Create: src/EventBooking.Api/Idempotency/IdempotencyKeyLock.cs
 - Create: src/EventBooking.Api/Auth/StaffRateLimiterPolicy.cs
 - Create: src/EventBooking.Api/Auth/TokenPrefixRateLimiterPolicy.cs
 - Modify: src/EventBooking.Api/Auth/RemoteIpRateLimiterPolicy.cs (sliding window, limit from configuration)
@@ -148,6 +149,7 @@ And the startup test asserts the message names every missing key, not just the f
 - Test: tests/EventBooking.Api.Tests/Conventions/StartupValidationTests.cs
 - Test: tests/EventBooking.Api.Tests/Conventions/LogRedactionTests.cs
 - Test: tests/EventBooking.Api.Tests/Conventions/EventTimeContractTests.cs
+- Modify: tests/EventBooking.Api.Tests/ApiFactory.cs (a non-denylisted test signing key and every required setting)
 - Test: tests/EventBooking.Api.Tests/Conventions/HealthAndMetricsTests.cs
 
 **Interfaces:**
@@ -766,6 +768,21 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           Assert.Equal(2, await CountAttendeesAsync(groupId));
       }
 
+      [Fact]
+      public async Task ConcurrentRequestsWithOneKeyCreateOneAttendeeAndReplayOneResponse()
+      {
+          var (client, groupId) = await GivenCoordinatorAndGroupAsync("IDEM_CONCURRENT");
+          var key = Guid.NewGuid().ToString();
+          var body = new { name = "Ada", email = "ada-concurrent@example.com", attendeeGroupId = groupId };
+
+          var responses = await Task.WhenAll(PostAsync(client, body, key), PostAsync(client, body, key));
+
+          Assert.All(responses, response => Assert.Equal(HttpStatusCode.Created, response.StatusCode));
+          Assert.Equal(1, await CountAttendeesAsync(groupId));
+          Assert.Equal(await responses[0].Content.ReadAsStringAsync(),
+              await responses[1].Content.ReadAsStringAsync());
+      }
+
       private static async Task<HttpResponseMessage> PostAsync(
           HttpClient client, object body, string? key)
       {
@@ -1264,7 +1281,14 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
               {
                   lock (lines)
                   {
-                      lines.Add(state.ToString() ?? string.Empty);
+                      if (state is IEnumerable<KeyValuePair<string, object>> values)
+                      {
+                          lines.Add(string.Join(";", values.Select(x => $"{x.Key}={x.Value}")));
+                      }
+                      else
+                      {
+                          lines.Add(state.ToString() ?? string.Empty);
+                      }
                   }
 
                   return null;
@@ -2030,10 +2054,13 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
 
           context.Response.Headers[HeaderName] = correlationId;
           using var ambient = correlation.Begin(correlationId);
+          // RoutePattern is metadata such as /api/booking/{token}; Request.Path would copy a
+          // bearer-equivalent attendee token into every structured log scope.
+          var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "unmatched";
           using var scope = logger.BeginScope(new Dictionary<string, object>
           {
               ["correlationId"] = correlationId,
-              ["route"] = context.Request.Path.Value ?? string.Empty,
+              ["route"] = route,
           });
 
           await next(context);
@@ -2320,6 +2347,26 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
       }
   }
 
+  /// <summary>Applies the address limiter globally only to anonymous attendee-token routes.</summary>
+  public static class AttendeeRouteRateLimiter
+  {
+      public static RateLimitPartition<string> Partition(HttpContext context, RateLimitSettings settings)
+      {
+          var path = context.Request.Path;
+          if (!path.StartsWithSegments("/api/booking") && !path.StartsWithSegments("/api/manage"))
+          {
+              return RateLimitPartition.GetNoLimiter("not-an-attendee-route");
+          }
+
+          var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+          return RateLimitPartition.GetSlidingWindowLimiter(client, _ => new SlidingWindowRateLimiterOptions
+          {
+              PermitLimit = settings.AttendeePerMinute,
+              Window = TimeSpan.FromMinutes(1), SegmentsPerWindow = 6, QueueLimit = 0,
+          });
+      }
+  }
+
   /// <summary>
   /// The one rejection writer. A 429 is a catalogued failure like any other, so it carries the
   /// same problem body, and Retry-After comes from the lease when the limiter supplies it.
@@ -2491,7 +2538,7 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
       Task<IdempotentResponse?> TryGetAsync(
           Guid staffUserId, string route, string key, DateTimeOffset now, CancellationToken ct);
 
-      /// <summary>Retains one response and prunes anything past the retention window.</summary>
+  /// <summary>Retains one response after replacing an expired row for the same key.</summary>
       /// <param name="staffUserId">The calling staff identity.</param>
       /// <param name="route">The route pattern the key was used on.</param>
       /// <param name="key">The caller's key.</param>
@@ -2599,6 +2646,14 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           Guid staffUserId, string route, string key, string requestHash,
           int statusCode, string body, DateTimeOffset now, CancellationToken ct)
       {
+          // Delete the expired instance of this exact primary key before adding its replacement.
+          // Doing this after Add would fail the 25-hour reuse case at the unique key.
+          var cutoff = now - IIdempotencyStore.Retention;
+          await context.IdempotencyRecords
+              .Where(x => x.StaffUserId == staffUserId && x.Route == route && x.Key == key &&
+                  x.CreatedAt <= cutoff)
+              .ExecuteDeleteAsync(ct);
+
           context.IdempotencyRecords.Add(new IdempotencyRecord
           {
               StaffUserId = staffUserId,
@@ -2614,10 +2669,54 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           // Opportunistic pruning on the write path, keyed by the created-at index. A retention
           // table that only ever grows is the failure mode this avoids, and a sweep step would
           // put an unrelated concern into the Task 19 run.
-          var cutoff = now - IIdempotencyStore.Retention;
           await context.IdempotencyRecords
               .Where(x => x.CreatedAt <= cutoff)
               .ExecuteDeleteAsync(ct);
+      }
+  }
+  ```
+
+  ```csharp
+  // src/EventBooking.Api/Idempotency/IdempotencyKeyLock.cs (complete)
+  using Npgsql;
+
+  namespace EventBooking.Api.Idempotency;
+
+  /// <summary>
+  /// Holds a PostgreSQL session advisory lock for one caller/route/key triple. It spans the
+  /// handler and retention write, so two API processes cannot both create a resource before
+  /// either can replay the retained response.
+  /// </summary>
+  public sealed class IdempotencyKeyLock(NpgsqlDataSource dataSource)
+  {
+      public async Task<IAsyncDisposable> AcquireAsync(
+          Guid staffUserId, string route, string key, CancellationToken ct)
+      {
+          var connection = await dataSource.OpenConnectionAsync(ct);
+          try
+          {
+              await using var command = new NpgsqlCommand(
+                  "SELECT pg_advisory_lock(hashtextextended(@key, 0));", connection);
+              command.Parameters.AddWithValue("key", $"{staffUserId:N}:{route}:{key}");
+              await command.ExecuteNonQueryAsync(ct);
+              return new Lease(connection);
+          }
+          catch
+          {
+              await connection.DisposeAsync();
+              throw;
+          }
+      }
+
+      private sealed class Lease(NpgsqlConnection connection) : IAsyncDisposable
+      {
+          public async ValueTask DisposeAsync()
+          {
+              await using var command = new NpgsqlCommand(
+                  "SELECT pg_advisory_unlock_all();", connection);
+              await command.ExecuteNonQueryAsync();
+              await connection.DisposeAsync();
+          }
       }
   }
   ```
@@ -2650,7 +2749,8 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
       /// <param name="clock">The clock.</param>
       /// <returns>A task tracking the request.</returns>
       public async Task InvokeAsync(
-          HttpContext context, IIdempotencyStore store, ICallerAccessor caller, IClock clock)
+          HttpContext context, IIdempotencyStore store, IdempotencyKeyLock keyLock,
+          ICallerAccessor caller, IClock clock)
       {
           if (!HttpMethods.IsPost(context.Request.Method) ||
               !context.Request.Headers.TryGetValue(HeaderName, out var header) ||
@@ -2666,6 +2766,8 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
           context.Request.EnableBuffering();
           var requestHash = await HashBodyAsync(context.Request);
           var now = clock.UtcNow;
+          await using var heldKey = await keyLock.AcquireAsync(
+              staffUserId, route, key, context.RequestAborted);
 
           var retained = await store.TryGetAsync(staffUserId, route, key, now, context.RequestAborted);
           if (retained is not null)
@@ -2912,9 +3014,32 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   infrastructure registration calling for options nothing supplies.
 
   ```csharp
+  // tests/EventBooking.Api.Tests/ApiFactory.cs — replace the old placeholder test key and add
+  // the settings startup validation now requires. This test-only key is stable for the factory
+  // lifetime and deliberately absent from the production placeholder denylist.
+  private static readonly string TestSigningKey = Convert.ToBase64String(
+      System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+
+  protected override void ConfigureWebHost(IWebHostBuilder builder)
+  {
+      builder.UseSetting("ConnectionStrings:EventBooking", _container.GetConnectionString());
+      builder.UseSetting("Tokens:SigningKey", TestSigningKey);
+      builder.UseSetting("Auth:Authority", "https://issuer.example.test/");
+      builder.UseSetting("Auth:Audience", "event-booking-tests");
+      builder.UseSetting("Email:Smtp:Host", "smtp.example.test");
+      builder.UseSetting("Email:FromAddress", "events@example.test");
+      builder.UseSetting("Portal:BaseUrl", "https://portal.example.test/");
+      builder.UseSetting("Portal:CoordinatorContact", "events@example.test");
+      builder.UseSetting("Cors:AllowedOrigins:0", "https://web.example.test");
+      // Existing test-authentication and infrastructure overrides continue unchanged.
+  }
+  ```
+
+  ```csharp
   // src/EventBooking.Api/Program.cs (complete, replacing the ported file)
   using System.Diagnostics;
   using System.Net;
+  using System.Threading.RateLimiting;
   using EventBooking.Api;
   using EventBooking.Api.Auth;
   using EventBooking.Api.Endpoints;
@@ -2930,6 +3055,7 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   using Microsoft.AspNetCore.HttpOverrides;
   using Microsoft.AspNetCore.RateLimiting;
   using Microsoft.EntityFrameworkCore;
+  using Npgsql;
   using System.Text;
 
   var builder = WebApplication.CreateBuilder(args);
@@ -2961,6 +3087,10 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   builder.Services.AddSingleton<EventBookingMetrics>();
   builder.Services.AddSingleton<PrometheusText>();
   builder.Services.AddSingleton(new PageCursor(Encoding.UTF8.GetBytes(settings.Tokens.SigningKey)));
+  // The session advisory lock needs a dedicated pooled connection that lives through the handler;
+  // registering the data source also lets the container dispose that pool on shutdown.
+  builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(settings.ConnectionString));
+  builder.Services.AddSingleton<IdempotencyKeyLock>();
   builder.Services.AddScoped<IIdempotencyStore,
       EventBooking.Infrastructure.Persistence.Idempotency.IdempotencyStore>();
 
@@ -2973,6 +3103,10 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   builder.Services.AddRateLimiter(options =>
   {
       options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+      // Global and endpoint limiters are composed by ASP.NET. The address policy is global only
+      // for attendee-token routes; their endpoint metadata selects the token-prefix policy.
+      options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+          AttendeeRouteRateLimiter.Partition(context, settings.RateLimits));
       options.AddPolicy<string, RemoteIpRateLimiterPolicy>(RemoteIpRateLimiterPolicy.PolicyName);
       options.AddPolicy<string, TokenPrefixRateLimiterPolicy>(TokenPrefixRateLimiterPolicy.PolicyName);
       options.AddPolicy<string, StaffRateLimiterPolicy>(StaffRateLimiterPolicy.PolicyName);
@@ -2982,31 +3116,37 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
 
   var app = builder.Build();
 
-  // Forwarded headers first, and only from the configured networks: every later decision that
-  // reads the client address — the limiter partition above all — must see the real one or the
-  // socket one, never an attacker-supplied one.
-  var forwarded = new ForwardedHeadersOptions
+  // Forwarded headers are opt-in. Clearing both trust lists with no replacement makes ASP.NET
+  // accept a header from every peer, so a deployment without a proxy keeps its socket address.
+  if (settings.ProxyNetworks.Count > 0)
   {
-      ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-      ForwardLimit = 1,
-  };
-  forwarded.KnownNetworks.Clear();
-  forwarded.KnownProxies.Clear();
-  foreach (var network in settings.ProxyNetworks)
-  {
-      var parts = network.Split('/');
-      if (parts.Length == 2 && IPAddress.TryParse(parts[0], out var prefix) &&
-          int.TryParse(parts[1], out var length))
+      var forwarded = new ForwardedHeadersOptions
       {
-          forwarded.KnownNetworks.Add(new System.Net.IPNetwork(prefix, length));
-      }
-      else if (IPAddress.TryParse(network, out var proxy))
+          ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+          ForwardLimit = 1,
+      };
+      forwarded.KnownIPNetworks.Clear();
+      forwarded.KnownProxies.Clear();
+      foreach (var network in settings.ProxyNetworks)
       {
-          forwarded.KnownProxies.Add(proxy);
+          var parts = network.Split('/');
+          if (parts.Length == 2 && IPAddress.TryParse(parts[0], out var prefix) &&
+              int.TryParse(parts[1], out var length))
+          {
+              forwarded.KnownIPNetworks.Add(new IPNetwork(prefix, length));
+          }
+          else if (IPAddress.TryParse(network, out var proxy))
+          {
+              forwarded.KnownProxies.Add(proxy);
+          }
+          else
+          {
+              throw new InvalidOperationException($"ProxyNetworks contains invalid entry '{network}'.");
+          }
       }
-  }
 
-  app.UseForwardedHeaders(forwarded);
+      app.UseForwardedHeaders(forwarded);
+  }
   app.UseMiddleware<CorrelationMiddleware>();
 
   // Request metrics, inline because the instruments live on one meter and the middleware is

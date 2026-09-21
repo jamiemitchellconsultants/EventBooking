@@ -58,6 +58,7 @@ import test uses, which is the only way "refused identically" means anything.
 **Files:**
 
 - Create: src/EventBooking.Mcp/Tools/ToolDescriptions.cs (names, descriptions and hints from the catalogue)
+- Modify: src/EventBooking.Mcp/Tools/McpErrors.cs (preserve the application error code in protocol failures)
 - Create: src/EventBooking.Mcp/Tools/IdentityTools.cs
 - Create: src/EventBooking.Mcp/Tools/ReferenceDataTools.cs (nine: locations, types, groups)
 - Create: src/EventBooking.Mcp/Tools/AdministrationTools.cs (four: settings and staff access)
@@ -429,44 +430,35 @@ public sealed class McpClient(HttpClient client)
           // types, and this world's proposing type is one it has never heard of.
           var window = new EventWindow(
               DateOnly.FromDateTime(Now.AddDays(3).UtcDateTime), new TimeOnly(9, 30), 240);
-          var proposal = EventProposal.Propose(
-              Guid.NewGuid(),
-              location.Id,
-              locationIsActive: true,
-              location.TimeZoneId,
-              window,
-              ProposalFixture.Zones,
-              Now,
-              [new ProposableAppointmentType(type.Id, type.Code, true, true)],
-              type.Id,
-              Guid.NewGuid(),
-              headcount: 10);
-          var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
-          context.EventProposals.Add(proposal);
-          context.Events.Add(eventItem);
+          // The SystemSettings default offers three options. Seed three distinct confirmed
+          // events so Invite.CreateInitial exercises the same invariant as production.
+          var eventItems = Enumerable.Range(0, 3).Select(offset =>
+          {
+              var proposal = EventProposal.Propose(
+                  Guid.NewGuid(), location.Id, locationIsActive: true, location.TimeZoneId,
+                  new EventWindow(window.Date.AddDays(offset), window.StartTime, window.DurationMinutes),
+                  ProposalFixture.Zones, Now,
+                  [new ProposableAppointmentType(type.Id, type.Code, true, true)],
+                  type.Id, Guid.NewGuid(), headcount: 10);
+              var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
+              context.EventProposals.Add(proposal);
+              context.Events.Add(eventItem);
+              return eventItem;
+          }).ToArray();
 
           var invite = Invite.CreateInitial(
-              Guid.NewGuid(), attendee.Id, Now.AddDays(7), [location.Id], [eventItem.Id],
+              Guid.NewGuid(), attendee.Id, Now.AddDays(7), [location.Id], eventItems.Select(x => x.Id),
               [type.Id], retryCount: 0);
           context.Invites.Add(invite);
-          context.Bookings.Add(Booking.Create(Guid.NewGuid(), invite, eventItem.Id, Now));
+          context.Bookings.Add(Booking.Create(Guid.NewGuid(), invite, eventItems[0].Id, Now));
 
           context.AuditLogs.Add(AuditLog.Record(
-              Guid.NewGuid(), AuditEntityTypes.Event, eventItem.Id, AuditAction.EventConfirmed,
+              Guid.NewGuid(), AuditEntityTypes.Event, eventItems[0].Id, AuditAction.EventConfirmed,
               ActorType.System, null, Now, "{}"));
           await context.SaveChangesAsync();
 
-          // Both windows are read from the location's zone, and start_utc is derived at save
-          // time, so the proposal and the event are pointed at the seeded site after insert —
-          // the shared fixture builds every proposal at its own transitional site.
-          await context.Database.ExecuteSqlRawAsync(
-              "UPDATE event SET location_id = {0} WHERE id = {1}", location.Id, eventItem.Id);
-          await context.Database.ExecuteSqlRawAsync(
-              "UPDATE event_proposal SET location_id = {0} WHERE id = {1}",
-              location.Id, proposal.Id);
-
           return new SeededWorld(
-              type.Id, location.Id, group.Id, attendee.Id, eventItem.Id);
+              type.Id, location.Id, group.Id, attendee.Id, eventItems[0].Id);
       }
 
       /// <summary>The arguments each list needs to answer with its seeded row.</summary>
@@ -630,6 +622,32 @@ public sealed class McpClient(HttpClient client)
   ```
 
 - [ ] **Step 3: Implement.** The description source first, then the eight tool classes.
+
+  ```csharp
+  // src/EventBooking.Mcp/Tools/McpErrors.cs (complete, replacing the ported file)
+  using EventBooking.Application.Common;
+  using ModelContextProtocol;
+
+  namespace EventBooking.Mcp.Tools;
+
+  /// <summary>Turns application failures into code-bearing MCP errors.</summary>
+  internal static class McpErrors
+  {
+      internal static T ValueOrThrow<T>(this Result<T> result) =>
+          result.IsSuccess ? result.Value : throw ToMcpException(result.Error);
+
+      internal static async Task<T> ValueOrThrowAsync<T>(this Task<Result<T>> pending) =>
+          (await pending).ValueOrThrow();
+
+      internal static void ThrowIfFailure(this Result result)
+      {
+          if (result.IsFailure) throw ToMcpException(result.Error);
+      }
+
+      private static McpException ToMcpException(Error error) =>
+          new($"{error.Code}: {error.Message}");
+  }
+  ```
 
   ```csharp
   // src/EventBooking.Mcp/Tools/ToolDescriptions.cs (complete)
@@ -1499,12 +1517,58 @@ public sealed class McpClient(HttpClient client)
   }
   ```
 
-  The nine remaining attendee tools are `create_attendee`, `update_attendee`,
-  `count_eligible_events`, `invite_attendee`, `start_recovery_invite`, `cancel_recovery_invite`,
-  `list_attendee_bookings`, `retry_attendee_email` and `get_attendee_readiness`. Each takes the
-  route's own parameters, builds the command its endpoint builds, calls the same handler and
-  returns `ValueOrThrow()`; none has a branch. Their names, descriptions and hints come from the
-  catalogue entries above, which the parity test compares.
+  ```csharp
+  // The remaining attendee tools are explicit so the registered 45-tool surface can be replayed
+  // without deriving calls from prose. Attribute descriptions are resolved against ToolDescriptions
+  // during startup in the same way as the methods above.
+  [McpServerTool(Name = "create_attendee", Title = "Create attendee", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+  public async Task<Guid> CreateAttendeeAsync(ICallerAccessor caller, SaveAttendeeHandler handler,
+      string name, string email, Guid attendeeGroupId, CancellationToken cancellationToken) =>
+      await handler.CreateAsync(new CreateAttendeeCommand(caller.RequireStaffUserId(), name, email, attendeeGroupId), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "update_attendee", Title = "Update attendee", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+  public async Task<object> UpdateAttendeeAsync(ICallerAccessor caller, SaveAttendeeHandler handler,
+      Guid attendeeId, string name, string email, Guid attendeeGroupId, CancellationToken cancellationToken) =>
+      await handler.UpdateAsync(new UpdateAttendeeCommand(caller.RequireStaffUserId(), attendeeId, name, email, attendeeGroupId), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "count_eligible_events", Title = "Count eligible events", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+  public async Task<object> CountEligibleEventsAsync(ICallerAccessor caller, CountEligibleEventsHandler handler,
+      Guid attendeeId, IReadOnlyList<Guid> locationIds, CancellationToken cancellationToken) =>
+      await handler.HandleAsync(new CountEligibleEventsQuery(caller.RequireStaffUserId(), attendeeId, locationIds), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "invite_attendee", Title = "Invite attendee", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+  public async Task<object> InviteAttendeeAsync(ICallerAccessor caller, InviteAttendeeHandler handler,
+      Guid attendeeId, IReadOnlyList<Guid> locationIds, CancellationToken cancellationToken) =>
+      await handler.HandleAsync(new InviteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, locationIds), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "start_recovery_invite", Title = "Start recovery invite", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+  public async Task<object> StartRecoveryInviteAsync(ICallerAccessor caller, StartRecoveryHandler handler,
+      Guid attendeeId, IReadOnlyList<Guid> additionalLocationIds, CancellationToken cancellationToken) =>
+      await handler.HandleAsync(new StartRecoveryCommand(caller.RequireStaffUserId(), attendeeId, additionalLocationIds), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "cancel_recovery_invite", Title = "Cancel recovery invite", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+  public async Task CancelRecoveryInviteAsync(ICallerAccessor caller, CancelRecoveryInviteHandler handler,
+      Guid inviteId, CancellationToken cancellationToken)
+  {
+      (await handler.HandleAsync(new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), inviteId), cancellationToken)).ThrowIfFailure();
+  }
+
+  [McpServerTool(Name = "list_attendee_bookings", Title = "List attendee bookings", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+  public async Task<object> ListAttendeeBookingsAsync(ICallerAccessor caller, GetAttendeeBookingsHandler handler,
+      Guid attendeeId, CancellationToken cancellationToken) =>
+      await handler.HandleAsync(new GetAttendeeBookingsQuery(caller.RequireStaffUserId(), attendeeId), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "retry_attendee_email", Title = "Retry attendee email", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+  public async Task<object> RetryAttendeeEmailAsync(ICallerAccessor caller, RetryEmailHandler handler,
+      Guid attendeeId, CancellationToken cancellationToken) =>
+      await handler.HandleAsync(new RetryNewestEmailCommand(caller.RequireStaffUserId(), attendeeId), cancellationToken).ValueOrThrowAsync();
+
+  [McpServerTool(Name = "get_attendee_readiness", Title = "Get attendee readiness", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+  public async Task<object> GetAttendeeReadinessAsync(ICallerAccessor caller, GetAttendeeReadinessHandler handler,
+      Guid attendeeId, CancellationToken cancellationToken) =>
+      await handler.HandleAsync(new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), attendeeId), cancellationToken).ValueOrThrowAsync();
+  ```
+
 
   ```csharp
   // src/EventBooking.Mcp/Tools/DashboardTools.cs (complete)

@@ -17,7 +17,12 @@
       "Business Rules & Invariants"
     ]
   },
-  "allowlist": [],
+  "allowlist": [
+    {
+      "term": "WorkspaceEventView",
+      "reason": "Application projection type; it is not a domain concept."
+    }
+  ],
   "bannedAliases": [],
   "ignorePaths": []
 }

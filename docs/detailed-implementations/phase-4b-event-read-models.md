@@ -65,6 +65,61 @@ not a neutral fallback. The user settled this as a lettered split (contradiction
   commands are deleted — nothing else calls them, and a handler with no endpoint would also have
   no MCP tool under Task 23's parity rule.
 
+The route has an attendee identifier but not an email-log identifier, so the retry handler must
+own the newest failed-delivery selection rather than asking an endpoint to invent one. This keeps
+the retry rule transactional and makes both transports name the same operation.
+
+```csharp
+// src/EventBooking.Application/Notifications/IEmailDeliveryRepository.cs — add this member to
+// the existing port. The infrastructure implementation orders by CreatedAt descending and locks
+// the selected row with FOR UPDATE, returning null when this attendee has no failed delivery.
+Task<EmailLog?> LockNewestFailedForAttendeeAsync(Guid attendeeId, CancellationToken ct);
+
+// src/EventBooking.Application/Notifications/RetryEmailHandler.cs — replace the public command
+// shape and complete the existing handler using the attendee-first locked lookup.
+public sealed record RetryNewestEmailCommand(Guid StaffUserId, Guid AttendeeId);
+
+public async Task<Result<RetryEmailOutcome>> HandleAsync(
+    RetryNewestEmailCommand command, CancellationToken ct)
+{
+    var authorized = await access.AuthorizeAsync(
+        command.StaffUserId, StaffCapability.ManageAttendees, null, ct);
+    if (authorized.IsFailure) return Result<RetryEmailOutcome>.Failure(authorized.Error);
+
+    await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+    var newest = await deliveries.LockNewestFailedForAttendeeAsync(command.AttendeeId, ct);
+    if (newest is null) return Result<RetryEmailOutcome>.Failure(
+        Error.NotFound("This attendee has no failed delivery to retry."));
+
+    var replacement = EmailLog.RecordPending(Guid.NewGuid(), newest.AttendeeId,
+        newest.TemplateName, clock.UtcNow, newest.InviteId, newest.BookingId, newest.EventId);
+    deliveries.Add(replacement);
+    newest.MarkResolved(clock.UtcNow);
+    await unitOfWork.SaveChangesAsync(ct);
+    await transaction.CommitAsync(ct);
+    return Result<RetryEmailOutcome>.Success(new RetryEmailOutcome(replacement.Id));
+}
+```
+
+The MCP list contract also exposes a real event status on the workspace rows. `WorkspaceEventView`
+already comes from the `Event` aggregate, so the handler projects its existing status; it does
+not invent a display-only state.
+
+```csharp
+// src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs — replace the existing view.
+public sealed record WorkspaceEventView(
+    Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
+    TimeOnly StartTime, TimeOnly EndTime, string ZoneAbbreviation, string Status);
+
+// src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs — replace the projection.
+.Select(e => new WorkspaceEventView(e.Id, e.LocationId,
+    zoneByLocation[e.LocationId].Name,
+    e.Window.Date, e.Window.StartTime, e.Window.EndTime,
+    zones.AbbreviationOf(EventEnd(e, zoneByLocation[e.LocationId].TimeZoneId, zones),
+        zoneByLocation[e.LocationId].TimeZoneId),
+    e.Status.ToString()))
+```
+
 ## Global constraints
 
 Every new read demands exactly one `StaffCapability`, except the `Event` reads that settlement
@@ -99,10 +154,15 @@ route is refused, rather than silently adjusting their own.
 - Modify: src/EventBooking.Application/ReferenceData/AppointmentTypeHandlers.cs (the same three changes)
 - Modify: src/EventBooking.Application/ReferenceData/AttendeeGroupHandlers.cs (the same three changes)
 - Modify: src/EventBooking.Application/Attendees/GetAttendeeReadinessHandler.cs (ViewAttendeeDashboards)
+- Modify: src/EventBooking.Application/Notifications/IEmailDeliveryRepository.cs (lock the newest failed delivery by attendee)
+- Modify: src/EventBooking.Application/Notifications/RetryEmailHandler.cs (resolve the newest failed delivery from the attendee route)
+- Modify: src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs (project the event status)
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/EventReadQueries.cs
 - Modify: src/EventBooking.Infrastructure/DependencyInjection.cs (register the new port and handlers)
 - Test: tests/EventBooking.Application.Tests/Events/EventReadHandlerTests.cs
 - Test: tests/EventBooking.Application.Tests/ReferenceData/ReferenceDataActivationTests.cs
+- Modify: tests/EventBooking.Application.Tests/Notifications/RetryEmailHandlerTests.cs (retry by attendee and cover no failed delivery)
+- Modify: tests/EventBooking.Application.Tests/Appointments/WorkspaceHandlerTests.cs (assert the workspace row carries the event status)
 - Test: tests/EventBooking.Application.Tests/Fakes/FakeUnitOfWork.cs (a Reset for the counters)
 - Test: tests/EventBooking.Infrastructure.Tests/Queries/EventReadQueryTests.cs
 
@@ -1376,13 +1436,14 @@ public sealed record AdjustEventCapacityCommand(
   // SetAttendeeGroupActiveCommand and its handler are deleted.
   if (command.AppointmentTypeIds is not null)
   {
-      // Task 12's replacement, unchanged: locks every member in ascending id order,
-      // re-derives their requirements, supersedes pending initial invites, and refuses
-      // while any member holds an active original booking.
-      var replaced = await ReplaceRequirementsAsync(group, command.AppointmentTypeIds, ct);
-      if (replaced.IsFailure)
+      // Preserve Task 12's replacement sequence. It is deliberately inline: the domain method
+      // supplies the refusal and the handler re-derives members only after a real replacement.
+      var activeIds = (await types.ListAsync(ct)).Where(t => t.IsActive).Select(t => t.Id).ToList();
+      var blockingMembers = await blocking.AttendeeGroupBlockingMemberCountAsync(group.Id, ct);
+      if (group.ReplaceRequirements(command.AppointmentTypeIds, activeIds, blockingMembers))
       {
-          return Result<AttendeeGroupResult>.Failure(replaced.Error);
+          var rederived = await RederiveMembersAsync(group, ct);
+          changes.Add($"requirements; {rederived} members re-derived");
       }
   }
 
@@ -1470,7 +1531,8 @@ public sealed record AdjustEventCapacityCommand(
 
           if (notStartedOnly)
           {
-              events = events.Where(e => e.Status == EventStatus.Active && e.StartUtc > now);
+              events = events.Where(e => e.Status == EventStatus.Active &&
+                  EF.Property<DateTimeOffset>(e, "StartUtc") > now);
           }
 
           if (KeysetCursor.TryDecode(query.Cursor, out var sortKey, out var lastId) &&
@@ -1482,11 +1544,12 @@ public sealed record AdjustEventCapacityCommand(
               // derived instant, and a keyset on the instant alone would drop or repeat the
               // rows at that boundary.
               events = events.Where(e =>
-                  e.StartUtc > lastStart || (e.StartUtc == lastStart && e.Id.CompareTo(lastId) > 0));
+                  EF.Property<DateTimeOffset>(e, "StartUtc") > lastStart ||
+                  (EF.Property<DateTimeOffset>(e, "StartUtc") == lastStart && e.Id.CompareTo(lastId) > 0));
           }
 
           var page = await events
-              .OrderBy(e => e.StartUtc)
+              .OrderBy(e => EF.Property<DateTimeOffset>(e, "StartUtc"))
               .ThenBy(e => e.Id)
               .Take(query.Limit)
               .Select(e => new
@@ -1553,7 +1616,7 @@ public sealed record AdjustEventCapacityCommand(
               from e in context.Events.AsNoTracking()
               join l in context.Locations.AsNoTracking() on e.LocationId equals l.Id
               where eventIds.Contains(e.Id)
-              orderby e.StartUtc, e.Id
+              orderby EF.Property<DateTimeOffset>(e, "StartUtc"), e.Id
               select new
               {
                   e.Id,
@@ -1566,7 +1629,7 @@ public sealed record AdjustEventCapacityCommand(
                   e.Window.StartTime,
                   e.Window.DurationMinutes,
                   e.Status,
-                  e.StartUtc,
+                  StartUtc = EF.Property<DateTimeOffset>(e, "StartUtc"),
               }).ToListAsync(ct);
 
           var capacities = await (
@@ -1624,7 +1687,7 @@ public sealed record AdjustEventCapacityCommand(
           Guid? locationId, string? cursor, int limit, CancellationToken ct)
       {
           var listed = context.EventProposals.AsNoTracking().Where(p =>
-              p.ListedAppointmentTypeIds.Contains(actingAppointmentTypeId));
+              p.ListedTypes.Any(t => t.AppointmentTypeId == actingAppointmentTypeId));
 
           if (status is not null)
           {
@@ -1660,7 +1723,7 @@ public sealed record AdjustEventCapacityCommand(
                   p.Window.DurationMinutes,
                   p.Status,
                   p.CreatedByManagerUserId,
-                  ListedTypeCount = p.ListedAppointmentTypeIds.Count,
+                  ListedTypeCount = p.ListedTypes.Count,
                   AcceptedTypeCount = p.Acceptances.Count,
                   MyAcceptedHeadcount = p.Acceptances
                       .Where(a => a.AppointmentTypeId == actingAppointmentTypeId)
