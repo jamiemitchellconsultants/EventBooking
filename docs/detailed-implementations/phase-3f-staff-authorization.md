@@ -508,7 +508,9 @@ public sealed record StaffMeView(
       }
 
       [Fact]
-      public async Task Claim_names_and_pattern_come_from_configuration()
+      // Synchronous: this asserts option binding and pattern parsing, nothing awaits, and
+      // an async method with no await is CS1998 against -warnaserror.
+      public void Claim_names_and_pattern_come_from_configuration()
       {
           var options = new AuthClaimOptions();
           Assert.Equal("staff_id", options.StaffIdClaim);

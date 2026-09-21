@@ -567,8 +567,45 @@ public sealed record InviteIssueOutcome(Guid InviteId, int OptionCount, DateTime
   ```
 
   ```csharp
-  // src/EventBooking.Application/Invites/IInviteIssuer.cs — the contract from Interfaces above,
-  // except the template and actor travel typed: EmailTemplate and ActorType, not strings.
+  // src/EventBooking.Application/Invites/IInviteIssuer.cs (complete)
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Attendees;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Invites;
+  using EventBooking.Domain.Notifications;
+
+  namespace EventBooking.Application.Invites;
+
+  /// <summary>
+  /// The one place invites are created. Never saves and never sends: the caller owns the
+  /// unit of work and commits the staged outbox row in the same transaction as the business
+  /// change, so an invite can never exist without its email or the other way round.
+  ///
+  /// The template and the actor travel typed rather than as strings, so a caller cannot
+  /// stage a message under a template name that does not exist or attribute a change to an
+  /// actor kind the audit reader will not recognise.
+  /// </summary>
+  public interface IInviteIssuer
+  {
+      Task<Result<InviteIssueOutcome>> IssueInitialAsync(
+          Attendee attendee, IReadOnlyList<Guid> locationIds, EmailTemplate template,
+          ActorType actor, string? actorId, CancellationToken ct);
+
+      Task<Result<InviteIssueOutcome>> IssueReissueAsync(
+          Invite expired, IReadOnlyList<Guid> freshEventIds,
+          ActorType actor, string? actorId, CancellationToken ct);
+
+      Task<Result<InviteIssueOutcome>> IssueRecoveryAsync(
+          Attendee attendee, Guid rootBookingId, IReadOnlyList<Guid> selectedTypeIds,
+          IReadOnlyList<Guid> locationIds, IReadOnlyList<Guid> freshEventIds,
+          ActorType actor, string? actorId, CancellationToken ct);
+  }
+
+  public sealed record InviteIssueOutcome(
+      Guid InviteId, int OptionCount, DateTimeOffset ExpiresAt, int RetryCount);
+  ```
+
+  ```csharp
   // src/EventBooking.Application/Invites/InviteIssuer.cs (complete)
   using EventBooking.Application.Abstractions;
   using EventBooking.Application.Common;
@@ -616,7 +653,11 @@ public sealed record InviteIssueOutcome(Guid InviteId, int OptionCount, DateTime
               invite.Id, invite.Options.Count, invite.ExpiresAt, invite.RetryCount));
       }
 
-      public async Task<Result<InviteIssueOutcome>> IssueReissueAsync(
+      // Not async: nothing here awaits, and an async method with no await is CS1998,
+      // which this solution builds with -warnaserror. The reissue reads its expiry from
+      // the expired invite's own snapshot rather than from current settings, so it needs
+      // no settings round trip — that is the point of snapshotting them at issue.
+      public Task<Result<InviteIssueOutcome>> IssueReissueAsync(
           Invite expired, IReadOnlyList<Guid> freshEventIds,
           ActorType actor, string? actorId, CancellationToken ct)
       {
@@ -627,8 +668,8 @@ public sealed record InviteIssueOutcome(Guid InviteId, int OptionCount, DateTime
               EmailTemplate.AttendeeReinvite, clock.UtcNow, inviteId: invite.Id));
           audit.Record(AuditEntityTypes.Invite, invite.Id, AuditAction.InviteCreated,
               actor, actorId, $"retry {invite.RetryCount}");
-          return Result<InviteIssueOutcome>.Success(new InviteIssueOutcome(
-              invite.Id, invite.Options.Count, invite.ExpiresAt, invite.RetryCount));
+          return Task.FromResult(Result<InviteIssueOutcome>.Success(new InviteIssueOutcome(
+              invite.Id, invite.Options.Count, invite.ExpiresAt, invite.RetryCount)));
       }
 
       public async Task<Result<InviteIssueOutcome>> IssueRecoveryAsync(
