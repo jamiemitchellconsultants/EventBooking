@@ -3259,6 +3259,16 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   /// <summary>Gets the Idempotency-Key retention rows.</summary>
   public DbSet<Idempotency.IdempotencyRecord> IdempotencyRecords => Set<Idempotency.IdempotencyRecord>();
 
+  /// <summary>The ambient correlation identifier, or null outside the host.</summary>
+  private readonly ICorrelationContext? _correlation;
+
+  /// <summary>Creates the context with the ambient correlation identifier available.</summary>
+  /// <param name="options">The context options.</param>
+  /// <param name="correlation">The ambient correlation context, or null.</param>
+  public EventBookingDbContext(
+      DbContextOptions<EventBookingDbContext> options, ICorrelationContext? correlation = null)
+      : base(options) => _correlation = correlation;
+
   /// <inheritdoc />
   public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
   {
@@ -3266,11 +3276,14 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
       // row is staged from a handful of handlers plus the seeder, and a derived column cannot
       // depend on which path inserted the row. The stamp is write-once, so a row that already
       // names its correlation keeps it.
-      foreach (var entry in ChangeTracker.Entries<Domain.Notifications.EmailLog>())
+      if (_correlation is not null)
       {
-          if (entry.State == EntityState.Added)
+          foreach (var entry in ChangeTracker.Entries<Domain.Notifications.EmailLog>())
           {
-              entry.Entity.StampCorrelation(correlation.CorrelationId);
+              if (entry.State == EntityState.Added)
+              {
+                  entry.Entity.StampCorrelation(_correlation.CorrelationId);
+              }
           }
       }
 
@@ -3278,9 +3291,10 @@ public static Error RequirementMismatch(string message) => new(RequirementMismat
   }
   ```
 
-  The context takes `ICorrelationContext correlation` as a constructor parameter beside its
-  existing options. The registration is a singleton whose value rides the execution context, so
-  a scoped context resolving it costs nothing.
+  The correlation parameter is **optional and defaulted**, which is load-bearing: some thirty test
+  sites construct this context with options alone, and a required parameter would rewrite every
+  one of them to pass something they have no use for. A null context means no stamp, which is the
+  right answer outside the host — a row written by a test has no request to correlate with.
 
   ```csharp
   // src/EventBooking.Infrastructure/Email/OutboxDispatcher.cs — one clause in Task 18's claim
