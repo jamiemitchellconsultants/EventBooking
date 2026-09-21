@@ -68,6 +68,7 @@ prefixes.
 - Create: src/EventBooking.Application/Appointments/WorkspaceEventHandlers.cs
 - Create: src/EventBooking.Application/Appointments/WorkspaceRosterHandlers.cs
 - Create: src/EventBooking.Application/Appointments/RosterCsv.cs
+- Create: src/EventBooking.Application/Abstractions/IWorkspaceQueries.cs
 - Create: src/EventBooking.Infrastructure/Persistence/Queries/WorkspaceQueries.cs
 - Delete: src/EventBooking.Application/Invites/StartRecoveryHandler.cs
 - Delete: src/EventBooking.Application/Invites/CancelRecoveryInviteHandler.cs (ported version;
@@ -627,18 +628,145 @@ public static Error RecoveryActive(string message) => new(RecoveryActiveCode, me
   even when the original invite row is gone; additional ids union without duplicates.
 
   ```csharp
-  // src/EventBooking.Application/Recovery/CancelRecoveryInviteHandler.cs (complete):
-  // authorize ManageAttendees; lock the invite by id; must be Pending with a
-  // RecoveryOfBookingId (else validation "Only a recovery invite can be cancelled");
-  // lock the attendee; invite.CancelRecovery(); audit RecoveryInviteCancelled as Staff;
-  // save; commit.
+  // src/EventBooking.Application/Recovery/CancelRecoveryInviteHandler.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Access;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Common;
+  using EventBooking.Domain.Invites;
 
-  // src/EventBooking.Application/Recovery/ConcludeRecoveryHandler.cs (complete):
-  // takes (IBookingRepository, IBookingAppointmentRepository, IUnitOfWork, IAuditLogger).
-  // HandleAsync(bookingId): lock the booking; must be a non-original Active row (else
-  // validation); load its appointments; all must be Completed or NoShow (else validation
-  // "No appointments remain open"); booking.Conclude(); audit RecoveryBookingConcluded as
-  // System; save; commit.
+  namespace EventBooking.Application.Recovery;
+
+  public sealed record CancelRecoveryInviteCommand(Guid StaffUserId, Guid InviteId);
+
+  public sealed class CancelRecoveryInviteHandler(
+      IAttendeeRepository attendees,
+      IInviteRepository invites,
+      IStaffAccessAuthorizer access,
+      IUnitOfWork unitOfWork,
+      IAuditLogger audit)
+  {
+      public async Task<Result> HandleAsync(
+          CancelRecoveryInviteCommand command, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              command.StaffUserId, StaffCapability.ManageAttendees, null, ct);
+          if (authorized.IsFailure) return Result.Failure(authorized.Error);
+
+          await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+
+          // The attendee row is taken first. Task 15 puts Invite above Attendee in the
+          // ladder, so locking the invite first and the attendee second is a descent and
+          // trips the guard. Reading the invite unlocked to learn its attendee, then
+          // locking downwards, is the order every other lifecycle handler already uses.
+          var invite = await invites.GetAsync(command.InviteId, ct);
+          if (invite is null) return Result.Failure(Error.NotFound("No such invite."));
+
+          var attendee = await attendees.LockForUpdateAsync(invite.AttendeeId, ct);
+          if (attendee is null) return Result.Failure(Error.NotFound("No such attendee."));
+
+          var locked = await invites.LockForUpdateAsync(command.InviteId, ct);
+          if (locked is null) return Result.Failure(Error.NotFound("No such invite."));
+
+          // Re-read under the lock: the unlocked read above established lock order only,
+          // and the invite may have been answered in between.
+          if (locked.RecoveryOfBookingId is null)
+              return Result.Failure(
+                  Error.Validation("Only a recovery invite can be cancelled."));
+          if (locked.Status != InviteStatus.Pending)
+              return Result.Failure(
+                  Error.Conflict($"The invite is {locked.Status} and can no longer be cancelled."));
+
+          try
+          {
+              locked.CancelRecovery();
+          }
+          catch (DomainException ex)
+          {
+              return Result.Failure(Error.Validation(ex.Message));
+          }
+
+          audit.Record(
+              AuditEntityTypes.Invite,
+              locked.Id,
+              AuditAction.RecoveryInviteCancelled,
+              ActorType.Staff,
+              command.StaffUserId.ToString(),
+              null);
+
+          await unitOfWork.SaveChangesAsync(ct);
+          await transaction.CommitAsync(ct);
+          return Result.Success();
+      }
+  }
+  ```
+
+  ```csharp
+  // src/EventBooking.Application/Recovery/ConcludeRecoveryHandler.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Bookings;
+  using EventBooking.Domain.Common;
+
+  namespace EventBooking.Application.Recovery;
+
+  /// <summary>
+  /// Concludes one recovery booking whose appointments have all reached an outcome. Driven
+  /// by the Task 19 sweep, not by a person, so it demands no capability and audits as
+  /// System.
+  /// </summary>
+  public sealed class ConcludeRecoveryHandler(
+      IBookingRepository bookings,
+      IBookingAppointmentRepository appointments,
+      IUnitOfWork unitOfWork,
+      IAuditLogger audit)
+  {
+      public async Task<Result> HandleAsync(Guid bookingId, CancellationToken ct)
+      {
+          await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+
+          var booking = await bookings.LockForUpdateAsync(bookingId, ct);
+          if (booking is null) return Result.Failure(Error.NotFound("No such booking."));
+
+          // Re-validated under the lock because the sweep listed this row without one.
+          if (booking.IsOriginal)
+              return Result.Failure(
+                  Error.Validation("Only a recovery booking is concluded this way."));
+          if (booking.Status != BookingStatus.Active)
+              return Result.Failure(
+                  Error.Validation($"The booking is {booking.Status} and cannot be concluded."));
+
+          var rows = await appointments.ListForBookingAsync(booking.Id, ct);
+          if (rows.Count == 0 || rows.Any(a =>
+                  a.Status is not (BookingAppointmentStatus.Completed
+                      or BookingAppointmentStatus.NoShow)))
+              return Result.Failure(Error.Validation("No appointments remain open."));
+
+          try
+          {
+              booking.Conclude();
+          }
+          catch (DomainException ex)
+          {
+              return Result.Failure(Error.Validation(ex.Message));
+          }
+
+          audit.Record(
+              AuditEntityTypes.Booking,
+              booking.Id,
+              AuditAction.RecoveryBookingConcluded,
+              ActorType.System,
+              null,
+              null);
+
+          await unitOfWork.SaveChangesAsync(ct);
+          await transaction.CommitAsync(ct);
+          return Result.Success();
+      }
+  }
   ```
 
   ```csharp
@@ -653,6 +781,7 @@ public static Error RecoveryActive(string message) => new(RecoveryActiveCode, me
   namespace EventBooking.Application.Appointments;
 
   public sealed class ListWorkspaceEventsHandler(
+      IWorkspaceQueries workspace,
       IEventRepository events,
       ILocationRepository locations,
       IStaffAccessAuthorizer access,
@@ -674,11 +803,21 @@ public static Error RecoveryActive(string message) => new(RecoveryActiveCode, me
           var from = now.AddDays(-7);
           var to = now.AddDays(14);
 
-          var rows = (await events.ListActiveAsync(DateOnly.MinValue, ct))
-              .Where(e => e.Status == EventStatus.Active
-                  && e.Capacities.Any(c => c.AppointmentTypeId == myType)
-                  && (query.LocationId is null || e.LocationId == query.LocationId)
-                  && zoneByLocation.TryGetValue(e.LocationId, out var location)
+          // The candidate set comes from the query, not from every active event ever
+          // written. Loading them all and filtering here is the shape Task 11 removed from
+          // the eligibility path, where it cost some 680 ms against 18 ms; the workspace
+          // would reintroduce it at exactly the same scale.
+          var candidateIds = await workspace.ListWorkspaceEventIdsAsync(
+              myType, query.LocationId, from.AddMinutes(-EventWindow.MaximumDurationMinutes),
+              to, ct);
+          if (candidateIds.Count == 0)
+              return Result<IReadOnlyList<WorkspaceEventView>>.Success([]);
+
+          // The exact end bound stays here: there is no stored end instant, because
+          // PostgreSQL cannot evaluate IANA rules deterministically (design 04), so SQL
+          // narrows by start instant and the resolver decides the edge.
+          var rows = (await events.ListByIdsAsync(candidateIds, ct))
+              .Where(e => zoneByLocation.TryGetValue(e.LocationId, out var location)
                   && EventEnd(e, location.TimeZoneId, zones) >= from
                   && EventEnd(e, location.TimeZoneId, zones) <= to)
               .OrderBy(e => EventEnd(e, zoneByLocation[e.LocationId].TimeZoneId, zones))
@@ -703,28 +842,207 @@ public static Error RecoveryActive(string message) => new(RecoveryActiveCode, me
   presentation concern over this ordered list.
 
   ```csharp
-  // src/EventBooking.Application/Appointments/WorkspaceRosterHandlers.cs (complete):
-  // GetWorkspaceRosterHandler(appointments, attendees, events, access):
-  //   authorize ConductAppointments; scope type required (else forbidden). Load the event;
-  //   refuse unless it lists the scope type. Load appointments for the event's bookings?
-  //   The appointments port lists by booking, not by event: resolve booking ids through
-  //   IBookingRepository.ListActiveForEventAsync plus journey rows? Keep to active
-  //   bookings: rows = appointments.ListForBookingsAsync(activeBookingIds). Project one
-  //   WorkspaceRosterRow per appointment with the attendee's name/email (loaded by id),
-  //   the scope type code, status, CheckedInAt and Version. Never identifiers.
-  // SetAppointmentStatusHandler(appointments, bookings, events, locations, access,
-  //   unitOfWork, audit, clock, zones):
-  //   authorize ConductAppointments; scope required. Lock the appointment; load its
-  //   booking (read), event (read) and location (read). Parse the target status
-  //   (unrecognised -> validation). Optimistic check: appointment.Version != expected ->
-  //   version-conflict with current state. checkInAllowed = location local date of now ==
-  //   window date; noShowAllowed = window ended in the location zone. Call TransitionTo;
-  //   unchanged -> commit, return success without audit. Changed -> audit the appointment
-  //   action matching the move (AppointmentCheckedIn / AppointmentMarkedNoShow /
-  //   AppointmentCompleted / AppointmentStatusCorrected) as Staff; save; commit.
-  //   Later-recovery guard: correcting NoShow -> Expected while a non-cancelled recovery
-  //   booking exists for the root (LockActiveRecoveryAsync non-null) is refused with
-  //   recovery-active. DownloadRosterHandler reuses the roster query and renders RosterCsv.
+  // src/EventBooking.Application/Appointments/WorkspaceRosterHandlers.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Access;
+  using EventBooking.Application.Common;
+  using EventBooking.Domain.Access;
+  using EventBooking.Domain.Audit;
+  using EventBooking.Domain.Bookings;
+  using EventBooking.Domain.Common;
+  using EventBooking.Domain.Events;
+  using EventBooking.Domain.Time;
+
+  namespace EventBooking.Application.Appointments;
+
+  public sealed record GetWorkspaceRosterQuery(Guid StaffUserId, Guid EventId);
+
+  public sealed class GetWorkspaceRosterHandler(
+      IBookingAppointmentRepository appointments,
+      IBookingRepository bookings,
+      IAttendeeRepository attendees,
+      IEventRepository events,
+      IAppointmentTypeRepository appointmentTypes,
+      IStaffAccessAuthorizer access)
+  {
+      public async Task<Result<IReadOnlyList<WorkspaceRosterRow>>> HandleAsync(
+          GetWorkspaceRosterQuery query, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              query.StaffUserId, StaffCapability.ConductAppointments, null, ct);
+          if (authorized.IsFailure)
+              return Result<IReadOnlyList<WorkspaceRosterRow>>.Failure(authorized.Error);
+          if (authorized.Value.AppointmentTypeId is not { } scopeType)
+              return Result<IReadOnlyList<WorkspaceRosterRow>>.Failure(
+                  Error.Forbidden("The workspace needs an assigned appointment type."));
+
+          var eventItem = await events.GetAsync(query.EventId, ct);
+          if (eventItem is null)
+              return Result<IReadOnlyList<WorkspaceRosterRow>>.Failure(
+                  Error.NotFound("No such event."));
+
+          // An event that does not list the caller's type is not theirs to see, and saying
+          // so as forbidden rather than empty keeps a missing scope distinguishable from an
+          // event with nobody booked.
+          if (eventItem.Capacities.All(c => c.AppointmentTypeId != scopeType))
+              return Result<IReadOnlyList<WorkspaceRosterRow>>.Failure(
+                  Error.Forbidden("This event does not offer your appointment type."));
+
+          // The appointment port lists by booking, so the event's active bookings are
+          // resolved first. Active only: a cancelled booking's attendee is not expected.
+          var eventBookings = await bookings.ListActiveForEventAsync(query.EventId, ct);
+          if (eventBookings.Count == 0)
+              return Result<IReadOnlyList<WorkspaceRosterRow>>.Success([]);
+
+          var rows = await appointments.ListForBookingsAsync(
+              [.. eventBookings.Select(b => b.Id)], ct);
+          var attendeeIdByBooking = eventBookings.ToDictionary(b => b.Id, b => b.AttendeeId);
+          var scopeCode = (await appointmentTypes.GetAsync(scopeType, ct))?.Code ?? string.Empty;
+
+          var roster = new List<WorkspaceRosterRow>();
+          foreach (var appointment in rows.Where(a => a.AppointmentTypeId == scopeType))
+          {
+              if (!attendeeIdByBooking.TryGetValue(appointment.BookingId, out var attendeeId))
+                  continue;
+              var attendee = await attendees.GetAsync(attendeeId, ct);
+              if (attendee is null) continue;
+
+              // Names and emails travel because the roster is the delivery list; no
+              // identifiers do, so a leaked roster cannot be joined back to other records.
+              roster.Add(new WorkspaceRosterRow(
+                  attendee.Name, attendee.Email, scopeCode,
+                  appointment.Status.ToString(), appointment.CheckedInAt,
+                  appointment.Version));
+          }
+
+          return Result<IReadOnlyList<WorkspaceRosterRow>>.Success(
+              [.. roster.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                  .ThenBy(r => r.Email, StringComparer.OrdinalIgnoreCase)]);
+      }
+  }
+
+  public sealed class SetAppointmentStatusHandler(
+      IBookingAppointmentRepository appointments,
+      IBookingRepository bookings,
+      IEventRepository events,
+      ILocationRepository locations,
+      IStaffAccessAuthorizer access,
+      IUnitOfWork unitOfWork,
+      IAuditLogger audit,
+      IClock clock,
+      IEventWindowZones zones)
+  {
+      public async Task<Result> HandleAsync(
+          SetAppointmentStatusCommand command, CancellationToken ct)
+      {
+          var authorized = await access.AuthorizeAsync(
+              command.StaffUserId, StaffCapability.ConductAppointments, null, ct);
+          if (authorized.IsFailure) return Result.Failure(authorized.Error);
+          if (authorized.Value.AppointmentTypeId is not { } scopeType)
+              return Result.Failure(
+                  Error.Forbidden("The workspace needs an assigned appointment type."));
+
+          if (!Enum.TryParse<BookingAppointmentStatus>(
+                  command.TargetStatus, ignoreCase: true, out var target))
+              return Result.Failure(
+                  Error.Validation($"{command.TargetStatus} is not an appointment status."));
+
+          await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+
+          var appointment = await appointments.LockForUpdateAsync(command.AppointmentId, ct);
+          if (appointment is null)
+              return Result.Failure(Error.NotFound("No such appointment."));
+          if (appointment.AppointmentTypeId != scopeType)
+              return Result.Failure(
+                  Error.Forbidden("This appointment is not your appointment type."));
+
+          // The version is checked before the window rules, so a stale page is told it is
+          // stale rather than told its action is out of hours.
+          if (appointment.Version != command.ExpectedVersion)
+              return Result.Failure(Error.AppointmentVersionConflict(
+                  $"The appointment has moved on to version {appointment.Version}."));
+
+          var booking = await bookings.GetAsync(appointment.BookingId, ct);
+          if (booking is null) return Result.Failure(Error.NotFound("No such booking."));
+          var eventItem = await events.GetAsync(booking.EventId, ct);
+          if (eventItem is null) return Result.Failure(Error.NotFound("No such event."));
+          var location = await locations.GetAsync(eventItem.LocationId, ct);
+          if (location is null) return Result.Failure(Error.NotFound("No such location."));
+
+          var now = clock.UtcNow;
+          var checkInAllowed =
+              zones.LocalDateOf(now, location.TimeZoneId) == eventItem.Window.Date;
+          var noShowAllowed = eventItem.Window.HasEnded(zones, location.TimeZoneId, now);
+
+          // A correction back to Expected cannot stand while a recovery is already running
+          // for the same root: the attendee would hold both a second chance and the first.
+          if (appointment.Status == BookingAppointmentStatus.NoShow
+              && target == BookingAppointmentStatus.Expected)
+          {
+              var rootId = booking.RecoveryOfBookingId ?? booking.Id;
+              if (await bookings.LockActiveRecoveryAsync(rootId, ct) is not null)
+                  return Result.Failure(Error.RecoveryActive(
+                      "A recovery booking is already open for this attendee."));
+          }
+
+          bool changed;
+          try
+          {
+              changed = appointment.TransitionTo(
+                  target, command.StaffUserId, now, checkInAllowed, noShowAllowed);
+          }
+          catch (DomainException ex)
+          {
+              return Result.Failure(Error.Validation(ex.Message));
+          }
+
+          // Setting a status it already holds is not a change, and an audit trail that
+          // records it would make a refreshed page look like an action.
+          if (!changed)
+          {
+              await transaction.CommitAsync(ct);
+              return Result.Success();
+          }
+
+          audit.Record(
+              AuditEntityTypes.BookingAppointment,
+              appointment.Id,
+              ActionFor(appointment.Status, target),
+              ActorType.Staff,
+              command.StaffUserId.ToString(),
+              null);
+
+          await unitOfWork.SaveChangesAsync(ct);
+          await transaction.CommitAsync(ct);
+          return Result.Success();
+      }
+
+      private static AuditAction ActionFor(
+          BookingAppointmentStatus from, BookingAppointmentStatus to) => to switch
+      {
+          BookingAppointmentStatus.CheckedIn when from == BookingAppointmentStatus.Expected =>
+              AuditAction.AppointmentCheckedIn,
+          BookingAppointmentStatus.NoShow when from != BookingAppointmentStatus.Completed =>
+              AuditAction.AppointmentMarkedNoShow,
+          BookingAppointmentStatus.Completed when from == BookingAppointmentStatus.CheckedIn =>
+              AuditAction.AppointmentCompleted,
+          // Anything else is a correction of a settled outcome, which is the move the
+          // audit reader most needs to be able to find.
+          _ => AuditAction.AppointmentStatusCorrected,
+      };
+  }
+
+  public sealed class DownloadRosterHandler(GetWorkspaceRosterHandler roster)
+  {
+      public async Task<Result<string>> HandleAsync(
+          GetWorkspaceRosterQuery query, CancellationToken ct)
+      {
+          var rows = await roster.HandleAsync(query, ct);
+          return rows.IsFailure
+              ? Result<string>.Failure(rows.Error)
+              : Result<string>.Success(RosterCsv.Render(rows.Value));
+      }
+  }
   ```
 
   ```csharp
@@ -750,14 +1068,65 @@ public static Error RecoveryActive(string message) => new(RecoveryActiveCode, me
   }
   ```
 
-  `WorkspaceQueries.cs` (Infrastructure): the event-window read model behind the workspace
-  list — parameterised SQL over events joined to locations with the same 7-day/14-day
-  bounds, keyset-paginated; the handler above filters in memory only in the Application
-  tests, while production resolves the scope through this query. Concretely the query
-  exposes `ListWorkspaceEventIdsAsync(typeId, locationId, from, to, cursor, limit)`
-  returning ordered ids the handler hydrates; the in-memory path is the fakes. The
-  Infrastructure suite seeds events across locations and asserts bounds, scope and paging
-  against real PostgreSQL.
+  ```csharp
+  // src/EventBooking.Application/Abstractions/IWorkspaceQueries.cs (complete)
+  namespace EventBooking.Application.Abstractions;
+
+  /// <summary>
+  /// The candidate set behind the workspace event list: active events at the caller's
+  /// locations that offer their appointment type and start inside the widened window. The
+  /// exact end bound is the handler's, because it needs the zone resolver.
+  /// </summary>
+  public interface IWorkspaceQueries
+  {
+      Task<IReadOnlyList<Guid>> ListWorkspaceEventIdsAsync(
+          Guid appointmentTypeId, Guid? locationId,
+          DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+  }
+  ```
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Queries/WorkspaceQueries.cs (complete)
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Domain.Events;
+  using Microsoft.EntityFrameworkCore;
+
+  namespace EventBooking.Infrastructure.Persistence.Queries;
+
+  /// <summary>
+  /// One statement. The join to event_capacity is what restricts the list to events that
+  /// actually offer the caller's type, so an appointment-staff member never sees an event
+  /// they could not work; the join to location keeps an event whose location row has gone
+  /// out of the result rather than failing the whole read.
+  /// </summary>
+  /// <param name="context">The read-only persistence context.</param>
+  public sealed class WorkspaceQueries(EventBookingDbContext context) : IWorkspaceQueries
+  {
+      /// <inheritdoc />
+      public async Task<IReadOnlyList<Guid>> ListWorkspaceEventIdsAsync(
+          Guid appointmentTypeId, Guid? locationId,
+          DateTimeOffset from, DateTimeOffset to, CancellationToken ct) =>
+          await context.Events
+              .AsNoTracking()
+              .Where(e => e.Status == EventStatus.Active)
+              .Where(e => locationId == null || e.LocationId == locationId)
+              .Where(e => context.Locations.Any(l => l.Id == e.LocationId))
+              .Where(e => e.Capacities.Any(c => c.AppointmentTypeId == appointmentTypeId))
+              .Where(e => EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName) >= from
+                  && EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName) <= to)
+              .OrderBy(e => EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName))
+              .ThenBy(e => e.Id)
+              .Select(e => e.Id)
+              .ToListAsync(ct);
+  }
+  ```
+
+  The query takes no cursor. The workspace shows one Manager's own events inside a
+  three-week window, which is tens of rows, and a cursor on a list the handler must then
+  re-filter by end instant would page on a different set from the one it returns. If the
+  window ever widens enough to need paging, page on the widened start instant and keep the
+  end-bound drop where it is. The Infrastructure suite seeds events across locations and
+  asserts the bounds, the type scope and the location filter against real PostgreSQL.
 
 - [ ] **Step 4: Run.** Expected: PASS — the new suites plus the full solution.
 
@@ -775,7 +1144,7 @@ public static Error RecoveryActive(string message) => new(RecoveryActiveCode, me
   ```bash
   test -z "$(git status --porcelain --ignored=no | grep -v '^??')"
   dotnet build EventBooking.sln -warnaserror && dotnet test EventBooking.sln
-  git add src/EventBooking.Application/Common/Error.cs src/EventBooking.Application/Recovery/ src/EventBooking.Application/Appointments/ src/EventBooking.Application/Invites/StartRecoveryHandler.cs src/EventBooking.Application/Invites/CancelRecoveryInviteHandler.cs src/EventBooking.Infrastructure/Persistence/Queries/WorkspaceQueries.cs tests/EventBooking.Application.Tests/Recovery/ tests/EventBooking.Application.Tests/Appointments/ tests/EventBooking.Infrastructure.Tests/Queries/WorkspaceQueryTests.cs
+  git add src/EventBooking.Application/Common/Error.cs src/EventBooking.Application/Recovery/ src/EventBooking.Application/Appointments/ src/EventBooking.Application/Invites/StartRecoveryHandler.cs src/EventBooking.Application/Invites/CancelRecoveryInviteHandler.cs src/EventBooking.Application/Abstractions/IWorkspaceQueries.cs src/EventBooking.Infrastructure/Persistence/Queries/WorkspaceQueries.cs tests/EventBooking.Application.Tests/Recovery/ tests/EventBooking.Application.Tests/Appointments/ tests/EventBooking.Infrastructure.Tests/Queries/WorkspaceQueryTests.cs
   git diff --cached --name-only
   git diff --cached
   test -n "$EXECUTOR_COAUTHOR"
