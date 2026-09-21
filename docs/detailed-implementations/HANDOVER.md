@@ -35,7 +35,7 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 0 — master Tasks 1–3, split 1, 2, 3a, 3b, 3c, 3d | **Complete.** Written, verified and replayed |
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
-| Phase 3 — master Tasks 12–20 | **Complete.** Tasks 12–20 written (hand-authored, unexecuted), Task 20 split into 20a/20b; pull request #20 open |
+| Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Pull request #20 open |
 | Phases 4–7 — master Tasks 21–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
@@ -96,6 +96,13 @@ diffs two snapshots to produce one task's edit volumes.
   independent checkout and run the full suite there.
 - **Phases 3 to 7 are hand-authored.** Complete code and tests written straight into the documents,
   no prototype, because the executing model compiles and test-drives them itself.
+- **Hand-authoring has no compiler, and Phase 3 showed what that costs.** Everything in Phases 0–2
+  came out of a checkout that built with warnings as errors, so a whole class of defect could not
+  reach the documents. Nothing protects a hand-authored phase. Phase 3's review found two methods
+  that would have failed the executor's own build, a read model whose shape contradicted the
+  requirement it cited, a lock order that trips the guard Task 15 installs, and nine blocks that
+  described code instead of being it. Budget a review pass that reads the code as code, and run the
+  mechanical sweeps in section 9 before asking anyone to read prose.
 - **Every contradiction between the spec, the design package and the master plan goes to the user**
   as it comes up (section 8). Do not settle one quietly.
 - Test-driven throughout: write the failing test, watch it fail for the right reason, implement,
@@ -173,6 +180,12 @@ documents into the independent checkout.
 | Task 11 — end of Phase 2 | 360 | 421 | 206 | 232 | 35 | 241 | 75 | 1570 |
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
+
+**Phase 3 has no row here, and must not be given one.** Its ten documents are hand-authored: no
+build and no test has ever run against them, so any figure would be a guess wearing the same
+typeface as eleven measured ones. Each Phase 3 document says so in its own Step 4. The last
+measured checkpoint remains Task 11 at 1570, and the next real figure will be whatever an executor
+reaches at Task 12.
 
 ## 8. Decisions already taken
 
@@ -337,6 +350,37 @@ so a later task can see what it inherits without re-reading the whole list.
   nothing ever runs is not a budget, and because this project's checkpoints require zero skipped
   tests.
 
+**Phase 3 — the hand-authored phase, and what its review settled**
+
+- **A block labelled complete that contains only comments is not code.** Nine of them read as
+  supplied files and were descriptions of files. Two carried unanswered questions in their own
+  prose. The label is not evidence; the ratio of code lines to comment lines is.
+- **Task 20a's dashboard was the wrong dashboard.** It declared three tabs named Events, Attendees
+  and Recovery, each carrying four attendee-status counts. FR-13.1 and design 03b give Awaiting
+  availability, No response and Events, each with one row count. Two of its tabs do not exist in
+  the design and no tab has four counts. Nothing pinned the semantics because there were none to
+  pin: the Application tests used a memory fake and the Infrastructure test was itself a
+  description. Reshaped onto the ported row types, which already carry what the requirement names.
+- **A location filter narrows the Events tab only.** A `Attendee` awaiting availability has no
+  `Event` and therefore no `Location`; filtering them by one needs a relationship the model does
+  not have. The description said the filter applied to every tab.
+- **Recovery-invite cancellation locks the `Attendee` before the `Invite`.** The description had it
+  the other way round, which is a descent once Task 15 puts `Invite` above `Attendee` in the
+  ladder. Read the invite unlocked to learn its attendee, lock downwards, re-read under the lock.
+- **The workspace list goes through a query, not through every active `Event`.** Its handler was
+  calling the repository's list-active with a minimum date and filtering in memory — the shape
+  Task 11 removed from the eligibility path at some 680 ms against 18 ms. The exact end bound stays
+  in the handler, because no end instant is stored.
+- **That query takes no cursor, deliberately.** Paging a list the handler must then re-filter by end
+  instant would page on a different set from the one it returns. If the window ever widens enough to
+  need paging, page on the widened start instant and keep the end-bound drop where it is.
+- **The audit instant is `timestamp`, not `occurred_at`.** Task 20b's description assumed the latter
+  throughout and told the executor to verify it — which an executor cannot do, having no
+  repository. The keyset index it needs already exists as `ix_audit_log_timestamp` on
+  (`timestamp`, `id`) from Task 9b, so Task 20b adds no migration.
+- **The audit bucket CASE yields NULL for an unclassified entity type.** With an ELSE of event, any
+  entity type added later would silently become readable by anyone holding only ViewEventAudit.
+
 ### Transitional constructs, and when each retires
 
 The prototype deliberately carries scaffolding. Each is named in the code and must go at its task:
@@ -398,6 +442,22 @@ wording it overrides:
   Set the true historical value, then drop the column default with a raw SQL statement so new rows
   must state their own. Where no true value exists — Task 6's proposing type — make the migration
   **refuse** rather than invent one.
+- **In a hand-authored phase, run the mechanical sweeps before reading prose.** Two that have
+  already caught real defects, both cheap:
+  - Every `Create:`/`Modify:` entry in a Files list must have its code somewhere in the document.
+    Match the file's stem against the fenced blocks; the ones with no match are the gaps.
+  - No async method may lack an `await`. CS1998 is a warning and this solution builds with
+    `-warnaserror`, so one instance stops the executor with an error that has nothing to do with
+    their task. Two were found this way in Phase 3. The same sweep over Phases 0–2 matched 7,978
+    async methods and cleared every one, which is what a compiler-verified phase should look like.
+- **Verify a column name against the configuration, not against the prose that names it.** Task
+  20b's description said `occurred_at` and was wrong; the audit configuration says `timestamp`. A
+  document that tells its executor to "verify before accepting" is telling the one party who cannot
+  verify anything — resolve it while authoring, where the prototype is readable.
+- **The fingerprint check goes red once on every push, and that red is not yours to fix.** It runs
+  on the push, before any body edit can land, and compares against the previous hash. Wait until the
+  pull request reports the head you just pushed, then update the body; the re-run passes and the
+  earlier failure is superseded. Do not chase the first red.
 - **The ontology checker only sees tracked Markdown.** Lint the plan directory explicitly before
   staging:
 
@@ -444,40 +504,25 @@ fourteen is in this file's history at commit `2b192ca`.
 1. **Phase 2 is done.** All four documents — 9a, 9b, 10 and 11 — are verified in the prototype,
    replayed into the independent checkout at 1570 tests, and merged through pull request #17. There
    is nothing left owing on it.
-2. **Phases 3–7 (Tasks 12–33)** are hand-authored: complete code and tests written straight into the
-   documents, no prototype. Task 12 (reference-data and settings handlers) is written as
-   `phase-3a-reference-data-settings.md` with the phase overview `phase-3-application.md`; its
-   counts are expectations for the executor, not observed figures. Contradictions #5
-   (reference-data only; attendee work stays with Task 20 splits) and #9 (settings snapshot
-   fields added to the ontology's invite) were settled with the user before writing.
-   Task 13 (negotiation and capacity handlers) is written as `phase-3b-negotiation.md`; it
-   retires the transitional-location constant and the fixed appointment-type identifiers in the
-   negotiation handlers. Task 14 (invite engine) is written as `phase-3c-invite-engine.md`; it
-   retires the fixed three-option count, the transitional-location restriction on invites, and
-   the immediate-send delivery path in favour of a staged outbox row. Task 15 (booking and
-   cancellation) is written as `phase-3d-booking-cancellation.md`; it adopts the lock helpers
-   in the booking path, extends the ladder with the Invite and Booking levels, and finally
-   calls the charge and release methods. Contradiction #2 was settled with the user as
-   refuse-as-conflict: a replayed confirmation names the existing booking, against the master
-   plan's return-the-booking test. Task 16 (recovery and workspace) is written as
-   `phase-3e-recovery-workspace.md`. Contradiction #4 was settled with the user as a split:
-   recovery demands ManageAttendees, workspace stays under ConductAppointments. Task 17
-   (staff identity and authorization) is written as `phase-3f-staff-authorization.md`.
-   Contradiction #3 was settled with the user as 403: a missing or malformed staff_id is
-   forbidden everywhere except /api/me, against the API catalogue's 401. Task 18
-   (notification outbox) is written as `phase-3g-notification-outbox.md` with new ontology
-   properties on the email log. Contradiction #6 was settled with the user as extend: claim
-   count, backoff and correlation columns are added. Contradiction #7 was settled as
-   at-least-once, stated explicitly with its crash window. Task 19 (background jobs) is
-   written as `phase-3h-background-jobs.md`. Task 20 is split into
-   `phase-3i-dashboards-attendees.md` (20a: dashboards, attendee list, readiness) and
-   `phase-3j-audit-search.md` (20b: audit search, histories, phase pull-request gate), settling
-   the remainder of contradiction #5 with the user as lettered splits. Phase 3 is complete;
-   Phases 4–7 (Tasks 21–33) are not yet authored.
-3. Several transitional constructs now come due in Phase 3 and in Tasks 12–15. Read section 8's
-   table before starting any of them; Task 15 in particular inherits three separate debts — the
-   booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and `Booking`
-   levels, and Task 7's charge and release methods finally being called.
+2. **Phase 3 (Tasks 12–20) is written and reviewed, and has never been executed.** Ten documents,
+   with master Task 20 split into 20a and 20b; the mapping from task to document is in section 3's
+   table, and the phase overview is `phase-3-application.md`. Pull request #20 is open. What the
+   phase settled — seven contradictions, and the eight review findings that reshaped parts of it —
+   is in section 8; do not re-derive any of it from this list, which is why this entry no longer
+   repeats it. Section 7 says why the phase has no test figures and must not be given any.
 
-Do not claim the assignment is complete while Tasks 12–33 are unwritten. The size of Phase 0 is not
+   What remains on Phase 3 is a code owner's review of #20. The EF migrations in Tasks 12, 18 and
+   20a are generate-and-review by the Phase 2 convention rather than embedded, which is correct and
+   not a gap.
+
+3. **Phases 4–7 (Tasks 21–33) are not authored.** They are hand-authored too, so read section 5 on
+   what that costs and section 9's mechanical sweeps before writing, not after. Task 21 is the API
+   surface, and it inherits contradiction #3's settlement: the endpoint layer still has to implement
+   the 403 rule section 8 records.
+4. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
+   section 8's table before starting any of them; Task 15 in particular inherits three separate
+   debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and
+   `Booking` levels, and Task 7's charge and release methods finally being called.
+
+Do not claim the assignment is complete while Tasks 21–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
