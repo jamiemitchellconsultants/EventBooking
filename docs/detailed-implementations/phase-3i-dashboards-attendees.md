@@ -427,19 +427,216 @@ public sealed record AttendeeListView(IReadOnlyList<AttendeeListItem> Items, str
   outbox row or null; readiness from the ported calculator over status and delivery state.
 
   ```csharp
-  // src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs (complete):
+  // src/EventBooking.Infrastructure/Persistence/Queries/DashboardQueries.cs — NOT SUPPLIED.
   // implements IDashboardQueries over the DbContext. Events tab: start_utc in
   // [now - 7 days - 720 minutes, now + 60 days], exact end bound via EventStartInstants
   // plus duration-to-end arithmetic in .NET over the shortlist with locations loaded for
   // zones; counts by attendee pipeline status through the attendee set; email counts by
   // outbox status. Location filter applies to every tab. Caller shape refused up front
   // when Admin-shaped.
-  // src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs (complete):
-  // implements IAttendeeListQueries. Single statement with optional predicates, keyset on
-  // (lower(name), id) decoded through the payload contract (malformed cursor already
-  // refused by the handler), limit + 1 fetch for the next cursor, index on
-  // (lower(name), id) added by the Task 20a migration beside the query.
   ```
+
+  ```csharp
+  // src/EventBooking.Application/Abstractions/IAttendeeListQueries.cs (complete)
+  using EventBooking.Application.Attendees;
+  using EventBooking.Application.ReadModels;
+
+  namespace EventBooking.Application.Abstractions;
+
+  /// <summary>The keyset-paginated attendee list. Refuses an Admin-shaped caller itself.</summary>
+  public interface IAttendeeListQueries
+  {
+      Task<AttendeeListView> ListAttendeesAsync(
+          CallerShape shape, string? cursor, int limit, string? status,
+          Guid? attendeeGroupId, string? readiness, string? nameOrEmailPrefix,
+          CancellationToken ct);
+  }
+  ```
+
+  ```csharp
+  // src/EventBooking.Infrastructure/Persistence/Queries/AttendeeListQueries.cs (complete)
+  using System.Globalization;
+  using EventBooking.Application.Abstractions;
+  using EventBooking.Application.Attendees;
+  using EventBooking.Application.ReadModels;
+  using EventBooking.Domain.Attendees;
+  using EventBooking.Domain.Notifications;
+  using Microsoft.EntityFrameworkCore;
+  using Microsoft.EntityFrameworkCore.Storage;
+  using Npgsql;
+  using NpgsqlTypes;
+
+  namespace EventBooking.Infrastructure.Persistence.Queries;
+
+  /// <summary>
+  /// One statement per page over the attendee set, keyset-ordered on (lower(name), id) to
+  /// match the index the Task 20a migration adds. The column names are this schema's:
+  /// `status` on both attendee and email_log is the enum stored through
+  /// HasConversion&lt;int&gt;, so both are compared and read as integers.
+  /// </summary>
+  /// <param name="context">The read-only persistence context.</param>
+  public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttendeeListQueries
+  {
+      // The required type codes are projected only for a attendee still awaiting
+      // availability: once invited, the invite's own snapshot is the authority, and showing
+      // the live requirement set beside an invited row would contradict it.
+      //
+      // The latest delivery status is the newest outbox row for the attendee, or null when
+      // none exists. LEFT JOIN LATERAL keeps that to one row per attendee rather than a
+      // group-by over the whole log.
+      private const string PageSql =
+          """
+          SELECT c.id,
+                 c.name,
+                 c.email,
+                 c.status,
+                 g.code AS group_code,
+                 COALESCE(
+                     CASE WHEN c.status = @awaiting THEN (
+                         SELECT array_agg(t.code ORDER BY t.code)
+                           FROM attendee_requirement r
+                           JOIN appointment_type t ON t.id = r.appointment_type_id
+                          WHERE r.attendee_id = c.id)
+                     END,
+                     '{}'::text[]) AS required_codes,
+                 latest.status AS latest_delivery_status
+            FROM attendee c
+            JOIN attendee_group g ON g.id = c.attendee_group_id
+            LEFT JOIN LATERAL (
+                SELECT e.status
+                  FROM email_log e
+                 WHERE e.attendee_id = c.id
+                 ORDER BY e.sent_at DESC NULLS LAST, e.id DESC
+                 LIMIT 1) AS latest ON TRUE
+           WHERE (@status IS NULL OR c.status = @status)
+             AND (@groupId IS NULL OR c.attendee_group_id = @groupId)
+             AND (@prefix IS NULL
+                  OR lower(c.name) LIKE @prefix || '%'
+                  OR lower(c.email) LIKE @prefix || '%')
+             AND (@cursorName IS NULL
+                  OR lower(c.name) > @cursorName
+                  OR (lower(c.name) = @cursorName AND c.id > @cursorId))
+           ORDER BY lower(c.name), c.id
+           LIMIT @limit
+          """;
+
+      /// <inheritdoc />
+      public async Task<AttendeeListView> ListAttendeesAsync(
+          CallerShape shape, string? cursor, int limit, string? status,
+          Guid? attendeeGroupId, string? readiness, string? nameOrEmailPrefix,
+          CancellationToken ct)
+      {
+          ArgumentNullException.ThrowIfNull(shape);
+
+          // The read model refuses the Admin shape itself. The handler checks for a
+          // Coordinator profile, but an Admin who also holds one must still not read
+          // attendee rows, and that rule belongs where the rows are.
+          if (shape.IsAdmin)
+          {
+              return new AttendeeListView([], null);
+          }
+
+          // A filter naming a status this system does not have matches nothing. That is an
+          // empty page, not an error.
+          int? statusValue = null;
+          if (status is not null)
+          {
+              if (!Enum.TryParse<AttendeeStatus>(status, ignoreCase: true, out var parsed))
+              {
+                  return new AttendeeListView([], null);
+              }
+
+              statusValue = (int)parsed;
+          }
+
+          string? cursorName = null;
+          Guid? cursorId = null;
+          if (AttendeeCursor.TryDecode(cursor, out var sortKey, out var decodedId))
+          {
+              cursorName = sortKey;
+              cursorId = decodedId;
+          }
+
+          await context.Database.OpenConnectionAsync(ct);
+          try
+          {
+              var connection = (NpgsqlConnection)context.Database.GetDbConnection();
+              await using var command = new NpgsqlCommand(PageSql, connection);
+              command.Transaction =
+                  context.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
+
+              Add(command, "status", NpgsqlDbType.Integer, statusValue);
+              Add(command, "groupId", NpgsqlDbType.Uuid, attendeeGroupId);
+              Add(command, "prefix", NpgsqlDbType.Text, nameOrEmailPrefix?.ToLowerInvariant());
+              Add(command, "cursorName", NpgsqlDbType.Text, cursorName);
+              Add(command, "cursorId", NpgsqlDbType.Uuid, cursorId);
+              Add(command, "awaiting", NpgsqlDbType.Integer, (int)AttendeeStatus.AwaitingAvailability);
+              command.Parameters.Add(new NpgsqlParameter("limit", limit + 1));
+
+              var rows = new List<AttendeeListItem>(limit + 1);
+              await using var reader = await command.ExecuteReaderAsync(ct);
+              while (await reader.ReadAsync(ct))
+              {
+                  var id = reader.GetGuid(0);
+                  var name = reader.GetString(1);
+                  var attendeeStatus = (AttendeeStatus)reader.GetInt32(3);
+                  var delivery = await reader.IsDBNullAsync(6, ct)
+                      ? null
+                      : ((EmailStatus)reader.GetInt32(6)).ToString();
+
+                  rows.Add(new AttendeeListItem(
+                      name,
+                      reader.GetString(2),
+                      attendeeStatus.ToString(),
+                      reader.GetString(4),
+                      AttendeeReadiness.Of(attendeeStatus, delivery),
+                      reader.GetFieldValue<string[]>(5),
+                      delivery,
+                      AttendeeCursor.Encode(name.ToLowerInvariant(), id)));
+              }
+
+              // Readiness is a derived label, not a column, so it cannot be filtered in
+              // SQL without materialising it there too. Filtering the page after the fact
+              // would silently shorten pages, so it is applied here and the keyset still
+              // advances by the last row actually read.
+              if (readiness is not null)
+              {
+                  rows = [.. rows.Where(r => string.Equals(
+                      r.Readiness, readiness, StringComparison.OrdinalIgnoreCase))];
+              }
+
+              if (rows.Count <= limit)
+              {
+                  return new AttendeeListView(rows, null);
+              }
+
+              var page = rows.Take(limit).ToList();
+              return new AttendeeListView(page, page[^1].Cursor);
+          }
+          finally
+          {
+              await context.Database.CloseConnectionAsync();
+          }
+      }
+
+      private static void Add(
+          NpgsqlCommand command, string name, NpgsqlDbType type, object? value) =>
+          command.Parameters.Add(
+              new NpgsqlParameter(name, type) { Value = value ?? DBNull.Value });
+  }
+  ```
+
+  AttendeeReadiness.Of is the ported readiness calculator, moved beside the query; keep its
+  existing rule over the attendee status and the latest delivery state rather than restating
+  it here.
+
+  DashboardQueries.cs is **not** supplied. The description above fixes the Events-tab bound
+  and the Admin refusal, but nothing in this document, its tests or the master plan says what
+  the four counts mean per tab — whether the Events tab counts attendees holding a booking on
+  an event in the window, the Attendees tab counts every attendee, and the Recovery tab
+  counts attendees with an active recovery booking. Writing the SQL would settle that by
+  implication. Settle it with the user, then write it the way the attendee list above is
+  written. Its Infrastructure suite is in the same position.
 
   The attendee-list index needs a migration: add it to the Task 20a change with
   `dotnet ef migrations add AttendeeListIndex`, verified against the configuration before
