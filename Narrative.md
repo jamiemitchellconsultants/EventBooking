@@ -16,6 +16,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [6](#entry-docs-agents-add-detailed-implementation-plans-section) | 2026-09-19 | docs(agents): add detailed implementation plans section | product | Adopt JointBooking's convention as is. Each superpowers plan gets a matching detailed implementation plan under `docs/detailed-implementations/<slug>/`. |
 | [7](#entry-detailed-implementation-plans-phases-0-and-1) | 2026-09-20 | Detailed implementation plans: Phases 0 and 1 | product | Write the plans as prototype-verified documents rather than hand-authored ones for Phases 0 to 2: implement each task in a scratch checkout, run the full suite, generate the task document from before/after snapshots, then replay that… |
 | [8](#entry-phase-2-the-fresh-schema-ordered-locks-and-the-eligibility-query) | 2026-09-20 | Phase 2: the fresh schema, ordered locks and the eligibility query | product | Give the generalised domain a persistence layer of its own, and prove each claim against a real PostgreSQL 16 rather than an in-memory provider. |
+| [9](#entry-phase-3-application-plans-tasks-12-20) | 2026-09-21 | Phase 3 application plans (Tasks 12–20) | product | Author Tasks 12-20 as hand-authored plan documents (phase-3a through 3j, with Task 20 split into 20a/20b), settling: Task 12 owns reference data and settings only with attendee work deferred to Task 20 splits (#5); invites snapshot the… |
 
 ---
 
@@ -319,3 +320,27 @@ still unwritten, and are hand-authored rather than prototype-verified.
 ---
 
 AI-Fingerprint: sha256:7d8bd9b672e7
+
+---
+
+<a id="entry-phase-3-application-plans-tasks-12-20"></a>
+
+## Entry 9 — 2026-09-21 — Phase 3 application plans (Tasks 12–20)
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 3 (master Tasks 12-20) generalises every use case behind the design 04 handler pattern: one transaction per command, canonical lock order, audit in the transaction, one StaffCapability per handler. Phases 0-2 were prototype-verified; Phase 3 is hand-authored — complete code and tests written straight into the documents for the executing model to compile and test-drive. Seven open contradictions between the spec, design package and master plan landed on these tasks and were settled with the user rather than alone.
+
+## Decision
+
+Author Tasks 12-20 as hand-authored plan documents (phase-3a through 3j, with Task 20 split into 20a/20b), settling: Task 12 owns reference data and settings only with attendee work deferred to Task 20 splits (#5); invites snapshot the three settings values at issue (#9, new ontology properties); replayed confirmations refuse as conflicts naming the existing booking, against the master plan's return-the-booking test (#2); recovery demands ManageAttendees while workspace stays under ConductAppointments (#4); missing staff identity is 403 except on /api/me (#3); EmailLog gains claim, backoff and correlation columns (#6); delivery is at-least-once with the crash window stated (#7). D13 (outbox), D14 (token lifecycle as implemented) and D15 go into code here.
+
+## Consequences
+
+The executor works Tasks 12-20 in order on the phase branch pattern, with Task 20b as the merge gate. Test counts in the documents are expectations, not observed figures — nothing was run. Phases 4-7 (Tasks 21-33) remain unauthored. The refuse-as-conflict replay semantic permanently overrides the master plan's idempotent-return test for Task 15.
+
+---
+
+AI-Fingerprint: sha256:802571da4763
