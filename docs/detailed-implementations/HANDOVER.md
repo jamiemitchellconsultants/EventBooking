@@ -1,6 +1,6 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 20 September 2026, after Phase 2 Task 11. Written for an agent starting with no context:
+Updated 22 September 2026, after Phase 5 was authored. Written for an agent starting with no context:
 read this file, then the governing inputs it lists, before touching anything.
 
 ## 1. What the assignment is
@@ -36,8 +36,9 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 1 — master Tasks 4–8 | **Complete.** Tasks 4–8 written, replayed, and the pull-request gate is in the phase overview |
 | Phase 2 — master Tasks 9–11 | **Complete.** Tasks 9a, 9b, 10 and 11 written, replayed and merged. Prototype-verified, like Phases 0 and 1 |
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
-| Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 is open with its review amendments applied. Hand-authored, like Phase 3, so no build or test has ever run against them |
-| Phases 5–7 — master Tasks 24–33 | Not authored |
+| Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 merged on 21 September 2026. Hand-authored, like Phase 3, so no build or test has ever run against them |
+| Phase 5 — master Tasks 24–27 | **Written and reviewed, never executed.** Four task documents plus the overview. Hand-authored by the user's settled choice; Task 24 creates the Playwright/axe safety net and Task 27 is the phase gate |
+| Phases 6–7 — master Tasks 28–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -69,6 +70,7 @@ Documents written so far:
 | 2 | `phase-2-persistence.md` | `phase-2a-attendee-tokens.md` + 32 edit volumes; `phase-2b-fresh-schema.md` + 26 edit volumes; `phase-2c-ordered-locks.md` + 2 edit volumes; `phase-2d-invite-eligibility.md` + 16 edit volumes |
 | 3 | `phase-3-application.md` | `phase-3a-reference-data-settings.md`, `phase-3b-negotiation.md`, `phase-3c-invite-engine.md`, `phase-3d-booking-cancellation.md`, `phase-3e-recovery-workspace.md`, `phase-3f-staff-authorization.md`, `phase-3g-notification-outbox.md`, `phase-3h-background-jobs.md`, `phase-3i-dashboards-attendees.md`, `phase-3j-audit-search.md` (hand-authored, unexecuted; Task 20 split into 20a/20b) |
 | 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b), `phase-4d-mcp-parity.md` (23, phase gate) (hand-authored, unexecuted) |
+| 5 | `phase-5-web.md` | `phase-5a-design-system.md` (Task 24), `phase-5b-admin-screens.md` (25), `phase-5c-manager-and-operations.md` (26), `phase-5d-coordinator-attendee-help.md` (27, phase gate) (hand-authored, unexecuted) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -105,11 +107,12 @@ diffs two snapshots to produce one task's edit volumes.
   requirement it cited, a lock order that trips the guard Task 15 installs, and nine blocks that
   described code instead of being it. Budget a review pass that reads the code as code, and run the
   mechanical sweeps in section 9 before asking anyone to read prose.
-- **Phase 4 stays hand-authored; Phase 5 decides for itself.** Tasks 21–23 are endpoint and tool
-  wiring over handlers Phase 3 already specifies, so the code is thin and repetitive and the method
-  fits. Phase 5 is the web work, where the code is dense and its failure modes are visual, and the
-  method is an open question rather than a settled one — section 11 carries the checkpoint. Do not
-  let the answer be decided by momentum at the point someone starts writing Task 24.
+- **Phases 4 and 5 are hand-authored.** Tasks 21–23 are endpoint and tool wiring over handlers
+  Phase 3 already specifies. For Phase 5 the user explicitly chose hand-authoring rather than
+  advancing the Task 11 prototype through twelve unexecuted tasks. The compensation is settlement
+  #20: Playwright/axe and its workflow move from Task 27 to Task 24, and every later task extends
+  the route manifest. Phase 5 therefore has source-level and accessibility instructions, but still
+  has no observed build, test or visual result until an executor runs it.
 - **Every contradiction between the spec, the design package and the master plan goes to the user**
   as it comes up (section 8). Do not settle one quietly.
 - Test-driven throughout: write the failing test, watch it fail for the right reason, implement,
@@ -255,9 +258,9 @@ documents into the independent checkout.
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
-**Phase 3 has no row here, and must not be given one.** Its ten documents are hand-authored: no
-build and no test has ever run against them, so any figure would be a guess wearing the same
-typeface as eleven measured ones. Each Phase 3 document says so in its own Step 4. The last
+**Phases 3, 4 and 5 have no rows here, and must not be given one.** Their documents are
+hand-authored: no build and no test has ever run against them, so any figure would be a guess
+wearing the same typeface as eleven measured ones. Each document says so at its gate. The last
 measured checkpoint remains Task 11 at 1570, and the next real figure will be whatever an executor
 reaches at Task 12.
 
@@ -553,6 +556,16 @@ contradiction it closes carry one number between them.
   own pagination suite drives it. The consequence is that the suite count falls at Task 21 and
   rises again at Tasks 22b and 23; that is intended, not a regression to reconcile.
 
+### Phase 5 settlements (binding on later tasks)
+
+- **#20 (Tasks 24, 27).** **Phase 5 is hand-authored, with the browser safety net moved to the
+  start.** The user chose not to revive and advance the Task 11 prototype through Tasks 12–23.
+  To keep visual and accessibility failures from accumulating until the last task, Task 24 creates
+  the Playwright project, axe-core integration, two viewport matrix, API stub and Web-change
+  workflow job that the master plan originally assigns to Task 27. Tasks 25–27 extend its route
+  and state manifest; Task 27 remains the full-phase gate. No observed result is claimed until an
+  executor runs the plans.
+
 **Found while authoring Task 21, and still open.** Phase 3's transitional-construct table retires
 the single-zone clock "when handlers carry a `Location`", but **no Phase 3 document removes it**:
 `Clock:TimeZoneId`, the clock options type and the transitional member on the system clock all
@@ -644,6 +657,7 @@ fourteen is in this file's history at commit `2b192ca`.
 | 17 | **Settled in Phase 4 (§8):** the error catalogue gains four slugs design 05's table omits | 21 |
 | 18 | **Settled in Phase 4 (§8):** the outbox correlation identifier is the request's where one exists | 18, 21 |
 | 19 | **Settled in Phase 4 (§8):** Phase 3 left the Api and Mcp projects uncompilable; Task 21 restores the build by removal before adding anything | 12–20, 21 |
+| 20 | **Settled in Phase 5 (§8):** hand-author the phase, but create Playwright/axe and its workflow in Task 24; later tasks extend the manifest and Task 27 remains the phase gate | 24, 27 |
 
 ## 11. Next steps
 
@@ -652,7 +666,7 @@ fourteen is in this file's history at commit `2b192ca`.
    is nothing left owing on it.
 2. **Phase 3 (Tasks 12–20) is written and reviewed, and has never been executed.** Ten documents,
    with master Task 20 split into 20a and 20b; the mapping from task to document is in section 3's
-   table, and the phase overview is `phase-3-application.md`. Pull request #20 is open. What the
+   table, and the phase overview is `phase-3-application.md`. Pull request #20 is merged. What the
    phase settled — seven contradictions, and the eight review findings that reshaped parts of it —
    is in section 8; do not re-derive any of it from this list, which is why this entry no longer
    repeats it. Section 7 says why the phase has no test figures and must not be given any.
@@ -683,26 +697,26 @@ fourteen is in this file's history at commit `2b192ca`.
      gate. Forty-five tools over the same handlers, with names, descriptions and hints read
      from the shared catalogue so the two surfaces cannot describe themselves differently.
 
-   Phase 4 is therefore complete as authored and has never been executed. Pull request #27 is
-   open from `claude/phase-4-api-and-mcp`; its requested review amendments were applied before
-   execution. Task 23's Step 6 carries the gate, the narrative requirements and the fingerprint
-   recipe.
+   Phase 4 is therefore complete as authored and has never been executed. Pull request #27 merged
+   on 21 September 2026. Task 23's Step 6 carries the gate, the narrative requirements and the
+   fingerprint recipe.
 
-4. **Decide the method for Phase 5 before writing Task 24, and put the decision to the user.** Phase
-   4 is thin wiring over handlers that already exist, which is why it stays hand-authored. Phase 5
-   is the web work: dense components whose failure modes are visual, where neither of section 6a's
-   sweeps helps much and a reviewer reading markup cannot tell a working page from a plausible one.
-   The options are to carry on hand-authoring and budget a heavier review, or to bring the prototype
-   back for Phase 5 and generate its documents from before/after snapshots the way Phases 0–2 were
-   built. The prototype still exists and is green at Task 11, so the second is available rather than
-   theoretical — but it would first have to be brought forward through Tasks 12–23. Weigh that cost
-   against what a phase of unverified bUnit components is worth. This is a user decision, not an
-   authoring one.
-5. **Phases 6–7 (Tasks 28–33)** inherit whatever Phase 5 settles.
+4. **Phase 5 (Tasks 24–27) is written and reviewed, and has never been executed.** The user settled
+   the method as hand-authoring with an earlier browser safety net (settlement #20). The overview
+   is `phase-5-web.md`: Task 24 removes predecessor branding, creates the design system, duplicates
+   the shared Web wire primitives and creates Playwright/axe plus its workflow; Task 25 implements
+   Admin and read-only reference-data screens; Task 26 implements negotiation, event operations
+   and the scoped appointment workspace using the real predecessor page names; Task 27 completes
+   Coordinator, anonymous and Help flows and runs the full route/state gate. The plan explicitly
+   stops on missing OpenAPI fields instead of authorizing or calculating event state in Web. Phase
+   5 has no observed counts; the last measured checkpoint remains Task 11 at 1,570.
+5. **Phases 6–7 (Tasks 28–33)** remain to be authored. They inherit Phase 5's hand-authored method,
+   but each phase still needs its own proportionate verification design rather than copying a Web
+   route manifest where it does not apply.
 6. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
    section 8's table before starting any of them; Task 15 in particular inherits three separate
    debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and
    `Booking` levels, and Task 7's charge and release methods finally being called.
 
-Do not claim the assignment is complete while Tasks 22–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 28–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
