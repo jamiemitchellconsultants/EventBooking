@@ -20,6 +20,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [10](#entry-the-hand-authored-task-loop-and-a-method-checkpoint-before-phase-5) | 2026-09-21 | The hand-authored task loop, and a method checkpoint before Phase 5 | product | Write the hand-authored loop down, and make its checks mechanical rather than attentional. The two sweeps are embedded in the handover as runnable scripts, not described. |
 | [11](#entry-phase-4-api-conventions-the-endpoint-catalogue-and-mcp-parity) | 2026-09-21 | Phase 4 — API conventions, the endpoint catalogue and MCP parity | product | **Master Task 22 is split into 22a and 22b**, the way master Task 20 was split into 20a and 20b. Task 22a adds the missing Application queries, read models and command shapes; Task 22b is the endpoint catalogue over them and holds no rule. |
 | [12](#entry-phase-5-handoff-prompt-hand-authored-with-the-axe-gate-moved-to-task-24) | 2026-09-21 | Phase 5 handoff prompt: hand-authored, with the axe gate moved to Task 24 | product | **Phase 5 stays hand-authored, and the Playwright and axe-core project moves from Task 27 to Task 24.** Task 24 creates it alongside the design-system components, every later task adds its own routes to it, and the phase gate is zero axe… |
+| [13](#entry-docs-plan-add-phase-5-web-implementation-plan) | 2026-09-22 | docs(plan): add Phase 5 web implementation plan | product | Hand-author Phase 5, but move the Playwright project, axe integration, two-viewport route/state manifest, API stub, and Web-change workflow job from the phase-ending task into Task 24. |
 
 ---
 
@@ -601,3 +602,25 @@ representation and the capability links that Phase 4 puts on the wire.
 ---
 
 AI-Fingerprint: sha256:88228812f515
+
+---
+
+<a id="entry-docs-plan-add-phase-5-web-implementation-plan"></a>
+
+## Entry 13 — 2026-09-22 — docs(plan): add Phase 5 web implementation plan
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 5 needs to turn the approved Web design package and the Phase 4 API surface into instructions detailed enough for a small local model to execute without re-deriving the design. The earlier executable prototype stops at Task 11, while Tasks 12–23 are hand-authored and have not been executed. Advancing the prototype through those twelve tasks only to generate Web snapshots would add substantial cost. However, Web failures are visual and interactive, so source-level review alone is not a sufficient safety net.
+
+## Decision
+
+Hand-author Phase 5, but move the Playwright project, axe integration, two-viewport route/state manifest, API stub, and Web-change workflow job from the phase-ending task into Task 24. Tasks 25–27 must extend that manifest, and Task 27 remains the complete phase gate.
+
+Keep the standalone Web project server-reference-free. Where the OpenAPI contract lacks required fields or action links, the executor must stop and repair the server contract in a prerequisite commit instead of inferring permissions, event state, or display data in the browser.
+
+## Consequences
+
+An executor can implement Tasks 24–27 as four TDD-shaped commits with browser and accessibility coverage present from the first task. The earlier safety net increases Task 24's scope, but prevents visual and accessibility debt from accumulating until Task 27. The plans make no claim that Phase 5 builds or passes yet; observed counts belong to the future execution. Phases 6–7, Tasks 28–33, remain to be authored.
