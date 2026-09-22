@@ -202,6 +202,7 @@ using Bunit;
 using EventBooking.Web.Components;
 using EventBooking.Web.Services;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Web.Tests.Components;
 
@@ -351,6 +352,118 @@ public sealed class DesignSystemComponentTests : BunitContext
 
         Assert.Contains("Wed 14 Oct 2026, 09:30–11:00 BST", cut.Markup);
         Assert.Contains("London HQ", cut.Markup);
+    }
+
+    [Fact]
+    public void TwoStepButtonRequiresASecondActivation()
+    {
+        var confirmed = 0;
+        var cut = Render<TwoStepButton>(parameters => parameters
+            .Add(component => component.Label, "Cancel event")
+            .Add(component => component.ConfirmLabel, "Confirm cancellation")
+            .Add(component => component.Consequence, "Cancels 3 bookings")
+            .Add(component => component.Confirmed,
+                EventCallback.Factory.Create(this, () => confirmed++)));
+
+        cut.Find("button").Click();
+
+        Assert.Equal(0, confirmed);
+        Assert.Equal("Confirm cancellation", cut.Find("button").TextContent.Trim());
+        Assert.Contains("Cancels 3 bookings", cut.Find("[role='status']").TextContent);
+
+        cut.Find("button").Click();
+
+        Assert.Equal(1, confirmed);
+        Assert.Equal("Cancel event", cut.Find("button").TextContent.Trim());
+        Assert.Empty(cut.FindAll("[role='status']"));
+    }
+
+    [Fact]
+    public void TwoStepButtonResetsAfterItsTenSecondWindow()
+    {
+        var time = new ManualTimeProvider();
+        var cut = Render<TwoStepButton>(parameters => parameters
+            .Add(component => component.Label, "Cancel event")
+            .Add(component => component.ConfirmLabel, "Confirm cancellation")
+            .Add(component => component.Consequence, "Cancels 3 bookings")
+            .Add(component => component.TimeProvider, time));
+
+        cut.Find("button").Click();
+        Assert.Equal(TimeSpan.FromSeconds(10), time.LastDueTime);
+
+        time.Elapse();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Cancel event", cut.Find("button").TextContent.Trim());
+            Assert.Empty(cut.FindAll("[role='status']"));
+        });
+    }
+
+    [Fact]
+    public void TwoStepButtonResetsWhenNavigationChanges()
+    {
+        var cut = Render<TwoStepButton>(parameters => parameters
+            .Add(component => component.Label, "Cancel event")
+            .Add(component => component.ConfirmLabel, "Confirm cancellation")
+            .Add(component => component.Consequence, "Cancels 3 bookings"));
+        cut.Find("button").Click();
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/another-page");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Cancel event", cut.Find("button").TextContent.Trim());
+            Assert.Empty(cut.FindAll("[role='status']"));
+        });
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private ManualTimer? _timer;
+
+        public TimeSpan? LastDueTime { get; private set; }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            LastDueTime = dueTime;
+            _timer = new ManualTimer(callback, state);
+            return _timer;
+        }
+
+        public void Elapse() => _timer?.Fire();
+
+        private sealed class ManualTimer(TimerCallback callback, object? state) : ITimer
+        {
+            private bool _active = true;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                _active = true;
+                return true;
+            }
+
+            public void Dispose() => _active = false;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+
+            public void Fire()
+            {
+                if (!_active)
+                    return;
+
+                _active = false;
+                callback(state);
+            }
+        }
     }
 
     private sealed record Row(Guid Id, IReadOnlyList<TypeCapacity> Capacities);

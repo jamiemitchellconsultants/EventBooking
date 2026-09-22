@@ -1,6 +1,6 @@
 # 05d — Coordinator, attendee and Help flows (Task 27)
 
-[← Phase overview](phase-5-web.md) · [Previous task](phase-5c-manager-and-operations.md) · [Ontology](../ontology.md)
+[← Phase overview](phase-5-web.md) · [Previous task](phase-5c-manager-and-operations.md) · [Plans overview](README.md) · [Ontology](../ontology.md)
 
 This task completes the Web layer with Coordinator workflows, anonymous token pages, audit,
 role-aware Help and the Phase 5 accessibility gate. It extends the Playwright/axe harness created
@@ -282,7 +282,7 @@ public sealed class CoordinatorPageTests : BunitContext
     private sealed class FakeAttendeesClient : IAttendeesClient
     {
         public List<AttendeeDto> Rows { get; } = [new(Guid.NewGuid(), "T. Okafor", "t@example.org",
-            "Awaiting", "OFFICE", "Outstanding", ["IND"], "Failed",
+            "AwaitingAvailability", "OFFICE", "AppointmentsOutstanding", ["IND"], "Failed",
             new Dictionary<string, ApiLink> { ["invite"] = new("/invites", "POST", "inviteAttendee") })];
         public IReadOnlyList<Guid> LastLocations { get; private set; } = [];
         public ApiOutcome<ImportOutcomeDto> ImportResult { get; init; } = ApiOutcome<ImportOutcomeDto>.Success(new(1, []));
@@ -701,8 +701,8 @@ private static void MapTask27(WebApplication app)
         if (FixtureState(context) == "attendees-error")
             return Results.Problem(statusCode: 500, type: "unexpected");
         object[] items = FixtureState(context) == "attendees-empty" ? [] : [new {
-        id = attendeeId, name = "T. Okafor", email = "t@example.org", status = "Awaiting",
-        groupCode = "OFFICE", readiness = "Outstanding", requiredTypeCodes = new[] { "IND" },
+        id = attendeeId, name = "T. Okafor", email = "t@example.org", status = "AwaitingAvailability",
+        groupCode = "OFFICE", readiness = "AppointmentsOutstanding", requiredTypeCodes = new[] { "IND" },
         latestDeliveryStatus = "Failed", _links = new Dictionary<string, object> {
             ["invite"] = new { href = $"/api/attendees/{attendeeId}/invites", method = "POST", operationId = "inviteAttendee" } } }];
         return Results.Json(new { items, nextCursor = (string?)null });

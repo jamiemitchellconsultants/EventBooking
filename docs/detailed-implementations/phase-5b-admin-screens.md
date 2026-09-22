@@ -1,6 +1,6 @@
 # 05b — Admin screens (Task 25)
 
-[← Phase overview](phase-5-web.md) · [Previous task](phase-5a-design-system.md) · [Ontology](../ontology.md)
+[← Phase overview](phase-5-web.md) · [Previous task](phase-5a-design-system.md) · [Plans overview](README.md) · [Ontology](../ontology.md)
 
 This task builds the reference-data, settings and staff-scope screens over Task 24's design system.
 It is the administration layer of the Web phase: Admin edits, Coordinator and Manager can read the
@@ -21,10 +21,11 @@ no role branch. On
 and asks the user to review and resubmit.
 
 The focused API prerequisite must expose createLocation, createAppointmentType and
-createAttendeeGroup in `/api/me`'s caller-specific `_links`. Task 22b's two-field page envelope
-stays unchanged. If any link is absent from the OpenAPI snapshot and an authorized response, stop
-and complete that prerequisite; never make an empty list hide create for Admin or show it by
-checking the Admin role.
+createAttendeeGroup in `/api/me`'s caller-specific `_links`, and AppointmentTypeResponse must add
+the explicit `hasManager` boolean named by the phase overview. Task 22b's two-field page envelope
+stays unchanged. If any field or link is absent from the OpenAPI snapshot and an authorized
+response, stop and complete that prerequisite; never make an empty list hide create for Admin,
+show it by checking the Admin role, or infer assignment from ManagerDisplayName.
 
 **Tech Stack:** Blazor WebAssembly, bUnit, Task 24 design-system components, Playwright/axe.
 
@@ -68,6 +69,7 @@ confirmation uses the returned display name, never a GUID.
 - Test: tests/EventBooking.Web.Tests/Pages/Admin/AttendeeGroupsPageTests.cs
 - Test: tests/EventBooking.Web.Tests/Pages/Admin/SettingsPageTests.cs
 - Test: tests/EventBooking.Web.Tests/Pages/Admin/StaffAccessPageTests.cs
+- Test: tests/EventBooking.Web.Tests/StaffNavigationTests.cs
 - Modify: tests/EventBooking.Web.Tests/Contracts/OpenApiClientContractTests.cs (include every Task 25 DTO)
 - Modify: tests/EventBooking.Web.E2E/RouteManifest.cs
 - Modify: tests/EventBooking.Web.E2E/RouteSetup.cs
@@ -85,7 +87,7 @@ public sealed record LocationDto(
     IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record AppointmentTypeDto(
     Guid Id, string Code, string Name, bool IsActive, long Version,
-    string? ManagerDisplayName,
+    bool HasManager, string? ManagerDisplayName,
     [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
     IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record AttendeeGroupDto(
@@ -360,7 +362,7 @@ public sealed class AppointmentTypesPageTests : BunitContext
     public void ManagerlessTypeHasVisibleAssignmentGuidance()
     {
         AdminPageFixture.Register(Services, AdminPageFixture.Json(HttpStatusCode.OK,
-            """{"items":[{"id":"10000000-0000-0000-0000-000000000001","code":"ESC","name":"Escort briefing","isActive":true,"version":1,"managerDisplayName":null,"_links":{}}],"nextCursor":null}"""));
+            """{"items":[{"id":"10000000-0000-0000-0000-000000000001","code":"ESC","name":"Escort briefing","isActive":true,"version":1,"hasManager":false,"managerDisplayName":null,"_links":{}}],"nextCursor":null}"""));
         var cut = Render<AppointmentTypes>();
         cut.WaitForAssertion(() => Assert.Contains("No Manager assigned", cut.Markup));
         Assert.Empty(cut.FindAll("[data-action='edit']"));
@@ -385,7 +387,7 @@ public sealed class AttendeeGroupsPageTests : BunitContext
             AdminPageFixture.Json(HttpStatusCode.OK,
                 """{"items":[{"id":"10000000-0000-0000-0000-000000000001","code":"FIELD","name":"Field staff","isActive":true,"version":1,"requirementTypeIds":[],"memberCount":17,"_links":{"update":{"href":"/api/attendee-groups/10000000-0000-0000-0000-000000000001","method":"PUT","operationId":"updateAttendeeGroup"}}}],"nextCursor":null}"""),
             AdminPageFixture.Json(HttpStatusCode.OK,
-                """{"items":[{"id":"20000000-0000-0000-0000-000000000002","code":"FIT","name":"Fitting","isActive":true,"version":1,"managerDisplayName":"F. Manager","_links":{}}],"nextCursor":null}"""));
+                """{"items":[{"id":"20000000-0000-0000-0000-000000000002","code":"FIT","name":"Fitting","isActive":true,"version":1,"hasManager":true,"managerDisplayName":"F. Manager","_links":{}}],"nextCursor":null}"""));
         var cut = Render<AttendeeGroups>();
         cut.WaitForElement("button[data-action='edit']");
         cut.Find("button[data-action='edit']").Click();
@@ -438,10 +440,10 @@ public sealed class StaffAccessPageTests : BunitContext
     public void SavedConfirmationNamesDisplacedManager()
     {
         AdminPageFixture.Register(Services, AdminPageFixture.Json(HttpStatusCode.OK,
-            """{"items":[{"id":"20000000-0000-0000-0000-000000000002","code":"MED","name":"Medical check","isActive":true,"version":1,"managerDisplayName":"Sam Patel","_links":{}}],"nextCursor":null}"""));
+            """{"items":[{"id":"20000000-0000-0000-0000-000000000002","code":"MED","name":"Medical check","isActive":true,"version":1,"hasManager":true,"managerDisplayName":"Sam Patel","_links":{}}],"nextCursor":null}"""));
         AdminPageFixture.RegisterStaff(Services,
             AdminPageFixture.Json(HttpStatusCode.OK,
-                """{"items":[{"staffUserId":"10000000-0000-0000-0000-000000000001","staffId":"M1","displayName":"Morgan Lee","roles":["Manager"],"appointmentTypeId":null,"version":1,"_links":{"set-scope":{"href":"/api/staff-access/10000000-0000-0000-0000-000000000001/scope","method":"PUT","operationId":"setStaffScope"}}}],"nextCursor":null}"""),
+                """{"items":[{"staffUserId":"10000000-0000-0000-0000-000000000001","staffId":"M1","displayName":"Morgan Lee","roles":["Manager"],"appointmentTypeId":null,"version":1,"_links":{"set-scope":{"href":"/api/staff-access/10000000-0000-0000-0000-000000000001/scope","method":"PUT","operationId":"setStaffAccessScope"}}}],"nextCursor":null}"""),
             AdminPageFixture.Json(HttpStatusCode.OK,
                 """{"targetStaffUserId":"10000000-0000-0000-0000-000000000001","appointmentTypeId":"20000000-0000-0000-0000-000000000002","displacedManagerDisplayName":"Sam Patel"}"""));
         var cut = Render<StaffAccess>();
@@ -452,14 +454,56 @@ public sealed class StaffAccessPageTests : BunitContext
 }
 ```
 
+```csharp
+// tests/EventBooking.Web.Tests/StaffNavigationTests.cs (complete replacement)
+using EventBooking.Web.Services;
+
+namespace EventBooking.Web.Tests;
+
+public sealed class StaffNavigationTests
+{
+    public static TheoryData<string[], string[]> EveryValidShape => new()
+    {
+        { ["Admin"], ["/admin/locations", "/admin/appointment-types", "/admin/attendee-groups", "/admin/settings", "/admin/staff-access", "/events/operations", "/audit"] },
+        { ["Coordinator"], ["/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Manager"], ["/events/negotiate", "/appointments", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["AppointmentStaff"], ["/appointments"] },
+        { ["Manager", "Coordinator"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Coordinator", "AppointmentStaff"], ["/appointments", "/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Manager", "AppointmentStaff"], ["/events/negotiate", "/appointments", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Manager", "Coordinator", "AppointmentStaff"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+    };
+
+    [Theory]
+    [MemberData(nameof(EveryValidShape))]
+    public void EveryValidProfileShapeGetsTheCompleteRouteUnion(
+        string[] roles,
+        string[] expectedRoutes)
+    {
+        var links = StaffNavigation.LinksFor(new MeDto(
+            roles,
+            roles.Any(role => role is "Manager" or "AppointmentStaff") ? Guid.NewGuid() : null,
+            null));
+
+        Assert.Equal(expectedRoutes, links.Select(link => link.Href));
+        Assert.Equal(links.Count, links.Select(link => link.Href).Distinct().Count());
+    }
+
+    [Fact]
+    public void EmptyRolesHaveNoLinks() =>
+        Assert.Empty(StaffNavigation.LinksFor(new MeDto([], null, null)));
+}
+```
+
 - [ ] **Step 2: Run the focused tests and verify the red state**
 
 ```bash
-dotnet test tests/EventBooking.Web.Tests --filter "FullyQualifiedName~Pages.Admin|FullyQualifiedName~AdminClientTests"
+dotnet test tests/EventBooking.Web.Tests --filter "FullyQualifiedName~Pages.Admin|FullyQualifiedName~AdminClientTests|FullyQualifiedName~StaffNavigationTests"
 ```
 
 Expected: FAIL because the three reference-data pages and Task 22b client shapes do not exist, the
-ported settings omit inviteOptionCount, and staff access calls the retired `/api/admin` routes.
+ported settings omit inviteOptionCount, staff access calls the retired `/api/admin` routes, and
+the inherited navigation has not yet gained the Admin-prefixed and read-only reference routes.
 
 - [ ] **Step 3: Implement the Task 22b clients**
 
@@ -474,7 +518,7 @@ namespace EventBooking.Web.Services;
 public sealed record LocationDto(Guid Id, string Code, string Name, string Address, string TimeZoneId,
     bool IsActive, long Version, [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record AppointmentTypeDto(Guid Id, string Code, string Name, bool IsActive, long Version,
-    string? ManagerDisplayName, [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+    bool HasManager, string? ManagerDisplayName, [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record AttendeeGroupDto(Guid Id, string Code, string Name, bool IsActive, long Version,
     IReadOnlyList<Guid> RequirementTypeIds, int MemberCount,
     [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
@@ -588,7 +632,7 @@ member-impact confirmation before sending an update.
 <PageTitle>Appointment types</PageTitle><section class="page"><header class="page-header"><h1>Appointment types</h1>@if (_canCreate) { <button class="button button-primary" @onclick="New">New appointment type</button> }</header><Banner Variant="BannerVariant.Error" Message="@_error" Retry="LoadAsync" />
 <DataTable TItem="AppointmentTypeDto" Items="@_rows" RowKey="x => x.Id" Loading="@_loading" EmptyTitle="No appointment types yet." EmptyAction="Add a type before creating groups or proposals." Columns="@Columns" />
 @if (_edit is not null) { <section class="card"><h2>@(_creating ? "New appointment type" : $"Edit {_edit.Code}")</h2>@if (_creating) { <label class="field">Code<input @bind="_edit.Code" /></label> }<label class="field">Name<input @bind="_edit.Name" /></label><label><input type="checkbox" @bind="_edit.IsActive" /> Active</label><div class="row-actions"><button class="button" @onclick="() => _edit = null">Cancel</button><button class="button button-primary" @onclick="SaveAsync">Save</button></div></section> }</section>
-@code { private readonly List<AppointmentTypeDto> _rows=[]; private AppointmentTypeForm? _edit; private bool _loading=true,_creating,_canCreate; private string? _error; private IdempotencySubmission? _submission; private IReadOnlyList<TableColumn<AppointmentTypeDto>> Columns => [new("Code",x=>b=>b.AddContent(0,x.Code)),new("Name",x=>b=>{b.OpenComponent<TypeChip>(0);b.AddAttribute(1,"Code",x.Code);b.AddAttribute(2,"Name",x.Name);b.CloseComponent();}),new("Manager",x=>b=>b.AddContent(0,x.ManagerDisplayName??"No Manager assigned")),new("Status",x=>b=>b.AddContent(0,x.IsActive?"Active":"Inactive")),new("Actions",x=>b=>{if(x.Links.Allows("update")){b.OpenElement(0,"button");b.AddAttribute(1,"data-action","edit");b.AddAttribute(2,"onclick",EventCallback.Factory.Create(this,()=>{_creating=false;_edit=AppointmentTypeForm.From(x);}));b.AddContent(3,"Edit");b.CloseElement();}})]; protected override Task OnInitializedAsync()=>LoadAsync(); private async Task LoadAsync(){_loading=true;var context=await CurrentStaff.GetAsync(CancellationToken.None);var r=await Api.ListAppointmentTypesAsync(true,CancellationToken.None);_loading=false;_canCreate=context.IsSuccess&&context.Value!.Links.Allows("createAppointmentType");if(r.IsSuccess){_rows.Clear();_rows.AddRange(r.Value!.Items);}else _error=r.ErrorMessage;} private void New(){_creating=true;_submission=IdempotencySubmission.Start();_edit=new(){IsActive=true};} private async Task SaveAsync(){if(_edit is null)return;var r=_creating?await Api.CreateAppointmentTypeAsync(_edit.Code,_edit.Name,_submission!,CancellationToken.None):await Api.UpdateAppointmentTypeAsync(_edit.ToDto(),CancellationToken.None);if(r.IsSuccess){_edit=null;_creating=false;await LoadAsync();}else _error=r.ErrorMessage;} private sealed class AppointmentTypeForm { public Guid Id{get;init;} public string Code{get;set;}=""; public string Name{get;set;}=""; public bool IsActive{get;set;} public long Version{get;set;} public string? ManagerDisplayName{get;init;} public static AppointmentTypeForm From(AppointmentTypeDto x)=>new(){Id=x.Id,Code=x.Code,Name=x.Name,IsActive=x.IsActive,Version=x.Version,ManagerDisplayName=x.ManagerDisplayName}; public AppointmentTypeDto ToDto()=>new(Id,Code,Name,IsActive,Version,ManagerDisplayName,new Dictionary<string,ApiLink>()); } }
+@code { private readonly List<AppointmentTypeDto> _rows=[]; private AppointmentTypeForm? _edit; private bool _loading=true,_creating,_canCreate; private string? _error; private IdempotencySubmission? _submission; private IReadOnlyList<TableColumn<AppointmentTypeDto>> Columns => [new("Code",x=>b=>b.AddContent(0,x.Code)),new("Name",x=>b=>{b.OpenComponent<TypeChip>(0);b.AddAttribute(1,"Code",x.Code);b.AddAttribute(2,"Name",x.Name);b.CloseComponent();}),new("Manager",x=>b=>b.AddContent(0,x.HasManager ? x.ManagerDisplayName ?? "Manager assigned" : "No Manager assigned")),new("Status",x=>b=>b.AddContent(0,x.IsActive?"Active":"Inactive")),new("Actions",x=>b=>{if(x.Links.Allows("update")){b.OpenElement(0,"button");b.AddAttribute(1,"data-action","edit");b.AddAttribute(2,"onclick",EventCallback.Factory.Create(this,()=>{_creating=false;_edit=AppointmentTypeForm.From(x);}));b.AddContent(3,"Edit");b.CloseElement();}})]; protected override Task OnInitializedAsync()=>LoadAsync(); private async Task LoadAsync(){_loading=true;var context=await CurrentStaff.GetAsync(CancellationToken.None);var r=await Api.ListAppointmentTypesAsync(true,CancellationToken.None);_loading=false;_canCreate=context.IsSuccess&&context.Value!.Links.Allows("createAppointmentType");if(r.IsSuccess){_rows.Clear();_rows.AddRange(r.Value!.Items);}else _error=r.ErrorMessage;} private void New(){_creating=true;_submission=IdempotencySubmission.Start();_edit=new(){IsActive=true};} private async Task SaveAsync(){if(_edit is null)return;var r=_creating?await Api.CreateAppointmentTypeAsync(_edit.Code,_edit.Name,_submission!,CancellationToken.None):await Api.UpdateAppointmentTypeAsync(_edit.ToDto(),CancellationToken.None);if(r.IsSuccess){_edit=null;_creating=false;await LoadAsync();}else _error=r.ErrorMessage;} private sealed class AppointmentTypeForm { public Guid Id{get;init;} public string Code{get;set;}=""; public string Name{get;set;}=""; public bool IsActive{get;set;} public long Version{get;set;} public bool HasManager{get;init;} public string? ManagerDisplayName{get;init;} public static AppointmentTypeForm From(AppointmentTypeDto x)=>new(){Id=x.Id,Code=x.Code,Name=x.Name,IsActive=x.IsActive,Version=x.Version,HasManager=x.HasManager,ManagerDisplayName=x.ManagerDisplayName}; public AppointmentTypeDto ToDto()=>new(Id,Code,Name,IsActive,Version,HasManager,ManagerDisplayName,new Dictionary<string,ApiLink>()); } }
 ```
 
 ```razor
@@ -600,29 +644,78 @@ member-impact confirmation before sending an update.
 <PageTitle>Attendee groups</PageTitle><section class="page"><header class="page-header"><h1>Attendee groups</h1>@if(_canCreate){<button class="button button-primary" @onclick="New">New attendee group</button>}</header><Banner Variant="BannerVariant.Error" Message="@_error" />
 <DataTable TItem="AttendeeGroupDto" Items="@Rows" RowKey="x=>x.Id" EmptyTitle="No attendee groups yet." EmptyAction="Add a group and at least one required type." Columns="@Columns" />
 @if (_edit is not null){<section class="card"><h2>@(_creating ? "New attendee group" : $"Edit {_edit.Code}")</h2>@if(_creating){<label class="field">Code<input @bind="_edit.Code" /></label>}<label class="field">Name<input @bind="_edit.Name" /></label><TypePicker Options="@TypeOptions" SelectedIds="@_edit.RequirementTypeIds" SelectedIdsChanged="ids=>_edit.RequirementTypeIds=ids" />@if(_confirm){<Banner Variant="BannerVariant.Warning" Message="@($"This changes requirements for {_edit.MemberCount} attendees and replaces their pending invitations.")" /><button class="button button-primary" @onclick="SaveConfirmedAsync">Confirm and save</button>}else{<button data-action="save" class="button button-primary" @onclick="RequestSaveAsync">Save</button>}</section>}</section>
-@code { private List<AttendeeGroupDto> Rows {get;}=[]; private AttendeeGroupForm? _edit; private bool _confirm,_creating,_canCreate; private string? _error; private IdempotencySubmission? _submission; private IReadOnlyList<TypeOption> TypeOptions=[]; private IReadOnlyList<TableColumn<AttendeeGroupDto>> Columns=>[new("Code",x=>b=>b.AddContent(0,x.Code)),new("Name",x=>b=>b.AddContent(0,x.Name)),new("Members",x=>b=>b.AddContent(0,x.MemberCount)),new("Actions",x=>b=>{if(x.Links.Allows("update")){b.OpenElement(0,"button");b.AddAttribute(1,"data-action","edit");b.AddAttribute(2,"onclick",EventCallback.Factory.Create(this,()=>{_creating=false;_edit=AttendeeGroupForm.From(x);}));b.AddContent(3,"Edit");b.CloseElement();}})]; protected override async Task OnInitializedAsync(){var context=await CurrentStaff.GetAsync(CancellationToken.None);var groups=await Api.ListAttendeeGroupsAsync(true,CancellationToken.None);var types=await Api.ListAppointmentTypesAsync(true,CancellationToken.None);_canCreate=context.IsSuccess&&context.Value!.Links.Allows("createAttendeeGroup");if(groups.IsSuccess)Rows.AddRange(groups.Value!.Items);else _error=groups.ErrorMessage;if(types.IsSuccess)TypeOptions=types.Value!.Items.Select(x=>new TypeOption(x.Id,x.Code,x.Name,x.IsActive,x.ManagerDisplayName is not null)).ToArray();} private void New(){_creating=true;_submission=IdempotencySubmission.Start();_edit=new(){IsActive=true};} private async Task RequestSaveAsync(){if(_edit is null)return;if(!_creating&&_edit.MemberCount>0){_confirm=true;return;}await SaveConfirmedAsync();} private async Task SaveConfirmedAsync(){if(_edit is null)return;var r=_creating?await Api.CreateAttendeeGroupAsync(_edit.Code,_edit.Name,_edit.RequirementTypeIds,_submission!,CancellationToken.None):await Api.UpdateAttendeeGroupAsync(_edit.ToDto(),CancellationToken.None);if(r.IsSuccess){_edit=null;_confirm=false;_creating=false;}else _error=r.ErrorMessage;} private sealed class AttendeeGroupForm { public Guid Id{get;init;} public string Code{get;set;}=""; public string Name{get;set;}=""; public bool IsActive{get;set;} public long Version{get;set;} public IReadOnlyList<Guid> RequirementTypeIds{get;set;}=[]; public int MemberCount{get;init;} public static AttendeeGroupForm From(AttendeeGroupDto x)=>new(){Id=x.Id,Code=x.Code,Name=x.Name,IsActive=x.IsActive,Version=x.Version,RequirementTypeIds=x.RequirementTypeIds,MemberCount=x.MemberCount}; public AttendeeGroupDto ToDto()=>new(Id,Code,Name,IsActive,Version,RequirementTypeIds,MemberCount,new Dictionary<string,ApiLink>()); } }
+@code { private List<AttendeeGroupDto> Rows {get;}=[]; private AttendeeGroupForm? _edit; private bool _confirm,_creating,_canCreate; private string? _error; private IdempotencySubmission? _submission; private IReadOnlyList<TypeOption> TypeOptions=[]; private IReadOnlyList<TableColumn<AttendeeGroupDto>> Columns=>[new("Code",x=>b=>b.AddContent(0,x.Code)),new("Name",x=>b=>b.AddContent(0,x.Name)),new("Members",x=>b=>b.AddContent(0,x.MemberCount)),new("Actions",x=>b=>{if(x.Links.Allows("update")){b.OpenElement(0,"button");b.AddAttribute(1,"data-action","edit");b.AddAttribute(2,"onclick",EventCallback.Factory.Create(this,()=>{_creating=false;_edit=AttendeeGroupForm.From(x);}));b.AddContent(3,"Edit");b.CloseElement();}})]; protected override async Task OnInitializedAsync(){var context=await CurrentStaff.GetAsync(CancellationToken.None);var groups=await Api.ListAttendeeGroupsAsync(true,CancellationToken.None);var types=await Api.ListAppointmentTypesAsync(true,CancellationToken.None);_canCreate=context.IsSuccess&&context.Value!.Links.Allows("createAttendeeGroup");if(groups.IsSuccess)Rows.AddRange(groups.Value!.Items);else _error=groups.ErrorMessage;if(types.IsSuccess)TypeOptions=types.Value!.Items.Select(x=>new TypeOption(x.Id,x.Code,x.Name,x.IsActive,x.HasManager)).ToArray();} private void New(){_creating=true;_submission=IdempotencySubmission.Start();_edit=new(){IsActive=true};} private async Task RequestSaveAsync(){if(_edit is null)return;if(!_creating&&_edit.MemberCount>0){_confirm=true;return;}await SaveConfirmedAsync();} private async Task SaveConfirmedAsync(){if(_edit is null)return;var r=_creating?await Api.CreateAttendeeGroupAsync(_edit.Code,_edit.Name,_edit.RequirementTypeIds,_submission!,CancellationToken.None):await Api.UpdateAttendeeGroupAsync(_edit.ToDto(),CancellationToken.None);if(r.IsSuccess){_edit=null;_confirm=false;_creating=false;}else _error=r.ErrorMessage;} private sealed class AttendeeGroupForm { public Guid Id{get;init;} public string Code{get;set;}=""; public string Name{get;set;}=""; public bool IsActive{get;set;} public long Version{get;set;} public IReadOnlyList<Guid> RequirementTypeIds{get;set;}=[]; public int MemberCount{get;init;} public static AttendeeGroupForm From(AttendeeGroupDto x)=>new(){Id=x.Id,Code=x.Code,Name=x.Name,IsActive=x.IsActive,Version=x.Version,RequirementTypeIds=x.RequirementTypeIds,MemberCount=x.MemberCount}; public AttendeeGroupDto ToDto()=>new(Id,Code,Name,IsActive,Version,RequirementTypeIds,MemberCount,new Dictionary<string,ApiLink>()); } }
 ```
 
 Rewrite Settings.razor against GetSettingsAsync/UpdateSettingsAsync with three bounded inputs, the
 future-invitations hint, and the same conflict-preserving pattern. Rewrite StaffAccess.razor
 against the page envelope and `PUT /api/staff-access/{id}/scope`; load active type options through
 AdminClient, one null option clears scope, roles remain chips, and success uses
-DisplacedManagerDisplayName. Update Home and
-StaffNavigation to these exact Admin routes and reference-data read routes:
+DisplacedManagerDisplayName. The Phase 0 port already supplies the operational Manager,
+Coordinator and AppointmentStaff links and the corresponding pages; preserve that union while
+renaming the two Admin routes and adding the three read-only reference-data links. Replace
+StaffNavigation with this complete implementation so a literal executor cannot discard the
+inherited routes:
 
 ```csharp
-// src/EventBooking.Web/Services/StaffNavigation.cs — LinksFor returns these Admin links.
-new("/admin/locations", "Locations", "Manage event sites and time zones"),
-new("/admin/appointment-types", "Appointment types", "Manage the types events may offer"),
-new("/admin/attendee-groups", "Attendee groups", "Manage requirement mappings"),
-new("/admin/settings", "System settings", "Configure future invitations"),
-new("/admin/staff-access", "Staff access", "Set appointment-type scope"),
-new("/events/operations", "Event operations", "Review and cancel future events"),
-new("/audit", "Audit search", "Search event and administration history"),
+// src/EventBooking.Web/Services/StaffNavigation.cs (complete replacement)
+namespace EventBooking.Web.Services;
+
+/// <summary>Describes one staff navigation destination.</summary>
+/// <param name="Href">The route.</param>
+/// <param name="Label">The visible label.</param>
+/// <param name="Description">The accessible description.</param>
+public sealed record StaffLink(string Href, string Label, string Description);
+
+/// <summary>Builds the deterministic union of links permitted by the caller's roles.</summary>
+public static class StaffNavigation
+{
+    /// <summary>Returns the complete ordered link union for one staff identity.</summary>
+    /// <param name="me">The authenticated staff identity.</param>
+    /// <returns>The role union with no duplicate route.</returns>
+    public static IReadOnlyList<StaffLink> LinksFor(MeDto me)
+    {
+        var roles = me.Roles.ToHashSet(StringComparer.Ordinal);
+        if (roles.Contains("Admin"))
+        {
+            return
+            [
+                new("/admin/locations", "Locations", "Manage event sites and time zones"),
+                new("/admin/appointment-types", "Appointment types", "Manage the types events may offer"),
+                new("/admin/attendee-groups", "Attendee groups", "Manage requirement mappings"),
+                new("/admin/settings", "System settings", "Configure future invitations"),
+                new("/admin/staff-access", "Staff access", "Set appointment-type scope"),
+                new("/events/operations", "Event operations", "Review and cancel future events"),
+                new("/audit", "Audit search", "Search event and administration history"),
+            ];
+        }
+
+        var links = new List<StaffLink>();
+        if (roles.Contains("Manager"))
+            links.Add(new("/events/negotiate", "Negotiation board", "Propose and agree event windows"));
+        if (roles.Contains("Manager") || roles.Contains("AppointmentStaff"))
+            links.Add(new("/appointments", "Appointment workspace", "Run your appointment roster"));
+        if (roles.Contains("Coordinator"))
+        {
+            links.Add(new("/attendees", "Attendees", "Invite and track attendees"));
+            links.Add(new("/dashboards", "Dashboards", "Review waiting lists and follow-ups"));
+            links.Add(new("/events/operations", "Event operations", "Review and cancel future events"));
+            links.Add(new("/audit", "Audit search", "Search event and administration history"));
+        }
+
+        if (roles.Contains("Coordinator") || roles.Contains("Manager"))
+        {
+            links.Add(new("/admin/locations", "Locations", "Read event sites and time zones"));
+            links.Add(new("/admin/appointment-types", "Appointment types", "Read the types events may offer"));
+            links.Add(new("/admin/attendee-groups", "Attendee groups", "Read requirement mappings"));
+        }
+
+        return links;
+    }
+}
 ```
 
-For Coordinator and Manager, append the three reference-data routes as read-only links once each;
-AppointmentStaff gets none. Remove every predecessor organisation string from Home.
+Remove every predecessor organisation string from Home.
 
 Extend the OpenAPI contract array with the exact client-type/schema-name pairs below. This is
 deliberately not a type-name convention: the Web-owned names differ from several API schema names,
@@ -692,7 +785,7 @@ private static void MapTask25(WebApplication app)
         }];
         return Results.Json(new { items = rows, nextCursor = (string?)null });
     });
-    app.MapGet("/api/appointment-types", (HttpContext context) => Results.Json(new { items = new[] { new { id = Guid.NewGuid(), code = "MED", name = "Medical check", isActive = true, version = 1, managerDisplayName = "M. Manager",
+    app.MapGet("/api/appointment-types", (HttpContext context) => Results.Json(new { items = new[] { new { id = Guid.NewGuid(), code = "MED", name = "Medical check", isActive = true, version = 1, hasManager = true, managerDisplayName = "M. Manager",
         _links = FixtureState(context) == "reference-read-only" ? new Dictionary<string, object>() :
             new Dictionary<string, object> { ["update"] = new { href = "/api/appointment-types/1", method = "PUT", operationId = "updateAppointmentType" } } } }, nextCursor = (string?)null }));
     app.MapGet("/api/attendee-groups", (HttpContext context) => Results.Json(new { items = new[] { new { id = Guid.NewGuid(), code = "FIELD", name = "Field staff", isActive = true, version = 1, requirementTypeIds = Array.Empty<Guid>(), memberCount = 17,
@@ -704,7 +797,25 @@ private static void MapTask25(WebApplication app)
         FixtureState(context) == "locations-conflict"
             ? Results.Problem(statusCode: 409, type: "version-conflict",
                 extensions: new Dictionary<string, object?> { ["current"] = new { name = "London HQ", version = 2 } })
-            : Results.NoContent());
+            : Results.Ok(new
+            {
+                id,
+                code = "LON",
+                name = "London HQ",
+                address = "1 Example St",
+                timeZoneId = "Europe/London",
+                isActive = true,
+                version = 2,
+                _links = new Dictionary<string, object>
+                {
+                    ["update"] = new
+                    {
+                        href = $"/api/locations/{id}",
+                        method = "PUT",
+                        operationId = "updateLocation",
+                    },
+                },
+            }));
 }
 ```
 

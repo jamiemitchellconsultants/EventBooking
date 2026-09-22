@@ -1,6 +1,6 @@
 # 05c — Manager and operations screens (Task 26)
 
-[← Phase overview](phase-5-web.md) · [Previous task](phase-5b-admin-screens.md) · [Ontology](../ontology.md)
+[← Phase overview](phase-5-web.md) · [Previous task](phase-5b-admin-screens.md) · [Plans overview](README.md) · [Ontology](../ontology.md)
 
 This task builds the negotiation, event-operations and appointment-workspace layer. It consumes
 the Task 22b API exactly: the browser displays the event times and capability links it receives,
@@ -144,7 +144,10 @@ NegotiationReferenceData and WorkspaceContextDto are client-composed projections
 not belong in that array. If the committed OpenAPI lacks the proposal's listed types and
 state-specific accept/withdraw links, per-capacity adjust links, `appointmentId`, `_links` on
 workspace rows, the workspace event's complete event-time representation, the caller's scope type
-context in CurrentStaffResponse, or proposeEvent in the caller's collection links,
+context in CurrentStaffResponse, proposeEvent in the caller's collection links, the explicit
+`hasManager` field on AppointmentTypeResponse, or the
+`capacity-below-bookings` problem's structured `current` object containing `totalHeadcount` and
+`remainingCapacity`,
 stop: repair the API contract in a separate prerequisite commit instead of inventing display data,
 checking a role, or inferring temporal permissions in Web.
 
@@ -217,7 +220,11 @@ public sealed class EventNegotiationPageTests : BunitContext
         {
             CapacityResult = ApiOutcome<AdjustEventCapacityOutcome>.Failure(
                 ApiProblem.FromSlug("capacity-below-bookings", "Capacity is too low.",
-                    extensions: new() { ["minimum"] = 5, ["current"] = 8 }))
+                    extensions: new()
+                    {
+                        ["minimum"] = 5,
+                        ["current"] = new { totalHeadcount = 8, remainingCapacity = 3 },
+                    }))
         };
         api.Events.Add(FakeEventsClient.EventWithCapacityLinks(("adjust", "PUT")));
         Services.AddSingleton<IEventsClient>(api);
@@ -437,7 +444,10 @@ TimeOnly and a 15-minute-multiple duration. It returns local `start.AddMinutes(d
 for the unsaved preview. Once the API returns a proposal or event, delete the preview and render
 EventTimeDto unchanged. Map validation extension members by JSON field name into the matching
 form control. Map `capacity-below-bookings`, `proposal-not-open`, `confirmation-required` and
-`version-conflict` by ApiProblem.Type.
+`version-conflict` by ApiProblem.Type. For `capacity-below-bookings`, read
+`Problem.Current.Value.GetProperty("totalHeadcount")`; never treat `current` as a scalar.
+When composing TypeSummaryDto for the proposal form, copy AppointmentTypeDto.HasManager exactly;
+ManagerDisplayName is display text and is never an assignment predicate.
 
 - [ ] **Step 4: Implement the three routes and extend browser coverage**
 
@@ -466,10 +476,11 @@ validation, capacity conflict, cancel-confirmation, no workspace events, empty r
 conflict. Extend E2EApiStub with stable response links for each state. Every manifest case runs
 at mobile and desktop widths.
 
-Extend OpenApiClientContractTests with every Task 26 API transport record. The
-ProposalTypeResponse, WorkspaceEventResponse and WorkspaceRosterRowResponse names are the required
-names of the focused API-prerequisite schemas;
-if those schemas are absent, take the stop path above before implementing Web. Then run both
+Extend OpenApiClientContractTests with every Task 26 API transport record. ProposalTypeResponse is
+the new focused-prerequisite schema. The workspace prerequisite extends the already-merged
+WorkspaceEventView and WorkspaceRosterRow schemas in place; it does not rename them. If the
+proposal schema is absent or either workspace schema still has its old fields, take the stop path
+above before implementing Web. Then run both
 section 6a mechanical sweeps and:
 
 ```csharp
@@ -482,8 +493,8 @@ section 6a mechanical sweeps and:
 (typeof(RecordAcceptanceOutcome), "RecordAcceptanceOutcome"),
 (typeof(AdjustEventCapacityOutcome), "AdjustEventCapacityOutcome"),
 (typeof(CancelEventOutcome), "CancelEventOutcome"),
-(typeof(WorkspaceEventDto), "WorkspaceEventResponse"),
-(typeof(WorkspaceRosterRowDto), "WorkspaceRosterRowResponse"),
+(typeof(WorkspaceEventDto), "WorkspaceEventView"),
+(typeof(WorkspaceRosterRowDto), "WorkspaceRosterRow"),
 ```
 
 ```csharp
@@ -544,7 +555,12 @@ private static void MapTask26(WebApplication app)
         activeBookings = 3, _links = new Dictionary<string, object> { ["cancel"] = new { href = "/cancel", method = "POST", operationId = "cancelEvent" } } }, nextCursor = (string?)null }));
     app.MapPut("/api/events/{id:guid}/capacities/{typeId:guid}", (HttpContext context) =>
         FixtureState(context) == "capacity-conflict"
-            ? Results.Problem(statusCode: 409, type: "capacity-below-bookings", extensions: new Dictionary<string, object?> { ["minimum"] = 3, ["current"] = 6 })
+            ? Results.Problem(statusCode: 409, type: "capacity-below-bookings",
+                extensions: new Dictionary<string, object?>
+                {
+                    ["minimum"] = 3,
+                    ["current"] = new { totalHeadcount = 6, remainingCapacity = 3 },
+                })
             : Results.Ok(new { eventId, totalHeadcount = 6, remainingCapacity = 3, changed = true }));
     app.MapGet("/api/appointment-workspace/events", (HttpContext context) => Results.Json(new {
         items = FixtureState(context) == "workspace-empty" ? Array.Empty<object>() : [new { eventId,
