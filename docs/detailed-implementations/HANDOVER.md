@@ -1,6 +1,6 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 22 September 2026, after Phase 5 was authored. Written for an agent starting with no context:
+Updated 22 September 2026, after Phase 6 was authored. Written for an agent starting with no context:
 read this file, then the governing inputs it lists, before touching anything.
 
 ## 1. What the assignment is
@@ -38,7 +38,8 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
 | Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 merged on 21 September 2026. Hand-authored, like Phase 3, so no build or test has ever run against them |
 | Phase 5 — master Tasks 24–27 | **Written and reviewed, never executed.** Four task documents plus the overview. Hand-authored by the user's settled choice; Task 24 creates the Playwright/axe safety net and Task 27 is the phase gate |
-| Phases 6–7 — master Tasks 28–33 | Not authored |
+| Phase 6 — master Tasks 28–31 | **Written, not executed.** Four task documents plus the overview. Task 28 retires the single-zone clock and adds the settled LAB type; Task 31 is the phase gate |
+| Phase 7 — master Tasks 32–33 | Not authored |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -71,6 +72,7 @@ Documents written so far:
 | 3 | `phase-3-application.md` | `phase-3a-reference-data-settings.md`, `phase-3b-negotiation.md`, `phase-3c-invite-engine.md`, `phase-3d-booking-cancellation.md`, `phase-3e-recovery-workspace.md`, `phase-3f-staff-authorization.md`, `phase-3g-notification-outbox.md`, `phase-3h-background-jobs.md`, `phase-3i-dashboards-attendees.md`, `phase-3j-audit-search.md` (hand-authored, unexecuted; Task 20 split into 20a/20b) |
 | 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b), `phase-4d-mcp-parity.md` (23, phase gate) (hand-authored, unexecuted) |
 | 5 | `phase-5-web.md` | `phase-5a-design-system.md` (Task 24), `phase-5b-admin-screens.md` (25), `phase-5c-manager-and-operations.md` (26), `phase-5d-coordinator-attendee-help.md` (27, phase gate) (hand-authored, unexecuted) |
+| 6 | `phase-6-seed-and-deployment.md` | `phase-6a-seed-cli.md` (Task 28), `phase-6b-local-compose.md` (29), `phase-6c-home-lab.md` (30), `phase-6d-images-and-release.md` (31, phase gate) (hand-authored, unexecuted) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -107,12 +109,14 @@ diffs two snapshots to produce one task's edit volumes.
   requirement it cited, a lock order that trips the guard Task 15 installs, and nine blocks that
   described code instead of being it. Budget a review pass that reads the code as code, and run the
   mechanical sweeps in section 9 before asking anyone to read prose.
-- **Phases 4 and 5 are hand-authored.** Tasks 21–23 are endpoint and tool wiring over handlers
+- **Phases 4, 5 and 6 are hand-authored.** Tasks 21–23 are endpoint and tool wiring over handlers
   Phase 3 already specifies. For Phase 5 the user explicitly chose hand-authoring rather than
   advancing the Task 11 prototype through twelve unexecuted tasks. The compensation is settlement
   #20: Playwright/axe and its workflow move from Task 27 to Task 24, and every later task extends
   the route manifest. Phase 5 therefore has source-level and accessibility instructions, but still
   has no observed build, test or visual result until an executor runs it.
+  Phase 6 applies the same method to C#, Compose, Docker, JSON, shell and workflow artifacts; its
+  task documents add format-specific validation because section 6a's mechanical sweeps see only C#.
 - **Every contradiction between the spec, the design package and the master plan goes to the user**
   as it comes up (section 8). Do not settle one quietly.
 - Test-driven throughout: write the failing test, watch it fail for the right reason, implement,
@@ -258,7 +262,7 @@ documents into the independent checkout.
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
-**Phases 3, 4 and 5 have no rows here, and must not be given one.** Their documents are
+**Phases 3, 4, 5 and 6 have no rows here, and must not be given one.** Their documents are
 hand-authored: no build and no test has ever run against them, so any figure would be a guess
 wearing the same typeface as eleven measured ones. Each document says so at its gate. The last
 measured checkpoint remains Task 11 at 1570, and the next real figure will be whatever an executor
@@ -464,7 +468,7 @@ The prototype deliberately carries scaffolding. Each is named in the code and mu
 
 | Construct | Retires in |
 | --- | --- |
-| The single-zone clock and its transitional member names | **Not retired in Phase 3, although its table said so.** Task 21 made `Clock:TimeZoneId` optional; the options type and the transitional member survive. Retire with Phase 6's seed rework |
+| The single-zone clock and its transitional member names | Retired by the Task 28 plan: the clock exposes UTC now only, the options type and configuration key are deleted, and location-aware conversions use each `Location` zone. Phase 6 remains unexecuted, so verify the removal when applying it |
 | The predecessor's fixed appointment-type identifiers and seeded rows | Phase 3 |
 | The seeded transitional `Location` row, and `event.location_id` without a foreign key to it | Phase 3 |
 | `start_utc` nullable, because nothing computes it yet | Retired in Task 11 |
@@ -566,12 +570,30 @@ contradiction it closes carry one number between them.
   and state manifest; Task 27 remains the full-phase gate. No observed result is claimed until an
   executor runs the plans.
 
-**Found while authoring Task 21, and still open.** Phase 3's transitional-construct table retires
-the single-zone clock "when handlers carry a `Location`", but **no Phase 3 document removes it**:
+### Phase 6 settlements (binding on later tasks)
+
+- **#21 (Task 28).** **Add LAB as a sixth appointment type, active and managed by a new LAB
+  Manager demo user.** MED, FIT, IND and LAB are the only types seeded onto live events and open
+  proposals. ESC remains active and unmanaged so its picker is disabled; DOC remains inactive.
+  This lets the dataset cover one through four listed types and the one-of-two/two-of-four
+  acceptance states without making either negative-reference scenario valid. The user chose this
+  over reducing the four-type coverage requirement.
+- **Task 28 retires the single-zone clock in the same seed rework.** The application clock becomes
+  a UTC-instant source only; location-aware dates go through the zone abstraction using the owning
+  `Location`. The options type and the Clock configuration key are deleted from API, MCP and seed.
+- **No master boundary moved in Phase 6.** Task 28 owns seed and clock retirement, Task 29 owns the
+  local topology, Task 30 owns the home-lab topology and Task 31 owns publication and the phase
+  gate. Existing ported Docker and realm files are modifications even where master Task 29's short
+  file list calls them creations.
+
+**Found while authoring Task 21; closed in the Task 28 plan, pending execution.** Phase 3's
+transitional-construct table retires the single-zone clock "when handlers carry a `Location`", but
+**no Phase 3 document removes it**:
 `Clock:TimeZoneId`, the clock options type and the transitional member on the system clock all
 survive Phase 3, and the infrastructure registration still asks for them. Task 21 keeps the key,
 made optional and defaulting to `Etc/UTC` because design 04's table does not list it. Removing it
-belongs with Phase 6's seed rework, and the transitional-constructs table above now says so.
+belongs with Phase 6's seed rework. Task 28 now specifies that removal; execution still has to
+prove no transitional reference remains.
 
 ## 9. Standing rules that have bitten already
 
@@ -638,7 +660,7 @@ fourteen is in this file's history at commit `2b192ca`.
 
 | # | Contradiction | Task |
 | --- | --- | --- |
-| 1 | The seed brief has an appointment type that is active but unmanaged, and an inactive type, yet also lists events and proposals that would need them | 28 |
+| 1 | **Settled in Phase 6 (§8, settlement #21):** add active, managed LAB as the sixth type; live scenarios use MED/FIT/IND/LAB while ESC stays unmanaged and DOC inactive | 28 |
 | 2 | **Settled in Phase 3 (§8):** a replayed confirmation is refused as a conflict naming the existing booking | 15 |
 | 3 | **Settled in Phase 3 and implemented in Task 21 (§8):** a missing `staff_id` is 403 everywhere except `/api/me`, and `unauthenticated` stays 401 for a missing or invalid bearer token | 17, 21 |
 | 4 | **Settled in Phase 3 (§8):** recovery demands `ManageAttendees`, workspace stays under `ConductAppointments` | 16 |
@@ -710,13 +732,20 @@ fourteen is in this file's history at commit `2b192ca`.
    Coordinator, anonymous and Help flows and runs the full route/state gate. The plan explicitly
    stops on missing OpenAPI fields instead of authorizing or calculating event state in Web. Phase
    5 has no observed counts; the last measured checkpoint remains Task 11 at 1,570.
-5. **Phases 6–7 (Tasks 28–33)** remain to be authored. They inherit Phase 5's hand-authored method,
-   but each phase still needs its own proportionate verification design rather than copying a Web
-   route manifest where it does not apply.
-6. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
+5. **Phase 6 (Tasks 28–31) is written and has never been executed.** The overview is
+   `phase-6-seed-and-deployment.md`. Task 28 makes migration-only operation the CLI default,
+   generalises demo data with settlement #21 and retires the single-zone clock. Task 29 provides
+   the local Compose stack and smoke workflow. Task 30 provides the isolated home-lab topology,
+   seven-step installer and fresh-volume recovery rehearsal. Task 31 publishes five GHCR images,
+   creates the release migrations bundle and carries the phase gate. The C# sweep engaged only on
+   Task 28; Tasks 29–31 therefore carry Docker Compose, actionlint, jq, Caddy and shellcheck gates.
+   Phase 6 has no observed counts; the last measured checkpoint remains Task 11 at 1,570.
+6. **Phase 7 (Tasks 32–33) remains to be authored.** It inherits the hand-authored method and needs
+   verification proportionate to load testing and documentation rather than a copied Web manifest.
+7. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
    section 8's table before starting any of them; Task 15 in particular inherits three separate
    debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and
    `Booking` levels, and Task 7's charge and release methods finally being called.
 
-Do not claim the assignment is complete while Tasks 28–33 are unwritten. The size of Phase 0 is not
+Do not claim the assignment is complete while Tasks 32–33 are unwritten. The size of Phase 0 is not
 evidence of progress through the rest.
