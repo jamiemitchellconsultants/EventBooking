@@ -16,7 +16,7 @@ namespace EventBooking.Application.Tests.Bookings;
 public class CancelBookingHandlerTests
 {
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private readonly TransactionOperationLog _operations = new();
     private readonly InMemoryBookingRepository _bookings;

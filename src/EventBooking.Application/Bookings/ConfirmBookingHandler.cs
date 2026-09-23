@@ -24,10 +24,6 @@ public sealed record ConfirmBookingCommand(string? Token, Guid EventId);
 /// <param name="ManageToken">The raw management token returned once to the attendee.</param>
 /// <param name="DeliveryStatus">The post-commit provider outcome.</param>
 /// <param name="DeliveryId">The durable confirmation-delivery identifier.</param>
-/// <param name="TransitionalLocationAddress">
-/// The transitional-location address the attendee attends, from the same portal configuration the
-/// confirmation email uses, so the confirmed page and the email always name one address.
-/// </param>
 public sealed record ConfirmBookingOutcome(
     Guid BookingId,
     DateOnly Date,
@@ -35,8 +31,7 @@ public sealed record ConfirmBookingOutcome(
     TimeOnly EndTime,
     string ManageToken,
     string DeliveryStatus = "Pending",
-    Guid? DeliveryId = null,
-    string TransitionalLocationAddress = "");
+    Guid? DeliveryId = null);
 
 /// <summary>
 /// Confirms one offered event while serializing the attendee lifecycle and capacity rows,
@@ -304,8 +299,7 @@ public sealed class ConfirmBookingHandler(
                 eventItem.Window.EndTime,
                 manageToken.Token,
                 deliveryStatus.ToString(),
-                delivery.Id,
-                portal.TransitionalLocationAddress));
+                delivery.Id));
     }
 
     /// <summary>

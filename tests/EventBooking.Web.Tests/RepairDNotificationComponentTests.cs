@@ -54,40 +54,6 @@ public class RepairDNotificationComponentTests : BunitContext
         });
     }
 
-    /// <summary>The confirmed page names the transitional location the API sent, the same one the confirmation email uses.</summary>
-    [Fact]
-    public void BookPageShowsTheTransitionalLocationAddressReturnedByTheApi()
-    {
-        var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new InviteDto(
-            Guid.NewGuid(),
-            "Amara Novak",
-            ["DAT"],
-            [new InviteOptionDto(
-                Guid.NewGuid(),
-                new DateOnly(2030, 1, 14),
-                new TimeOnly(9, 0),
-                new TimeOnly(13, 0),
-                "Monday 14 Jan 2030, 09:00-13:00")])));
-        handler.Enqueue(_ => Json(new ConfirmedBookingDto(
-            Guid.NewGuid(),
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "fresh-manage-token",
-            "Sent",
-            "2 Api Street, London")));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
-
-        var cut = Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
-        cut.WaitForAssertion(() => Assert.Contains("Confirm this time", cut.Markup));
-        cut.Find("input[type=radio]").Change(true);
-        cut.Find("button.booking-page__button").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains("Head office: 2 Api Street, London", cut.Markup));
-    }
-
     /// <summary>Booking confirmation pending delivery also uses neutral recovery copy.</summary>
     [Fact]
     public void BookPageUsesNeutralCopyWhenConfirmationDeliveryIsPending()

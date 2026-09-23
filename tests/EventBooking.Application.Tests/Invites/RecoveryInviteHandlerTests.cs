@@ -18,7 +18,7 @@ public sealed class RecoveryInviteHandlerTests
     private static readonly Guid Coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
     private static readonly Guid Admin = Guid.Parse("a0000009-0000-0000-0000-000000000009");
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private readonly TransactionOperationLog _operations = new();
     private readonly InMemoryAttendeeRepository _attendees;

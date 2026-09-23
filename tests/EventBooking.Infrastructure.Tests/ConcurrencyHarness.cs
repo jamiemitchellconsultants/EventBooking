@@ -65,11 +65,11 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
         services.AddEventBookingInfrastructure(
             fixture.ConnectionString,
-            new TransitionalLocationOptions("Europe/London"),
+            new ClockOptions("Europe/London"),
             new TokenOptions("a-concurrency-test-signing-key-long-enough"));
 
         services.AddEventBookingApplication(
-            new AttendeePortalOptions("https://booking.example.com", "HQ", "recruitment@example.com"));
+            new AttendeePortalOptions("https://booking.example.com", "recruitment@example.com"));
 
         // Nothing registers IEmailTransport above any more — AddEventBookingInfrastructure no
         // longer does that itself, and this harness never calls AddAwsEmailTransport or

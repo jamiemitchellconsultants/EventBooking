@@ -12,7 +12,7 @@ public static class EventBookingConfiguration
     /// </summary>
     public static (
         string ConnectionString,
-        TransitionalLocationOptions TransitionalLocation,
+        ClockOptions Clock,
         TokenOptions Tokens,
         EmailOptions Email,
         AttendeePortalOptions Portal) Read(IConfiguration configuration)
@@ -32,8 +32,7 @@ public static class EventBookingConfiguration
         }
 
         var connectionString = Required("ConnectionStrings:EventBooking");
-        var timeZone = Required("TransitionalLocation:TimeZoneId");
-        var address = Required("TransitionalLocation:Address");
+        var timeZone = Required("Clock:TimeZoneId");
         var signingKey = Required("Tokens:SigningKey");
         var fromAddress = Required("Email:FromAddress");
         var fromName = Required("Email:FromName");
@@ -66,9 +65,9 @@ public static class EventBookingConfiguration
 
         return (
             connectionString,
-            new TransitionalLocationOptions(timeZone),
+            new ClockOptions(timeZone),
             new TokenOptions(signingKey),
             new EmailOptions(fromAddress, fromName, emailProvider),
-            new AttendeePortalOptions(baseUrl, address, coordinatorContact));
+            new AttendeePortalOptions(baseUrl, coordinatorContact));
     }
 }

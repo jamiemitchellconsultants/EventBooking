@@ -23,7 +23,7 @@ public class RetryEmailHandlerTests
     private static readonly Guid Admin =
         Guid.Parse("a0000009-0000-0000-0000-000000000009");
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private readonly InMemoryAttendeeRepository _attendees = new();
     private readonly InMemoryInviteRepository _invites = new();

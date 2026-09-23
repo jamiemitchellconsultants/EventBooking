@@ -37,10 +37,10 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddEventBookingInfrastructure(_postgres.GetConnectionString(),
-            new TransitionalLocationOptions("Europe/London"),
+            new ClockOptions("Europe/London"),
             new TokenOptions("test-seed-and-api-share-this-signing-key"));
         services.AddEventBookingApplication(new AttendeePortalOptions(
-            "https://demo.example.test", "Demo office", "help@example.com"));
+            "https://demo.example.test", "help@example.com"));
         services.AddSingleton<IClock>(_clock);
         services.AddSingleton<IEmailTransport>(_mail);
         services.AddScoped<DemoSeeder>();

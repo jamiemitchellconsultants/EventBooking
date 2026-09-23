@@ -23,17 +23,13 @@ public sealed record InviteDto(
 /// <param name="EndTime">The derived four-hour end time.</param>
 /// <param name="ManageToken">The raw management token used by the attendee page.</param>
 /// <param name="DeliveryStatus">The durable confirmation-email outcome.</param>
-/// <param name="TransitionalLocationAddress">
-/// The transitional-location address the API configured for attendee emails; empty when none is set.
-/// </param>
 public sealed record ConfirmedBookingDto(
     Guid BookingId,
     DateOnly Date,
     TimeOnly StartTime,
     TimeOnly EndTime,
     string ManageToken,
-    string DeliveryStatus = "Pending",
-    string TransitionalLocationAddress = "");
+    string DeliveryStatus = "Pending");
 
 public sealed record BookingDto(
     DateOnly Date,

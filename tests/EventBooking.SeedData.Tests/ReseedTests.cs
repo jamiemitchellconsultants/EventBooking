@@ -34,7 +34,7 @@ public sealed class ReseedTests : IAsyncLifetime
         services.AddEventBookingPersistence(_database.GetConnectionString());
         services.AddEventBookingApplication(
             new AttendeePortalOptions(
-                "http://localhost:5002", "1 Example Street, London", "recruitment@example.com"));
+                "http://localhost:5002", "recruitment@example.com"));
         services.AddSingleton<IClock>(new FixedClock(DemoSeedSpec.AnchorDate()));
         services.AddScoped<IAuditLogger, EfAuditLogger>();
         services.AddScoped<DemoSeeder>();

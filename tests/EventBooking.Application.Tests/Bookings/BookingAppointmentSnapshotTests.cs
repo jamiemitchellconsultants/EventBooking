@@ -70,7 +70,7 @@ public sealed class BookingAppointmentSnapshotTests
             unitOfWork,
             clock,
             new AttendeePortalOptions(
-                "https://booking.example.com", "Head office", "help@example.com"));
+                "https://booking.example.com", "help@example.com"));
 
         var result = await handler.HandleAsync(
             new ConfirmBookingCommand(token.Token, selected.Id),
@@ -149,7 +149,7 @@ public sealed class BookingAppointmentSnapshotTests
             unitOfWork,
             clock,
             new AttendeePortalOptions(
-                "https://booking.example.com", "Head office", "help@example.com"));
+                "https://booking.example.com", "help@example.com"));
 
         // Each snapshot size needs its matching group so confirmation proceeds.
         var group = snapshot.Count switch

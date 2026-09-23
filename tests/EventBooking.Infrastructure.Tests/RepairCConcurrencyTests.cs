@@ -226,10 +226,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             services.AddLogging();
             services.AddEventBookingInfrastructure(
                 fixture.ConnectionString,
-                new TransitionalLocationOptions("Europe/London"),
+                new ClockOptions("Europe/London"),
                 new TokenOptions("a-repair-c-concurrency-signing-key-long-enough"));
             services.AddEventBookingApplication(
-                new AttendeePortalOptions("https://booking.example.com", "HQ", "recruitment@example.com"));
+                new AttendeePortalOptions("https://booking.example.com", "recruitment@example.com"));
             services.AddScoped<IEmailTransport, SilentTransport>();
             services.RemoveAll<IClock>();
             services.AddSingleton<IClock>(new FixedClock(FixedNow, FixedToday));

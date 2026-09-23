@@ -107,7 +107,6 @@ public static class AttendeeEmailComposer
         text.AppendLine();
         text.AppendLine("Your appointments are confirmed for:");
         text.AppendLine($"  {FormatWindow(eventItem.Window)}");
-        text.AppendLine($"  {portal.TransitionalLocationAddress}");
         text.AppendLine();
         text.AppendLine($"Appointments: {types}");
         text.AppendLine();

@@ -14,7 +14,7 @@ public class TriggerInviteHandlerTests
     private static readonly Guid Coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
     private static readonly Guid Manager = Guid.Parse("c0000001-0000-0000-0000-000000000001");
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private readonly InMemoryAttendeeRepository _attendees = new();
     private readonly InMemoryInviteRepository _invites = new();

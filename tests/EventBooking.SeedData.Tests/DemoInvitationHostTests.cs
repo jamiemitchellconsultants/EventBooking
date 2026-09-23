@@ -105,9 +105,9 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddEventBookingInfrastructure(_postgres.GetConnectionString(),
-            new TransitionalLocationOptions("Europe/London"), new TokenOptions(SigningKey));
+            new ClockOptions("Europe/London"), new TokenOptions(SigningKey));
         services.AddEventBookingApplication(new AttendeePortalOptions(
-            "https://host-demo.example.test", "Demo office", "help@example.com"));
+            "https://host-demo.example.test", "help@example.com"));
         return services.BuildServiceProvider();
     }
 
@@ -132,7 +132,7 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
             || key.StartsWith("Email__", StringComparison.OrdinalIgnoreCase)
             || key.StartsWith("Tokens__", StringComparison.OrdinalIgnoreCase)
             || key.StartsWith("Portal__", StringComparison.OrdinalIgnoreCase)
-            || key.StartsWith("TransitionalLocation__", StringComparison.OrdinalIgnoreCase)).ToArray())
+            || key.StartsWith("Clock__", StringComparison.OrdinalIgnoreCase)).ToArray())
             start.Environment.Remove(key);
         start.Environment["Tokens__SigningKey"] = SigningKey;
         start.Environment["Portal__BaseUrl"] = "https://host-demo.example.test/";

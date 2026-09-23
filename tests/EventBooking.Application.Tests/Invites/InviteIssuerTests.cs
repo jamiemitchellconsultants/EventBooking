@@ -14,7 +14,7 @@ namespace EventBooking.Application.Tests.Invites;
 public class InviteIssuerTests
 {
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private readonly InMemoryInviteRepository _invites = new();
     private readonly InMemoryAttendeeGroupRepository _groups = new();

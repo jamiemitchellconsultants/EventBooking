@@ -205,7 +205,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 audit,
                 clock,
                 new AttendeePortalOptions(
-                    "https://booking.example.com", "HQ", "recruitment@example.com"));
+                    "https://booking.example.com", "recruitment@example.com"));
             var handler = new StartRecoveryHandler(
                 new AttendeeRepository(context),
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
@@ -312,7 +312,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 audit,
                 clock,
                 new AttendeePortalOptions(
-                    "https://booking.example.com", "HQ", "recruitment@example.com"));
+                    "https://booking.example.com", "recruitment@example.com"));
             var handler = new StartRecoveryHandler(
                 new AttendeeRepository(context),
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),

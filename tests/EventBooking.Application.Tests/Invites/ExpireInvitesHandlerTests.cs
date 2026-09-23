@@ -14,7 +14,7 @@ namespace EventBooking.Application.Tests.Invites;
 public class ExpireInvitesHandlerTests
 {
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private readonly InMemoryAttendeeRepository _attendees = new();
     private readonly InMemoryInviteRepository _invites = new();

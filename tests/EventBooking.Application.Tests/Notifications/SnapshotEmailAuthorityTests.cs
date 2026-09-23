@@ -24,7 +24,7 @@ public sealed class SnapshotEmailAuthorityTests
             [AppointmentTypeIds.UniformFitting] = 10,
         });
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example", "Head Office", "recruitment@example.com");
+        "https://booking.example", "recruitment@example.com");
 
     /// <summary>An Invite names only a one-type snapshot and uses singular recovery copy.</summary>
     [Fact]

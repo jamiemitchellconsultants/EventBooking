@@ -53,12 +53,12 @@ public static class InfrastructureServiceCollectionExtensions
     public static IServiceCollection AddEventBookingInfrastructure(
         this IServiceCollection services,
         string connectionString,
-        TransitionalLocationOptions transitionalLocation,
+        ClockOptions clock,
         TokenOptions tokens)
     {
         services.AddEventBookingPersistence(connectionString);
 
-        services.AddSingleton(transitionalLocation);
+        services.AddSingleton(clock);
         services.AddSingleton(tokens);
 
         services.AddSingleton<IClock, SystemClock>();

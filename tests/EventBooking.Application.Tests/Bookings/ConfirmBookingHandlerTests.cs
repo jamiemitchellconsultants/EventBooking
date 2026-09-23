@@ -18,7 +18,7 @@ namespace EventBooking.Application.Tests.Bookings;
 public class ConfirmBookingHandlerTests
 {
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private static readonly Guid StaffUserId = Guid.Parse("c0000009-0000-0000-0000-000000000009");
 
@@ -108,15 +108,6 @@ public class ConfirmBookingHandlerTests
     }
 
     [Fact]
-    public async Task ConfirmingReturnsTheConfiguredTransitionalLocationAddress()
-    {
-        var result = await Confirm();
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(Portal.TransitionalLocationAddress, result.Value.TransitionalLocationAddress);
-    }
-
-    [Fact]
     public async Task OnlyTheRequiredAppointmentTypesAreDecremented()
     {
         await Confirm();
@@ -159,7 +150,7 @@ public class ConfirmBookingHandlerTests
         Assert.Equal(EmailTemplate.BookingConfirmation, message.Template);
         Assert.Contains(
             $"https://booking.example.com/manage/{result.Value.ManageToken}", message.TextBody);
-        Assert.Contains("Corporate HQ", message.TextBody);
+        Assert.DoesNotContain("Corporate HQ", message.TextBody);
     }
 
     [Fact]

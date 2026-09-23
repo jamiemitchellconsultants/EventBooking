@@ -38,7 +38,7 @@ public sealed class ReanchorTests : IAsyncLifetime
         services.AddEventBookingPersistence(_database.GetConnectionString());
         services.AddEventBookingApplication(
             new AttendeePortalOptions(
-                "http://localhost:5002", "1 Example Street, London", "recruitment@example.com"));
+                "http://localhost:5002", "recruitment@example.com"));
         services.AddSingleton<IClock>(new FixedClock(_today));
         services.AddScoped<IAuditLogger, EfAuditLogger>();
         services.AddScoped<DemoSeeder>();

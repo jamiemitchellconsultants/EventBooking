@@ -10,7 +10,7 @@ namespace EventBooking.Application.Tests.Notifications;
 public class AttendeeEmailComposerTests
 {
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ, 1 Example Street", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     private static readonly Attendee Amara = Attendee.Create(
         Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
@@ -79,7 +79,7 @@ public class AttendeeEmailComposerTests
     }
 
     [Fact]
-    public void TheConfirmationCarriesTheChosenTimeTheAddressAndTheManageLink()
+    public void TheConfirmationCarriesTheChosenTimeAndTheManageLinkButNoDeploymentAddress()
     {
         var message = AttendeeEmailComposer.BookingConfirmation(
             Amara, Amara.RequiredAppointmentTypeIds, EventOn(11, 13),
@@ -88,7 +88,7 @@ public class AttendeeEmailComposerTests
         Assert.Equal(EmailTemplate.BookingConfirmation, message.Template);
         Assert.Equal("Your appointment is confirmed", message.Subject);
         Assert.Contains("Friday 11 Sep 2026, 13:00-17:00", message.TextBody);
-        Assert.Contains("Corporate HQ, 1 Example Street", message.TextBody);
+        Assert.DoesNotContain("Corporate HQ", message.TextBody);
         Assert.Contains("https://booking.example.com/manage/xyz", message.TextBody);
         Assert.Contains("recruitment@corp.com", message.TextBody);
     }

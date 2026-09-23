@@ -20,7 +20,7 @@ public class EventCancellationConcurrencyTests
 {
     private static readonly Guid Coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
     private static readonly AttendeePortalOptions Portal = new(
-        "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
+        "https://booking.example.com", "recruitment@corp.com");
 
     /// <summary>Verifies event cancellation takes its attendee locks before competing confirmation.</summary>
     [Fact]

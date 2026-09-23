@@ -11,16 +11,16 @@ namespace EventBooking.SeedData;
 public sealed class DemoEmailOptions
 {
     private DemoEmailOptions(AttendeePortalOptions portal, TokenOptions tokens,
-        EmailOptions sender, SmtpOptions smtp, TransitionalLocationOptions transitionalLocation)
+        EmailOptions sender, SmtpOptions smtp, ClockOptions clock)
     {
         Portal = portal;
         Tokens = tokens;
         Sender = sender;
         Smtp = smtp;
-        TransitionalLocation = transitionalLocation;
+        Clock = clock;
     }
 
-    /// <summary>Gets the public attendee portal URL, office address and coordinator contact.</summary>
+    /// <summary>Gets the public attendee portal URL and coordinator contact.</summary>
     public AttendeePortalOptions Portal { get; }
     /// <summary>Gets the signing key that must match the API validating attendee tokens.</summary>
     public TokenOptions Tokens { get; }
@@ -28,8 +28,8 @@ public sealed class DemoEmailOptions
     public EmailOptions Sender { get; }
     /// <summary>Gets the Mailpit SMTP host and port reachable from this process.</summary>
     public SmtpOptions Smtp { get; }
-    /// <summary>Gets the timezone used to determine future transitional-location dates.</summary>
-    public TransitionalLocationOptions TransitionalLocation { get; }
+    /// <summary>Gets the timezone used to determine future demo dates.</summary>
+    public ClockOptions Clock { get; }
 
     /// <summary>Reads environment-style settings, with local defaults and explicit non-local keys.</summary>
     /// <param name="readSetting">Returns a setting value, or null when the key is absent.</param>
@@ -65,27 +65,26 @@ public sealed class DemoEmailOptions
             || !string.Equals(mailbox.Address, address, StringComparison.Ordinal))
             throw Invalid("Email__FromAddress");
         var name = Read("Email__FromName", "Recruitment Team");
-        var timezone = Read("TransitionalLocation__TimeZoneId", "Europe/London");
+        var timezone = Read("Clock__TimeZoneId", "Europe/London");
         try
         {
             TimeZoneInfo.FindSystemTimeZoneById(timezone);
         }
         catch (TimeZoneNotFoundException)
         {
-            throw Invalid("TransitionalLocation__TimeZoneId");
+            throw Invalid("Clock__TimeZoneId");
         }
         catch (InvalidTimeZoneException)
         {
-            throw Invalid("TransitionalLocation__TimeZoneId");
+            throw Invalid("Clock__TimeZoneId");
         }
         return new DemoEmailOptions(
             new AttendeePortalOptions(uri.AbsoluteUri.TrimEnd('/'),
-                Read("TransitionalLocation__Address", "1 Example Street, London"),
                 Read("Portal__CoordinatorContact", "recruitment@example.com")),
             new TokenOptions(signingKey),
             new EmailOptions(address, name, EmailProvider.Smtp),
             new SmtpOptions(smtpHost, port),
-            new TransitionalLocationOptions(timezone));
+            new ClockOptions(timezone));
     }
 
     private static SeedException Invalid(string key) =>

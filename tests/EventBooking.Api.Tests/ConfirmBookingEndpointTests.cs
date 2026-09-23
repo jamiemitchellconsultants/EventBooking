@@ -42,25 +42,6 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         Assert.Equal("Sent", outcome.DeliveryStatus);
     }
 
-    /// <summary>The confirmation names the API's configured transitional location, the one the email uses.</summary>
-    [Fact]
-    public async Task TheConfirmationCarriesTheConfiguredTransitionalLocationAddress()
-    {
-        var invite = await GivenAnInvitedAttendee();
-        factory.SignedInAs = null;
-        var client = factory.CreateClient();
-        var view = await client.GetFromJsonAsync<BookingEndpointTests.InviteResponse>(
-            $"/api/booking/{invite.Token}");
-
-        var response = await client.PostAsJsonAsync(
-            $"/api/booking/{invite.Token}/confirm", new { EventId = view!.Options[0].EventId });
-
-        var outcome = await response.Content.ReadFromJsonAsync<ConfirmResponse>();
-        var configured = factory.Services.GetRequiredService<AttendeePortalOptions>().TransitionalLocationAddress;
-        Assert.False(string.IsNullOrWhiteSpace(configured));
-        Assert.Equal(configured, outcome!.TransitionalLocationAddress);
-    }
-
     /// <summary>Booking confirmation remains successful while a provider rejection is reported.</summary>
     [Fact]
     public async Task AProviderFailureReturnsAConfirmedBookingAndFailedDeliveryStatus()
@@ -123,8 +104,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         TimeOnly StartTime,
         TimeOnly EndTime,
         string ManageToken,
-        string DeliveryStatus,
-        string TransitionalLocationAddress);
+        string DeliveryStatus);
 
     private async Task<InviteFixture> GivenAnInvitedAttendee()
     {

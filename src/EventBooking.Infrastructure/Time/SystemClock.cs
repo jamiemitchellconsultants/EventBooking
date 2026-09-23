@@ -6,7 +6,7 @@ public sealed class SystemClock : IClock
 {
     private readonly TimeZoneInfo _transitionalLocation;
 
-    public SystemClock(TransitionalLocationOptions options)
+    public SystemClock(ClockOptions options)
     {
         // Resolved once, at startup: a bad configuration value should stop the host coming up
         // rather than fail the first time somebody reads the date.

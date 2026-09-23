@@ -72,13 +72,13 @@ try
     {
         // The persistence interceptor still needs IClock, even for migration-only context creation.
         services.AddEventBookingPersistence(connectionString);
-        services.AddSingleton(new TransitionalLocationOptions("Europe/London"));
+        services.AddSingleton(new ClockOptions("Europe/London"));
         services.AddSingleton<IClock, SystemClock>();
     }
     else
     {
         var email = DemoEmailOptions.From(Environment.GetEnvironmentVariable);
-        services.AddEventBookingInfrastructure(connectionString, email.TransitionalLocation, email.Tokens);
+        services.AddEventBookingInfrastructure(connectionString, email.Clock, email.Tokens);
         services.AddEventBookingApplication(email.Portal,
             new EventBooking.Application.Access.StaffIdPolicy(Environment.GetEnvironmentVariable("Identity__StaffIdPattern")));
         services.AddLocalEmailTransport(email.Sender, email.Smtp);
