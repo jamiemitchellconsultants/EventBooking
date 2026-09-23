@@ -31,19 +31,28 @@ public class ListAttendeesHandlerTests
             "Ground Operations Agent", true, [AppointmentTypeIds.MedicalCheckUp]));
 
         _attendees.Add(Attendee.Create(
-            Guid.NewGuid(), "A. Novak", "a.novak@mail.com",
-            _groups.Items.Single(group => group.Id == AttendeeGroupIds.CabinCrew)));
+            Guid.NewGuid(),
+            "A. Novak",
+            "a.novak@mail.com",
+            _groups.Items.Single(group => group.Id == AttendeeGroupIds.CabinCrew),
+            ProposalFixture.Now));
 
         var chen = Attendee.Create(
-            Guid.NewGuid(), "B. Chen", "b.chen@mail.com",
-            _groups.Items.Single(group => group.Id == AttendeeGroupIds.GroundOperationsAgent));
-        chen.MarkInvited();
+            Guid.NewGuid(),
+            "B. Chen",
+            "b.chen@mail.com",
+            _groups.Items.Single(group => group.Id == AttendeeGroupIds.GroundOperationsAgent),
+            ProposalFixture.Now);
+        chen.MarkInvited(ProposalFixture.Now);
         _attendees.Add(chen);
 
         var diallo = Attendee.Create(
-            Guid.NewGuid(), "C. Diallo", "c.diallo@mail.com",
-            _groups.Items.Single(group => group.Id == AttendeeGroupIds.GroundOperationsAgent));
-        diallo.MarkAwaitingAvailability();
+            Guid.NewGuid(),
+            "C. Diallo",
+            "c.diallo@mail.com",
+            _groups.Items.Single(group => group.Id == AttendeeGroupIds.GroundOperationsAgent),
+            ProposalFixture.Now);
+        diallo.MarkAwaitingAvailability(ProposalFixture.Now);
         _attendees.Add(diallo);
     }
 

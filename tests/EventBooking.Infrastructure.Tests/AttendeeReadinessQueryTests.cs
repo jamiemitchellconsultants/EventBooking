@@ -29,13 +29,19 @@ public sealed class AttendeeReadinessQueryTests(PostgresFixture fixture)
             var groundOps = write.AttendeeGroups
                 .Include(g => g.Requirements)
                 .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
-            var attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", groundOps);
+            var attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", groundOps, ProposalFixture.Now);
             attendeeId = attendee.Id;
             write.Attendees.Add(attendee);
 
             var initial = Invite.CreateInitial(
-                Guid.NewGuid(), attendee.Id, "initial", now.AddDays(1),
-                [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+                Guid.NewGuid(),
+                attendee.Id,
+                "initial",
+                now.AddDays(1),
+                [ProposalFixture.LocationId],
+                [eventId, Guid.NewGuid(), Guid.NewGuid()],
+                [AppointmentTypeIds.MedicalCheckUp],
+                0);
             var original = Booking.Create(Guid.NewGuid(), initial, eventId, "manage-original", now);
             originalId = original.Id;
             write.Bookings.Add(original);
@@ -45,8 +51,15 @@ public sealed class AttendeeReadinessQueryTests(PostgresFixture fixture)
             write.BookingAppointments.Add(originalAttempt);
 
             var recoveryInvite = Invite.CreateRecovery(
-                Guid.NewGuid(), attendee.Id, original.Id, "recovery", now.AddDays(2),
-                [recoveryEventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+                Guid.NewGuid(),
+                attendee.Id,
+                original.Id,
+                "recovery",
+                now.AddDays(2),
+                ProposalFixture.LocationId,
+                null,
+                [recoveryEventId, Guid.NewGuid(), Guid.NewGuid()],
+                [AppointmentTypeIds.MedicalCheckUp]);
             var recovery = Booking.CreateRecovery(
                 Guid.NewGuid(), recoveryInvite, original, recoveryEventId, "manage-recovery", now.AddHours(1));
             recovery.Conclude();

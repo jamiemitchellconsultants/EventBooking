@@ -65,7 +65,11 @@ public sealed class RecentPastRecoveryEligibilityTests
         profiles.Add(StaffAccessProfile.Create(
             staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "amara@example.com", DatOnly());
+            Guid.NewGuid(),
+            "Amara Novak",
+            "amara@example.com",
+            DatOnly(),
+            ProposalFixture.Now);
         var operations = new TransactionOperationLog();
         var attendees = new InMemoryAttendeeRepository(operations);
         attendees.Add(attendee);
@@ -76,8 +80,14 @@ public sealed class RecentPastRecoveryEligibilityTests
         var events = new InMemoryEventRepository(operations);
         events.Add(eventItem);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
-            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            "invite-token",
+            now.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(

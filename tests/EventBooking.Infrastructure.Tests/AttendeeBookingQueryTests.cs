@@ -104,7 +104,11 @@ public sealed class AttendeeBookingQueryTests(PostgresFixture fixture)
             .Include(g => g.Requirements)
             .SingleAsync(g => g.Id == AttendeeGroupIds.Pilots);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", $"a.novak.{Guid.NewGuid():N}@mail.com", pilots);
+            Guid.NewGuid(),
+            "Amara Novak",
+            $"a.novak.{Guid.NewGuid():N}@mail.com",
+            pilots,
+            ProposalFixture.Now);
         write.Attendees.Add(attendee);
         await write.SaveChangesAsync();
         return attendee.Id;
@@ -128,8 +132,14 @@ public sealed class AttendeeBookingQueryTests(PostgresFixture fixture)
     private static Booking OriginalFor(Guid attendeeId, Guid eventId)
     {
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendeeId, $"initial-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddDays(1),
-            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+            Guid.NewGuid(),
+            attendeeId,
+            $"initial-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventId, Guid.NewGuid(), Guid.NewGuid()],
+            [AppointmentTypeIds.MedicalCheckUp],
+            0);
         return Booking.Create(
             Guid.NewGuid(), invite, eventId, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
     }
@@ -137,9 +147,15 @@ public sealed class AttendeeBookingQueryTests(PostgresFixture fixture)
     private static Booking RecoveryFor(Guid attendeeId, Booking original, Guid eventId)
     {
         var invite = Invite.CreateRecovery(
-            Guid.NewGuid(), attendeeId, original.Id, $"recovery-{Guid.NewGuid():N}",
+            Guid.NewGuid(),
+            attendeeId,
+            original.Id,
+            $"recovery-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(2),
-            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            ProposalFixture.LocationId,
+            null,
+            [eventId, Guid.NewGuid(), Guid.NewGuid()],
+            [AppointmentTypeIds.MedicalCheckUp]);
         return Booking.CreateRecovery(
             Guid.NewGuid(), invite, original, eventId, $"manage-recovery-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddHours(1));

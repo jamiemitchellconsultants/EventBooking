@@ -23,8 +23,7 @@ public sealed class AttendeeConfiguration : IEntityTypeConfiguration<Attendee>
             .HasForeignKey(c => c.AttendeeGroupId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(c => c.AttendeeGroupId);
-        builder.Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty)
-            .HasColumnName("status_changed_at");
+        builder.Property(c => c.StatusChangedAt).HasColumnName("status_changed_at");
 
         builder.Ignore(c => c.RequiredAppointmentTypeIds);
 

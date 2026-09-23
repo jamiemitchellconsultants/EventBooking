@@ -31,10 +31,13 @@ public class InviteOptionReplacementTests
     public InviteOptionReplacementTests()
     {
         _attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
             AttendeeGroup.Define(
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+            ProposalFixture.Now);
         _attendees.Add(_attendee);
 
         var eventIds = new[] { AddEvent(10, 9), AddEvent(11, 13), AddEvent(13, 9) };
@@ -43,10 +46,16 @@ public class InviteOptionReplacementTests
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), eventIds,
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            inviteId,
+            _attendee.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
+            eventIds,
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         _invites.Add(_invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
     }
 
     /// <summary>A cancelled option is replaced so the attendee still sees three live options.</summary>

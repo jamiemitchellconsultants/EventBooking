@@ -39,14 +39,24 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
             var pilots = seed.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Amara Novak", "amara@example.com", pilots);
+                Guid.NewGuid(),
+                "Amara Novak",
+                "amara@example.com",
+                pilots,
+                ProposalFixture.Now);
             var eventItem = EventFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0), 240),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
             var invite = Invite.CreateInitial(
-                Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
-                [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
+                Guid.NewGuid(),
+                attendee.Id,
+                "invite-token",
+                now.AddDays(1),
+                [ProposalFixture.LocationId],
+                [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+                attendee.RequiredAppointmentTypeIds,
+                0);
             var booking = Booking.Create(
                 Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
             var appointment = BookingAppointment.Create(
@@ -346,18 +356,27 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 Guid.NewGuid(), $"DAT_ONLY_{Guid.NewGuid():N}".ToUpperInvariant(), "DAT only", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting]);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Amara Novak", "amara@example.com", group);
-            attendee.MarkInvited();
-            attendee.MarkBooked();
+                Guid.NewGuid(),
+                "Amara Novak",
+                "amara@example.com",
+                group,
+                ProposalFixture.Now);
+            attendee.MarkInvited(ProposalFixture.Now);
+            attendee.MarkBooked(ProposalFixture.Now);
             attendeeId = attendee.Id;
             var pastEvent = EventFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0), 240),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
             var invite = Invite.CreateInitial(
-                Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
+                Guid.NewGuid(),
+                attendee.Id,
+                "invite-token",
+                now.AddDays(1),
+                [ProposalFixture.LocationId],
                 [pastEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
-                attendee.RequiredAppointmentTypeIds, 0);
+                attendee.RequiredAppointmentTypeIds,
+                0);
             var booking = Booking.Create(
                 Guid.NewGuid(), invite, pastEvent.Id, "manage-token", now.AddDays(-1));
             invite.MarkUsed();

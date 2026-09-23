@@ -10,11 +10,14 @@ namespace EventBooking.Application.Tests.Notifications;
 public sealed class SnapshotEmailAuthorityTests
 {
     private static readonly Attendee Attendee = Attendee.Create(
-        Guid.NewGuid(), "Amara", "amara@example.com",
+        Guid.NewGuid(),
+        "Amara",
+        "amara@example.com",
         AttendeeGroup.Define(
             AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
-                AppointmentTypeIds.UniformFitting]));
+                AppointmentTypeIds.UniformFitting]),
+        ProposalFixture.Now);
     private static readonly Event Event = EventFixture.Create(
         Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10), new TimeOnly(9, 0), 240),
         new Dictionary<Guid, int>

@@ -114,7 +114,7 @@ public sealed class ExpireInvitesHandler(
 
             if (invite.RetryCount >= configuration.MaxAutoRetryCount)
             {
-                attendee.MarkNoResponse();
+                attendee.MarkNoResponse(clock.UtcNow);
                 flagged++;
                 await unitOfWork.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
@@ -133,7 +133,7 @@ public sealed class ExpireInvitesHandler(
             {
                 if (attendee.Status == Domain.Attendees.AttendeeStatus.Invited)
                 {
-                    attendee.MarkNoResponse();
+                    attendee.MarkNoResponse(clock.UtcNow);
                     flagged++;
                     audit.Record(
                         AuditEntityTypes.Invite,

@@ -47,7 +47,7 @@ public class ExpireInvitesHandlerTests
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
         _attendees.Add(_attendee);
         AddThreeEvents();
     }
@@ -121,16 +121,18 @@ public class ExpireInvitesHandlerTests
     }
 
     [Fact]
-    public async Task AReIssueWithNoEligibleEventsFlagsAwaitingAvailabilityInstead()
+    public async Task AReIssueWithNoEligibleEventsNeedsFollowUp()
     {
         GivePendingInvite(expiresInDays: -1, retryCount: 0);
         _events.Items.Clear();
 
         var summary = await Handler.HandleAsync(CancellationToken.None);
 
+        // FR-5.7, and design 01's closed table: an invited attendee never drops back to
+        // AwaitingAvailability. A failed automatic re-issue is a follow-up for the Coordinator.
         Assert.Equal(1, summary.Expired);
         Assert.Equal(0, summary.ReIssued);
-        Assert.Equal(AttendeeStatus.AwaitingAvailability, _attendee.Status);
+        Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, _attendee.Status);
     }
 
     [Fact]
@@ -178,14 +180,16 @@ public class ExpireInvitesHandlerTests
     [Fact]
     public async Task AnExpiredRecoveryInviteLeavesTheAttendeeBooked()
     {
-        _attendee.MarkInvited();
-        _attendee.MarkBooked();
+        _attendee.MarkInvited(ProposalFixture.Now);
+        _attendee.MarkBooked(ProposalFixture.Now);
         _invites.Add(Invite.CreateRecovery(
             Guid.NewGuid(),
             _attendee.Id,
             Guid.NewGuid(),
             $"hash-{Guid.NewGuid():N}",
             _clock.UtcNow.AddDays(-1),
+            ProposalFixture.LocationId,
+            null,
             _events.Items.Take(3).Select(s => s.Id),
             [AppointmentTypeIds.DrugAndAlcoholTesting]));
 
@@ -203,12 +207,13 @@ public class ExpireInvitesHandlerTests
 
     private void GivePendingInvite(int expiresInDays, int retryCount)
     {
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         _invites.Add(Invite.CreateInitial(
             Guid.NewGuid(),
             _attendee.Id,
             $"hash-{Guid.NewGuid():N}",
             _clock.UtcNow.AddDays(expiresInDays),
+            [ProposalFixture.LocationId],
             _events.Items.Take(3).Select(s => s.Id),
             _attendee.RequiredAppointmentTypeIds,
             retryCount));

@@ -144,19 +144,27 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         }
 
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", $"{Guid.NewGuid():N}@mail.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            $"{Guid.NewGuid():N}@mail.com",
             AttendeeGroup.Define(
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
-        attendee.MarkInvited();
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
         var issued = tokens.Issue(inviteId);
         context.Invites.Add(Invite.CreateInitial(
-            inviteId, attendee.Id, issued.TokenHash, DateTimeOffset.UtcNow.AddDays(4),
+            inviteId,
+            attendee.Id,
+            issued.TokenHash,
+            DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             eventIds,
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0));
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0));
         await context.SaveChangesAsync();
 
         return new AttendeeInviteFixture(issued.Token, attendee.Id, inviteId);

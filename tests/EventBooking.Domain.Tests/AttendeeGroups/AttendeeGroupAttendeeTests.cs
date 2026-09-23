@@ -19,7 +19,11 @@ public sealed class AttendeeGroupAttendeeTests
     {
         var group = AttendeeGroup.Define(groupId, code, name, true, expected);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "amara@example.com", group);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "amara@example.com",
+            group,
+            ProposalFixture.Now);
 
         Assert.Equal(groupId, attendee.AttendeeGroupId);
         Assert.Equal(expected.Order(), attendee.RequiredAppointmentTypeIds.Order());
@@ -42,7 +46,11 @@ public sealed class AttendeeGroupAttendeeTests
             true,
             [AppointmentTypeIds.MedicalCheckUp]);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "amara@example.com", engineering);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "amara@example.com",
+            engineering,
+            ProposalFixture.Now);
 
         var changed = attendee.AssignAttendeeGroup(groundOperations);
 

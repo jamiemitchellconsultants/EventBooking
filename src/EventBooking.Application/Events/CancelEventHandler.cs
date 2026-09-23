@@ -221,7 +221,7 @@ public sealed class CancelEventHandler(
                         return Result<CancelEventOutcome>.Failure(released.Error);
                     }
 
-                    attendee.ResetToNotYetInvited();
+                    attendee.ResetToNotYetInvited(clock.UtcNow);
 
                     var issueResult = await issuer.IssueInitialAsync(
                         attendee, 0, ActorType.Staff, actorId, isReinvite: false, cancellationToken);

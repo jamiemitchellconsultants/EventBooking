@@ -15,8 +15,14 @@ public class BookingTests
 
     private static Invite NewInvite() =>
         Invite.CreateInitial(
-            Guid.NewGuid(), Guid.NewGuid(), "invite-token-hash", Now.AddDays(4),
-            [EventA, EventB, EventC], [AppointmentTypeIds.DrugAndAlcoholTesting], 0);
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "invite-token-hash",
+            Now.AddDays(4),
+            [ProposalFixture.LocationId],
+            [EventA, EventB, EventC],
+            [AppointmentTypeIds.DrugAndAlcoholTesting],
+            0);
 
     private static Booking NewBooking(Invite invite) =>
         Booking.Create(Guid.NewGuid(), invite, EventB, "manage-token-hash", Now);

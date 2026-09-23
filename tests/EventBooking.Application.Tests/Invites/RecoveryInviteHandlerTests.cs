@@ -221,9 +221,14 @@ public sealed class RecoveryInviteHandlerTests
     {
         var (attendee, _, _) = SeedBookedAttendeeWithNoShow();
         var initial = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, "hash-initial-pending",
-            _clock.UtcNow.AddDays(4), [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            "hash-initial-pending",
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
+            [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         _invites.Add(initial);
 
         var result = await CancelHandler().HandleAsync(
@@ -263,8 +268,11 @@ public sealed class RecoveryInviteHandlerTests
         var started = await StartHandler().HandleAsync(
             new StartRecoveryCommand(Coordinator, attendee.Id), CancellationToken.None);
         var stranger = Attendee.Create(
-            Guid.NewGuid(), "Bo Vance", "b.vance@mail.com",
-            _groups.Items.Single(g => g.Id == AttendeeGroupIds.Pilots));
+            Guid.NewGuid(),
+            "Bo Vance",
+            "b.vance@mail.com",
+            _groups.Items.Single(g => g.Id == AttendeeGroupIds.Pilots),
+            ProposalFixture.Now);
         _attendees.Add(stranger);
 
         var result = await CancelHandler().HandleAsync(
@@ -343,17 +351,25 @@ public sealed class RecoveryInviteHandlerTests
     private (Attendee Attendee, Booking Original, BookingAppointment Missed) SeedBookedAttendeeWithNoShow()
     {
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
-            _groups.Items.Single(g => g.Id == AttendeeGroupIds.Pilots));
-        attendee.MarkInvited();
-        attendee.MarkBooked();
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            _groups.Items.Single(g => g.Id == AttendeeGroupIds.Pilots),
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
+        attendee.MarkBooked(ProposalFixture.Now);
         _attendees.Add(attendee);
 
         var eventIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
         var initial = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, "hash-initial",
-            _clock.UtcNow.AddDays(4), eventIds,
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            "hash-initial",
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
+            eventIds,
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         var original = Booking.Create(
             Guid.NewGuid(), initial, eventIds[0], "manage-original", _clock.UtcNow);
         initial.MarkUsed();

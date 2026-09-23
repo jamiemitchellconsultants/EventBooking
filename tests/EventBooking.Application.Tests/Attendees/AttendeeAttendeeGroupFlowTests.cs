@@ -36,6 +36,7 @@ public sealed class AttendeeAttendeeGroupFlowTests
             new InMemoryBookingRepository(),
             new StaffAccessAuthorizer(_profiles),
             new RecordingAuditLogger(),
+            new FakeClock(),
             _unitOfWork);
 
         var result = await handler.CreateAsync(
@@ -63,6 +64,7 @@ public sealed class AttendeeAttendeeGroupFlowTests
             new InMemoryBookingRepository(),
             new StaffAccessAuthorizer(_profiles),
             new RecordingAuditLogger(),
+            new FakeClock(),
             _unitOfWork);
 
         var result = await handler.CreateAsync(

@@ -493,8 +493,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
             Guid.NewGuid(),
             "Retry Attendee",
             $"{Guid.NewGuid():N}@mail.com",
-            pilots);
-        attendee.MarkInvited();
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
@@ -504,6 +505,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
             attendee.Id,
             issued.TokenHash,
             new DateTimeOffset(2030, 1, 20, 0, 0, 0, TimeSpan.Zero),
+            [ProposalFixture.LocationId],
             eventIds,
             attendee.RequiredAppointmentTypeIds,
             0);

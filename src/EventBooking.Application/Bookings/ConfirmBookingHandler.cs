@@ -238,7 +238,7 @@ public sealed class ConfirmBookingHandler(
             invite.MarkUsed();
             if (!isRecovery)
             {
-                attendee.MarkBooked();
+                attendee.MarkBooked(clock.UtcNow);
             }
         }
         catch (DomainException ex)
@@ -366,7 +366,7 @@ public sealed class ConfirmBookingHandler(
         if (invite.OfferedEventIds.Count < Domain.Invites.Invite.RequiredOptionCount
             && attendee.Status == AttendeeStatus.Invited)
         {
-            attendee.MarkNoResponse();
+            attendee.MarkNoResponse(clock.UtcNow);
 
             audit.Record(
                 AuditEntityTypes.Invite,

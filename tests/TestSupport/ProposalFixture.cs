@@ -20,6 +20,9 @@ public static class ProposalFixture
     /// <summary>The zone every fixture proposal is read in.</summary>
     public const string TimeZoneId = "Europe/London";
 
+    /// <summary>The single transitional site every fixture proposal and invite belongs to.</summary>
+    public static Guid LocationId { get; } = Guid.Parse("10000000-0000-0000-0000-000000000001");
+
     /// <summary>An instant well before any fixture window.</summary>
     public static DateTimeOffset Now => new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -35,7 +38,7 @@ public static class ProposalFixture
         Guid? proposerAppointmentTypeId = null) =>
         EventProposal.Propose(
             id,
-            Guid.Parse("10000000-0000-0000-0000-000000000001"),
+            LocationId,
             locationIsActive: true,
             TimeZoneId,
             window,

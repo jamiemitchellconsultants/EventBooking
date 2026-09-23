@@ -143,8 +143,12 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
 
         var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", $"{Guid.NewGuid():N}@mail.com", pilots);
-        attendee.MarkInvited();
+            Guid.NewGuid(),
+            "Amara Novak",
+            $"{Guid.NewGuid():N}@mail.com",
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
@@ -154,8 +158,10 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             attendee.Id,
             issued.TokenHash,
             new DateTimeOffset(2030, 1, 20, 0, 0, 0, TimeSpan.Zero),
+            [ProposalFixture.LocationId],
             offeredEventIds,
-            attendee.RequiredAppointmentTypeIds, 0));
+            attendee.RequiredAppointmentTypeIds,
+            0));
         await context.SaveChangesAsync();
 
         return new InviteFixture(issued.Token, unofferedEventId);

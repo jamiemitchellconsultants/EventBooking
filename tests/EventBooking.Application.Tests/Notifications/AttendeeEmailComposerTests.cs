@@ -13,10 +13,13 @@ public class AttendeeEmailComposerTests
         "https://booking.example.com", "recruitment@corp.com");
 
     private static readonly Attendee Amara = Attendee.Create(
-        Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
+        Guid.NewGuid(),
+        "Amara Novak",
+        "a.novak@mail.com",
         AttendeeGroup.Define(
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+        ProposalFixture.Now);
 
     [Fact]
     public void AWindowIsFormattedForAHumanReader()

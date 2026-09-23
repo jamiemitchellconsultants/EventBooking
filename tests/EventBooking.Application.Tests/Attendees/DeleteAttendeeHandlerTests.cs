@@ -39,10 +39,13 @@ public class DeleteAttendeeHandlerTests
         _appointments = new InMemoryBookingAppointmentRepository(_bookings);
         _roles.Add(StaffAccessProfile.Create(Coordinator, Role.Coordinator, null));
         _attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
             AttendeeGroup.Define(
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+            ProposalFixture.Now);
         _attendees.Add(_attendee);
     }
 
@@ -146,7 +149,13 @@ public class DeleteAttendeeHandlerTests
         _events.Add(recoveryEvent);
 
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), _attendee.Id, original.Id, "recovery-hash", Now.AddDays(4),
+            Guid.NewGuid(),
+            _attendee.Id,
+            original.Id,
+            "recovery-hash",
+            Now.AddDays(4),
+            ProposalFixture.LocationId,
+            null,
             [recoveryEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recoveryInvite);
@@ -174,8 +183,14 @@ public class DeleteAttendeeHandlerTests
         _events.Add(eventItem);
 
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), _attendee.Id, "hash", Now.AddDays(4),
-            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], _attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            _attendee.Id,
+            "hash",
+            Now.AddDays(4),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            _attendee.RequiredAppointmentTypeIds,
+            0);
         _invites.Add(invite);
 
         var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, "manage-hash", Now);

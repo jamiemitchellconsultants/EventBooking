@@ -521,6 +521,8 @@ public sealed class DemoSeeder(
                         originalBooking.Id,
                         $"seed-recovery-{position}",
                         now.AddDays(7),
+                        TransitionalLocation.Id,
+                        null,
                         [recoveryEventId, SeedId(attendee.Email, "recovery:spare1"),
                         SeedId(attendee.Email, "recovery:spare2")],
                         [types[0]]);
@@ -573,6 +575,7 @@ public sealed class DemoSeeder(
             attendee.Id,
             $"seed-{tag}-{attendee.Email}",
             createdAt.AddDays(7),
+            [TransitionalLocation.Id],
             [eventId, SeedId(attendee.Email, $"{tag}:spare1"), SeedId(attendee.Email, $"{tag}:spare2")],
             types,
             0);

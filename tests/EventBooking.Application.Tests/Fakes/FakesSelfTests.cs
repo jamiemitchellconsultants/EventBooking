@@ -26,11 +26,19 @@ public class FakesSelfTests
         var uniformOnly = AttendeeGroup.Define(
             Guid.NewGuid(), "UNI_ONLY", "UNI only", true, [AppointmentTypeIds.UniformFitting]);
         var invited = Attendee.Create(
-            Guid.NewGuid(), "B. Chen", "b.chen@mail.com", uniformOnly);
-        invited.MarkInvited();
+            Guid.NewGuid(),
+            "B. Chen",
+            "b.chen@mail.com",
+            uniformOnly,
+            ProposalFixture.Now);
+        invited.MarkInvited(ProposalFixture.Now);
         repository.Add(invited);
         repository.Add(Attendee.Create(
-            Guid.NewGuid(), "A. Novak", "a.novak@mail.com", uniformOnly));
+            Guid.NewGuid(),
+            "A. Novak",
+            "a.novak@mail.com",
+            uniformOnly,
+            ProposalFixture.Now));
 
         var result = await repository.ListAsync(AttendeeStatus.Invited, CancellationToken.None);
 

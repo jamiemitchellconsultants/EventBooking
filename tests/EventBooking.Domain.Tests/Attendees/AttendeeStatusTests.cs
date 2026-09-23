@@ -14,12 +14,12 @@ public class AttendeeStatusTests
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
 
     private static Attendee NewAttendee() =>
-        Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", DatOnly());
+        Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", DatOnly(), ProposalFixture.Now);
 
     private static Attendee InvitedAttendee()
     {
         var attendee = NewAttendee();
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
         return attendee;
     }
 
@@ -28,7 +28,7 @@ public class AttendeeStatusTests
     {
         var attendee = NewAttendee();
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         Assert.Equal(AttendeeStatus.Invited, attendee.Status);
     }
@@ -38,7 +38,7 @@ public class AttendeeStatusTests
     {
         var attendee = NewAttendee();
 
-        attendee.MarkAwaitingAvailability();
+        attendee.MarkAwaitingAvailability(ProposalFixture.Now);
 
         Assert.Equal(AttendeeStatus.AwaitingAvailability, attendee.Status);
     }
@@ -47,9 +47,9 @@ public class AttendeeStatusTests
     public void AnAwaitingAttendeeCanBeInvitedOnceEventsAppear()
     {
         var attendee = NewAttendee();
-        attendee.MarkAwaitingAvailability();
+        attendee.MarkAwaitingAvailability(ProposalFixture.Now);
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         Assert.Equal(AttendeeStatus.Invited, attendee.Status);
     }
@@ -59,7 +59,7 @@ public class AttendeeStatusTests
     {
         var attendee = InvitedAttendee();
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         Assert.Equal(AttendeeStatus.Invited, attendee.Status);
     }
@@ -68,11 +68,11 @@ public class AttendeeStatusTests
     public void OnlyAnInvitedAttendeeCanBecomeBooked()
     {
         var attendee = InvitedAttendee();
-        attendee.MarkBooked();
+        attendee.MarkBooked(ProposalFixture.Now);
         Assert.Equal(AttendeeStatus.Booked, attendee.Status);
 
         var notInvited = NewAttendee();
-        var ex = Assert.Throws<DomainException>(() => notInvited.MarkBooked());
+        var ex = Assert.Throws<DomainException>(() => notInvited.MarkBooked(ProposalFixture.Now));
         Assert.Equal("A attendee cannot move from NotYetInvited to Booked.", ex.Message);
     }
 
@@ -80,21 +80,21 @@ public class AttendeeStatusTests
     public void OnlyAnInvitedAttendeeCanRunOutOfRetries()
     {
         var attendee = InvitedAttendee();
-        attendee.MarkNoResponse();
+        attendee.MarkNoResponse(ProposalFixture.Now);
         Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, attendee.Status);
 
         var booked = InvitedAttendee();
-        booked.MarkBooked();
-        Assert.Throws<DomainException>(() => booked.MarkNoResponse());
+        booked.MarkBooked(ProposalFixture.Now);
+        Assert.Throws<DomainException>(() => booked.MarkNoResponse(ProposalFixture.Now));
     }
 
     [Fact]
     public void AFollowUpAttendeeCanBeManuallyReInvited()
     {
         var attendee = InvitedAttendee();
-        attendee.MarkNoResponse();
+        attendee.MarkNoResponse(ProposalFixture.Now);
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         Assert.Equal(AttendeeStatus.Invited, attendee.Status);
     }
@@ -103,9 +103,9 @@ public class AttendeeStatusTests
     public void CancellingABookingReturnsTheAttendeeToNotYetInvited()
     {
         var attendee = InvitedAttendee();
-        attendee.MarkBooked();
+        attendee.MarkBooked(ProposalFixture.Now);
 
-        attendee.ResetToNotYetInvited();
+        attendee.ResetToNotYetInvited(ProposalFixture.Now);
 
         Assert.Equal(AttendeeStatus.NotYetInvited, attendee.Status);
     }
@@ -115,7 +115,7 @@ public class AttendeeStatusTests
     {
         var attendee = NewAttendee();
 
-        var ex = Assert.Throws<DomainException>(() => attendee.ResetToNotYetInvited());
+        var ex = Assert.Throws<DomainException>(() => attendee.ResetToNotYetInvited(ProposalFixture.Now));
         Assert.Equal("A attendee cannot move from NotYetInvited to NotYetInvited.", ex.Message);
     }
 

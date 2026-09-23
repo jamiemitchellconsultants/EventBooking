@@ -38,17 +38,26 @@ public static class McpScenarioSeeder
             .Include(g => g.Requirements)
             .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
+            Guid.NewGuid(),
+            "Alex Morgan",
+            $"alex-{Guid.NewGuid():N}@example.com",
+            group,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
-            attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
         invite.MarkUsed();
-        attendee.MarkBooked();
+        attendee.MarkBooked(ProposalFixture.Now);
 
         context.AddRange(bookedEvent);
         context.AddRange(spareEvents);
@@ -91,11 +100,20 @@ public static class McpScenarioSeeder
                 .Include(g => g.Requirements)
                 .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
+                Guid.NewGuid(),
+                "Alex Morgan",
+                $"alex-{Guid.NewGuid():N}@example.com",
+                group,
+                ProposalFixture.Now);
             var invite = Invite.CreateInitial(
-                Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-                DateTimeOffset.UtcNow.AddDays(1), [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
-                attendee.RequiredAppointmentTypeIds, 0);
+                Guid.NewGuid(),
+                attendee.Id,
+                $"invite-{Guid.NewGuid():N}",
+                DateTimeOffset.UtcNow.AddDays(1),
+                [ProposalFixture.LocationId],
+                [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
+                attendee.RequiredAppointmentTypeIds,
+                0);
             var booking = Booking.Create(
                 Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
             var appointment = BookingAppointment.Create(
@@ -152,11 +170,20 @@ public static class McpScenarioSeeder
             : AttendeeGroupIds.Pilots;
         var group = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == groupId);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
+            Guid.NewGuid(),
+            "Alex Morgan",
+            $"alex-{Guid.NewGuid():N}@example.com",
+            group,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
-            attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, eventItem.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(

@@ -285,10 +285,13 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         public async Task<Guid> GivenAttendeeWithThreeEligibleEventsAsync()
         {
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Concurrent Attendee", $"{Guid.NewGuid():N}@mail.com",
+                Guid.NewGuid(),
+                "Concurrent Attendee",
+                $"{Guid.NewGuid():N}@mail.com",
                 AttendeeGroup.Define(
                     AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                    [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+                    [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+                ProposalFixture.Now);
             await using var context = _fixture.NewContext();
             context.Attendees.Add(attendee);
             context.Events.AddRange(
@@ -324,8 +327,9 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 Guid.NewGuid(),
                 "Concurrent Attendee",
                 $"{Guid.NewGuid():N}@mail.com",
-                pilots);
-            attendee.MarkInvited();
+                pilots,
+                ProposalFixture.Now);
+            attendee.MarkInvited(ProposalFixture.Now);
             var tokens = _services.GetRequiredService<ITokenService>();
             var inviteId = Guid.NewGuid();
             var inviteToken = tokens.Issue(inviteId);
@@ -334,6 +338,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 attendee.Id,
                 inviteToken.TokenHash,
                 FixedNow.AddDays(4),
+                [ProposalFixture.LocationId],
                 [bookedEvent.Id, fallbackOne.Id, fallbackTwo.Id],
                 attendee.RequiredAppointmentTypeIds,
                 0);
@@ -347,7 +352,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 FixedNow);
             bookedEvent.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             invite.MarkUsed();
-            attendee.MarkBooked();
+            attendee.MarkBooked(ProposalFixture.Now);
 
             await using var context = _fixture.NewContext();
             context.Attendees.Add(attendee);
@@ -512,14 +517,24 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Concurrent Attendee", $"{Guid.NewGuid():N}@mail.com", pilots);
-            attendee.MarkInvited();
+                Guid.NewGuid(),
+                "Concurrent Attendee",
+                $"{Guid.NewGuid():N}@mail.com",
+                pilots,
+                ProposalFixture.Now);
+            attendee.MarkInvited(ProposalFixture.Now);
             var tokens = _services.GetRequiredService<ITokenService>();
             var firstInviteId = Guid.NewGuid();
             var firstToken = tokens.Issue(firstInviteId);
-            var firstInvite = Invite.CreateInitial(firstInviteId, attendee.Id, firstToken.TokenHash,
-                FixedNow.AddDays(4), [firstEvent.Id, fallbackOne.Id, fallbackTwo.Id],
-                attendee.RequiredAppointmentTypeIds, 0);
+            var firstInvite = Invite.CreateInitial(
+                firstInviteId,
+                attendee.Id,
+                firstToken.TokenHash,
+                FixedNow.AddDays(4),
+                [ProposalFixture.LocationId],
+                [firstEvent.Id, fallbackOne.Id, fallbackTwo.Id],
+                attendee.RequiredAppointmentTypeIds,
+                0);
 
             await using var context = _fixture.NewContext();
             context.Attendees.Add(attendee);
@@ -532,9 +547,15 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 var secondInviteId = Guid.NewGuid();
                 var issued = tokens.Issue(secondInviteId);
                 secondToken = issued.Token;
-                context.Invites.Add(Invite.CreateInitial(secondInviteId, attendee.Id, issued.TokenHash,
-                    FixedNow.AddDays(4), [secondEvent.Id, fallbackOne.Id, fallbackTwo.Id],
-                    attendee.RequiredAppointmentTypeIds, 0));
+                context.Invites.Add(Invite.CreateInitial(
+                    secondInviteId,
+                    attendee.Id,
+                    issued.TokenHash,
+                    FixedNow.AddDays(4),
+                    [ProposalFixture.LocationId],
+                    [secondEvent.Id, fallbackOne.Id, fallbackTwo.Id],
+                    attendee.RequiredAppointmentTypeIds,
+                    0));
             }
 
             await context.SaveChangesAsync();

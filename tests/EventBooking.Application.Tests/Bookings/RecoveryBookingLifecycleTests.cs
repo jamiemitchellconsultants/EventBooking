@@ -16,8 +16,15 @@ public sealed class RecoveryBookingLifecycleTests
         var originalId = Guid.NewGuid();
         var recoveryEvent = Guid.NewGuid();
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), attendeeId, originalId, "recovery", DateTimeOffset.UtcNow.AddDays(2),
-            [recoveryEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            Guid.NewGuid(),
+            attendeeId,
+            originalId,
+            "recovery",
+            DateTimeOffset.UtcNow.AddDays(2),
+            ProposalFixture.LocationId,
+            null,
+            [recoveryEvent, Guid.NewGuid(), Guid.NewGuid()],
+            [AppointmentTypeIds.MedicalCheckUp]);
         var attempts = new[]
         {
             new EventBooking.Application.Invites.RecoveryAttempt(

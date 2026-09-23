@@ -205,17 +205,26 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
             .Include(g => g.Requirements)
             .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
+            Guid.NewGuid(),
+            "Alex Morgan",
+            $"alex-{Guid.NewGuid():N}@example.com",
+            group,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
-            attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
         invite.MarkUsed();
-        attendee.MarkBooked();
+        attendee.MarkBooked(ProposalFixture.Now);
 
         context.AddRange(bookedEvent);
         context.AddRange(spareEvents);
@@ -242,8 +251,13 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var original = await context.Bookings.SingleAsync(b => b.Id == originalId);
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), attendeeId, originalId, $"recovery-{Guid.NewGuid():N}",
+            Guid.NewGuid(),
+            attendeeId,
+            originalId,
+            $"recovery-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(2),
+            ProposalFixture.LocationId,
+            null,
             [recoveryEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp]);
         var recovery = Booking.CreateRecovery(

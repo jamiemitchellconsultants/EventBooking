@@ -14,8 +14,14 @@ public sealed class InviteRequirementSnapshotTests
     public void InitialInviteSnapshotsRequirements()
     {
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), Guid.NewGuid(), "hash", DateTimeOffset.UtcNow.AddDays(1), Options,
-            [AppointmentTypeIds.UniformFitting, AppointmentTypeIds.DrugAndAlcoholTesting], 0);
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hash",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            Options,
+            [AppointmentTypeIds.UniformFitting, AppointmentTypeIds.DrugAndAlcoholTesting],
+            0);
 
         Assert.Null(invite.RecoveryOfBookingId);
         Assert.Equal(
@@ -29,7 +35,14 @@ public sealed class InviteRequirementSnapshotTests
     {
         var root = Guid.NewGuid();
         var invite = Invite.CreateRecovery(
-            Guid.NewGuid(), Guid.NewGuid(), root, "hash", DateTimeOffset.UtcNow.AddDays(1), Options,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            root,
+            "hash",
+            DateTimeOffset.UtcNow.AddDays(1),
+            ProposalFixture.LocationId,
+            null,
+            Options,
             [AppointmentTypeIds.MedicalCheckUp]);
 
         invite.CancelRecovery();
@@ -44,8 +57,14 @@ public sealed class InviteRequirementSnapshotTests
     public void InvalidSnapshotsCannotBeCreated(Guid[] snapshot)
     {
         Assert.Throws<DomainException>(() => Invite.CreateInitial(
-            Guid.NewGuid(), Guid.NewGuid(), "hash", DateTimeOffset.UtcNow.AddDays(1), Options,
-            snapshot, 0));
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hash",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            Options,
+            snapshot,
+            0));
     }
 
     /// <summary>Provides every invalid snapshot shape.</summary>

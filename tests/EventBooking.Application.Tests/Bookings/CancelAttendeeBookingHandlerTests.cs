@@ -92,7 +92,7 @@ public class CancelAttendeeBookingHandlerTests
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
         _attendees.Add(_attendee);
 
         _booked = AddEvent(10);
@@ -103,17 +103,22 @@ public class CancelAttendeeBookingHandlerTests
         var inviteId = Guid.NewGuid();
         var issued = _tokens.Issue(inviteId);
         var invite = Invite.CreateInitial(
-            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
+            inviteId,
+            _attendee.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [_booked.Id, _events.Items[1].Id, _events.Items[2].Id],
-            _attendee.RequiredAppointmentTypeIds, 0);
+            _attendee.RequiredAppointmentTypeIds,
+            0);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
 
         _bookingId = Guid.NewGuid();
         var manage = _tokens.Issue(_bookingId);
         _bookings.Add(Booking.Create(_bookingId, invite, _booked.Id, manage.TokenHash, _clock.UtcNow));
         invite.MarkUsed();
-        _attendee.MarkBooked();
+        _attendee.MarkBooked(ProposalFixture.Now);
 
         foreach (var typeId in _attendee.RequiredAppointmentTypeIds)
         {
@@ -169,8 +174,13 @@ public class CancelAttendeeBookingHandlerTests
     public async Task CancellingAnOriginalSupersedesItsPendingRecoveryInvite()
     {
         var pendingRecovery = Invite.CreateRecovery(
-            Guid.NewGuid(), _attendee.Id, _bookingId, "hash-recovery-pending",
+            Guid.NewGuid(),
+            _attendee.Id,
+            _bookingId,
+            "hash-recovery-pending",
             _clock.UtcNow.AddDays(4),
+            ProposalFixture.LocationId,
+            null,
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(pendingRecovery);
@@ -323,8 +333,13 @@ public class CancelAttendeeBookingHandlerTests
         var recoveryInviteId = Guid.NewGuid();
         var issued = _tokens.Issue(recoveryInviteId);
         var recoveryInvite = Invite.CreateRecovery(
-            recoveryInviteId, _attendee.Id, original.Id, issued.TokenHash,
+            recoveryInviteId,
+            _attendee.Id,
+            original.Id,
+            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            ProposalFixture.LocationId,
+            null,
             [_events.Items[1].Id, _events.Items[2].Id, _events.Items[3].Id],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recoveryInvite);

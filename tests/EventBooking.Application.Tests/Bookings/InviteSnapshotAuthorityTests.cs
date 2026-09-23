@@ -19,7 +19,7 @@ public sealed class InviteSnapshotAuthorityTests
         var group = AttendeeGroup.Define(
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
-        var attendee = Attendee.Create(Guid.NewGuid(), "Amara", "amara@example.com", group);
+        var attendee = Attendee.Create(Guid.NewGuid(), "Amara", "amara@example.com", group, ProposalFixture.Now);
         var attendees = new InMemoryAttendeeRepository();
         attendees.Add(attendee);
         var events = new InMemoryEventRepository();
@@ -36,8 +36,14 @@ public sealed class InviteSnapshotAuthorityTests
         var tokens = new FakeTokenService();
         var issued = tokens.Issue(Guid.NewGuid());
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, issued.TokenHash, DateTimeOffset.Parse("2026-10-01T00:00:00Z"),
-            options.Select(eventItem => eventItem.Id), [AppointmentTypeIds.MedicalCheckUp], 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            issued.TokenHash,
+            DateTimeOffset.Parse("2026-10-01T00:00:00Z"),
+            [ProposalFixture.LocationId],
+            options.Select(eventItem => eventItem.Id),
+            [AppointmentTypeIds.MedicalCheckUp],
+            0);
         var invites = new InMemoryInviteRepository();
         invites.Add(invite);
         var clock = new FakeClock(DateTimeOffset.Parse("2026-09-20T00:00:00Z"));

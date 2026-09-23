@@ -258,8 +258,9 @@ public class TransactionLockTests(PostgresFixture fixture)
             Guid.NewGuid(),
             "Amara Novak",
             "amara@example.com",
-            pilots);
-        attendee.MarkInvited();
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
 
         const string inviteTokenHash = "invite-token-hash";
         const string manageTokenHash = "manage-token-hash";
@@ -268,6 +269,7 @@ public class TransactionLockTests(PostgresFixture fixture)
             attendee.Id,
             inviteTokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             events.Select(s => s.Id),
             attendee.RequiredAppointmentTypeIds,
             retryCount: 0);
@@ -279,7 +281,7 @@ public class TransactionLockTests(PostgresFixture fixture)
                 Guid.NewGuid(), invite, events[0].Id, manageTokenHash, DateTimeOffset.UtcNow);
             events[0].CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             invite.MarkUsed();
-            attendee.MarkBooked();
+            attendee.MarkBooked(ProposalFixture.Now);
         }
 
         await using var write = fixture.NewContext();

@@ -8,6 +8,28 @@ namespace EventBooking.Domain.Attendees;
 /// <summary>A person invited to attend appointments, whose requirements derive from one attendee group.</summary>
 public sealed class Attendee
 {
+    /// <summary>
+    /// Every legal move, one entry per row of design 01's table. Anything absent is a defect
+    /// (decision D15), so the set is the rule rather than a comment beside it.
+    /// </summary>
+    private static readonly HashSet<(AttendeeStatus From, AttendeeStatus To)> Legal =
+    [
+        (AttendeeStatus.NotYetInvited, AttendeeStatus.Invited),
+        (AttendeeStatus.NotYetInvited, AttendeeStatus.AwaitingAvailability),
+        (AttendeeStatus.AwaitingAvailability, AttendeeStatus.Invited),
+        (AttendeeStatus.AwaitingAvailability, AttendeeStatus.NotYetInvited),
+        (AttendeeStatus.Invited, AttendeeStatus.Invited),
+        (AttendeeStatus.Invited, AttendeeStatus.Booked),
+        (AttendeeStatus.Invited, AttendeeStatus.NoResponseNeedsFollowUp),
+        (AttendeeStatus.Invited, AttendeeStatus.NotYetInvited),
+        (AttendeeStatus.NoResponseNeedsFollowUp, AttendeeStatus.Invited),
+        (AttendeeStatus.NoResponseNeedsFollowUp, AttendeeStatus.AwaitingAvailability),
+        (AttendeeStatus.NoResponseNeedsFollowUp, AttendeeStatus.NotYetInvited),
+        (AttendeeStatus.Booked, AttendeeStatus.Invited),
+        (AttendeeStatus.Booked, AttendeeStatus.AwaitingAvailability),
+        (AttendeeStatus.Booked, AttendeeStatus.NotYetInvited),
+    ];
+
     private readonly List<AttendeeRequirement> _requirements = [];
 
     private Attendee()
@@ -32,6 +54,9 @@ public sealed class Attendee
     /// <summary>Gets where the attendee sits in the invite and booking lifecycle.</summary>
     public AttendeeStatus Status { get; private set; } = AttendeeStatus.NotYetInvited;
 
+    /// <summary>Gets when the status was last written. Stamped on creation and on every change.</summary>
+    public DateTimeOffset StatusChangedAt { get; private set; }
+
     /// <summary>Gets the materialized appointment types the attendee currently requires.</summary>
     public IReadOnlyList<AttendeeRequirement> Requirements => _requirements;
 
@@ -44,7 +69,9 @@ public sealed class Attendee
     /// <param name="name">The name.</param>
     /// <param name="email">The email.</param>
     /// <param name="attendeeGroup">The attendee group.</param>
-    public static Attendee Create(Guid id, string? name, string? email, AttendeeGroup attendeeGroup)
+    /// <param name="now">The instant the initial status is stamped with.</param>
+    public static Attendee Create(
+        Guid id, string? name, string? email, AttendeeGroup attendeeGroup, DateTimeOffset now)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
 
@@ -54,6 +81,7 @@ public sealed class Attendee
             Name = Guard.NotBlank(name, "name"),
             Email = NormaliseEmail(email),
             Status = AttendeeStatus.NotYetInvited,
+            StatusChangedAt = now,
         };
 
         attendee.AssignAttendeeGroup(attendeeGroup);
@@ -106,58 +134,61 @@ public sealed class Attendee
         return true;
     }
 
-    /// <summary>Moves the attendee to Invited from a pre-booking lifecycle state.</summary>
-    public void MarkInvited() => TransitionTo(
-        AttendeeStatus.Invited,
-        AttendeeStatus.NotYetInvited,
-        AttendeeStatus.AwaitingAvailability,
-        AttendeeStatus.Invited,
-        AttendeeStatus.NoResponseNeedsFollowUp);
+    /// <summary>Whether design 01's table lists this move. Pure, so a caller can ask before acting.</summary>
+    /// <param name="from">The current status.</param>
+    /// <param name="to">The wanted status.</param>
+    public static bool IsLegalTransition(AttendeeStatus from, AttendeeStatus to) =>
+        Legal.Contains((from, to));
 
-    /// <summary>Moves the attendee to AwaitingAvailability from a pre-booking lifecycle state.</summary>
-    public void MarkAwaitingAvailability() => TransitionTo(
-        AttendeeStatus.AwaitingAvailability,
-        AttendeeStatus.NotYetInvited,
-        AttendeeStatus.AwaitingAvailability,
-        AttendeeStatus.Invited,
-        AttendeeStatus.NoResponseNeedsFollowUp);
+    /// <summary>Moves the attendee to Invited, from any status the table allows.</summary>
+    /// <param name="now">The instant to stamp.</param>
+    public void MarkInvited(DateTimeOffset now) => TransitionTo(AttendeeStatus.Invited, now);
+
+    /// <summary>Moves the attendee to AwaitingAvailability, from any status the table allows.</summary>
+    /// <param name="now">The instant to stamp.</param>
+    public void MarkAwaitingAvailability(DateTimeOffset now) =>
+        TransitionTo(AttendeeStatus.AwaitingAvailability, now);
 
     /// <summary>Moves an invited attendee to Booked.</summary>
-    public void MarkBooked() => TransitionTo(AttendeeStatus.Booked, AttendeeStatus.Invited);
+    /// <param name="now">The instant to stamp.</param>
+    public void MarkBooked(DateTimeOffset now) => TransitionTo(AttendeeStatus.Booked, now);
 
     /// <summary>Moves an invited attendee to NoResponseNeedsFollowUp.</summary>
-    public void MarkNoResponse() => TransitionTo(
-        AttendeeStatus.NoResponseNeedsFollowUp,
-        AttendeeStatus.Invited);
+    /// <param name="now">The instant to stamp.</param>
+    public void MarkNoResponse(DateTimeOffset now) =>
+        TransitionTo(AttendeeStatus.NoResponseNeedsFollowUp, now);
 
-    /// <summary>Returns an invited or booked attendee to NotYetInvited.</summary>
-    public void ResetToNotYetInvited() => TransitionTo(
-        AttendeeStatus.NotYetInvited,
-        AttendeeStatus.Invited,
-        AttendeeStatus.Booked);
+    /// <summary>Returns the attendee to NotYetInvited, which the table allows from anywhere.</summary>
+    /// <param name="now">The instant to stamp.</param>
+    public void ResetToNotYetInvited(DateTimeOffset now) =>
+        TransitionTo(AttendeeStatus.NotYetInvited, now);
 
     /// <summary>Resets an unbooked Attendee after a derived requirement-set change.</summary>
-    public void ResetAfterRequirementChange()
+    /// <param name="now">The instant to stamp.</param>
+    public void ResetAfterRequirementChange(DateTimeOffset now)
     {
         if (Status is AttendeeStatus.NotYetInvited)
         {
             return;
         }
 
-        TransitionTo(
-            AttendeeStatus.NotYetInvited,
-            AttendeeStatus.AwaitingAvailability,
-            AttendeeStatus.NoResponseNeedsFollowUp,
-            AttendeeStatus.Invited);
+        // The table allows Booked to NotYetInvited, but only when the attendee themselves cancels.
+        // A group reassignment must not silently discard a booking, so it is refused here.
+        Guard.Against(
+            Status == AttendeeStatus.Booked,
+            $"A attendee cannot move from {Status} to {AttendeeStatus.NotYetInvited}.");
+
+        TransitionTo(AttendeeStatus.NotYetInvited, now);
     }
 
-    private void TransitionTo(AttendeeStatus target, params AttendeeStatus[] allowedOrigins)
+    private void TransitionTo(AttendeeStatus target, DateTimeOffset now)
     {
         Guard.Against(
-            !allowedOrigins.Contains(Status),
+            !IsLegalTransition(Status, target),
             $"A attendee cannot move from {Status} to {target}.");
 
         Status = target;
+        StatusChangedAt = now;
     }
 
     private static string NormaliseEmail(string? email)

@@ -168,19 +168,24 @@ public class EventEndpointTests(ApiFactory factory)
             .Include(g => g.Requirements)
             .SingleAsync(g => g.Id == AttendeeGroupIds.Pilots);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "S. Booked", $"s.booked.{Guid.NewGuid():N}@mail.com", pilots);
+            Guid.NewGuid(),
+            "S. Booked",
+            $"s.booked.{Guid.NewGuid():N}@mail.com",
+            pilots,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
             $"hash-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, eventId, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
-        attendee.MarkInvited();
-        attendee.MarkBooked();
+        attendee.MarkInvited(ProposalFixture.Now);
+        attendee.MarkBooked(ProposalFixture.Now);
 
         // Mirrors ConfirmBookingHandler: one appointment per required type, each holding a place.
         var eventItem = await context.Events

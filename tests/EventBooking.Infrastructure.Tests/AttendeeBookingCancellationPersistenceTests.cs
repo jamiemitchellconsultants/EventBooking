@@ -87,8 +87,14 @@ public sealed class AttendeeBookingCancellationPersistenceTests(PostgresFixture 
     {
         var eventId = Guid.NewGuid();
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendeeId, $"initial-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddDays(1),
-            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+            Guid.NewGuid(),
+            attendeeId,
+            $"initial-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventId, Guid.NewGuid(), Guid.NewGuid()],
+            [AppointmentTypeIds.MedicalCheckUp],
+            0);
         return Booking.Create(
             Guid.NewGuid(), invite, eventId, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
     }
@@ -97,9 +103,15 @@ public sealed class AttendeeBookingCancellationPersistenceTests(PostgresFixture 
     {
         var eventId = Guid.NewGuid();
         var invite = Invite.CreateRecovery(
-            Guid.NewGuid(), attendeeId, original.Id, $"recovery-{Guid.NewGuid():N}",
+            Guid.NewGuid(),
+            attendeeId,
+            original.Id,
+            $"recovery-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(2),
-            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            ProposalFixture.LocationId,
+            null,
+            [eventId, Guid.NewGuid(), Guid.NewGuid()],
+            [AppointmentTypeIds.MedicalCheckUp]);
         return Booking.CreateRecovery(
             Guid.NewGuid(), invite, original, eventId, $"manage-recovery-{Guid.NewGuid():N}", createdAt);
     }

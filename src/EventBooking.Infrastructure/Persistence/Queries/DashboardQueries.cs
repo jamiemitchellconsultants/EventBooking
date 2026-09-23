@@ -182,7 +182,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 attendee.Id,
                 attendee.Name,
                 attendee.Email,
-                EF.Property<DateTimeOffset>(attendee, StatusStampingInterceptor.ShadowProperty),
+                attendee.StatusChangedAt,
                 attendee.Requirements.Select(requirement => requirement.AppointmentTypeId).ToList()));
 
     private sealed record AttendeeRow(

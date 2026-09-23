@@ -49,7 +49,11 @@ public class RepositoryTests(PostgresFixture fixture)
         {
             var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+                Guid.NewGuid(),
+                "Amara Novak",
+                "a.novak@mail.com",
+                pilots,
+                ProposalFixture.Now);
             write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
         }

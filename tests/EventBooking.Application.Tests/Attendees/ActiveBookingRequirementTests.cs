@@ -87,7 +87,8 @@ public sealed class ActiveBookingRequirementTests
             Guid.NewGuid(),
             "Amara Novak",
             "amara@example.com",
-            CabinCrew);
+            CabinCrew,
+            ProposalFixture.Now);
         attendees.Add(attendee);
         var bookings = new InMemoryBookingRepository();
         bookings.Add(NewBooking(attendee));
@@ -100,6 +101,7 @@ public sealed class ActiveBookingRequirementTests
                 bookings,
                 new StaffAccessAuthorizer(profiles),
                 new RecordingAuditLogger(),
+                new FakeClock(),
                 new FakeUnitOfWork()),
             attendee,
             coordinator);
@@ -113,6 +115,7 @@ public sealed class ActiveBookingRequirementTests
             attendee.Id,
             "invite-token-hash",
             DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);

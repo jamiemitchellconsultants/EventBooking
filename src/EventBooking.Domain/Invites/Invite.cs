@@ -9,6 +9,13 @@ public sealed class Invite
     /// <summary>Gets the number of event options every invite offers.</summary>
     public const int RequiredOptionCount = 3;
 
+    /// <summary>The fewest locations an invite may be restricted to (design 08).</summary>
+    public const int MinimumLocationCount = 1;
+
+    /// <summary>The most locations an invite may be restricted to (design 08).</summary>
+    public const int MaximumLocationCount = 50;
+
+    private readonly List<InviteLocation> _locations = [];
     private readonly List<InviteOption> _options = [];
     private readonly List<InviteRequirement> _requirements = [];
 
@@ -39,6 +46,13 @@ public sealed class Invite
     /// <summary>Gets how many retries preceded this invite.</summary>
     public int RetryCount { get; private set; }
 
+    /// <summary>Gets the locations every offer on this invite is drawn from.</summary>
+    public IReadOnlyList<InviteLocation> Locations => _locations;
+
+    /// <summary>Gets the selected location identifiers in stable order.</summary>
+    public IReadOnlyList<Guid> LocationIds =>
+        _locations.Select(l => l.LocationId).ToList();
+
     /// <summary>Gets the offered event options.</summary>
     public IReadOnlyList<InviteOption> Options => _options;
 
@@ -65,6 +79,7 @@ public sealed class Invite
     /// <param name="attendeeId">The attendee id.</param>
     /// <param name="tokenHash">The token hash.</param>
     /// <param name="expiresAt">The expires at.</param>
+    /// <param name="locationIds">The locations the Coordinator selected; 1 to 50, no duplicates.</param>
     /// <param name="eventIds">The event ids.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
     /// <param name="retryCount">The retry count.</param>
@@ -73,10 +88,44 @@ public sealed class Invite
         Guid attendeeId,
         string? tokenHash,
         DateTimeOffset expiresAt,
+        IEnumerable<Guid> locationIds,
         IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
         int retryCount) =>
-        Create(id, attendeeId, null, tokenHash, expiresAt, eventIds, appointmentTypeIds, retryCount);
+        Create(
+            id, attendeeId, null, tokenHash, expiresAt,
+            DistinctLocations(locationIds), eventIds, appointmentTypeIds, retryCount);
+
+    /// <summary>
+    /// Issues the next invite of the same journey, on the same locations. Expiry re-issue, top-up
+    /// and event cancellation all go through here, so none of them can quietly widen the set the
+    /// Coordinator chose.
+    /// </summary>
+    /// <param name="id">The new invite's id.</param>
+    /// <param name="originating">The invite being replaced.</param>
+    /// <param name="tokenHash">The new token hash.</param>
+    /// <param name="expiresAt">When the new invite stops being usable.</param>
+    /// <param name="eventIds">The freshly chosen event options.</param>
+    public static Invite Reissue(
+        Guid id,
+        Invite originating,
+        string? tokenHash,
+        DateTimeOffset expiresAt,
+        IEnumerable<Guid> eventIds)
+    {
+        ArgumentNullException.ThrowIfNull(originating);
+
+        return Create(
+            id,
+            originating.AttendeeId,
+            originating.RecoveryOfBookingId,
+            tokenHash,
+            expiresAt,
+            originating.LocationIds,
+            eventIds,
+            originating.RequiredAppointmentTypeIds,
+            originating.RetryCount + 1);
+    }
 
     /// <summary>Creates a recovery invite snapshotting only recoverable no-show types.</summary>
     /// <param name="id">The id.</param>
@@ -84,6 +133,8 @@ public sealed class Invite
     /// <param name="recoveryOfBookingId">The recovery of booking id.</param>
     /// <param name="tokenHash">The token hash.</param>
     /// <param name="expiresAt">The expires at.</param>
+    /// <param name="originalLocationId">The location of the booking being recovered.</param>
+    /// <param name="additionalLocationIds">Further locations the Coordinator opened up, or null.</param>
     /// <param name="eventIds">The event ids.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
     public static Invite CreateRecovery(
@@ -92,13 +143,28 @@ public sealed class Invite
         Guid recoveryOfBookingId,
         string? tokenHash,
         DateTimeOffset expiresAt,
+        Guid originalLocationId,
+        IEnumerable<Guid>? additionalLocationIds,
         IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds)
     {
         Guard.Against(recoveryOfBookingId == Guid.Empty, "recoveryOfBookingId must not be empty.");
+        Guard.Against(originalLocationId == Guid.Empty, "originalLocationId must not be empty.");
+
+        // The attendee already travelled to the original booking's location, so it is always
+        // offered. Anything the Coordinator adds joins it; a repeat of it is not an error.
+        var locations = new List<Guid> { originalLocationId };
+        foreach (var locationId in additionalLocationIds ?? [])
+        {
+            if (!locations.Contains(locationId))
+            {
+                locations.Add(locationId);
+            }
+        }
+
         return Create(
             id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt,
-            eventIds, appointmentTypeIds, 0);
+            Bounded(locations), eventIds, appointmentTypeIds, 0);
     }
 
     /// <summary>Determines whether the invite can still be used at the supplied instant.</summary>
@@ -159,15 +225,16 @@ public sealed class Invite
         Guid? recoveryOfBookingId,
         string? tokenHash,
         DateTimeOffset expiresAt,
+        IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
         int retryCount)
     {
-        var invite = CreateCore(id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt, eventIds, retryCount);
+        var invite = CreateCore(
+            id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt, locationIds, eventIds, retryCount);
 
         var snapshot = appointmentTypeIds.ToList();
         Guard.Against(snapshot.Count == 0, "An invite must snapshot at least one appointment type.");
-        Guard.Against(snapshot.Count > 3, "An invite cannot snapshot more than three appointment types.");
         Guard.Against(
             snapshot.Distinct().Count() != snapshot.Count,
             "An invite cannot snapshot the same appointment type twice.");
@@ -191,6 +258,7 @@ public sealed class Invite
         Guid? recoveryOfBookingId,
         string? tokenHash,
         DateTimeOffset expiresAt,
+        IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
         int retryCount)
     {
@@ -216,12 +284,44 @@ public sealed class Invite
             RetryCount = Guard.NotNegative(retryCount, "retryCount"),
         };
 
+        foreach (var locationId in locationIds)
+        {
+            invite._locations.Add(InviteLocation.For(id, locationId));
+        }
+
         foreach (var eventId in eventIds)
         {
             invite._options.Add(InviteOption.For(id, eventId));
         }
 
         return invite;
+    }
+
+    private static IReadOnlyList<Guid> DistinctLocations(IEnumerable<Guid> locationIds)
+    {
+        ArgumentNullException.ThrowIfNull(locationIds);
+
+        var chosen = locationIds.ToList();
+        Guard.Against(
+            chosen.Distinct().Count() != chosen.Count,
+            "An invite cannot be restricted to the same location twice.");
+
+        return Bounded(chosen);
+    }
+
+    private static IReadOnlyList<Guid> Bounded(IReadOnlyList<Guid> locationIds)
+    {
+        Guard.Against(
+            locationIds.Count < MinimumLocationCount,
+            "An invite must be restricted to at least one location.");
+        Guard.Against(
+            locationIds.Count > MaximumLocationCount,
+            $"An invite cannot be restricted to more than {MaximumLocationCount} locations.");
+        Guard.Against(
+            locationIds.Any(locationId => locationId == Guid.Empty),
+            "A location id must not be empty.");
+
+        return locationIds;
     }
 
     private void TransitionFromPendingTo(InviteStatus target)

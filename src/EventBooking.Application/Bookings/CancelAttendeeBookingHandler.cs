@@ -192,7 +192,7 @@ public sealed class CancelAttendeeBookingHandler(
                     return Result<CancelBookingOutcome>.Failure(released.Error);
                 }
 
-                attendee.ResetToNotYetInvited();
+                attendee.ResetToNotYetInvited(clock.UtcNow);
 
                 if (command.Rebook)
                 {

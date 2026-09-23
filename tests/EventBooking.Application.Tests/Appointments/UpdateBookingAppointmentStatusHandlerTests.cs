@@ -267,8 +267,13 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             BookingAppointmentStatus.NoShow, scenario.StaffUserId,
             new DateTimeOffset(2026, 9, 7, 9, 5, 0, TimeSpan.Zero), false, true);
         scenario.Invites.Add(Invite.CreateRecovery(
-            Guid.NewGuid(), scenario.Attendee.Id, scenario.Booking.Id, "pending-recovery",
+            Guid.NewGuid(),
+            scenario.Attendee.Id,
+            scenario.Booking.Id,
+            "pending-recovery",
             new DateTimeOffset(2026, 9, 9, 9, 0, 0, TimeSpan.Zero),
+            ProposalFixture.LocationId,
+            null,
             [scenario.Event.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]));
 
@@ -372,8 +377,13 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         DateTimeOffset recoveryCreatedAt)
     {
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), scenario.Attendee.Id, scenario.Booking.Id, $"recovery-{Guid.NewGuid():N}",
+            Guid.NewGuid(),
+            scenario.Attendee.Id,
+            scenario.Booking.Id,
+            $"recovery-{Guid.NewGuid():N}",
             recoveryCreatedAt.AddDays(2),
+            ProposalFixture.LocationId,
+            null,
             [scenario.Event.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         scenario.Invites.Add(recoveryInvite);
@@ -402,7 +412,11 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         profiles.Add(StaffAccessProfile.Create(
             staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "amara@example.com", DatOnly());
+            Guid.NewGuid(),
+            "Amara Novak",
+            "amara@example.com",
+            DatOnly(),
+            ProposalFixture.Now);
         var operations = new TransactionOperationLog();
         var attendees = new InMemoryAttendeeRepository(operations);
         attendees.Add(attendee);
@@ -413,8 +427,14 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         var events = new InMemoryEventRepository(operations);
         events.Add(eventItem);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
-            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            "invite-token",
+            now.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(

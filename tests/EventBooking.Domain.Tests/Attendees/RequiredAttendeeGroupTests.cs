@@ -8,7 +8,7 @@ public sealed class RequiredAttendeeGroupTests
     public void Creation_without_a_group_is_refused()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            Attendee.Create(Guid.NewGuid(), "Demo attendee", "demo@example.test", null!));
+            Attendee.Create(Guid.NewGuid(), "Demo attendee", "demo@example.test", null!, ProposalFixture.Now));
     }
 
     [Fact]

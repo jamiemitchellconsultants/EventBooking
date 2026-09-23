@@ -190,17 +190,26 @@ public class EventCancellationConcurrencyTests
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
             Groups.Items.Add(pilots);
             BookedAttendee = Attendee.Create(
-                Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+                Guid.NewGuid(),
+                "Amara Novak",
+                "a.novak@mail.com",
+                pilots,
+                ProposalFixture.Now);
             Attendees.Add(BookedAttendee);
 
             var bookingInviteId = Guid.NewGuid();
             var bookingInviteToken = Tokens.Issue(bookingInviteId);
             var bookingInvite = Invite.CreateInitial(
-                bookingInviteId, BookedAttendee.Id, bookingInviteToken.TokenHash, Clock.UtcNow.AddDays(4),
+                bookingInviteId,
+                BookedAttendee.Id,
+                bookingInviteToken.TokenHash,
+                Clock.UtcNow.AddDays(4),
+                [ProposalFixture.LocationId],
                 [Event.Id, Events.Items[1].Id, Events.Items[2].Id],
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+                0);
             Invites.Add(bookingInvite);
-            BookedAttendee.MarkInvited();
+            BookedAttendee.MarkInvited(ProposalFixture.Now);
 
             var bookingId = Guid.NewGuid();
             var issuedManageToken = Tokens.Issue(bookingId);
@@ -208,7 +217,7 @@ public class EventCancellationConcurrencyTests
             Bookings.Add(Booking.Create(
                 bookingId, bookingInvite, Event.Id, issuedManageToken.TokenHash, Clock.UtcNow));
             bookingInvite.MarkUsed();
-            BookedAttendee.MarkBooked();
+            BookedAttendee.MarkBooked(ProposalFixture.Now);
             Event.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             Appointments.Add(BookingAppointment.Create(
                 Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
@@ -217,10 +226,13 @@ public class EventCancellationConcurrencyTests
                 Guid.NewGuid(), bookingId, AppointmentTypeIds.UniformFitting));
 
             var confirmingAttendee = Attendee.Create(
-                Guid.NewGuid(), "B. Chen", "b.chen@mail.com",
+                Guid.NewGuid(),
+                "B. Chen",
+                "b.chen@mail.com",
                 AttendeeGroup.Define(
                     Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
-                    [AppointmentTypeIds.DrugAndAlcoholTesting]));
+                    [AppointmentTypeIds.DrugAndAlcoholTesting]),
+                ProposalFixture.Now);
             Attendees.Add(confirmingAttendee);
 
             var confirmationInviteId = Guid.NewGuid();
@@ -231,10 +243,12 @@ public class EventCancellationConcurrencyTests
                 confirmingAttendee.Id,
                 issuedConfirmationToken.TokenHash,
                 Clock.UtcNow.AddDays(4),
+                [ProposalFixture.LocationId],
                 [Event.Id, Events.Items[1].Id, Events.Items[2].Id],
-                [AppointmentTypeIds.DrugAndAlcoholTesting], 0);
+                [AppointmentTypeIds.DrugAndAlcoholTesting],
+                0);
             Invites.Add(confirmationInvite);
-            confirmingAttendee.MarkInvited();
+            confirmingAttendee.MarkInvited(ProposalFixture.Now);
         }
 
         private Event AddEvent(int day)
