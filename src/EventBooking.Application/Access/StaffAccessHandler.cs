@@ -62,12 +62,14 @@ public sealed record StaffAccessMutationView(
 /// <param name="access">The access.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="audit">The audit.</param>
+/// <param name="staffIdPolicy">The configured staff-number validation expression.</param>
 public sealed class StaffAccessHandler(
     IStaffAccessProfileRepository profiles,
     IStaffIdentityRepository identities,
     IStaffAccessAuthorizer access,
     IUnitOfWork unitOfWork,
-    IAuditLogger audit)
+    IAuditLogger audit,
+    StaffIdPolicy? staffIdPolicy = null)
 {
     /// <summary>Defines list async for the current use case.</summary>
     /// <param name="actorStaffUserId">The actor staff user id.</param>
@@ -111,7 +113,7 @@ public sealed class StaffAccessHandler(
             return Result<Guid>.Failure(authorized.Error);
         }
 
-        if (!StaffId.TryParse(staffIdText, out var staffId))
+        if (!StaffId.TryParse(staffIdText, out var staffId, staffIdPolicy?.Pattern ?? StaffId.DefaultPattern))
         {
             return Result<Guid>.Failure(Error.Validation("Enter a valid staff number."));
         }

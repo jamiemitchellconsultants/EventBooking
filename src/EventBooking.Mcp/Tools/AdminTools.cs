@@ -166,15 +166,10 @@ public sealed class AdminTools
 
         if (hasStaffId)
         {
-            if (!StaffId.TryParse(staffId, out var parsedStaffId))
-            {
-                throw new McpException("Enter a valid staff number.");
-            }
-
             var resolved = await handler.ResolveIdentityAsync(
                 actorStaffUserId, staffId!, cancellationToken);
             return new ResolvedStaffTarget(
-                resolved.ValueOrThrow(), parsedStaffId!.Value);
+                resolved.ValueOrThrow(), staffId!.Trim().ToUpperInvariant());
         }
 
         var profiles = (await handler.ListAsync(actorStaffUserId, cancellationToken)).ValueOrThrow();

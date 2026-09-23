@@ -12,16 +12,16 @@ public sealed class StaffIdentityConfiguration : IEntityTypeConfiguration<StaffI
     {
         builder.ToTable("staff_identity", table => table.HasCheckConstraint(
             "ck_staff_identity_format",
-            "staff_id ~* '^[UN][0-9]{6}$'"));
+            "char_length(staff_id) BETWEEN 1 AND 32 AND staff_id = btrim(staff_id)"));
 
         builder.HasKey(identity => identity.StaffUserId);
         builder.Property(identity => identity.StaffUserId)
             .HasColumnName("staff_user_id")
             .ValueGeneratedNever();
         builder.Property(identity => identity.StaffId)
-            .HasConversion(staffId => staffId.Value, value => new StaffId(value))
+            .HasConversion(staffId => staffId.Value, value => StaffId.FromPersisted(value))
             .HasColumnName("staff_id")
-            .HasColumnType("character(7)")
+            .HasColumnType("character varying(32)")
             .IsRequired();
         builder.Property(identity => identity.LastSeenAt)
             .HasColumnName("last_seen_at")

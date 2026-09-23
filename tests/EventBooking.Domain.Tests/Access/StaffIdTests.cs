@@ -12,6 +12,12 @@ public sealed class StaffIdTests
     [InlineData("N999999", "N999999")]
     [InlineData("u123456", "U123456")]
     [InlineData("n654321", "N654321")]
+    [InlineData(" U123456", "U123456")]
+    [InlineData("U123456 ", "U123456")]
+    [InlineData("X123456", "X123456")]
+    [InlineData("U12345", "U12345")]
+    [InlineData("U1234567", "U1234567")]
+    [InlineData("U12345A", "U12345A")]
     public void ValidValuesAreCanonicalised(string input, string expected)
     {
         var staffId = new StaffId(input);
@@ -24,12 +30,10 @@ public sealed class StaffIdTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData(" U123456")]
-    [InlineData("U123456 ")]
-    [InlineData("X123456")]
-    [InlineData("U12345")]
-    [InlineData("U1234567")]
-    [InlineData("U12345A")]
+    [InlineData(" ")]
+    [InlineData("bad-id")]
+    [InlineData("A A")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
     public void InvalidValuesCannotBeConstructed(string? input)
     {
         Assert.Throws<DomainException>(() => new StaffId(input!));

@@ -30,7 +30,7 @@ public sealed class StaffIdentityRecorderTests(ApiFactory factory)
     /// <summary>Verifies invalid identity data neither records a row nor blocks authenticated-only APIs.</summary>
     [Theory]
     [InlineData(null)]
-    [InlineData("X123456")]
+    [InlineData("invalid staff id")]
     public async Task MissingOrMalformedClaimIsNotRecordedButMeRemainsReachable(string? claim)
     {
         var staffUserId = Guid.NewGuid();

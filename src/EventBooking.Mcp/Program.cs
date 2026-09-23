@@ -23,7 +23,8 @@ var smtpPort = int.TryParse(builder.Configuration["Email:Smtp:Port"], out var po
 
 builder.Services.AddLocalEmailTransport(email, new SmtpOptions(smtpHost, smtpPort));
 
-builder.Services.AddEventBookingApplication(portal);
+builder.Services.AddEventBookingApplication(portal,
+    new EventBooking.Application.Access.StaffIdPolicy(builder.Configuration["Identity:StaffIdPattern"]));
 builder.Services.AddEventBookingAuthentication(builder.Configuration);
 
 builder.Services

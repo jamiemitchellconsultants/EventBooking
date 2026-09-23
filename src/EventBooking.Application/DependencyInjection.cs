@@ -17,11 +17,14 @@ public static class ApplicationServiceCollectionExtensions
     /// <summary>Defines add event booking application for the current use case.</summary>
     /// <param name="services">The services.</param>
     /// <param name="portal">The portal.</param>
+    /// <param name="staffIdPolicy">The deployment staff-number validation policy.</param>
     public static IServiceCollection AddEventBookingApplication(
         this IServiceCollection services,
-        AttendeePortalOptions portal)
+        AttendeePortalOptions portal,
+        StaffIdPolicy? staffIdPolicy = null)
     {
         services.AddSingleton(portal);
+        services.AddSingleton(staffIdPolicy ?? new StaffIdPolicy());
 
         // Shared services.
         services.AddScoped<EligibleEventFinder>();

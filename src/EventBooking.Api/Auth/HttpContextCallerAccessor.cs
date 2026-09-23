@@ -1,10 +1,11 @@
 using System.Security.Claims;
+using EventBooking.Application.Access;
 using EventBooking.Domain.Access;
 
 namespace EventBooking.Api.Auth;
 
 /// <summary>Reads provider and enterprise staff identifiers from authenticated HTTP claims.</summary>
-public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILogger<HttpContextCallerAccessor> logger) : ICallerAccessor
+public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILogger<HttpContextCallerAccessor> logger, StaffIdPolicy? staffIdPolicy = null) : ICallerAccessor
 {
     /// <summary>The claim type a v1 Entra ID token uses.</summary>
     public const string ObjectIdClaim = "http://schemas.microsoft.com/identity/claims/objectidentifier";
@@ -25,7 +26,7 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
     public Guid? StaffUserId => StaffUserIdOf(accessor.HttpContext?.User);
 
     /// <summary>Gets the validated enterprise staff number from the current principal.</summary>
-    public StaffId? StaffId => StaffIdOf(accessor.HttpContext?.User);
+    public StaffId? StaffId => StaffIdOf(accessor.HttpContext?.User, staffIdPolicy?.Pattern ?? EventBooking.Domain.Access.StaffId.DefaultPattern);
 
     /// <summary>Gets the human-readable name from the current authenticated principal.</summary>
     public string? DisplayName => DisplayNameOf(accessor.HttpContext?.User);
@@ -71,7 +72,7 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
     /// <summary>Reads and validates a staff number only from an authenticated identity.</summary>
     /// <param name="principal">The request principal.</param>
     /// <returns>The canonical staff number, or null when absent or malformed.</returns>
-    public static StaffId? StaffIdOf(ClaimsPrincipal? principal)
+    public static StaffId? StaffIdOf(ClaimsPrincipal? principal, string pattern = EventBooking.Domain.Access.StaffId.DefaultPattern)
     {
         foreach (var identity in principal?.Identities ?? [])
         {
@@ -80,7 +81,7 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
                 continue;
             }
 
-            if (StaffId.TryParse(identity.FindFirst(StaffIdClaim)?.Value, out var staffId))
+            if (StaffId.TryParse(identity.FindFirst(StaffIdClaim)?.Value, out var staffId, pattern))
             {
                 return staffId;
             }

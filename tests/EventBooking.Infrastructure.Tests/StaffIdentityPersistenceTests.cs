@@ -71,7 +71,7 @@ public sealed class StaffIdentityPersistenceTests(PostgresFixture fixture)
         var invalid = await Assert.ThrowsAsync<PostgresException>(async () =>
         {
             await using var command = connection.CreateCommand();
-            command.CommandText = "INSERT INTO staff_identity (staff_user_id, staff_id, last_seen_at) VALUES (@user, 'X123456', now())";
+            command.CommandText = "INSERT INTO staff_identity (staff_user_id, staff_id, last_seen_at) VALUES (@user, ' ', now())";
             command.Parameters.AddWithValue("user", Guid.NewGuid());
             await command.ExecuteNonQueryAsync();
         });

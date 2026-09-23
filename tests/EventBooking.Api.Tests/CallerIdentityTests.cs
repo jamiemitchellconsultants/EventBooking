@@ -21,7 +21,7 @@ public sealed class CallerIdentityTests
     /// <summary>Verifies absent and malformed claims are indistinguishable and non-throwing.</summary>
     [Theory]
     [InlineData(null)]
-    [InlineData("X123456")]
+    [InlineData("invalid staff id")]
     public void MissingOrMalformedClaimReturnsNull(string? claim)
     {
         var claims = claim is null ? [] : new[] { new Claim("staff_id", claim) };
