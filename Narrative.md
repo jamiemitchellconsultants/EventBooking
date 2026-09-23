@@ -24,6 +24,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [14](#entry-add-phase-6-seed-and-deployment-plans) | 2026-09-23 | Add Phase 6 seed and deployment plans | product | Add LAB as a sixth active, managed appointment type and keep live events and proposals on MED, FIT, IND, and LAB. Keep ESC active but unmanaged and DOC inactive. |
 | [15](#entry-docs-phase-7-verification-and-documentation-for-review) | 2026-09-23 | docs: Phase 7 verification and documentation for review | product | Measure capacity-lock hold time through an Application observer implemented by the API metrics service, and render cumulative histogram buckets so the release test can assert the under-50-ms p95 target. |
 | [16](#entry-phase-0-port-and-strip-tasks-1-2-3a-3d) | 2026-09-23 | Phase 0: port and strip (Tasks 1, 2, 3a-3d) | product | This pull request takes decisions D5, D6, D8, D9 and D11 into effect in code. D5: port the predecessor solution and generalise it here. D6: drop bulk event import, which contradicts negotiation-only event creation. |
+| [17](#entry-phase-1-generalise-the-domain) | 2026-09-23 | Phase 1: generalise the domain | product | Generalise the domain first and prove it with domain tests, before any persistence or API work. |
 
 ---
 
@@ -697,3 +698,41 @@ The repository now builds and runs with no cloud dependencies and no provider-sp
 ---
 
 AI-Fingerprint: sha256:d458d77954b4
+
+---
+
+<a id="entry-phase-1-generalise-the-domain"></a>
+
+## Entry 17 — 2026-09-23 — Phase 1: generalise the domain
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+The ported predecessor assumed three fixed appointment types, one site, one four-hour window shape
+and a lifecycle whose illegal transitions were unstated. Every later phase — persistence, handlers,
+API, screens — reads those assumptions, so they have to go before anything is built on top of them.
+
+## Decision
+
+Generalise the domain first and prove it with domain tests, before any persistence or API work.
+An `EventProposal` lists 1 to 20 appointment types and is judged by the proposing type rather than
+the person (D2); an `Invite` is restricted to the `Location`s the Coordinator chose (D4); and the
+`AttendeeStatus` transitions become a closed table that refuses anything design 01 does not list
+(D15). Reference data becomes Admin-managed and `inviteOptionCount` becomes stored state (D3, D7).
+Two rules move inward to the aggregate that owns them: a headcount adjustment reports the minimum
+it would accept rather than throwing, and the attendee status stamp leaves an infrastructure
+interceptor for the `Attendee` itself.
+
+## Consequences
+
+The domain no longer names three types, one site or one window length, and Phase 2 can write a
+fresh schema against it. Scaffolding survives on purpose and is scheduled: the single-zone clock
+and the transitional-location constant retire in Phase 3, the inherited migration chain and the
+stored book-token hash in Task 9, and `inviteOptionCount` becomes editable in Task 12. The charge
+and release methods Task 7 adds are not yet called by the booking handlers; Task 10's ordered-lock
+helpers are where they are adopted.
+
+---
+
+AI-Fingerprint: sha256:5d39b88e6a16
