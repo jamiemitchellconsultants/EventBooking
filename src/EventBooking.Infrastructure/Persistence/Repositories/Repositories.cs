@@ -4,6 +4,7 @@ using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Invites;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
 using EventBooking.Domain.Events;
@@ -21,6 +22,38 @@ public sealed class AppointmentTypeRepository(EventBookingDbContext context) : I
 
     public Task<AppointmentType?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         context.AppointmentTypes.SingleOrDefaultAsync(t => t.Id == id, cancellationToken);
+
+    public Task<AppointmentType?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        var normalized = code.Trim().ToUpperInvariant();
+        return context.AppointmentTypes.SingleOrDefaultAsync(
+            t => t.Code == normalized, cancellationToken);
+    }
+
+    public void Add(AppointmentType type) => context.AppointmentTypes.Add(type);
+}
+
+/// <summary>Persists Admin-managed locations.</summary>
+/// <param name="context">The context to read and write through.</param>
+public sealed class LocationRepository(EventBookingDbContext context) : ILocationRepository
+{
+    /// <summary>Gets a location by identifier, including inactive rows.</summary>
+    public Task<Location?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        context.Locations.SingleOrDefaultAsync(l => l.Id == id, cancellationToken);
+
+    /// <summary>Gets a location from a trimmed case-insensitive canonical-code input.</summary>
+    public Task<Location?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        var normalized = code.Trim().ToUpperInvariant();
+        return context.Locations.SingleOrDefaultAsync(
+            l => l.Code == normalized, cancellationToken);
+    }
+
+    /// <summary>Lists every location, inactive included, ordered by display name.</summary>
+    public async Task<IReadOnlyList<Location>> ListAsync(CancellationToken cancellationToken) =>
+        await context.Locations.OrderBy(l => l.Name).ToListAsync(cancellationToken);
+
+    public void Add(Location location) => context.Locations.Add(location);
 }
 
 public sealed class SystemSettingsRepository(EventBookingDbContext context) : ISystemSettingsRepository
@@ -239,6 +272,10 @@ public sealed class AttendeeRepository(EventBookingDbContext context, RowLocks r
     public void Add(Attendee attendee) => context.Attendees.Add(attendee);
 
     public void Remove(Attendee attendee) => context.Attendees.Remove(attendee);
+
+    public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(
+        Guid groupId, CancellationToken cancellationToken) =>
+        rowLocks.LockAttendeesByGroupAsync(groupId, cancellationToken);
 }
 
 /// <summary>Persists invite rows and their option collections, including lifecycle locks.</summary>

@@ -36,20 +36,22 @@ public sealed class AdminTools
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A confirmation message.</returns>
     [McpServerTool(Name = "update_settings", Title = "Update settings", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Update the invite expiry window and the invite re-issue limit. Caller must be an admin; overwrites both settings.")]
-    public async Task<string> UpdateSettingsAsync(
+    [Description("Update the invite expiry window, the re-issue limit and the number of options per invite. Caller must be an admin; overwrites all three.")]
+    public async Task<SystemSettingsResult> UpdateSettingsAsync(
         ICallerAccessor caller,
         AdminSettingsHandler handler,
         [Description("Invite expiry window in days.")] int inviteExpiryDays,
         [Description("Maximum number of times an unanswered invite is automatically re-issued.")] int maxAutoRetryCount,
+        [Description("How many event options each invite offers, 1 to 5.")] int inviteOptionCount,
+        [Description("The version last read, for optimistic concurrency.")] long expectedVersion,
         CancellationToken cancellationToken)
     {
-        var result = await handler.UpdateAsync(
-            new UpdateSettingsCommand(
-                caller.RequireStaffUserId(), inviteExpiryDays, maxAutoRetryCount),
+        var result = await handler.SaveAsync(
+            new SaveSystemSettingsCommand(
+                caller.RequireStaffUserId(), inviteExpiryDays, maxAutoRetryCount,
+                inviteOptionCount, expectedVersion),
             cancellationToken);
-        result.ThrowIfFailure();
-        return "Settings updated.";
+        return result.ValueOrThrow();
     }
 
     /// <summary>Lists every staff access profile.</summary>

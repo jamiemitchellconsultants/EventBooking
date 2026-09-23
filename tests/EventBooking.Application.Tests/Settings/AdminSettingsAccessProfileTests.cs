@@ -23,7 +23,8 @@ public class AdminSettingsAccessProfileTests
             profiles,
             new InMemoryStaffIdentityRepository(),
             new StaffAccessAuthorizer(profiles),
-            new FakeUnitOfWork());
+            new FakeUnitOfWork(),
+            new RecordingAuditLogger());
 
         var result = await handler.GetAsync(admin, CancellationToken.None);
 
@@ -54,7 +55,8 @@ public class AdminSettingsAccessProfileTests
             profiles,
             identities,
             new StaffAccessAuthorizer(profiles),
-            new FakeUnitOfWork());
+            new FakeUnitOfWork(),
+            new RecordingAuditLogger());
 
         var result = await handler.GetAsync(admin, CancellationToken.None);
 
@@ -84,7 +86,8 @@ public class AdminSettingsAccessProfileTests
             profiles,
             identities,
             new StaffAccessAuthorizer(profiles),
-            new FakeUnitOfWork());
+            new FakeUnitOfWork(),
+            new RecordingAuditLogger());
 
         var result = await handler.GetAsync(admin, CancellationToken.None);
 

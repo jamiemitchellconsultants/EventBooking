@@ -622,6 +622,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 _inner.GetByEmailAsync(email, cancellationToken);
 
             /// <inheritdoc />
+            public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken) =>
+                _inner.LockByGroupForUpdateAsync(groupId, cancellationToken);
+
+            /// <inheritdoc />
             public Task<IReadOnlyList<Attendee>> ListAsync(
                 AttendeeStatus? status,
                 CancellationToken cancellationToken) =>

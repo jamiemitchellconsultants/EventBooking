@@ -386,6 +386,9 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
             inner.GetByEmailAsync(email, cancellationToken);
 
+        public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken) =>
+            inner.LockByGroupForUpdateAsync(groupId, cancellationToken);
+
         public Task<IReadOnlyList<Attendee>> ListAsync(
             AttendeeStatus? status,
             CancellationToken cancellationToken) =>

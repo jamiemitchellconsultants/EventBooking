@@ -36,4 +36,12 @@ public interface IAttendeeRepository
     /// <summary>Provides remove within this contract.</summary>
     /// <param name="attendee">The attendee.</param>
     void Remove(Attendee attendee);
+
+    /// <summary>
+    /// Takes every member's lifecycle lock in ascending id order and returns the members
+    /// ordered by id. The group-requirement replacement calls this first.
+    /// </summary>
+    /// <param name="groupId">The group id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken);
 }

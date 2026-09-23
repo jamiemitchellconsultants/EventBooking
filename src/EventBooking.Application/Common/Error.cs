@@ -3,7 +3,8 @@ namespace EventBooking.Application.Common;
 /// <summary>A machine-readable code plus text safe to show a user.</summary>
 /// <param name="Code">The code.</param>
 /// <param name="Message">The message.</param>
-public sealed record Error(string Code, string Message)
+/// <param name="Data">Machine-readable refusal detail, keyed by field.</param>
+public sealed record Error(string Code, string Message, IReadOnlyDictionary<string, long>? Data = null)
 {
     /// <summary>Identifies a stale booking-appointment version conflict.</summary>
     public const string AppointmentVersionConflictCode = "appointment_version_conflict";
@@ -71,4 +72,31 @@ public sealed record Error(string Code, string Message)
     /// <param name="message">The message.</param>
     public static Error RecoveryStateChanged(string message) =>
         new(RecoveryStateChangedCode, message);
+
+    /// <summary>Identifies reference data that live use keeps from changing.</summary>
+    public const string ReferenceDataInUseCode = "in-use";
+
+    /// <summary>Creates a refusal carrying its blocking counts.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="blocking">Each kind of live use, with its count.</param>
+    public static Error ReferenceDataInUse(string message, IReadOnlyDictionary<string, int> blocking) =>
+        new(ReferenceDataInUseCode, message, blocking.ToDictionary(kv => kv.Key, kv => (long)kv.Value));
+
+    /// <summary>Identifies a group change blocked by members holding active bookings.</summary>
+    public const string RequirementsLockedCode = "requirements-locked";
+
+    /// <summary>Creates a group change refused by booked members.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="blockingMembers">How many members hold an active booking.</param>
+    public static Error RequirementsLocked(string message, int blockingMembers) =>
+        new(RequirementsLockedCode, message, new Dictionary<string, long> { ["blockingMembers"] = blockingMembers });
+
+    /// <summary>Identifies a write against a stale optimistic-concurrency version.</summary>
+    public const string VersionConflictCode = "version-conflict";
+
+    /// <summary>Creates a stale-version refusal carrying the current version.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="currentVersion">The version the row carries now.</param>
+    public static Error VersionConflict(string message, long currentVersion) =>
+        new(VersionConflictCode, message, new Dictionary<string, long> { ["currentVersion"] = currentVersion });
 }

@@ -9,7 +9,11 @@ namespace EventBooking.Api.Endpoints;
 
 public static class AdminEndpoints
 {
-    public sealed record UpdateSettingsRequest(int InviteExpiryDays, int MaxAutoRetryCount);
+    public sealed record UpdateSettingsRequest(
+        int InviteExpiryDays,
+        int MaxAutoRetryCount,
+        int InviteOptionCount,
+        long ExpectedVersion);
 
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
@@ -36,11 +40,29 @@ public static class AdminEndpoints
             ICallerAccessor caller,
             AdminSettingsHandler handler,
             CancellationToken cancellationToken) =>
-            (await handler.UpdateAsync(
-                new UpdateSettingsCommand(
-                    caller.RequireStaffUserId(), request.InviteExpiryDays, request.MaxAutoRetryCount),
-                cancellationToken))
-                .ToResponse())
+        {
+            var result = await handler.SaveAsync(
+                new SaveSystemSettingsCommand(
+                    caller.RequireStaffUserId(),
+                    request.InviteExpiryDays,
+                    request.MaxAutoRetryCount,
+                    request.InviteOptionCount,
+                    request.ExpectedVersion),
+                cancellationToken);
+
+            // The versioned result is projected, not swallowed: the settings page needs the new
+            // version to send with its next save, and a caller that never sees it can only ever
+            // collide on the second one.
+            return result.IsSuccess
+                ? Results.Ok(new
+                {
+                    inviteExpiryDays = result.Value.InviteExpiryDays,
+                    maxAutoRetryCount = result.Value.MaxAutoRetryCount,
+                    inviteOptionCount = result.Value.InviteOptionCount,
+                    version = result.Value.Version,
+                })
+                : result.ToResponse();
+        })
             .WithAgentMetadata("updateSettings")
             .Produces(200)
             .ProducesProblem(400)

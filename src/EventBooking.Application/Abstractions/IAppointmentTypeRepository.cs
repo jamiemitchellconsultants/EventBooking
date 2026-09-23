@@ -13,4 +13,13 @@ public interface IAppointmentTypeRepository
     /// <param name="id">The id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<AppointmentType?> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>Gets a type from a trimmed case-insensitive canonical-code input.</summary>
+    /// <param name="code">The code.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<AppointmentType?> GetByCodeAsync(string code, CancellationToken cancellationToken);
+
+    /// <summary>Stages a new appointment type for the next save.</summary>
+    /// <param name="type">The type.</param>
+    void Add(AppointmentType type);
 }

@@ -29,4 +29,14 @@ public sealed class AttendeeGroupRepository(EventBookingDbContext context) : IAt
             .Where(group => group.IsActive && group.Requirements.Any())
             .OrderBy(group => group.Name)
             .ToListAsync(cancellationToken);
+
+    /// <summary>Lists every group, inactive included, ordered by display name.</summary>
+    public async Task<IReadOnlyList<AttendeeGroup>> ListAsync(CancellationToken cancellationToken) =>
+        await context.AttendeeGroups
+            .Include(group => group.Requirements)
+            .OrderBy(group => group.Name)
+            .ToListAsync(cancellationToken);
+
+    /// <summary>Stages a new attendee group for the next save.</summary>
+    public void Add(AttendeeGroup group) => context.AttendeeGroups.Add(group);
 }

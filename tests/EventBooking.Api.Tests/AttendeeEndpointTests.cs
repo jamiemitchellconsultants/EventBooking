@@ -79,8 +79,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var updated = await client.PutAsJsonAsync(
-            "/api/admin/settings", new { InviteExpiryDays = 7, MaxAutoRetryCount = 1 });
-        Assert.Equal(HttpStatusCode.NoContent, updated.StatusCode);
+            "/api/admin/settings",
+            new { InviteExpiryDays = 7, MaxAutoRetryCount = 1, InviteOptionCount = 3, ExpectedVersion = 1 });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
 
         var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
         Assert.Equal(7, settings!.InviteExpiryDays);

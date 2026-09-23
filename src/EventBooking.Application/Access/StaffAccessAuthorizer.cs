@@ -105,6 +105,7 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
         return capability switch
         {
             StaffCapability.ManageSettings => isAdmin,
+            StaffCapability.ManageReferenceData => isAdmin,
             StaffCapability.ManageStaffAccess => isAdmin,
             StaffCapability.ManageAttendees => isCoordinator,
             StaffCapability.ViewAttendeeDashboards => isCoordinator,

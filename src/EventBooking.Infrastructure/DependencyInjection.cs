@@ -1,4 +1,5 @@
 using EventBooking.Application.Abstractions;
+using EventBooking.Application.ReferenceData;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Email;
@@ -33,6 +34,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<RowLocks>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
+        services.AddScoped<ILocationRepository, LocationRepository>();
+        services.AddScoped<IReferenceDataBlockingQueries, ReferenceDataBlockingQueries>();
         services.AddScoped<ISystemSettingsRepository, SystemSettingsRepository>();
         services.AddScoped<IEventProposalRepository, EventProposalRepository>();
         services.AddScoped<IEventRepository, EventRepository>();

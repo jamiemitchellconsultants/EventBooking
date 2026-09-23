@@ -111,6 +111,12 @@ public class AdminAttendeeDataIsolationTests
             return Task.FromResult<Attendee?>(null);
         }
 
+        public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult<IReadOnlyList<Attendee>>([]);
+        }
+
         public Task<IReadOnlyList<Attendee>> ListAsync(
             AttendeeStatus? status,
             CancellationToken cancellationToken)

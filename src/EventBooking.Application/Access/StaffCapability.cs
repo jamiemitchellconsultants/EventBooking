@@ -23,4 +23,6 @@ public enum StaffCapability
     CancelEvent,
     /// <summary>Defines contract for the current use case.</summary>
     ConductAppointments,
+    /// <summary>Manages locations, appointment types and attendee groups; Admin-only.</summary>
+    ManageReferenceData,
 }

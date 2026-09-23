@@ -22,6 +22,9 @@ public sealed class InviteConfiguration : IEntityTypeConfiguration<Invite>
         builder.Property(i => i.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(i => i.RetryCount).HasColumnName("retry_count");
         builder.Property(i => i.RecoveryOfBookingId).HasColumnName("recovery_of_booking_id");
+        builder.Property(i => i.InviteExpiryDays).HasColumnName("invite_expiry_days");
+        builder.Property(i => i.MaxAutoRetryCount).HasColumnName("max_auto_retry_count");
+        builder.Property(i => i.InviteOptionCount).HasColumnName("invite_option_count");
 
         builder.Ignore(i => i.OfferedEventIds);
         builder.Ignore(i => i.RequiredAppointmentTypeIds);

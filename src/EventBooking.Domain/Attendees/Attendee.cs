@@ -113,11 +113,6 @@ public sealed class Attendee
 
         Guard.Against(mapping.Count == 0, "An attendee group must map at least one appointment type.");
 
-        foreach (var appointmentTypeId in mapping)
-        {
-            AppointmentTypeIds.EnsureKnown(appointmentTypeId);
-        }
-
         AttendeeGroupId = attendeeGroup.Id;
 
         if (_requirements.Select(r => r.AppointmentTypeId).Order().SequenceEqual(mapping.Order()))
