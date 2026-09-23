@@ -101,6 +101,21 @@ public sealed class ConfirmBookingHandler(
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.Validation("The chosen event is not one of this invite's options."));
 
+        // A recovery invite confirms into a recovery booking, never a second original:
+        // without this branch every recovery confirm would die on the active-original
+        // backstop. The root is locked here, between the invite and the event, so a
+        // concurrent cancellation of the root serializes against this confirmation.
+        Booking? root = null;
+        if (invite.RecoveryOfBookingId is { } rootId)
+        {
+            root = await bookings.LockForUpdateAsync(rootId, ct);
+            if (root is null || !root.IsOriginal || root.AttendeeId != attendee.Id)
+                return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such booking."));
+            if (root.Status != BookingStatus.Active)
+                return Result<ConfirmBookingOutcome>.Failure(
+                    Error.Conflict("The original booking is no longer active."));
+        }
+
         var eventItem = await events.LockForUpdateAsync(command.EventId, ct);
         if (eventItem is null)
             return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such event."));
@@ -125,7 +140,9 @@ public sealed class ConfirmBookingHandler(
             return Result<ConfirmBookingOutcome>.Failure(Error.CapacityExhausted(ex.Message));
         }
 
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, clock.UtcNow);
+        var booking = root is null
+            ? Booking.Create(Guid.NewGuid(), invite, eventItem.Id, clock.UtcNow)
+            : Booking.CreateRecovery(Guid.NewGuid(), invite, root, eventItem.Id, clock.UtcNow);
         bookings.Add(booking);
         foreach (var typeId in required)
             appointments.Add(BookingAppointment.Create(Guid.NewGuid(), booking.Id, typeId));

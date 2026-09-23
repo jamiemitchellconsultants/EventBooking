@@ -277,7 +277,12 @@ public class AttendeesClientTests
         var typeId = Guid.NewGuid();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new { inviteId, appointmentTypeIds = new[] { typeId }, emailSent = true }),
+            Content = JsonContent.Create(new
+            {
+                recoveryInviteId = inviteId,
+                locationIds = new[] { Guid.NewGuid() },
+                recoverableTypeIds = new[] { typeId },
+            }),
         };
 
         var outcome = await client.StartRecoveryAsync(attendeeId, CancellationToken.None);
@@ -286,9 +291,8 @@ public class AttendeesClientTests
         Assert.Equal(
             $"/api/attendees/{attendeeId}/recovery-invites",
             handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Equal(inviteId, outcome.Value!.InviteId);
-        Assert.Equal([typeId], outcome.Value.AppointmentTypeIds);
-        Assert.True(outcome.Value.EmailSent);
+        Assert.Equal(inviteId, outcome.Value!.RecoveryInviteId);
+        Assert.Equal([typeId], outcome.Value.RecoverableTypeIds);
     }
 
     [Fact]

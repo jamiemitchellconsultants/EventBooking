@@ -41,13 +41,13 @@ public sealed record EmailRetryDto(string DeliveryStatus, Guid DeliveryId);
 public sealed record OutstandingAppointmentTypeDto(string Code, string Name, bool IsRecoverable);
 
 /// <summary>Durable delivery outcome for one started recovery invite.</summary>
-/// <param name="InviteId">The new recovery Invite identifier, or empty when awaiting availability.</param>
-/// <param name="AppointmentTypeIds">The recoverable snapshot offered, or awaiting availability.</param>
-/// <param name="EmailSent">Whether the post-commit provider attempt completed successfully.</param>
+/// <param name="RecoveryInviteId">The newly issued recovery invite identifier.</param>
+/// <param name="LocationIds">The locations the recovery invite covers.</param>
+/// <param name="RecoverableTypeIds">The recoverable snapshot the recovery invite offers.</param>
 public sealed record RecoveryInviteOutcomeDto(
-    Guid InviteId,
-    IReadOnlyList<Guid> AppointmentTypeIds,
-    bool EmailSent);
+    Guid RecoveryInviteId,
+    IReadOnlyList<Guid> LocationIds,
+    IReadOnlyList<Guid> RecoverableTypeIds);
 
 /// <summary>One active booking a coordinator may cancel; carries no management token.</summary>
 /// <param name="BookingId">The booking identifier used to target a cancellation.</param>

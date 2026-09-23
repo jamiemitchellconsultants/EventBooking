@@ -2,22 +2,19 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Appointments;
 using EventBooking.Application.Invites;
-using EventBooking.Application.Notifications;
+using EventBooking.Application.Recovery;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Queries;
 using EventBooking.Infrastructure.Persistence.Repositories;
-using EventBooking.Infrastructure.Tokens;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EventBooking.Infrastructure.Tests;
 
@@ -193,41 +190,32 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 CancellationToken.None);
         }
 
-        async Task<EventBooking.Application.Common.Result<StartRecoveryResult>> IssueAsync()
+        async Task<EventBooking.Application.Common.Result<StartRecoveryOutcome>> IssueAsync()
         {
             await using var context = fixture.NewContext();
             var clock = new FixedClock(now);
-            var unitOfWork = new UnitOfWork(context);
-            var audit = new EfAuditLogger(context, clock);
-            var tokens = new HmacTokenService(
-                new TokenOptions("a-correction-race-signing-key-long-enough"));
-            var events = new EventRepository(context);
-            var deliveries = new EmailDeliveryService(
-                new EmailDeliveryRepository(context), new SilentSender(), unitOfWork, clock,
-                NullLogger<EmailDeliveryService>.Instance);
-            var issuer = new LegacyInviteIssuer(
+            var eligibility = new EventEligibilityQuery(context);
+            var issuer = new InviteIssuer(
                 new InviteRepository(context),
-                new AttendeeGroupRepository(context),
-                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 new SystemSettingsRepository(context),
-                tokens,
-                deliveries,
-                audit,
+                new EmailDeliveryRepository(context),
+                new EfAuditLogger(context, clock),
                 clock,
-                new AttendeePortalOptions(
-                    "https://booking.example.com", "recruitment@example.com"));
+                eligibility);
             var handler = new StartRecoveryHandler(
                 new AttendeeRepository(context),
-                new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
-                new InviteRepository(context),
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
-                issuer,
-                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
-                deliveries,
-                unitOfWork);
+                new InviteRepository(context),
+                new LocationRepository(context),
+                new SystemSettingsRepository(context),
+                new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
+                new UnitOfWork(context),
+                clock,
+                eligibility,
+                issuer);
             return await handler.HandleAsync(
-                new StartRecoveryCommand(coordinator, attendeeId), CancellationToken.None);
+                new StartRecoveryCommand(coordinator, attendeeId, []), CancellationToken.None);
         }
     }
 
@@ -297,44 +285,35 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 CancellationToken.None);
         }
 
-        async Task<EventBooking.Application.Common.Result<StartRecoveryResult>> IssueAsync(
+        async Task<EventBooking.Application.Common.Result<StartRecoveryOutcome>> IssueAsync(
             EventBookingDbContext context,
             DateTimeOffset at,
             Guid staff,
             Guid attendee)
         {
             var clock = new FixedClock(at);
-            var unitOfWork = new UnitOfWork(context);
-            var audit = new EfAuditLogger(context, clock);
-            var tokens = new HmacTokenService(
-                new TokenOptions("a-correction-race-signing-key-long-enough"));
-            var events = new EventRepository(context);
-            var deliveries = new EmailDeliveryService(
-                new EmailDeliveryRepository(context), new SilentSender(), unitOfWork, clock,
-                NullLogger<EmailDeliveryService>.Instance);
-            var issuer = new LegacyInviteIssuer(
+            var eligibility = new EventEligibilityQuery(context);
+            var issuer = new InviteIssuer(
                 new InviteRepository(context),
-                new AttendeeGroupRepository(context),
-                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 new SystemSettingsRepository(context),
-                tokens,
-                deliveries,
-                audit,
+                new EmailDeliveryRepository(context),
+                new EfAuditLogger(context, clock),
                 clock,
-                new AttendeePortalOptions(
-                    "https://booking.example.com", "recruitment@example.com"));
+                eligibility);
             var handler = new StartRecoveryHandler(
                 new AttendeeRepository(context),
-                new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
-                new InviteRepository(context),
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
-                issuer,
-                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
-                deliveries,
-                unitOfWork);
+                new InviteRepository(context),
+                new LocationRepository(context),
+                new SystemSettingsRepository(context),
+                new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
+                new UnitOfWork(context),
+                clock,
+                eligibility,
+                issuer);
             return await handler.HandleAsync(
-                new StartRecoveryCommand(staff, attendee), CancellationToken.None);
+                new StartRecoveryCommand(staff, attendee, []), CancellationToken.None);
         }
     }
 
@@ -394,6 +373,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                     AppointmentTypeIds.All.ToDictionary(value => value, _ => 10)));
             }
 
+            seed.Invites.Add(invite);
             seed.Bookings.Add(booking);
             seed.BookingAppointments.Add(appointment);
             seed.AttendeeGroups.Add(group);
@@ -401,12 +381,6 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         }
 
         return (attendeeId, appointmentId);
-    }
-
-    private sealed class SilentSender : IEmailSender
-    {
-        public Task<bool> SendAsync(EmailMessage message, CancellationToken cancellationToken) =>
-            Task.FromResult(true);
     }
 
     private sealed class FixedClock(DateTimeOffset now)

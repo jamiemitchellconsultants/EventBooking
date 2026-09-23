@@ -6,6 +6,7 @@ using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
+using EventBooking.Application.Recovery;
 using EventBooking.Domain.Attendees;
 using ModelContextProtocol.Server;
 
@@ -295,18 +296,22 @@ public sealed class AttendeeTools
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The recovery handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="locationIds">Further locations the coordinator opens up.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The recovery invite issue result.</returns>
     [McpServerTool(Name = "start_recovery_invite", Title = "Start recovery invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Start a recovery invite for a attendee with a missed appointment. Caller must have ManageAttendees; sends a recovery invite email.")]
-    public async Task<StartRecoveryResult> StartRecoveryInviteAsync(
+    [Description("Start a recovery invite for a attendee with a missed appointment. Caller must have ManageAttendees; stages a recovery invite email.")]
+    public async Task<StartRecoveryOutcome> StartRecoveryInviteAsync(
         ICallerAccessor caller,
         StartRecoveryHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        CancellationToken cancellationToken)
+        [Description("Further locations the coordinator opens up.")] Guid[]? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new StartRecoveryCommand(caller.RequireStaffUserId(), attendeeId), cancellationToken);
+            new StartRecoveryCommand(
+                caller.RequireStaffUserId(), attendeeId, locationIds?.ToList() ?? []),
+            cancellationToken);
         return result.ValueOrThrow();
     }
 
@@ -327,7 +332,7 @@ public sealed class AttendeeTools
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), attendeeId, inviteId), cancellationToken);
+            new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), inviteId), cancellationToken);
         result.ThrowIfFailure();
         return "Recovery invite cancelled.";
     }

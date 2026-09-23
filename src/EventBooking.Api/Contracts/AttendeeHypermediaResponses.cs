@@ -41,12 +41,12 @@ public sealed record AttendeeResourceResponse(
 
 /// <summary>Coordinator-facing delivery outcome for one started recovery invite.</summary>
 public sealed record StartRecoveryResourceResponse(
-    /// <summary>Gets the new recovery Invite identifier, or empty when awaiting availability.</summary>
-    Guid InviteId,
-    /// <summary>Gets the recoverable snapshot offered, or awaiting availability.</summary>
-    IReadOnlyList<Guid> AppointmentTypeIds,
-    /// <summary>Gets whether the post-commit provider attempt completed successfully.</summary>
-    bool EmailSent,
+    /// <summary>Gets the newly issued recovery invite identifier.</summary>
+    Guid RecoveryInviteId,
+    /// <summary>Gets the locations the recovery invite covers.</summary>
+    IReadOnlyList<Guid> LocationIds,
+    /// <summary>Gets the recoverable snapshot the recovery invite offers.</summary>
+    IReadOnlyList<Guid> RecoverableTypeIds,
     /// <summary>Gets the safe follow-up operations for the recovery invite.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 

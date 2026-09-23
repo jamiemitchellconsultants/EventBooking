@@ -677,17 +677,9 @@
             }
 
             var result = outcome.Value;
-            var scope = DescribeRecoveryScope(recoverableNames, result.AppointmentTypeIds.Count);
-            if (result.InviteId == Guid.Empty)
-            {
-                _recoveryOutcomes[attendeeId] = $"No appointments are available yet for {scope}.";
-                return;
-            }
-
-            _pendingRecoveryInvites[attendeeId] = result.InviteId;
-            _recoveryOutcomes[attendeeId] = result.EmailSent
-                ? $"Recovery started for {scope}. Email sent."
-                : $"Recovery started for {scope}, but the email could not be sent.";
+            var scope = DescribeRecoveryScope(recoverableNames, result.RecoverableTypeIds.Count);
+            _pendingRecoveryInvites[attendeeId] = result.RecoveryInviteId;
+            _recoveryOutcomes[attendeeId] = $"Recovery started for {scope}.";
         }
         catch (Exception)
         {

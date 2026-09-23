@@ -5,6 +5,7 @@ using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
+using EventBooking.Application.Recovery;
 using EventBooking.Application.Settings;
 using EventBooking.Application.Events;
 using EventBooking.Application.Negotiation;
@@ -31,7 +32,6 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<EligibleEventFinder>();
         services.AddScoped<EmailDeliveryService>();
         services.AddScoped<IInviteIssuer, InviteIssuer>();
-        services.AddScoped<LegacyInviteIssuer>();
         services.AddScoped<BookingCanceller>();
         services.AddScoped<IStaffAccessAuthorizer, StaffAccessAuthorizer>();
         services.AddScoped<StaffAccessHandler>();
@@ -69,6 +69,10 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<AppointmentRosterCsvFormatter>();
         services.AddScoped<RecoveryBookingOutcomeCoordinator>();
         services.AddScoped<UpdateBookingAppointmentStatusHandler>();
+        services.AddScoped<ListWorkspaceEventsHandler>();
+        services.AddScoped<GetWorkspaceRosterHandler>();
+        services.AddScoped<SetAppointmentStatusHandler>();
+        services.AddScoped<DownloadRosterHandler>();
 
         // Invites and bookings.
         services.AddScoped<InviteAttendeeHandler>();
@@ -77,6 +81,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<CountEligibleEventsHandler>();
         services.AddScoped<StartRecoveryHandler>();
         services.AddScoped<CancelRecoveryInviteHandler>();
+        services.AddScoped<ConcludeRecoveryHandler>();
         services.AddScoped<RetryEmailHandler>();
         services.AddScoped<ViewInviteHandler>();
         services.AddScoped<ViewBookingHandler>();

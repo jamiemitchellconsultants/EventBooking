@@ -43,7 +43,7 @@ public class AttendeeRecoveryComponentTests : BunitContext
             start: request =>
             {
                 requests.Add(request);
-                return OutcomeJson(inviteId, [Guid.NewGuid()], emailSent: true);
+                return OutcomeJson(inviteId, [Guid.NewGuid()]);
             },
             cancel: null);
 
@@ -53,7 +53,7 @@ public class AttendeeRecoveryComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
             Assert.Contains(
-                "Recovery started for 1 missed appointment: Medical Check-Up. Email sent.",
+                "Recovery started for 1 missed appointment: Medical Check-Up.",
                 cut.Find("span.recovery-outcome").TextContent));
         Assert.Equal(
             $"/api/attendees/{attendeeId}/recovery-invites",
@@ -72,7 +72,7 @@ public class AttendeeRecoveryComponentTests : BunitContext
                 ("MED", "Medical Check-Up", true),
                 ("UNI", "Uniform Fitting", true),
             ]),
-            start: _ => OutcomeJson(Guid.NewGuid(), [Guid.NewGuid(), Guid.NewGuid()], emailSent: true),
+            start: _ => OutcomeJson(Guid.NewGuid(), [Guid.NewGuid(), Guid.NewGuid()]),
             cancel: null);
 
         cut.Find("button.readiness-badge").Click();
@@ -81,51 +81,8 @@ public class AttendeeRecoveryComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
             Assert.Contains(
-                "Recovery started for 2 missed appointments: Medical Check-Up, Uniform Fitting. Email sent.",
+                "Recovery started for 2 missed appointments: Medical Check-Up, Uniform Fitting.",
                 cut.Find("span.recovery-outcome").TextContent));
-    }
-
-    [Fact]
-    public void OutcomeNamesTheFailedDelivery()
-    {
-        var attendeeId = Guid.NewGuid();
-        var cut = RenderAttendees(
-            attendeeId,
-            Outstanding("Appointments outstanding", [("MED", "Medical Check-Up", true)]),
-            start: _ => OutcomeJson(Guid.NewGuid(), [Guid.NewGuid()], emailSent: false),
-            cancel: null);
-
-        cut.Find("button.readiness-badge").Click();
-        cut.WaitForAssertion(() => FindButton(cut, "Arrange missed appointments"));
-        FindButton(cut, "Arrange missed appointments").Click();
-
-        cut.WaitForAssertion(() =>
-            Assert.Contains(
-                "Recovery started for 1 missed appointment: Medical Check-Up, but the email could not be sent.",
-                cut.Find("span.recovery-outcome").TextContent));
-    }
-
-    [Fact]
-    public void AwaitingAvailabilityKeepsTheAttendeeUnbooked()
-    {
-        var attendeeId = Guid.NewGuid();
-        var cut = RenderAttendees(
-            attendeeId,
-            Outstanding("Appointments outstanding", [("MED", "Medical Check-Up", true)]),
-            start: _ => OutcomeJson(Guid.Empty, [Guid.NewGuid()], emailSent: false),
-            cancel: null);
-
-        cut.Find("button.readiness-badge").Click();
-        cut.WaitForAssertion(() => FindButton(cut, "Arrange missed appointments"));
-        FindButton(cut, "Arrange missed appointments").Click();
-
-        cut.WaitForAssertion(() =>
-            Assert.Contains(
-                "No appointments are available yet for 1 missed appointment: Medical Check-Up.",
-                cut.Find("span.recovery-outcome").TextContent));
-        Assert.DoesNotContain(
-            cut.FindAll("button"),
-            button => button.TextContent.Trim() == "Cancel recovery");
     }
 
     [Fact]
@@ -162,7 +119,7 @@ public class AttendeeRecoveryComponentTests : BunitContext
         var cut = RenderAttendees(
             attendeeId,
             Outstanding("Appointments outstanding", [("MED", "Medical Check-Up", true)]),
-            start: _ => OutcomeJson(inviteId, [Guid.NewGuid()], emailSent: true),
+            start: _ => OutcomeJson(inviteId, [Guid.NewGuid()]),
             cancel: request =>
             {
                 deletes.Add(request);
@@ -257,8 +214,8 @@ public class AttendeeRecoveryComponentTests : BunitContext
         return Render<Attendees>();
     }
 
-    private static HttpResponseMessage OutcomeJson(Guid inviteId, Guid[] typeIds, bool emailSent) =>
-        Json(new { inviteId, appointmentTypeIds = typeIds, emailSent });
+    private static HttpResponseMessage OutcomeJson(Guid inviteId, Guid[] typeIds) =>
+        Json(new { recoveryInviteId = inviteId, locationIds = new[] { Guid.NewGuid() }, recoverableTypeIds = typeIds });
 
     private static HttpResponseMessage Json(object? value) =>
         new(HttpStatusCode.OK)

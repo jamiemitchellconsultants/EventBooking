@@ -6,6 +6,7 @@ using EventBooking.Application.Attendees;
 using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
+using EventBooking.Application.Recovery;
 using EventBooking.Domain.Attendees;
 using System.Text;
 
@@ -173,12 +174,14 @@ public static class AttendeeEndpoints
 
         group.MapPost("/{attendeeId:guid}/recovery-invites", async (
             Guid attendeeId,
+            Guid[]? locationIds,
             ICallerAccessor caller,
             StartRecoveryHandler handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
-                new StartRecoveryCommand(caller.RequireStaffUserId(), attendeeId),
+                new StartRecoveryCommand(
+                    caller.RequireStaffUserId(), attendeeId, locationIds?.ToList() ?? []),
                 cancellationToken);
             if (result.IsFailure)
             {
@@ -187,9 +190,9 @@ public static class AttendeeEndpoints
 
             var outcome = result.Value;
             return Results.Ok(new StartRecoveryResourceResponse(
-                outcome.InviteId,
-                outcome.AppointmentTypeIds,
-                outcome.EmailSent,
+                outcome.RecoveryInviteId,
+                outcome.LocationIds,
+                outcome.RecoverableTypeIds,
                 new Dictionary<string, ApiLink>()));
         })
             .WithAgentMetadata("startRecoveryInvite")
@@ -207,7 +210,7 @@ public static class AttendeeEndpoints
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
                 new CancelRecoveryInviteCommand(
-                     caller.RequireStaffUserId(), attendeeId, inviteId),
+                     caller.RequireStaffUserId(), inviteId),
                 cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("cancelRecoveryInvite")

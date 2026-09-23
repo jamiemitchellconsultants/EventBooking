@@ -29,6 +29,15 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
     public static Error AppointmentVersionConflict(string message) =>
         new(AppointmentVersionConflictCode, message);
 
+    /// <summary>Creates a version conflict carrying the current version for the stale page.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="currentVersion">The appointment version the writer must refresh to.</param>
+    public static Error AppointmentVersionConflict(string message, long currentVersion) =>
+        new(AppointmentVersionConflictCode, message, new Dictionary<string, long>
+        {
+            ["currentVersion"] = currentVersion,
+        });
+
     /// <summary>Identifies a group change that would alter an active Booking's requirements.</summary>
     public const string AttendeeGroupActiveBookingConflictCode = "attendee_group_active_booking_conflict";
 
@@ -152,6 +161,13 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
     /// <summary>Creates a confirmation-required refusal for transports that surface the two-step as one.</summary>
     /// <param name="message">The message.</param>
     public static Error ConfirmationRequired(string message) => new(ConfirmationRequiredCode, message);
+
+    /// <summary>Identifies a second recovery refused while one is already active.</summary>
+    public const string RecoveryActiveCode = "recovery-active";
+
+    /// <summary>Creates a second-recovery refusal.</summary>
+    /// <param name="message">The message.</param>
+    public static Error RecoveryActive(string message) => new(RecoveryActiveCode, message);
 
     /// <summary>Identifies a booking or cancellation refused because the window started.</summary>
     public const string WindowStartedCode = "window-started";
