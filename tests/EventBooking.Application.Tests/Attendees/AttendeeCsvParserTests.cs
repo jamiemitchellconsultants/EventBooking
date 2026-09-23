@@ -124,7 +124,7 @@ public class AttendeeCsvParserTests
     {
         var result = AttendeeCsvParser.Parse($"{Header}\nAmara Novak,a.novak@mail.com, ");
 
-        Assert.Equal("Employee group is required.", Assert.Single(result.Errors).Message);
+        Assert.Equal("Attendee group is required.", Assert.Single(result.Errors).Message);
     }
 
     [Fact]

@@ -105,6 +105,10 @@ try
         return 0;
     }
 
+    // Seed staff numbers must satisfy the same deployment policy the application enforces.
+    DemoSeedSpec.ConfigureStaffIdPattern(
+        Environment.GetEnvironmentVariable("Identity__StaffIdPattern"));
+
     var keycloakStep = new KeycloakSeedStep(
         Environment.GetEnvironmentVariable,
         static () => new HttpClient());

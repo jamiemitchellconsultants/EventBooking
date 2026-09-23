@@ -91,7 +91,7 @@ public static class AttendeeCsvParser
 
             if (groupCode.Length == 0)
             {
-                errors.Add(new AttendeeCsvError(lineNumber, "Employee group is required."));
+                errors.Add(new AttendeeCsvError(lineNumber, "Attendee group is required."));
                 continue;
             }
 

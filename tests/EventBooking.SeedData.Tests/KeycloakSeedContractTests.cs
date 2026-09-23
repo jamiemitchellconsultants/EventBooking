@@ -4,6 +4,7 @@ using EventBooking.SeedData;
 namespace EventBooking.SeedData.Tests;
 
 /// <summary>Verifies the canonical demo identity and opt-in Keycloak configuration contracts.</summary>
+[Collection("seed-anchor")]
 public sealed class KeycloakSeedContractTests
 {
     /// <summary>Verifies the database and provider seed share one identity record.</summary>

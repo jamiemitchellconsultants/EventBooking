@@ -38,7 +38,6 @@ workspace until they confirm a time.
 
 Staff sign in from the EventBooking home page with their company account.
 
-![Staff sign-in screen](screenshots/keycloak-sign-in.png)
 
 The home page greets you by name and shows the roles and Appointment Type scope in the signed-in
 access summary, followed by only the workspaces that profile permits. Once signed in, the same links

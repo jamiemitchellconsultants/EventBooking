@@ -265,7 +265,8 @@ public sealed class DemoSeeder(
                     [AppointmentTypeIds.DrugAndAlcoholTesting] = item.DatHeadcount,
                     [AppointmentTypeIds.MedicalCheckUp] = item.MedHeadcount,
                     [AppointmentTypeIds.UniformFitting] = item.UniHeadcount,
-                });
+                },
+                clock.UtcNow);
         }
         await unitOfWork.SaveChangesAsync(cancellationToken);
         Report($"Agreed events: created {missing.Count} with accepted proposals.");
@@ -380,7 +381,8 @@ public sealed class DemoSeeder(
             DemoEventFactory.Create(database,
                 id,
                 new EventWindow(date, start),
-                AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20));
+                AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20),
+                clock.UtcNow);
             added++;
             Report($"Journey event created: {date:yyyy-MM-dd} {start:HH\\:mm}.");
         }
@@ -411,7 +413,7 @@ public sealed class DemoSeeder(
 
             var group = await groups.GetByCodeAsync(spec.AttendeeGroupCode, cancellationToken)
                 ?? throw new SeedException(
-                    $"Employee group '{spec.AttendeeGroupCode}' for {spec.Email} is not seeded.");
+                    $"Attendee group '{spec.AttendeeGroupCode}' for {spec.Email} is not seeded.");
 
             var result = await saveAttendee.CreateAsync(
                 new CreateAttendeeCommand(

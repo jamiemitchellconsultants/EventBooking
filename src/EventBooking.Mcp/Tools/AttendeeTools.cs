@@ -243,7 +243,7 @@ public sealed class AttendeeTools
         if (group is null)
         {
             throw new ModelContextProtocol.McpException(
-                $"Employee group '{attendeeGroupCode}' is not known. Use list_attendee_groups.");
+                $"Attendee group '{attendeeGroupCode}' is not known. Use list_attendee_groups.");
         }
 
         return group.Id;

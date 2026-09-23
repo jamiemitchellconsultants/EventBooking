@@ -6,6 +6,7 @@ using EventBooking.SeedData;
 namespace EventBooking.SeedData.Tests;
 
 /// <summary>Verifies the demo AppointmentStaff identity and application profile stay aligned.</summary>
+[Collection("seed-anchor")]
 public sealed class AppointmentStaffDemoSeedTests
 {
     private static readonly Guid AppointmentStaffId =

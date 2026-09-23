@@ -6,6 +6,7 @@ namespace EventBooking.SeedData.Tests;
 /// <summary>
 /// Verifies the shape and relationships of the embedded demo dataset.
 /// </summary>
+[Collection("seed-anchor")]
 public sealed class DemoSeedSpecTests
 {
     /// <summary>

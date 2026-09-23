@@ -3,6 +3,7 @@ using EventBooking.SeedData;
 namespace EventBooking.SeedData.Tests;
 
 /// <summary>Verifies demo data explicitly assigns groups and covers readiness/recovery journeys.</summary>
+[Collection("seed-anchor")]
 public sealed class AttendeeGroupJourneySeedTests
 {
     /// <summary>Every group and every approved demo journey appears without requirement input.</summary>

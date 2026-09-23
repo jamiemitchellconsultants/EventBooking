@@ -24,10 +24,14 @@ public sealed class VocabularyToolTests(McpFactory factory)
         var data = body.TrimStart().StartsWith('{') ? body : body.Split('\n').Select(x => x.Trim())
             .Last(x => x.StartsWith("data: "))["data: ".Length..];
         using var json = JsonDocument.Parse(data);
-        var names = json.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
-            .Select(tool => tool.GetProperty("name").GetString()!).ToArray();
+        var tools = json.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
+        var names = tools.Select(tool => tool.GetProperty("name").GetString()!).ToArray();
         Assert.NotEmpty(names);
         string[] retired = ["candi" + "date", "slo" + "t", "employee" + "group", "head" + "office"];
         Assert.DoesNotContain(names, name => retired.Any(term => name.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        string[] retiredDisplay = ["employee " + "group", "head-" + "office", "head " + "office"];
+        Assert.DoesNotContain(tools,
+            tool => retired.Concat(retiredDisplay).Any(term =>
+                tool.GetRawText().Contains(term, StringComparison.OrdinalIgnoreCase)));
     }
 }

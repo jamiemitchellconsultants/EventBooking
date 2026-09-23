@@ -6,6 +6,7 @@ namespace EventBooking.SeedData.Tests;
 
 /// <summary>Verifies disabled seed modes cannot parse Keycloak settings or create HTTP transport,
 /// and that a --reseed run wires the realm delete-and-recreate step correctly.</summary>
+[Collection("seed-anchor")]
 public sealed class KeycloakSeedStepTests
 {
     private static readonly Dictionary<string, string?> CompleteSettings = new()

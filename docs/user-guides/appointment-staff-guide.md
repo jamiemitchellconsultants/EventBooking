@@ -35,7 +35,6 @@ Each row shows the current Status, Check-in recorded time, Outcome recorded time
 Actions. The counts update when an action succeeds. The attendee list scrolls in place, so the
 summary chips and event selector stay visible while you work down a long list.
 
-![Appointments screen for a event with summary chips, the Download roster button, and Expected attendees](screenshots/appointments-list.png)
 
 ### Normal outcome path
 
@@ -46,7 +45,6 @@ summary chips and event selector stay visible while you work down a long list.
 The normal path is Expected → Checked in → Completed. You cannot jump directly from Expected to
 Completed.
 
-![Appointments screen after a check-in, showing the CheckedIn status and updated summary chips](screenshots/appointments-after-checkin.png)
 
 ### Record a no-show
 
@@ -71,7 +69,6 @@ Corrections move one permitted step back and require confirmation:
 Read the attendee name in the prompt, then select **Confirm** or **Cancel**. The prompt appears as
 an overlay above the attendee list so it draws attention before you act.
 
-![Correction confirmation overlay for a Checked in attendee, with Confirm and Cancel buttons](screenshots/appointments-correction-overlay.png)
 
 A correction changes readiness immediately. A No-show correction can be blocked if a later recovery
 invitation or Booking already relies on that outcome. Ask the Coordinator to cancel the pending

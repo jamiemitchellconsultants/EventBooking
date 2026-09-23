@@ -26,7 +26,6 @@ The home page provides:
 - **Appointments** (`/appointments`)
 - **Help** (`/help`) — every role's guide, including the attendee guide
 
-![Manager home page showing Event proposals and Appointments links](screenshots/manager-home.png)
 
 The same links also appear as a navigation bar at the top of every page, so you can move between
 Event proposals and Appointments without returning to the home page first.
@@ -46,7 +45,6 @@ access screen. Do not act in the wrong workspace in the meantime.
 
 Use `/events` to propose windows, accept or withdraw, adjust capacity, and cancel Confirmed Events.
 
-![Event proposals screen showing open proposals and each type's acceptance chips](screenshots/event-proposals.png)
 
 ### Propose a new event
 

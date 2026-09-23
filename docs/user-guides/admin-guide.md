@@ -41,7 +41,6 @@ no Appointment Type. The page provides four workspace links plus Help:
 - **Audit trail** (`/audit`)
 - **Help** (`/help`) — every role's guide, including this one
 
-![Admin home page with the workspace links](screenshots/admin-home.png)
 
 The same links also appear as a navigation bar at the top of every Admin page, so you can switch
 workspaces without returning to the home page first.
@@ -58,7 +57,6 @@ The Staff number column shows the person's name with their staff number in brack
 number is the identifier to quote when you act on a profile. Roles are read-only chips: they came
 from the identity provider and this screen cannot change them.
 
-![Staff access screen listing profiles with read-only role chips and appointment types, with the Edit appointment type editor open below the table](screenshots/staff-access.png)
 
 ### Assign or change an Appointment Type
 
@@ -113,7 +111,6 @@ needed. Every successful access change is audited and is searchable on the Audit
 
 Use `/settings` to review the fixed Appointment Types and configure invitation timing.
 
-![System settings screen showing fixed appointment types and invite timing fields](screenshots/system-settings.png)
 
 1. Review **Fixed appointment types**. The three types are fixed by the system; only the Manager
    assignment changes. The Manager identifier column shows the current Manager's name and staff
@@ -140,7 +137,6 @@ The **Cancel a event** card lists every confirmed window with its date, four-hou
 remaining-over-total capacity for each type, and the number of active Bookings. Cancel only when the
 whole window cannot run.
 
-![Cancel a event card listing each window's date, capacity by type, active bookings, and a Cancel event button](screenshots/events-cancel.png)
 
 1. Warn the Coordinator and the delivery teams first.
 2. Select **Cancel event** on the row.

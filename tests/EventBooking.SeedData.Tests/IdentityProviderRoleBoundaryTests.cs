@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace EventBooking.SeedData.Tests;
 
@@ -121,9 +122,21 @@ public sealed class IdentityProviderRoleBoundaryTests
             .EnumerateArray().Select(value => value.GetString()));
         Assert.Contains("admin", staffId.GetProperty("required").GetProperty("roles")
             .EnumerateArray().Select(value => value.GetString()));
-        Assert.Equal("^[UuNn][0-9]{6}$",
-            staffId.GetProperty("validations").GetProperty("pattern")
-                .GetProperty("pattern").GetString());
+        var pattern = staffId.GetProperty("validations").GetProperty("pattern")
+            .GetProperty("pattern").GetString();
+        Assert.Equal("^[A-Za-z0-9]{1,32}$", pattern);
+
+        using var seed = JsonDocument.Parse(File.ReadAllText(
+            RepoFile("src/EventBooking.SeedData/demo-seed.json")));
+        var expression = new Regex(
+            pattern!, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        Assert.All(seed.RootElement.GetProperty("staff").EnumerateArray(), row =>
+        {
+            var value = row.GetProperty("staffId").GetString()!;
+            var match = expression.Match(value);
+            Assert.True(match.Success && match.Index == 0 && match.Length == value.Length,
+                $"Seed staffId '{value}' must satisfy the realm profile pattern.");
+        });
     }
 
     /// <summary>Verifies realm users and executable seed share stable identities and staff numbers.</summary>

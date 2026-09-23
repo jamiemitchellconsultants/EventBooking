@@ -45,7 +45,6 @@ Use `/attendees` for attendee records, invitations, delivery status, readiness, 
 and recovery. There is no outbound onboarding integration and no readiness export: recovery is
 arranged only through this screen (or the matching Coordinator API endpoints), never through MCP.
 
-![Attendees screen with the add-attendee row and existing attendee list](screenshots/attendees-list.png)
 
 ### Find the correct work queue
 
@@ -65,7 +64,6 @@ The first table row is the add form.
 4. Select **Save attendee**.
 5. Confirm the saved row shows the expected group name/code and derived types.
 
-![Add-attendee row filled in with a name, email, and Cabin Crew attendee group, showing the derived DAT/MED/UNI chips](screenshots/attendee-add-form.png)
 
 The mappings are:
 
@@ -149,7 +147,6 @@ outstanding type is labelled **(recoverable)** when its latest attempt was a No-
 2. Select **Invite now**.
 3. Wait for the row to refresh to Invited and review **Delivery**.
 
-![Attendee row showing status Invited (pending response) and the delivery timestamp](screenshots/attendee-invited.png)
 
 EventBooking selects exactly three future Confirmed Events with remaining capacity for every derived
 type and snapshots those requirements into the invitation. If fewer than three suitable options
@@ -162,7 +159,6 @@ The **Booking** column shows a **Bookings** button. Select it to load and expand
 button then reads **No active booking**, **1 active booking**, or a count. Each entry shows the date and four-hour window, marked **(recovery)** when it is a
 recovery Booking rather than the original.
 
-![Expanded Booking column for a booked attendee, with Cancel & rebook armed and showing Confirm cancel](screenshots/attendee-booking.png)
 
 Two actions are offered, each confirming on its own second click:
 
@@ -207,7 +203,6 @@ attendee's invitations, Bookings, and Booking Appointments, newest first, with W
 Details. It is loaded on demand, so opening a long attendee list costs nothing until you ask for a
 history.
 
-![Expanded History on a attendee row, listing BookingCreated, InviteSent, InviteCreated, and AttendeeGroupAssigned entries with When, What, Who, and Details](screenshots/attendee-history.png)
 
 Use History for a single attendee's story. Use the Audit trail screen when you need to search
 across attendees, dates, or actions.
@@ -216,7 +211,6 @@ across attendees, dates, or actions.
 
 Use `/dashboards` as the start-of-day and follow-up view.
 
-![Dashboards screen showing the Events tab with capacity by type and active booking counts](screenshots/dashboards.png)
 
 - **Awaiting availability** lists attendees who could not receive three suitable options, their
   required types, and how long they have waited. Arrange more capacity before returning to their
@@ -243,7 +237,6 @@ The **Cancel a event** card lists every confirmed window with its capacity by ty
 number of active Bookings. Select **Cancel event**; if the window holds active Bookings the request
 is refused with a warning, and the button becomes **Confirm cancel**.
 
-![Cancel a event card listing each window's date, capacity by type, active bookings, and a Cancel event button](screenshots/events-cancel.png)
 
 Cancelling voids every Booking on that window, releases the capacity, and starts the attendee
 rebooking workflow — so tell the delivery teams first, and expect the affected attendees to need
@@ -256,7 +249,6 @@ Use `/audit` to search across the whole record. As a Coordinator you see both at
 (attendees, invitations, bookings, and booking appointments) and operational entries (event
 proposals, events, and staff access profiles).
 
-![Audit trail screen with From, To, Actor, Action, Identifier, and Entity filters above newest-first results](screenshots/audit-trail.png)
 
 1. Set **From** and **To** to bound the period. Both are optional.
 2. Choose an **Actor**: Staff, AttendeeToken (a attendee acting through their emailed link), or

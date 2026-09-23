@@ -23,7 +23,7 @@ public sealed class EventTools
     public async Task<Guid> ProposeEventAsync(
         ICallerAccessor caller,
         ProposeEventHandler handler,
-        [Description("Head-office calendar date, yyyy-MM-dd.")] string date,
+        [Description("Event calendar date, yyyy-MM-dd.")] string date,
         [Description("Window start time, HH:mm.")] string startTime,
         CancellationToken cancellationToken)
     {

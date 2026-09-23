@@ -111,7 +111,7 @@
                                 <input id="new-attendee-email" type="email" @bind="_newEmail" placeholder="name@example.com" />
                             </td>
                             <td data-label="Required types">
-                                <label class="visually-hidden" for="new-attendee-group">Employee group</label>
+                                <label class="visually-hidden" for="new-attendee-group">Attendee group</label>
                                 <select id="new-attendee-group" class="group-select" @bind="_newAttendeeGroupId" disabled="@_busy" required
                                         title="The attendee group decides which appointment types this attendee must attend.">
                                     <option value="">Select an attendee group</option>
@@ -156,7 +156,7 @@
                                         <input id="edit-attendee-email" type="email" @bind="_editEmail" />
                                     </td>
                                     <td data-label="Required types">
-                                        <label class="visually-hidden" for="edit-attendee-group">Employee group</label>
+                                        <label class="visually-hidden" for="edit-attendee-group">Attendee group</label>
                                         <select id="edit-attendee-group" class="group-select" @bind="_editAttendeeGroupId" disabled="@_busy" required
                                             title="Changing the group changes the appointment types this attendee must attend.">
                                             <option value="">Select an attendee group</option>

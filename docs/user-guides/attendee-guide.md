@@ -14,13 +14,11 @@ You can start after the recruitment team sends your invitation.
 3. Review the three available dates and four-hour windows.
 4. Select one option.
 
-   ![Choose a time page listing the attendee's name, required appointments, and three date options](screenshots/choose-a-time.png)
 
 5. Select **Confirm this time** once and wait for **Booking confirmed**.
 6. Check the confirmed date, start and end time, and transitional-location address.
 7. Open or save **Use your booking management link**. A copy is also sent in the confirmation email.
 
-   ![Booking confirmed page showing the confirmed date, transitional-location address, and management link](screenshots/booking-confirmed.png)
 
 The invitation link is personal and single-use. EventBooking reserves space only for the
 appointments listed on that invitation. If one option loses capacity while you are choosing, the
@@ -45,7 +43,6 @@ see when all required appointments are complete.
 Open the management link for the Booking you want to change. The **Manage your booking** screen
 shows its date and four-hour window.
 
-![Manage your booking screen showing the appointment date/window and Cancel booking / Cancel and choose a new time actions](screenshots/manage-booking.png)
 
 ### Cancel without choosing another time
 

@@ -1,5 +1,6 @@
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.Audit;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 
@@ -9,7 +10,7 @@ namespace EventBooking.SeedData;
 internal static class DemoEventFactory
 {
     internal static Event Create(EventBookingDbContext database, Guid id, EventWindow window,
-        IReadOnlyDictionary<Guid, int> headcounts)
+        IReadOnlyDictionary<Guid, int> headcounts, DateTimeOffset timestamp)
     {
         var managers = DemoSeedSpec.Staff().Where(staff => staff.Roles.Contains(Role.Manager))
             .ToDictionary(staff => staff.AppointmentTypeId!.Value, staff => staff.UserId);
@@ -20,6 +21,19 @@ internal static class DemoEventFactory
         var created = Event.CreateFrom(id, proposal);
         database.EventProposals.Add(proposal);
         database.Events.Add(created);
+        database.AuditLogs.Add(AuditLog.Record(
+            Guid.NewGuid(), AuditEntityTypes.EventProposal, proposal.Id,
+            AuditAction.ProposalCreated, ActorType.Staff, managers[types[0]].ToString(),
+            timestamp, window.ToString()));
+        foreach (var type in types)
+            database.AuditLogs.Add(AuditLog.Record(
+                Guid.NewGuid(), AuditEntityTypes.EventProposal, proposal.Id,
+                AuditAction.AcceptanceRecorded, ActorType.Staff, managers[type].ToString(),
+                timestamp, $"{AppointmentTypeIds.NameOf(type)} headcount {headcounts[type]}"));
+        database.AuditLogs.Add(AuditLog.Record(
+            Guid.NewGuid(), AuditEntityTypes.Event, created.Id,
+            AuditAction.EventConfirmed, ActorType.Staff, managers[types[^1]].ToString(),
+            timestamp, created.Window.ToString()));
         return created;
     }
 }

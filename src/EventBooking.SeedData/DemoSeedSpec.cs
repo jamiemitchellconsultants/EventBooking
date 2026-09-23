@@ -81,9 +81,11 @@ public sealed record StaffProfileSpec(
 /// </summary>
 public static class DemoSeedSpec
 {
-    private static readonly Lazy<SeedDocument> Document = new(Load);
+    private static Lazy<SeedDocument> Document = new(Load);
 
     private static DateOnly? AnchorOverride;
+
+    private static string? StaffIdPatternOverride;
 
     /// <summary>
     /// Gets the fixed calendar date against which the demo dataset's day offsets resolve.
@@ -98,6 +100,17 @@ public static class DemoSeedSpec
     /// behavior with null. Applies to agreed events, proposals, and journey windows alike.
     /// </summary>
     public static void OverrideAnchor(DateOnly? anchor) => AnchorOverride = anchor;
+
+    /// <summary>
+    /// Validates seed staff numbers against the deployment's staff-ID policy
+    /// (<c>Identity__StaffIdPattern</c>) instead of the default format, or restores the default
+    /// with null. Re-parses the dataset so the policy takes effect on the next read.
+    /// </summary>
+    public static void ConfigureStaffIdPattern(string? pattern)
+    {
+        StaffIdPatternOverride = pattern;
+        Document = new(Load);
+    }
 
     public static IReadOnlyList<StaffProfileSpec> Staff() => Document.Value.Staff;
 
@@ -206,7 +219,8 @@ public static class DemoSeedSpec
 
             try
             {
-                var staffId = new StaffId(row.StaffId);
+                var staffId = new StaffId(
+                    row.StaffId, StaffIdPatternOverride ?? StaffId.DefaultPattern);
                 if (!staffIds.Add(staffId))
                 {
                     throw new SeedException($"Duplicate staffId '{row.StaffId}'.");
