@@ -1,0 +1,191 @@
+@page "/manage/{Token}"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Services
+@layout EventBooking.Web.Layout.AttendeeLayout
+@inject BookingClient Booking
+@inject AttendeePageOptions PageOptions
+
+<PageTitle>Manage your booking</PageTitle>
+
+
+<section class="manage-booking-page" aria-busy="@(_loading || _busy)">
+    @if (_loading)
+    {
+        <div class="manage-booking-page__status" aria-label="Loading booking details">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+        </div>
+    }
+    else if (_cancelled)
+    {
+        <div class="manage-booking-page__intro">
+            <h1>Booking cancelled</h1>
+        </div>
+        <div class="manage-booking-page__status manage-booking-page__status--cancelled" role="status">
+            @if (_reinvited && _deliveryStatus == "Sent")
+            {
+                <p class="manage-booking-page__lead">Your booking has been cancelled and a new invitation with fresh times has been sent.</p>
+            }
+            else if (_rebookRequested)
+            {
+                <p class="manage-booking-page__lead">Your booking has been cancelled. @(_inviteCreated ? "We could not confirm delivery of a replacement invitation; " : "There are no times available right now; ")the recruitment team will be in touch with the next available times.</p>
+            }
+            else
+            {
+                <p class="manage-booking-page__lead">Your booking has been cancelled. If that was a mistake, contact the recruitment team at @PageOptions.CoordinatorContact.</p>
+            }
+        </div>
+    }
+    else if (_expired)
+    {
+        <div class="manage-booking-page__status manage-booking-page__status--expired">
+            <h1>This link has expired</h1>
+            <p class="manage-booking-page__note">This booking link is no longer valid. Please contact the recruitment team at @PageOptions.CoordinatorContact for help.</p>
+        </div>
+    }
+    else if (_booking is null)
+    {
+        <div class="manage-booking-page__intro">
+            <h1>We couldn’t load your booking</h1>
+        </div>
+        <div class="manage-booking-page__status">
+            <p class="manage-booking-page__banner" role="alert">@(_error ?? "Something went wrong. Please try again.")</p>
+            <button class="manage-booking-page__button" @onclick="ReloadAsync">Try again</button>
+        </div>
+    }
+    else
+    {
+        <div class="manage-booking-page__intro">
+            <h1>Manage your booking</h1>
+            <p class="manage-booking-page__lead">Review your appointment or cancel it below.</p>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="manage-booking-page__banner" role="alert"><strong>We couldn’t cancel that booking.</strong> @_error</p>
+        }
+
+        <div class="manage-booking-page__card">
+            <span class="manage-booking-page__label">Your appointment</span>
+            <span class="manage-booking-page__window">@_booking.Display</span>
+        </div>
+
+        <div class="manage-booking-page__actions">
+            <button class="manage-booking-page__button manage-booking-page__button--danger" @onclick="() => CancelAsync(false)" disabled="@_busy"
+                    title="Releases your place. No replacement times are offered — the recruitment team will follow up.">@(_busy ? "Cancelling…" : "Cancel booking")</button>
+            <button class="manage-booking-page__button manage-booking-page__button--primary" @onclick="() => CancelAsync(true)" disabled="@_busy"
+                    title="Releases your place and emails you a fresh link with the times still open.">@(_busy ? "Cancelling…" : "Cancel and choose a new time")</button>
+        </div>
+        <p class="manage-booking-page__note manage-booking-page__footnote">This link is single-use and only works for you — no sign-in required. Please do not forward it.</p>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public string Token { get; set; } = string.Empty;
+
+    private BookingDto? _booking;
+    private string? _error;
+    private bool _expired;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _cancelled;
+    private bool _rebookRequested;
+    private bool _reinvited;
+    private bool _inviteCreated;
+    private string? _deliveryStatus;
+    private int _requestVersion;
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        var version = ++_requestVersion;
+        _loading = true;
+        _busy = false;
+        _booking = null;
+        _error = null;
+        _expired = false;
+        _cancelled = false;
+        _rebookRequested = false;
+        _reinvited = false;
+        _inviteCreated = false;
+        _deliveryStatus = null;
+
+        try
+        {
+            var outcome = await Booking.GetBookingAsync(Token, CancellationToken.None);
+            if (version != _requestVersion)
+            {
+                return;
+            }
+
+            _booking = outcome.Value;
+            _expired = outcome.StatusCode == 404;
+            _error = _expired || outcome.IsSuccess ? null : outcome.ErrorMessage;
+        }
+        catch (Exception)
+        {
+            if (version == _requestVersion)
+            {
+                _error = "Something went wrong. Please try again.";
+            }
+        }
+        finally
+        {
+            if (version == _requestVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private async Task CancelAsync(bool rebook)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var version = _requestVersion;
+        _rebookRequested = rebook;
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var outcome = await Booking.CancelAsync(Token, rebook, CancellationToken.None);
+            if (version != _requestVersion)
+            {
+                return;
+            }
+
+            if (outcome.IsSuccess)
+            {
+                _inviteCreated = rebook && outcome.Value?.InviteCreated == true;
+                _reinvited = _inviteCreated;
+                _deliveryStatus = outcome.Value?.DeliveryStatus;
+                _cancelled = true;
+                _booking = null;
+                return;
+            }
+
+            _error = outcome.ErrorMessage;
+        }
+        catch (Exception)
+        {
+            if (version == _requestVersion)
+            {
+                _error = "Something went wrong. Please try again.";
+            }
+        }
+        finally
+        {
+            if (version == _requestVersion)
+            {
+                _busy = false;
+            }
+        }
+    }
+}

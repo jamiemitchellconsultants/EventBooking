@@ -1,0 +1,32 @@
+.audit-filters {
+    align-items: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+}
+
+.audit-filters .field {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.audit-filters .field input,
+.audit-filters .field select {
+    width: 100%;
+}
+
+@media (max-width: 760px) {
+    .audit-filters {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .audit-filters .field {
+        flex-basis: auto;
+    }
+}
+
+/* Details carry unspaced JSON and identifiers, which would otherwise widen the page on phones. */
+.audit-page td {
+    overflow-wrap: anywhere;
+}

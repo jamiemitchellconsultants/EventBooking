@@ -1,0 +1,89 @@
+@page "/help"
+@using Microsoft.AspNetCore.Components.Authorization
+@using EventBooking.Web.Services
+
+<PageTitle>Help</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <section class="page help-page" aria-labelledby="help-heading" aria-busy="@(Loading ? "true" : "false")">
+            <div class="page-header">
+                <div>
+                    <span class="eyebrow">User guide</span>
+                    <h1 id="help-heading">Help</h1>
+                    <p>Guidance for the roles on your profile.</p>
+                </div>
+            </div>
+
+            @if (Loading)
+            {
+                <div class="card loading-block" role="status">
+                    <span class="loading-line loading-line-short"></span>
+                    <span class="loading-line"></span>
+                    <span class="loading-line loading-line-medium"></span>
+                    <span class="visually-hidden">Loading…</span>
+                </div>
+            }
+            else if (Error is not null)
+            {
+                <p class="landing-hint">@Error</p>
+            }
+            else if (Guides.Count == 0)
+            {
+                <p class="landing-hint">
+                    Your account has not been assigned a role yet. Contact an administrator to be given
+                    access as Manager, Coordinator, Admin, or Appointment staff.
+                </p>
+            }
+            else
+            {
+                @if (Guides.Count > 1)
+                {
+                    <nav class="card guide-toc" aria-label="Guides on this page">
+                        <ul>
+                            @foreach (var guide in Guides)
+                            {
+                                <li><a href="/help#@guide.AnchorId">@guide.Title</a></li>
+                            }
+                        </ul>
+                    </nav>
+                }
+
+                @foreach (var guide in Guides)
+                {
+                    <section class="card guide-section" id="@guide.AnchorId" aria-label="@guide.Title">
+                        @((MarkupString)guide.Html)
+                    </section>
+                }
+            }
+        </section>
+    </Authorized>
+    <NotAuthorized>
+        <section class="page help-page" aria-labelledby="help-heading">
+            <div class="page-header">
+                <div>
+                    <span class="eyebrow">User guide</span>
+                    <h1 id="help-heading">Help</h1>
+                    <p>Guidance for booking and managing your appointment.</p>
+                </div>
+            </div>
+            <section class="card guide-section" id="@AttendeeGuide.AnchorId" aria-label="@AttendeeGuide.Title">
+                @((MarkupString)AttendeeGuide.Html)
+            </section>
+        </section>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    // Cascaded by MainLayout, which fetches it once for both the nav bar and Home — reused here
+    // rather than issued as a second concurrent call to the same token-protected endpoint.
+    [CascadingParameter]
+    private ApiOutcome<MeDto>? MeOutcome { get; set; }
+
+    private static readonly UserGuide AttendeeGuide = UserGuideCatalog.AttendeeGuide();
+
+    private bool Loading => MeOutcome is null;
+    private string? Error => MeOutcome is { IsSuccess: false } ? MeOutcome.ErrorMessage : null;
+    private IReadOnlyList<UserGuide> Guides =>
+        MeOutcome?.Value is { } me ? UserGuideCatalog.GuidesFor(me.Roles) : [];
+}

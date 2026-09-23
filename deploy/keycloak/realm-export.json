@@ -1,0 +1,274 @@
+{
+  "realm": "eventbooking",
+  "enabled": true,
+  "sslRequired": "none",
+  "attributes": {
+    "userProfileEnabled": "true"
+  },
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "name": "declarative-user-profile",
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "config-pieces-count": [
+            "1"
+          ],
+          "config-piece-0": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{}}},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}}},{\"name\":\"staffId\",\"displayName\":\"Staff number\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"admin\"]},\"validations\":{\"pattern\":{\"pattern\":\"^[A-Za-z0-9]{1,32}$\"}}}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "eventbooking-web",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:5002/authentication/login-callback"
+      ],
+      "webOrigins": [
+        "http://localhost:5002"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5002/authentication/logout-callback"
+      },
+      "protocolMappers": [
+        {
+          "name": "oid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "id",
+            "claim.name": "oid",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "eventbooking-web",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "staff_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "staffId",
+            "claim.name": "staff_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "17e8cd60-b849-470f-a7d1-44ff39993688",
+      "username": "admin.user",
+      "firstName": "Ade",
+      "lastName": "Admin",
+      "email": "admin.user@mail.com",
+      "attributes": {
+        "staffId": [
+          "U000001"
+        ]
+      },
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Admin"
+      ]
+    },
+    {
+      "id": "9fd390b8-eaff-4da1-accb-8970a3c8a8d1",
+      "username": "manager.dat",
+      "firstName": "Dana",
+      "lastName": "Datson",
+      "email": "manager.dat@mail.com",
+      "attributes": {
+        "staffId": [
+          "U000002"
+        ]
+      },
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Manager"
+      ]
+    },
+    {
+      "id": "b5cedaaf-5bba-4b05-99af-cb0dbe5fc4d0",
+      "username": "manager.med",
+      "firstName": "Meddy",
+      "lastName": "Medson",
+      "email": "manager.med@mail.com",
+      "attributes": {
+        "staffId": [
+          "U000003"
+        ]
+      },
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Manager"
+      ]
+    },
+    {
+      "id": "f9f8f3fc-d8e8-4723-ade9-fc5aaebdf104",
+      "username": "manager.uni",
+      "firstName": "Una",
+      "lastName": "Unison",
+      "email": "manager.uni@mail.com",
+      "attributes": {
+        "staffId": [
+          "U000004"
+        ]
+      },
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Manager"
+      ]
+    },
+    {
+      "id": "0939229d-aafe-4acb-870e-a25473bc1cea",
+      "username": "coordinator.user",
+      "firstName": "Cory",
+      "lastName": "Coordinator",
+      "email": "coordinator.user@mail.com",
+      "attributes": {
+        "staffId": [
+          "U000005"
+        ]
+      },
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Coordinator"
+      ]
+    },
+    {
+      "id": "dc5f9a90-7f54-46d1-8603-d4c317f47226",
+      "username": "appointment.staff",
+      "firstName": "Avery",
+      "lastName": "Appointments",
+      "email": "appointment.staff@mail.com",
+      "attributes": {
+        "staffId": [
+          "U000006"
+        ]
+      },
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "AppointmentStaff"
+      ]
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "Admin",
+        "description": "EventBooking Admin",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Coordinator",
+        "description": "EventBooking Coordinator",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Manager",
+        "description": "EventBooking Manager",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "AppointmentStaff",
+        "description": "EventBooking AppointmentStaff",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  }
+}

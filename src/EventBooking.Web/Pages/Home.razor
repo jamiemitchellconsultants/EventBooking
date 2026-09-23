@@ -1,0 +1,100 @@
+@page "/"
+@using Microsoft.AspNetCore.Components.Authorization
+@using EventBooking.Web.Services
+
+<PageTitle>EventBooking</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="landing">
+            <div class="landing-intro">
+                <span class="eyebrow">British Airways staff workspace</span>
+                <h1>Hi @context.User.Identity?.Name</h1>
+                <p>Everything below is scoped to the roles you hold. Pick a workspace to carry on.</p>
+            </div>
+
+            @if (Loading)
+            {
+                <div class="card loading-block" role="status">
+                    <span class="loading-line loading-line-short"></span>
+                    <span class="loading-line"></span>
+                    <span class="loading-line loading-line-medium"></span>
+                    <span class="visually-hidden">Loading…</span>
+                </div>
+            }
+            else if (Error is not null)
+            {
+                <p class="landing-hint">@Error</p>
+            }
+            else if (Me is null || Me.Roles.Count == 0)
+            {
+                <p class="landing-hint">
+                    Your account has not been assigned a role yet. Contact an administrator to be given
+                    access as Manager, Coordinator, Admin, or Appointment staff.
+                </p>
+            }
+            else
+            {
+                <div class="access-summary" aria-label="Your access">
+                    <p>
+                        Roles: @string.Join(", ", Me.Roles)
+                        @if (Me.AppointmentTypeName is not null)
+                        {
+                            <span> · Appointment type: @Me.AppointmentTypeName</span>
+                        }
+                        <span class="tip" tabindex="0" role="note"
+                              aria-label="Your roles decide which workspaces appear below. An appointment type scopes what you see to that one type of appointment."
+                              data-tip="Your roles decide which workspaces appear below. An appointment type scopes what you see to that one type of appointment."></span>
+                    </p>
+                </div>
+
+                @if (StaffNavigation.LinksFor(Me).Count == 0)
+                {
+                    <p class="landing-hint">
+                        Your appointment workspace will appear here when appointment delivery is enabled.
+                    </p>
+                }
+                else
+                {
+                    <nav class="landing-links" aria-label="Workspace sections">
+                        @foreach (var link in StaffNavigation.LinksFor(Me))
+                        {
+                            <a class="link-card" href="@link.Href">
+                                <span>@link.Label<span class="landing-sub">@link.Description</span></span>
+                                <span class="arrow" aria-hidden="true">→</span>
+                            </a>
+                        }
+                        <a class="link-card" href="/help">
+                            <span>Help<span class="landing-sub">Read the guide for your role</span></span>
+                            <span class="arrow" aria-hidden="true">→</span>
+                        </a>
+                    </nav>
+                }
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="landing landing-signed-out">
+            <div class="landing-intro">
+                <span class="eyebrow">British Airways staff workspace</span>
+                <h1>EventBooking</h1>
+                <p>Coordinate attendee appointments across drug &amp; alcohol testing, medical check-ups and uniform fittings — without overbooking anyone.</p>
+                <a class="sign-in-button" href="authentication/login">Sign in</a>
+                <p class="hint">Attendees do not sign in — they use the personal booking link emailed to them.</p>
+                <p class="hint"><a href="/help">Read the attendee guide</a></p>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    // Fetched once by MainLayout and cascaded here, rather than fetched again by this page —
+    // two concurrent calls to the same token-protected endpoint on first load raced the WASM
+    // auth token acquisition and intermittently failed one of them.
+    [CascadingParameter]
+    private ApiOutcome<MeDto>? MeOutcome { get; set; }
+
+    private bool Loading => MeOutcome is null;
+    private string? Error => MeOutcome is { IsSuccess: false } ? MeOutcome.ErrorMessage : null;
+    private MeDto? Me => MeOutcome?.Value;
+}

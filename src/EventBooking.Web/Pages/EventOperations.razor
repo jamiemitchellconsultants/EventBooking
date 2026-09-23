@@ -1,0 +1,163 @@
+@page "/events/operations"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using EventBooking.Web.Services
+@inject EventsClient EventsApi
+
+<PageTitle>Events</PageTitle>
+
+<section class="page events-page" aria-labelledby="events-heading" aria-busy="@(_busy ? "true" : "false")">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Operations</span>
+            <h1 id="events-heading">Events</h1>
+            <p>Review confirmed events and cancel an event when necessary.</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-heading">
+            <h2>
+                Cancel a event
+                <span class="tip" tabindex="0" role="note"
+                      aria-label="Cancelling a window releases every place it holds. Any attendee booked into it is notified and re-invited."
+                      data-tip="Cancelling a window releases every place it holds. Any attendee booked into it is notified and re-invited."></span>
+            </h2>
+        </div>
+        <div class="card-body">
+            @if (_eventsLoading)
+            {
+                <p class="hint" role="status">Loading events…</p>
+            }
+            else if (_events is null || _events.Count == 0)
+            {
+                <p class="hint" role="status">No events yet.</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table id="event-operations">
+                        <thead>
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Window</th>
+                                <th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th>
+                                <th scope="col" title="Attendees currently booked into this window.">Active bookings</th>
+                                <th scope="col" class="actions-column">Cancel</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var eventItem in _events)
+                            {
+                                <tr @key="eventItem.EventId">
+                                    <td data-label="Date">@eventItem.Date.ToString("yyyy-MM-dd")</td>
+                                    <td data-label="Window">@eventItem.StartTime.ToString("HH\\:mm")–@eventItem.EndTime.ToString("HH\\:mm")</td>
+                                    <td data-label="Capacity by type">
+                                        <div class="chip-row">
+                                            @foreach (var capacity in eventItem.Capacities)
+                                            {
+                                                <span class="chip">@capacity.Code @capacity.RemainingCapacity/@capacity.TotalHeadcount</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td data-label="Active bookings">@eventItem.ActiveBookings</td>
+                                    <td data-label="Cancel">
+                                        <button class="button button-danger button-small"
+                                                @onclick="() => CancelEventAsync(eventItem.EventId)" disabled="@_busy">
+                                            @(_cancelAwaitingConfirmation == eventItem.EventId ? "Confirm cancel" : "Cancel event")
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (_eventsError is not null)
+            {
+                <p class="banner error" role="alert">@_eventsError</p>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private bool _busy;
+
+    private List<EventOperationDto>? _events;
+    private bool _eventsLoading = true;
+    private string? _eventsError;
+    private Guid? _cancelAwaitingConfirmation;
+
+    protected override Task OnInitializedAsync() => ReloadEventsAsync();
+
+    internal Task ReloadEventsForTestingAsync() => ReloadEventsAsync();
+
+    internal Task CancelEventForTestingAsync(Guid eventId) => CancelEventAsync(eventId);
+
+    private async Task ReloadEventsAsync()
+    {
+        _eventsLoading = true;
+        try
+        {
+            var outcome = await EventsApi.GetEventOperationsAsync(CancellationToken.None);
+            if (!outcome.IsSuccess || outcome.Value is null)
+            {
+                _eventsError = outcome.ErrorMessage ?? "Something went wrong. Please try again.";
+                return;
+            }
+
+            _events = outcome.Value.Events.ToList();
+            _eventsError = null;
+        }
+        catch (Exception)
+        {
+            _eventsError = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _eventsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Two-stage: the first click asks without authorizing the cascade, so a event holding bookings
+    // comes back 409 and the button becomes the confirmation.
+    private async Task CancelEventAsync(Guid eventId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        var confirm = _cancelAwaitingConfirmation == eventId;
+        _busy = true;
+        try
+        {
+            var outcome = await EventsApi.CancelEventAsync(eventId, confirm, CancellationToken.None);
+            if (!outcome.IsSuccess && outcome.StatusCode == 409 && !confirm)
+            {
+                _cancelAwaitingConfirmation = eventId;
+                _eventsError = $"{outcome.ErrorMessage} Press Confirm cancel to proceed.";
+                return;
+            }
+
+            _cancelAwaitingConfirmation = null;
+            _eventsError = outcome.ErrorMessage;
+            if (outcome.IsSuccess)
+            {
+                await ReloadEventsAsync();
+            }
+        }
+        catch (Exception)
+        {
+            _eventsError = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+}
