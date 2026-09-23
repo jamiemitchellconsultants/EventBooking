@@ -3,12 +3,19 @@ using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Application.Dashboards;
 using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 
 namespace EventBooking.Api.Endpoints;
 
 public static class EventEndpoints
 {
-    public sealed record ProposeEventRequest(DateOnly Date, TimeOnly StartTime);
+    public sealed record ProposeEventRequest(
+        Guid LocationId,
+        DateOnly Date,
+        TimeOnly StartTime,
+        int DurationMinutes = 240,
+        IReadOnlyList<Guid>? ListedAppointmentTypeIds = null,
+        int ProposerHeadcount = 1);
 
     public sealed record AcceptProposalRequest(int Headcount);
 
@@ -21,11 +28,11 @@ public static class EventEndpoints
 
         group.MapGet("/board", async (
             ICallerAccessor caller,
-            GetManagerEventBoardHandler handler,
+            NegotiationBoardHandler handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
-                new GetManagerEventBoardQuery(caller.RequireStaffUserId()), cancellationToken);
+                new GetNegotiationBoardQuery(caller.RequireStaffUserId()), cancellationToken);
             return result.IsSuccess
                 ? Results.Ok(EventBoardResourceResponse.From(result.Value))
                 : result.ToResponse();
@@ -57,11 +64,18 @@ public static class EventEndpoints
             ProposeEventHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new ProposeEventCommand(caller.RequireStaffUserId(), request.Date, request.StartTime),
+                new ProposeEventCommand(
+                    caller.RequireStaffUserId(),
+                    request.LocationId,
+                    request.Date,
+                    request.StartTime,
+                    request.DurationMinutes,
+                    request.ListedAppointmentTypeIds ?? [],
+                    request.ProposerHeadcount),
                 cancellationToken))
-                .ToCreated(id => $"/api/event-proposals/{id}"))
+                .ToCreated(outcome => $"/api/event-proposals/{outcome.ProposalId}"))
             .WithAgentMetadata("proposeEvent")
-            .Produces<Guid>(201)
+            .Produces<ProposeEventOutcome>(201)
             .ProducesProblem(400)
             .ProducesProblem(403)
             .ProducesProblem(409);
@@ -70,10 +84,10 @@ public static class EventEndpoints
             Guid id,
             AcceptProposalRequest request,
             ICallerAccessor caller,
-            AcceptProposalHandler handler,
+            RecordAcceptanceHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new AcceptProposalCommand(caller.RequireStaffUserId(), id, request.Headcount),
+                new RecordAcceptanceCommand(caller.RequireStaffUserId(), id, request.Headcount),
                 cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("acceptProposal")

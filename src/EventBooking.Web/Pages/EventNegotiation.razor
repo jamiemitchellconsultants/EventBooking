@@ -95,7 +95,7 @@
                                     </td>
                                     <td data-label="Accepted by">
                                         <span class="chip-row">
-                                            @foreach (var name in proposal.AcceptedByAppointmentTypeNames)
+                                            @foreach (var name in proposal.AcceptedByAppointmentTypeNames ?? [])
                                             {
                                                 <span class="chip">@name</span>
                                             }

@@ -3,6 +3,7 @@ using CancelEventHandler = EventBooking.Application.Events.CancelEventHandler;
 using EventBooking.Api.Auth;
 using EventBooking.Application.Dashboards;
 using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 using ModelContextProtocol.Server;
 
 namespace EventBooking.Mcp.Tools;
@@ -11,20 +12,28 @@ namespace EventBooking.Mcp.Tools;
 [McpServerToolType]
 public sealed class EventTools
 {
-    /// <summary>Proposes a new four-hour attendee-facing event window.</summary>
+    /// <summary>Proposes a new attendee-facing event window at a location.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The event proposal handler.</param>
-    /// <param name="date">The transitional-location calendar date, yyyy-MM-dd.</param>
+    /// <param name="locationId">The location that would host the event.</param>
+    /// <param name="date">The location calendar date, yyyy-MM-dd.</param>
     /// <param name="startTime">The window start, HH:mm.</param>
+    /// <param name="durationMinutes">The window length in minutes.</param>
+    /// <param name="listedAppointmentTypeIds">The appointment types the event would offer.</param>
+    /// <param name="proposerHeadcount">The proposer's own headcount.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The new proposal identifier.</returns>
+    /// <returns>The proposal outcome, including the event when it confirms immediately.</returns>
     [McpServerTool(Name = "propose_event", Title = "Propose event", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Propose a new four-hour event window. Caller must be a manager.")]
-    public async Task<Guid> ProposeEventAsync(
+    [Description("Propose a new event window at a location. Caller must be a manager.")]
+    public async Task<ProposeEventOutcome> ProposeEventAsync(
         ICallerAccessor caller,
         ProposeEventHandler handler,
+        [Description("The location that would host the event.")] Guid locationId,
         [Description("Event calendar date, yyyy-MM-dd.")] string date,
         [Description("Window start time, HH:mm.")] string startTime,
+        [Description("Window length in minutes.")] int durationMinutes,
+        [Description("The appointment types the event would offer.")] Guid[] listedAppointmentTypeIds,
+        [Description("The proposer's own headcount.")] int proposerHeadcount,
         CancellationToken cancellationToken)
     {
         if (!DateOnly.TryParse(date, out var parsedDate) ||
@@ -35,7 +44,9 @@ public sealed class EventTools
         }
 
         var result = await handler.HandleAsync(
-            new ProposeEventCommand(caller.RequireStaffUserId(), parsedDate, parsedStart),
+            new ProposeEventCommand(
+                caller.RequireStaffUserId(), locationId, parsedDate, parsedStart,
+                durationMinutes, listedAppointmentTypeIds, proposerHeadcount),
             cancellationToken);
         return result.ValueOrThrow();
     }
@@ -46,18 +57,18 @@ public sealed class EventTools
     /// <param name="proposalId">The proposal identifier.</param>
     /// <param name="headcount">The manager's headcount for their appointment type.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The acceptance outcome, including the event once all three managers accept.</returns>
+    /// <returns>The acceptance outcome, including the event once every listed type accepts.</returns>
     [McpServerTool(Name = "accept_proposal", Title = "Accept proposal", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
     [Description("Accept a event proposal with your headcount, or revise your headcount while it stays open. Caller must be a manager; may confirm the event once every required type accepts.")]
-    public async Task<AcceptProposalOutcome> AcceptProposalAsync(
+    public async Task<RecordAcceptanceOutcome> AcceptProposalAsync(
         ICallerAccessor caller,
-        AcceptProposalHandler handler,
+        RecordAcceptanceHandler handler,
         [Description("The proposal identifier.")] Guid proposalId,
         [Description("Headcount for your appointment type.")] int headcount,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new AcceptProposalCommand(caller.RequireStaffUserId(), proposalId, headcount),
+            new RecordAcceptanceCommand(caller.RequireStaffUserId(), proposalId, headcount),
             cancellationToken);
         return result.ValueOrThrow();
     }
@@ -111,13 +122,13 @@ public sealed class EventTools
     /// <returns>The manager event board.</returns>
     [McpServerTool(Name = "event_board", Title = "Event board", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
     [Description("List open event proposals and your events with remaining capacity. Caller must be a manager; scoped to your appointment type.")]
-    public async Task<ManagerEventBoard> GetEventBoardAsync(
+    public async Task<NegotiationBoard> GetEventBoardAsync(
         ICallerAccessor caller,
-        GetManagerEventBoardHandler handler,
+        NegotiationBoardHandler handler,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new GetManagerEventBoardQuery(caller.RequireStaffUserId()), cancellationToken);
+            new GetNegotiationBoardQuery(caller.RequireStaffUserId()), cancellationToken);
         return result.ValueOrThrow();
     }
 

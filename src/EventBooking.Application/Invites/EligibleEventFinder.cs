@@ -1,6 +1,7 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Events;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Invites;
 

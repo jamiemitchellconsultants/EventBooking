@@ -9,6 +9,7 @@ using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Time;

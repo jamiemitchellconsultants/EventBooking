@@ -41,13 +41,23 @@ public class EventEndpointTests(ApiFactory factory)
     [Fact]
     public async Task AManagerCanProposeAEventAndSeeItOnTheBoard()
     {
+        await factory.GivenStaffAsync(Role.Manager, AppointmentTypeIds.MedicalCheckUp);
+        await factory.GivenStaffAsync(Role.Manager, AppointmentTypeIds.UniformFitting);
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager, AppointmentTypeIds.DrugAndAlcoholTesting);
         var client = factory.CreateClient();
 
         var created = await client.PostAsJsonAsync(
             "/api/event-proposals",
-            new { Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), StartTime = new TimeOnly(9, 0) });
+            new
+            {
+                LocationId = Domain.Locations.TransitionalLocation.Id,
+                Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30),
+                StartTime = new TimeOnly(9, 0),
+                DurationMinutes = 240,
+                ListedAppointmentTypeIds = AppointmentTypeIds.All,
+                ProposerHeadcount = 10,
+            });
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
@@ -65,7 +75,15 @@ public class EventEndpointTests(ApiFactory factory)
 
         var response = await client.PostAsJsonAsync(
             "/api/event-proposals",
-            new { Date = new DateOnly(2020, 1, 1), StartTime = new TimeOnly(9, 0) });
+            new
+            {
+                LocationId = Domain.Locations.TransitionalLocation.Id,
+                Date = new DateOnly(2020, 1, 1),
+                StartTime = new TimeOnly(9, 0),
+                DurationMinutes = 240,
+                ListedAppointmentTypeIds = new[] { AppointmentTypeIds.MedicalCheckUp },
+                ProposerHeadcount = 10,
+            });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

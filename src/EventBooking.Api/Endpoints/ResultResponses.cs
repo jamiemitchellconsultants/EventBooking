@@ -25,6 +25,7 @@ public static class ResultResponses
         Error.ReferenceDataInUseCode => StatusCodes.Status409Conflict,
         Error.RequirementsLockedCode => StatusCodes.Status409Conflict,
         Error.VersionConflictCode => StatusCodes.Status409Conflict,
+        Error.CapacityBelowBookingsCode => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError,
     };
 

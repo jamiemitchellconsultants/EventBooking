@@ -99,4 +99,20 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
     /// <param name="currentVersion">The version the row carries now.</param>
     public static Error VersionConflict(string message, long currentVersion) =>
         new(VersionConflictCode, message, new Dictionary<string, long> { ["currentVersion"] = currentVersion });
+
+    /// <summary>Identifies a capacity total below the type's active-booking count.</summary>
+    public const string CapacityBelowBookingsCode = "capacity-below-bookings";
+
+    /// <summary>Creates a below-bookings refusal carrying the minimum and current values.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="minimum">The lowest total the row would accept.</param>
+    /// <param name="currentTotal">The total the row carries now.</param>
+    /// <param name="currentRemaining">The remaining count the row carries now.</param>
+    public static Error CapacityBelowBookings(string message, int minimum, int currentTotal, int currentRemaining) =>
+        new(CapacityBelowBookingsCode, message, new Dictionary<string, long>
+        {
+            ["minimum"] = minimum,
+            ["currentTotal"] = currentTotal,
+            ["currentRemaining"] = currentRemaining,
+        });
 }

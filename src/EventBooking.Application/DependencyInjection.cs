@@ -7,6 +7,7 @@ using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Settings;
 using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Application;
@@ -36,10 +37,10 @@ public static class ApplicationServiceCollectionExtensions
 
         // Event negotiation.
         services.AddScoped<ProposeEventHandler>();
-        services.AddScoped<AcceptProposalHandler>();
+        services.AddScoped<RecordAcceptanceHandler>();
         services.AddScoped<WithdrawAcceptanceHandler>();
         services.AddScoped<WithdrawProposalHandler>();
-        services.AddScoped<GetManagerEventBoardHandler>();
+        services.AddScoped<NegotiationBoardHandler>();
         services.AddScoped<CancelEventHandler>();
         services.AddScoped<AdjustEventCapacityHandler>();
 

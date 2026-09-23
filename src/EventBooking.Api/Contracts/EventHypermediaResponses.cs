@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 
 namespace EventBooking.Api.Contracts;
 
@@ -147,14 +147,18 @@ public static class StaffResourceLinks
 public sealed record OpenProposalResourceResponse(
     /// <summary>Gets the stable event proposal identifier.</summary>
     Guid ProposalId,
+    /// <summary>Gets the location that would host the event.</summary>
+    Guid LocationId,
     /// <summary>Gets the proposal window calendar date.</summary>
     DateOnly Date,
     /// <summary>Gets the start of the proposal window.</summary>
     TimeOnly StartTime,
     /// <summary>Gets the end of the proposal window.</summary>
     TimeOnly EndTime,
-    /// <summary>Gets the appointment-type names that already accepted this proposal.</summary>
-    IReadOnlyList<string> AcceptedByAppointmentTypeNames,
+    /// <summary>Gets how many appointment types the proposal lists.</summary>
+    int ListedTypeCount,
+    /// <summary>Gets how many of them have accepted.</summary>
+    int AcceptedTypeCount,
     /// <summary>Gets the caller's accepted headcount, or null when not accepted by the caller.</summary>
     int? MyAcceptedHeadcount,
     /// <summary>Gets whether the caller already accepted this proposal.</summary>
@@ -167,9 +171,9 @@ public sealed record OpenProposalResourceResponse(
     /// <summary>Projects one open proposal view into its hypermedia resource.</summary>
     /// <param name="view">The application proposal view to project.</param>
     /// <returns>The API resource with conditional proposal links.</returns>
-    public static OpenProposalResourceResponse From(OpenProposalView view) =>
-        new(view.ProposalId, view.Date, view.StartTime, view.EndTime,
-            view.AcceptedByAppointmentTypeNames, view.MyAcceptedHeadcount,
+    public static OpenProposalResourceResponse From(NegotiationBoardProposalView view) =>
+        new(view.ProposalId, view.LocationId, view.Date, view.StartTime, view.EndTime,
+            view.ListedTypeCount, view.AcceptedTypeCount, view.MyAcceptedHeadcount,
             view.AcceptedByMe, view.CreatedByMe,
             StaffResourceLinks.ForProposal(view.ProposalId, view.AcceptedByMe, view.CreatedByMe));
 }
@@ -178,6 +182,8 @@ public sealed record OpenProposalResourceResponse(
 public sealed record ManagerEventResourceResponse(
     /// <summary>Gets the stable event identifier.</summary>
     Guid EventId,
+    /// <summary>Gets the location hosting the event.</summary>
+    Guid LocationId,
     /// <summary>Gets the event window calendar date.</summary>
     DateOnly Date,
     /// <summary>Gets the start of the event window.</summary>
@@ -194,8 +200,8 @@ public sealed record ManagerEventResourceResponse(
     /// <summary>Projects one event view into its hypermedia resource.</summary>
     /// <param name="view">The application event view to project.</param>
     /// <returns>The API resource with event links.</returns>
-    public static ManagerEventResourceResponse From(ManagerEventView view) =>
-        new(view.EventId, view.Date, view.StartTime, view.EndTime,
+    public static ManagerEventResourceResponse From(NegotiationBoardEventView view) =>
+        new(view.EventId, view.LocationId, view.Date, view.StartTime, view.EndTime,
             view.MyHeadcount, view.MyRemainingCapacity,
             StaffResourceLinks.ForEvent(view.EventId));
 }
@@ -212,7 +218,7 @@ public sealed record EventBoardResourceResponse(
     /// <summary>Projects one event board into its hypermedia resource.</summary>
     /// <param name="board">The application event board to project.</param>
     /// <returns>The API resource with board and row links.</returns>
-    public static EventBoardResourceResponse From(ManagerEventBoard board) =>
+    public static EventBoardResourceResponse From(NegotiationBoard board) =>
         new(board.OpenProposals.Select(OpenProposalResourceResponse.From).ToList(),
             board.Events.Select(ManagerEventResourceResponse.From).ToList(),
             StaffResourceLinks.ForEventBoard());

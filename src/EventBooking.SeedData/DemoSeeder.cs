@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Attendees;
-using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
@@ -82,7 +82,7 @@ public sealed class DemoSeeder(
     IAttendeeRepository attendees,
     IAttendeeGroupRepository groups,
     ProposeEventHandler proposeEvent,
-    AcceptProposalHandler acceptProposal,
+    RecordAcceptanceHandler acceptProposal,
     SaveAttendeeHandler saveAttendee,
     IUnitOfWork unitOfWork,
     IClock clock,
@@ -317,7 +317,9 @@ public sealed class DemoSeeder(
 
                 Report($"Proposing event: {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm} (today is {clock.TodayAtTransitionalLocation:yyyy-MM-dd}).");
                 var proposed = await proposeEvent.HandleAsync(
-                    new ProposeEventCommand(spec.CreatedByManagerUserId, spec.Date, spec.StartTime),
+                    new ProposeEventCommand(
+                        spec.CreatedByManagerUserId, TransitionalLocation.Id,
+                        spec.Date, spec.StartTime, 240, AppointmentTypeIds.All),
                     cancellationToken);
                 if (proposed.IsFailure)
                 {
@@ -325,7 +327,7 @@ public sealed class DemoSeeder(
                         $"Proposing {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm} failed: {proposed.Error}.");
                 }
 
-                proposalId = proposed.Value;
+                proposalId = proposed.Value.ProposalId;
                 ensured++;
                 Report($"Proposed event: {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm}.");
             }
@@ -349,7 +351,7 @@ public sealed class DemoSeeder(
             foreach (var (typeId, headcount) in headcounts)
             {
                 var accepted = await acceptProposal.HandleAsync(
-                    new AcceptProposalCommand(ManagerForType()[typeId], proposalId, headcount!.Value),
+                    new RecordAcceptanceCommand(ManagerForType()[typeId], proposalId, headcount!.Value),
                     cancellationToken);
                 if (accepted.IsFailure)
                 {
