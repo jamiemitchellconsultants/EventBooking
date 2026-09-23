@@ -120,7 +120,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
                      (new DateOnly(2030, 1, 16), new TimeOnly(13, 0)),
                  })
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
@@ -132,7 +132,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             offeredEventIds.Add(eventId);
         }
 
-        var unofferedProposal = EventProposal.Create(
+        var unofferedProposal = ProposalFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2030, 1, 17), new TimeOnly(9, 0), 240), Guid.NewGuid());
         unofferedProposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         unofferedProposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

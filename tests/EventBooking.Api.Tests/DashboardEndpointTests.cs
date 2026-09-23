@@ -95,7 +95,7 @@ public class DashboardEndpointTests(ApiFactory factory)
             noResponse.MarkNoResponse();
             context.Attendees.Add(noResponse);
 
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(today.AddDays(30), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());

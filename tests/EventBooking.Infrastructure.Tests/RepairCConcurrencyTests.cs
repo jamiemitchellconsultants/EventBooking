@@ -228,6 +228,8 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 fixture.ConnectionString,
                 new ClockOptions("Europe/London"),
                 new TokenOptions("a-repair-c-concurrency-signing-key-long-enough"));
+            services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
+                new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
             services.AddEventBookingApplication(
                 new AttendeePortalOptions("https://booking.example.com", "recruitment@example.com"));
             services.AddScoped<IEmailTransport, SilentTransport>();
@@ -268,7 +270,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         /// <summary>Seeds one proposal with the drug-and-alcohol acceptance already recorded.</summary>
         public async Task<EventProposal> GivenOpenProposalWithOneAcceptanceAsync()
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(FixedToday.AddDays(30), new TimeOnly(9, 0), 240),
                 DrugAndAlcoholManagerId);

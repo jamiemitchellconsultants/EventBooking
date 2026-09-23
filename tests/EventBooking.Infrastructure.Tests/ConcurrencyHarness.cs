@@ -68,6 +68,10 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             new ClockOptions("Europe/London"),
             new TokenOptions("a-concurrency-test-signing-key-long-enough"));
 
+        services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
+
+            new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
+
         services.AddEventBookingApplication(
             new AttendeePortalOptions("https://booking.example.com", "recruitment@example.com"));
 
@@ -88,7 +92,7 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
     public async Task<Guid> GivenEventAsync(int drugAndAlcohol, int medical, int uniform)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(
                 DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30 + Interlocked.Increment(ref _nextEventOffset)),

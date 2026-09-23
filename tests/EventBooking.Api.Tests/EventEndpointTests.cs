@@ -140,7 +140,7 @@ public class EventEndpointTests(ApiFactory factory)
     /// <summary>Seeds one event with capacity for every appointment type.</summary>
     private async Task<Guid> GivenEventAsync()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60), new TimeOnly(9, 0), 240),
             Guid.NewGuid());

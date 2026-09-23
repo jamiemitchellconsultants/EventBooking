@@ -82,7 +82,7 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
 
     private async Task<Guid> GivenEventAsync(int totalHeadcount, int occupied)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60), new TimeOnly(9, 0), 240),
             Guid.NewGuid());

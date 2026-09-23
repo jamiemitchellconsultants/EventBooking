@@ -112,7 +112,7 @@ public sealed class AttendeeBookingQueryTests(PostgresFixture fixture)
 
     private async Task<Guid> SeedEventAsync(DateOnly date, TimeOnly startTime)
     {
-        var proposal = EventProposal.Create(Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 10);

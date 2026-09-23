@@ -33,7 +33,7 @@ public class GetManagerEventBoardHandlerTests
     [Fact]
     public async Task OpenProposalsShowWhoHasAcceptedAndWhetherIHave()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, 10);
@@ -57,9 +57,9 @@ public class GetManagerEventBoardHandlerTests
     [Fact]
     public async Task AProposalIAmYetToAcceptIsFlaggedAsSuch()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 12), new TimeOnly(13, 0), 240),
-            UniformManager);
+            UniformManager, AppointmentTypeIds.UniformFitting);
         proposal.Accept(AppointmentTypeIds.UniformFitting, UniformManager, 8);
         _proposals.Add(proposal);
 
@@ -77,7 +77,7 @@ public class GetManagerEventBoardHandlerTests
     {
         foreach (var day in new[] { 14, 10, 12 })
         {
-            _proposals.Add(EventProposal.Create(
+            _proposals.Add(ProposalFixture.Create(
                 Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240),
                 UniformManager));
         }
@@ -133,7 +133,7 @@ public class GetManagerEventBoardHandlerTests
 
     private static EventProposal FullyAcceptedProposal(DateOnly? date = null)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(date ?? new DateOnly(2026, 9, 8), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);

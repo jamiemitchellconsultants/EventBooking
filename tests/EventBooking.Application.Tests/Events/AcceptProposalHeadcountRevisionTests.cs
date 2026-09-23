@@ -44,7 +44,7 @@ public class AcceptProposalHeadcountRevisionTests
             Role.Manager,
             AppointmentTypeIds.UniformFitting));
 
-        _proposal = EventProposal.Create(
+        _proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
@@ -117,7 +117,7 @@ public class AcceptProposalHeadcountRevisionTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation", result.Error.Code);
-        Assert.Equal("headcount must be greater than zero.", result.Error.Message);
+        Assert.Equal("headcount must be between 1 and 1000.", result.Error.Message);
         Assert.Equal(10, Assert.Single(_proposal.Acceptances).Headcount);
         Assert.Equal(1, _unitOfWork.SaveCount);
         Assert.Single(_audit.Entries);

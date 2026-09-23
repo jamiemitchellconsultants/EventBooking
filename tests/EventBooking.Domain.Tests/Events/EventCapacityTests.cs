@@ -8,7 +8,7 @@ public class EventCapacityTests
 {
     private static EventCapacity CapacityOf(int headcount)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());

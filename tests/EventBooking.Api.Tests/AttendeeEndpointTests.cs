@@ -450,7 +450,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         for (var index = 0; index < 3; index++)
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(), new EventWindow(date.AddDays(index), new TimeOnly(9, 0), 240), Guid.NewGuid());
             foreach (var appointmentTypeId in AppointmentTypeIds.All)
             {
@@ -473,7 +473,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         foreach (var day in new[] { 14, 15, 16 })
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(new DateOnly(2030, 1, day), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());

@@ -32,7 +32,7 @@ public class ManagerEventBoardHeadcountRevisionTests
 
     private EventProposal AddProposal()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             CurrentManager);
@@ -59,11 +59,18 @@ public class ManagerEventBoardHeadcountRevisionTests
     }
 
     [Fact]
-    public async Task AnotherManagersHeadcountIsNotReturnedAsMine()
+    public async Task AnotherTypesHeadcountIsNotReturnedAsMine()
     {
-        var proposal = AddProposal();
+        // Proposed by another type, so the caller's own type has not accepted at all: the board
+        // must not surrender another team's headcount (FR-2.8).
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+            FormerManager,
+            AppointmentTypeIds.UniformFitting);
+        _proposals.Add(proposal);
         proposal.Accept(
-            AppointmentTypeIds.DrugAndAlcoholTesting,
+            AppointmentTypeIds.UniformFitting,
             FormerManager,
             10);
 
@@ -75,7 +82,7 @@ public class ManagerEventBoardHeadcountRevisionTests
         Assert.False(view.AcceptedByMe);
         Assert.Null(view.MyAcceptedHeadcount);
         Assert.Equal(
-            new[] { "Drug & Alcohol Testing" },
+            new[] { "Uniform Fitting" },
             view.AcceptedByAppointmentTypeNames);
     }
 }

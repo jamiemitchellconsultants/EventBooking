@@ -32,7 +32,7 @@ public class AdjustEventCapacityHandlerTests
             AppointmentTypeIds.DrugAndAlcoholTesting));
         _roles.Add(StaffAccessProfile.Create(Coordinator, Role.Coordinator, null));
 
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);

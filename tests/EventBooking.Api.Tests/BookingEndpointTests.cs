@@ -132,7 +132,7 @@ public class BookingEndpointTests(ApiFactory factory)
 
         foreach (var offeredEvent in offeredEvents)
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(offeredEvent.Date, offeredEvent.StartTime, 240),
                 Guid.NewGuid());

@@ -27,7 +27,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
 
     public async Task<Guid> GivenEventAsync(int totalHeadcount)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0), 240),
             Guid.NewGuid());

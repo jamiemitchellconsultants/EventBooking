@@ -20,6 +20,9 @@ public sealed class Event
     /// <summary>Defines proposal id for the current use case.</summary>
     public Guid ProposalId { get; private set; }
 
+    /// <summary>The location hosting the event, carried from its proposal.</summary>
+    public Guid LocationId { get; private set; }
+
     /// <summary>Defines window for the current use case.</summary>
     public EventWindow Window { get; private set; }
 
@@ -46,6 +49,7 @@ public sealed class Event
         {
             Id = id,
             ProposalId = proposal.Id,
+            LocationId = proposal.LocationId,
             Window = proposal.Window,
             Status = EventStatus.Active,
         };
@@ -63,8 +67,6 @@ public sealed class Event
     /// <param name="appointmentTypeId">The appointment type id.</param>
     public EventCapacity CapacityFor(Guid appointmentTypeId)
     {
-        AppointmentTypeIds.EnsureKnown(appointmentTypeId);
-
         var capacity = _capacities.SingleOrDefault(c => c.AppointmentTypeId == appointmentTypeId);
         Guard.Against(capacity is null, $"This event has no capacity counter for {appointmentTypeId}.");
 

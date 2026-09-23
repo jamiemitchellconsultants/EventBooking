@@ -35,7 +35,7 @@ public class AcceptProposalHandlerTests
             UniformManager, Role.Manager, AppointmentTypeIds.UniformFitting));
         _roles.Add(StaffAccessProfile.Create(Coordinator, Role.Coordinator, null));
 
-        _proposal = EventProposal.Create(
+        _proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
@@ -127,7 +127,7 @@ public class AcceptProposalHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation", result.Error.Code);
-        Assert.Equal("headcount must be greater than zero.", result.Error.Message);
+        Assert.Equal("headcount must be between 1 and 1000.", result.Error.Message);
     }
 
     [Fact]
@@ -145,13 +145,13 @@ public class AcceptProposalHandlerTests
     [Fact]
     public async Task AWithdrawnProposalCannotBeAccepted()
     {
-        _proposal.Withdraw(DrugAndAlcoholManager);
+        _proposal.Withdraw(ProposalFixture.ProposerType);
 
         var result = await Accept(MedicalManager, 6);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("validation", result.Error.Code);
-        Assert.Equal("Only an open proposal can be accepted.", result.Error.Message);
+        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal("The proposal is Withdrawn and can no longer be changed.", result.Error.Message);
     }
 
     [Fact]

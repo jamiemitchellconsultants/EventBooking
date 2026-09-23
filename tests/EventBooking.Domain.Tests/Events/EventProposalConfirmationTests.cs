@@ -7,7 +7,7 @@ namespace EventBooking.Domain.Tests.Events;
 public class EventProposalConfirmationTests
 {
     private static EventProposal NewProposal() =>
-        EventProposal.Create(
+        ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
@@ -53,7 +53,7 @@ public class EventProposalConfirmationTests
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
         Assert.True(proposal.IsFullyAccepted);
 
-        proposal.WithdrawAcceptance(AppointmentTypeIds.MedicalCheckUp, medicalManager);
+        proposal.WithdrawAcceptance(AppointmentTypeIds.MedicalCheckUp);
 
         Assert.False(proposal.IsFullyAccepted);
     }
@@ -62,11 +62,11 @@ public class EventProposalConfirmationTests
     public void AWithdrawnProposalIsNeverFullyAccepted()
     {
         var creator = Guid.NewGuid();
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             creator);
-        proposal.Withdraw(creator);
+        proposal.Withdraw(ProposalFixture.ProposerType);
 
         Assert.False(proposal.IsFullyAccepted);
     }

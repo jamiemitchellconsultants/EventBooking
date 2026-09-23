@@ -41,6 +41,14 @@ public sealed class WithdrawAcceptanceHandler(
             return Result.Failure(authorized.Error);
         }
 
+
+        // A scoped role with no scope is granted nothing (FR-10.7), and negotiation is judged on
+        // the caller's own appointment type.
+        if (authorized.Value.AppointmentTypeId is not { } actingType)
+        {
+            return Result.Failure(Error.Forbidden("This action needs an assigned appointment type."));
+        }
+
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
         var proposal = await proposals.LockForUpdateAsync(command.ProposalId, cancellationToken);
@@ -59,7 +67,7 @@ public sealed class WithdrawAcceptanceHandler(
 
         try
         {
-            proposal.WithdrawAcceptance(authorized.Value.AppointmentTypeId!.Value, command.ManagerUserId);
+            proposal.WithdrawAcceptance(actingType);
         }
         catch (DomainException ex)
         {

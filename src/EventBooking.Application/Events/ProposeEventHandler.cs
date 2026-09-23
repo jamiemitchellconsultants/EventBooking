@@ -4,7 +4,9 @@ using EventBooking.Application.Common;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Common;
+using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Events;
 
@@ -12,7 +14,9 @@ namespace EventBooking.Application.Events;
 /// <param name="ManagerUserId">The manager user id.</param>
 /// <param name="Date">The date.</param>
 /// <param name="StartTime">The start time.</param>
-public sealed record ProposeEventCommand(Guid ManagerUserId, DateOnly Date, TimeOnly StartTime);
+/// <param name="Headcount">The proposing Manager's own headcount (FR-2.1).</param>
+public sealed record ProposeEventCommand(
+    Guid ManagerUserId, DateOnly Date, TimeOnly StartTime, int Headcount = 1);
 
 /// <summary>Creates one future open proposal inside a transaction protected by a database backstop.</summary>
 /// <param name="proposals">The proposals.</param>
@@ -20,12 +24,14 @@ public sealed record ProposeEventCommand(Guid ManagerUserId, DateOnly Date, Time
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="audit">The audit.</param>
 /// <param name="clock">The clock.</param>
+/// <param name="zones">The zone abstraction that interprets the window at its location.</param>
 public sealed class ProposeEventHandler(
     IEventProposalRepository proposals,
     IStaffAccessAuthorizer access,
     IUnitOfWork unitOfWork,
     IAuditLogger audit,
-    IClock clock)
+    IClock clock,
+    IEventWindowZones zones)
 {
     /// <summary>Creates the requested proposal or returns a stable conflict for its open window.</summary>
     /// <param name="command">The command.</param>
@@ -42,6 +48,14 @@ public sealed class ProposeEventHandler(
         if (authorized.IsFailure)
         {
             return Result<Guid>.Failure(authorized.Error);
+        }
+
+
+        // A scoped role with no scope is granted nothing (FR-10.7): a proposal must name the
+        // proposing appointment type.
+        if (authorized.Value.AppointmentTypeId is not { } proposerAppointmentTypeId)
+        {
+            return Result<Guid>.Failure(Error.Forbidden("Proposing needs an assigned appointment type."));
         }
 
         EventWindow window;
@@ -71,7 +85,21 @@ public sealed class ProposeEventHandler(
         EventProposal proposal;
         try
         {
-            proposal = EventProposal.Create(id, window, command.ManagerUserId);
+            // The listed set is still the predecessor's three types, and the location is the
+            // transitional one, until Task 13 puts both on the command, the API and the MCP tool.
+            proposal = EventProposal.Propose(
+                id,
+                TransitionalLocation.Id,
+                locationIsActive: true,
+                TransitionalLocation.TimeZoneId,
+                window,
+                zones,
+                clock.UtcNow,
+                [.. AppointmentTypeIds.All.Select(typeId => new ProposableAppointmentType(
+                    typeId, AppointmentTypeIds.CodeOf(typeId), true, true))],
+                proposerAppointmentTypeId,
+                command.ManagerUserId,
+                command.Headcount);
             proposals.Add(proposal);
 
             audit.Record(
@@ -84,6 +112,11 @@ public sealed class ProposeEventHandler(
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+        }
+        catch (ProposalValidationException ex)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return Result<Guid>.Failure(Error.Validation(string.Join("; ", ex.Failures)));
         }
         catch (DomainException ex)
         {

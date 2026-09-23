@@ -231,7 +231,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         var events = new List<Event>();
         for (var offset = 0; offset < Invite.RequiredOptionCount; offset++)
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(new DateOnly(2026, 9, 10 + offset), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());

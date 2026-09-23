@@ -18,7 +18,7 @@ public class ProposeEventHandlerTests
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
 
-    private ProposeEventHandler Handler => new(_proposals, _roles, _unitOfWork, _audit, _clock);
+    private ProposeEventHandler Handler => new(_proposals, _roles, _unitOfWork, _audit, _clock, ProposalFixture.Zones);
 
     public ProposeEventHandlerTests()
     {
@@ -40,7 +40,9 @@ public class ProposeEventHandlerTests
         Assert.Equal(EventProposalStatus.Open, proposal.Status);
         Assert.Equal(new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240), proposal.Window);
         Assert.Equal(Manager, proposal.CreatedByManagerUserId);
-        Assert.Empty(proposal.Acceptances);
+        // The proposing Manager commits in the same step (FR-2.1).
+        var acceptance = Assert.Single(proposal.Acceptances);
+        Assert.Equal(AppointmentTypeIds.DrugAndAlcoholTesting, acceptance.AppointmentTypeId);
         Assert.Equal(1, _unitOfWork.SaveCount);
     }
 

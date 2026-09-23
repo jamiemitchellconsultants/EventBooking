@@ -17,6 +17,9 @@ public sealed class EventProposalConfiguration : IEntityTypeConfiguration<EventP
         builder.Property(p => p.Id).HasColumnName("id");
         builder.Property(p => p.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(p => p.CreatedByManagerUserId).HasColumnName("created_by_manager_user_id");
+        builder.Property(p => p.LocationId).HasColumnName("location_id");
+        // The proposing type, not the proposing person, decides who may withdraw the proposal.
+        builder.Property(p => p.ProposerAppointmentTypeId).HasColumnName("proposer_appointment_type_id");
 
         // The 4-hour window lives in this table's own date and start_time columns.
         builder.OwnsOne(p => p.Window, window =>
@@ -39,6 +42,14 @@ public sealed class EventProposalConfiguration : IEntityTypeConfiguration<EventP
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Navigation(p => p.Acceptances).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(p => p.ListedTypes)
+            .WithOne()
+            .HasForeignKey(listed => listed.ProposalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Navigation(p => p.ListedTypes).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(p => p.Status);
 
