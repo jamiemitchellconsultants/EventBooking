@@ -18,7 +18,7 @@ public class SchemaTests(PostgresFixture fixture)
     private const string CapacityBounds = "ck_event_capacity_bounds";
 
     [Fact]
-    public async Task TheSchemaIsOneMigrationThatAppliesToAnEmptyDatabase()
+    public async Task TheSchemaAppliesToAnEmptyDatabaseFromItsMigrations()
     {
         var databaseName = $"eventbooking_fresh_{Guid.NewGuid():N}";
         var connectionString = ConnectionTo(databaseName);
@@ -29,8 +29,11 @@ public class SchemaTests(PostgresFixture fixture)
             await ApplyRolesScriptAsync(connectionString);
 
             await using var context = NewContext(connectionString);
+            // One initial schema, and the migration that makes the derived start instant
+            // required once Task 11's repository computes it. The initial migration is not
+            // rewritten: it is committed, and the chain is what keeps it regenerable.
             Assert.Equal(
-                ["20260920120000_InitialSchema"],
+                ["20260920120000_InitialSchema", "20260920145721_RequireEventStartInstant"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();
@@ -249,6 +252,22 @@ public class SchemaTests(PostgresFixture fixture)
         Assert.Contains(
             indexes,
             definition => definition.Contains("(status, location_id, start_utc)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheDatabaseRefusesAnEventWithoutAStartInstant()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        var eventId = await CreateEventWithoutCapacitiesAsync(context);
+
+        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await context.Database.ExecuteSqlRawAsync(
+                "UPDATE event SET start_utc = NULL WHERE id = {0};",
+                [eventId]));
+
+        Assert.Contains("start_utc", ex.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

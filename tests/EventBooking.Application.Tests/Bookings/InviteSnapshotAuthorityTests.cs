@@ -50,7 +50,7 @@ public sealed class InviteSnapshotAuthorityTests
         var clock = new FakeClock(DateTimeOffset.Parse("2026-09-20T00:00:00Z"));
 
         var result = await new ViewInviteHandler(
-                invites, attendees, events, new EligibleEventFinder(events, clock),
+                invites, attendees, events, new EligibleEventFinder(events, events, clock),
                 new RecordingAuditLogger(), new FakeUnitOfWork(), tokens, clock)
             .HandleAsync(new ViewInviteQuery(issued), CancellationToken.None);
 

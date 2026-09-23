@@ -7,6 +7,9 @@ namespace EventBooking.Infrastructure.Persistence.Configurations;
 
 public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
 {
+    /// <summary>The index design 04 names for the eligibility query, by its database name.</summary>
+    public const string EligibilityIndexName = "ix_event_eligibility";
+
     public void Configure(EntityTypeBuilder<Event> builder)
     {
         builder.ToTable("event");
@@ -21,11 +24,13 @@ public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         // the eligibility query, and the domain never reads it as the source of truth; PostgreSQL
         // cannot evaluate IANA rules in a generated column, so the application computes it.
         //
-        // Nullable until Task 11, which is where the repository writes it in the same transaction
-        // as the insert and makes the column required. A non-nullable column here would take EF's
-        // default of 0001-01-01 for every row nothing has computed yet, and the eligibility query
-        // filters on start_utc: a wrong instant would quietly hide the event rather than fail.
-        builder.Property<DateTimeOffset?>("StartUtc").HasColumnName("start_utc");
+        // The CLR type stays nullable although the column is not: an event that has not been
+        // stamped yet has to be distinguishable from one stamped with a default, which is exactly
+        // what the save-time backstop looks for. A missing value fails the insert instead of
+        // storing 0001-01-01, which the eligibility query would read as an event in the past.
+        builder.Property<DateTimeOffset?>(EventStartInstants.PropertyName)
+            .HasColumnName("start_utc")
+            .IsRequired();
 
         builder.OwnsOne(s => s.Window, window =>
         {
@@ -47,7 +52,7 @@ public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.HasIndex(s => s.ProposalId).IsUnique();
         builder.HasIndex(s => s.Status);
         builder
-            .HasIndex(nameof(Event.Status), nameof(Event.LocationId), "StartUtc")
-            .HasDatabaseName("ix_event_eligibility");
+            .HasIndex(nameof(Event.Status), nameof(Event.LocationId), EventStartInstants.PropertyName)
+            .HasDatabaseName(EligibilityIndexName);
     }
 }

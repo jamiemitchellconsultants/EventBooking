@@ -336,10 +336,10 @@ public sealed class RecoveryInviteHandlerTests
         _bookings,
         appointmentOverride ?? _appointments,
         new InviteIssuer(
-            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             new FakeTokenService(), EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
-        new EligibleEventFinder(_events, _clock),
+        new EligibleEventFinder(_events, _events, _clock),
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
         _unitOfWork);
 

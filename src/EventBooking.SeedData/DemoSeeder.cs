@@ -9,9 +9,11 @@ using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Settings;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.SeedData;
@@ -161,6 +163,17 @@ public sealed class DemoSeeder(
         database.AppointmentTypes.AddRange(AppointmentType.CreateFixedSet());
         database.SystemSettings.Add(SystemSettings.CreateDefault());
         database.AttendeeGroups.AddRange(FixedAttendeeGroups());
+
+        // The migration seeds the transitional location, and the wipe takes it with everything
+        // else. Every event's derived start instant is read from its location's zone, so a
+        // reseed that leaves the table empty cannot write the demo events at all.
+        database.Locations.Add(Location.Create(
+            TransitionalLocation.Id,
+            "TRANSITIONAL",
+            "Transitional location",
+            "Recorded against the transitional site until Phase 3.",
+            TransitionalLocation.TimeZoneId,
+            new NodaTimeEventWindowZones()));
         await database.SaveChangesAsync(cancellationToken);
         Report("Wipe complete; reference rows restored.");
     }

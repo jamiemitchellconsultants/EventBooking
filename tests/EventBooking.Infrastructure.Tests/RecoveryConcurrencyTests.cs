@@ -326,6 +326,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         services.GetRequiredService<IBookingAppointmentRepository>(),
         new RecordingCapacityRepository(services.GetRequiredService<IEventCapacityRepository>(), trace),
         new EligibleEventFinder(
+            services.GetRequiredService<IEventEligibilityQuery>(),
             services.GetRequiredService<IEventRepository>(),
             services.GetRequiredService<IClock>()),
         services.GetRequiredService<ITokenService>(),
@@ -344,6 +345,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             new RecordingInviteRepository(services.GetRequiredService<IInviteRepository>(), trace),
             services.GetRequiredService<IAttendeeGroupRepository>(),
             new EligibleEventFinder(
+                services.GetRequiredService<IEventEligibilityQuery>(),
                 services.GetRequiredService<IEventRepository>(),
                 services.GetRequiredService<IClock>()),
             services.GetRequiredService<ISystemSettingsRepository>(),
@@ -537,7 +539,13 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         public Task<IReadOnlyList<Event>> ListAllAsync(CancellationToken cancellationToken) =>
             inner.ListAllAsync(cancellationToken);
 
-        public void Add(Event eventItem) => inner.Add(eventItem);
+        public Task<IReadOnlyList<Event>> ListByIdsAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken cancellationToken) =>
+            inner.ListByIdsAsync(ids, cancellationToken);
+
+        public Task AddAsync(Event eventItem, CancellationToken cancellationToken) =>
+            inner.AddAsync(eventItem, cancellationToken);
     }
 
     /// <summary>Records capacity-lock acquisition around the real repository.</summary>

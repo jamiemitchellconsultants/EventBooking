@@ -50,6 +50,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAppointmentWorkspaceQueries, AppointmentWorkspaceQueries>();
         services.AddScoped<IAttendeeReadinessQueries, AttendeeReadinessQueries>();
         services.AddScoped<IAttendeeBookingQueries, AttendeeBookingQueries>();
+        services.AddScoped<IEventEligibilityQuery, EventEligibilityQuery>();
 
         return services;
     }

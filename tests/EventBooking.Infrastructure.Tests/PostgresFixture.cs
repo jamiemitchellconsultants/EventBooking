@@ -1,6 +1,9 @@
+using EventBooking.Application.Events;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Locations;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -83,6 +86,17 @@ public sealed class PostgresFixture : IAsyncLifetime
         context.AppointmentTypes.AddRange(
             Domain.AppointmentTypes.AppointmentType.CreateFixedSet());
         context.SystemSettings.Add(Domain.Settings.SystemSettings.CreateDefault());
+
+        // The migration seeds the transitional location, and truncating takes it away with
+        // everything else. Every event's derived start instant is computed from its location's
+        // zone, so a reset that leaves the table empty makes the next event unwritable.
+        context.Locations.Add(Location.Create(
+            TransitionalLocation.Id,
+            "TRANSITIONAL",
+            "Transitional location",
+            "Recorded against the transitional site until Phase 3.",
+            TransitionalLocation.TimeZoneId,
+            new NodaTimeEventWindowZones()));
         await EnsureAttendeeGroupsSeededAsync(context);
         await context.SaveChangesAsync();
     }

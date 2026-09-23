@@ -65,7 +65,7 @@ public sealed class BookingAppointmentSnapshotTests
             bookings,
             appointments,
             new InMemoryEventCapacityRepository(events),
-            new EligibleEventFinder(events, clock),
+            new EligibleEventFinder(events, events, clock),
             tokens,
             deliveries,
             new RecordingAuditLogger(),
@@ -147,7 +147,7 @@ public sealed class BookingAppointmentSnapshotTests
             bookings,
             appointments,
             new InMemoryEventCapacityRepository(events),
-            new EligibleEventFinder(events, clock),
+            new EligibleEventFinder(events, events, clock),
             tokens,
             EmailDeliveryTestFactory.Create(
                 new InMemoryEmailDeliveryRepository(),

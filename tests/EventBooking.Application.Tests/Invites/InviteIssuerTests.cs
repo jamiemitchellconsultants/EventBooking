@@ -41,7 +41,7 @@ public class InviteIssuerTests
     private InviteIssuer Issuer => new(
         _invites,
         _groups,
-        new EligibleEventFinder(_events, _clock),
+        new EligibleEventFinder(_events, _events, _clock),
         _settings,
         _tokens,
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),

@@ -45,7 +45,7 @@ public class CancelBookingHandlerTests
         _invites,
         new BookingCanceller(_appointments, _capacities, _audit),
         new InviteIssuer(
-            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             _tokens, EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),

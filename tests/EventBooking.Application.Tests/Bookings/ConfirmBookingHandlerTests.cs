@@ -48,7 +48,7 @@ public class ConfirmBookingHandlerTests
             return new ConfirmBookingHandler(
                 _invites, _attendees, _events, _bookings,
                 _appointments, capacities,
-                new EligibleEventFinder(_events, _clock), _tokens,
+                new EligibleEventFinder(_events, _events, _clock), _tokens,
                 EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock), _audit,
                 _unitOfWork, _clock, Portal);
         }

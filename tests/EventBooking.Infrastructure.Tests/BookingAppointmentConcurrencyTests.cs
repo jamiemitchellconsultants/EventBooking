@@ -13,6 +13,7 @@ using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Persistence.Queries;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using EventBooking.Infrastructure.Tokens;
 using Microsoft.EntityFrameworkCore;
@@ -207,7 +208,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var issuer = new InviteIssuer(
                 new InviteRepository(context),
                 new AttendeeGroupRepository(context),
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 new SystemSettingsRepository(context),
                 tokens,
                 deliveries,
@@ -222,7 +223,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
                 issuer,
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 deliveries,
                 unitOfWork);
             return await handler.HandleAsync(
@@ -314,7 +315,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var issuer = new InviteIssuer(
                 new InviteRepository(context),
                 new AttendeeGroupRepository(context),
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 new SystemSettingsRepository(context),
                 tokens,
                 deliveries,
@@ -329,7 +330,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
                 issuer,
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 deliveries,
                 unitOfWork);
             return await handler.HandleAsync(

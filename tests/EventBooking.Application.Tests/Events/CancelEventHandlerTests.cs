@@ -47,10 +47,10 @@ public class CancelEventHandlerTests
         _roles,
         new BookingCanceller(_appointments, new InMemoryEventCapacityRepository(_events), _audit),
         new InviteIssuer(
-            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             _tokens, EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
-        new EligibleEventFinder(_events, _clock),
+        new EligibleEventFinder(_events, _events, _clock),
         _appointments,
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
         _audit,

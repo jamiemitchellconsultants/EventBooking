@@ -118,7 +118,7 @@ public sealed class AcceptProposalHandler(
                 return Result<AcceptProposalOutcome>.Failure(Error.Validation(ex.Message));
             }
 
-            events.Add(eventItem);
+            await events.AddAsync(eventItem, cancellationToken);
             eventId = createdEventId;
 
             audit.Record(

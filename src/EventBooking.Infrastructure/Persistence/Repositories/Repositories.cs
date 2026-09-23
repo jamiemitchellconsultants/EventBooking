@@ -7,7 +7,9 @@ using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Persistence.Locking;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence.Repositories;
@@ -74,12 +76,23 @@ public sealed class EventProposalRepository(EventBookingDbContext context, RowLo
     public void Add(EventProposal proposal) => context.EventProposals.Add(proposal);
 }
 
-public sealed class EventRepository(EventBookingDbContext context, RowLocks rowLocks) : IEventRepository
+public sealed class EventRepository(
+    EventBookingDbContext context,
+    RowLocks rowLocks,
+    IEventWindowZones zones) : IEventRepository
 {
     /// <summary>For a test driving one context directly, with a lock tracker of its own.</summary>
     /// <param name="context">The context to read through.</param>
     public EventRepository(EventBookingDbContext context)
-        : this(context, new RowLocks(context))
+        : this(context, new RowLocks(context), new NodaTimeEventWindowZones())
+    {
+    }
+
+    /// <summary>For a test that cares which zone rules the start instant is computed under.</summary>
+    /// <param name="context">The context to read through.</param>
+    /// <param name="zones">The zone abstraction.</param>
+    public EventRepository(EventBookingDbContext context, IEventWindowZones zones)
+        : this(context, new RowLocks(context), zones)
     {
     }
 
@@ -129,7 +142,46 @@ public sealed class EventRepository(EventBookingDbContext context, RowLocks rowL
             .Include(s => s.Capacities)
             .ToListAsync(cancellationToken);
 
-    public void Add(Event eventItem) => context.Events.Add(eventItem);
+    public async Task<IReadOnlyList<Event>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        return await context.Events
+            .Include(s => s.Capacities)
+            .Where(s => ids.Contains(s.Id))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Adds the event and writes its derived start instant in the same transaction, computed from
+    /// the window and the location's own zone. The column is not nullable, and a row inserted
+    /// without it would be an event the eligibility query silently never sees.
+    /// </summary>
+    /// <param name="eventItem">The eventItem.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task AddAsync(Event eventItem, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(eventItem);
+
+        var timeZoneId = await context.Locations
+            .Where(location => location.Id == eventItem.LocationId)
+            .Select(location => location.TimeZoneId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        context.Events.Add(eventItem);
+        EventStartInstants.Stamp(
+            context,
+            eventItem,
+            EventStartInstants.Required(timeZoneId, eventItem.LocationId),
+            zones);
+    }
 }
 
 /// <summary>Persists attendees and exposes the lifecycle root row lock.</summary>
