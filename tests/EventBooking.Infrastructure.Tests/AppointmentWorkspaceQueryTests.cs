@@ -137,11 +137,11 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
     {
         var eventItem = EventFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(date, new TimeOnly(9, 0)),
+            new EventWindow(date, new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 20));
         if (cancelled)
         {
-            eventItem.Cancel();
+            eventItem.CancelBeforeStart();
         }
 
         context.Events.Add(eventItem);
@@ -161,12 +161,13 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
             Guid.NewGuid(), $"WORKSPACE_{Guid.NewGuid():N}".ToUpperInvariant(), "Workspace", true,
             [appointmentTypeId]);
         context.AttendeeGroups.Add(group);
-        var attendee = Attendee.Create(Guid.NewGuid(), name, email, group);
+        var attendee = Attendee.Create(Guid.NewGuid(), name, email, group, ProposalFixture.Now);
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
             $"invite-{attendee.Id}",
             DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);

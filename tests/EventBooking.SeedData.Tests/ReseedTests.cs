@@ -32,6 +32,8 @@ public sealed class ReseedTests : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddEventBookingPersistence(_database.GetConnectionString());
+        services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
+            new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
         services.AddEventBookingApplication(
             new AttendeePortalOptions(
                 "http://localhost:5002", "recruitment@example.com"));

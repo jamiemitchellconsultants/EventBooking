@@ -116,11 +116,20 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(8)")
                         .HasColumnName("code");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
 
                     b.HasKey("Id");
 
@@ -134,19 +143,25 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         {
                             Id = new Guid("a0000001-0000-0000-0000-000000000001"),
                             Code = "DAT",
-                            Name = "Drug & Alcohol Testing"
+                            IsActive = true,
+                            Name = "Drug & Alcohol Testing",
+                            Version = 1L
                         },
                         new
                         {
                             Id = new Guid("a0000002-0000-0000-0000-000000000002"),
                             Code = "MED",
-                            Name = "Medical Check-up"
+                            IsActive = true,
+                            Name = "Medical Check-up",
+                            Version = 1L
                         },
                         new
                         {
                             Id = new Guid("a0000003-0000-0000-0000-000000000003"),
                             Code = "UNI",
-                            Name = "Uniform Fitting"
+                            IsActive = true,
+                            Name = "Uniform Fitting",
+                            Version = 1L
                         });
                 });
 
@@ -172,6 +187,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
 
                     b.HasKey("Id");
 
@@ -437,6 +457,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id");
+
                     b.Property<Guid>("ProposalId")
                         .HasColumnType("uuid")
                         .HasColumnName("proposal_id");
@@ -492,6 +516,14 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_manager_user_id");
 
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id");
+
+                    b.Property<Guid>("ProposerAppointmentTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proposer_appointment_type_id");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -501,6 +533,21 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status");
 
                     b.ToTable("event_proposal", (string)null);
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.Events.EventProposalAppointmentType", b =>
+                {
+                    b.Property<Guid>("ProposalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<Guid>("AppointmentTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("appointment_type_id");
+
+                    b.HasKey("ProposalId", "AppointmentTypeId");
+
+                    b.ToTable("event_proposal_appointment_type", (string)null);
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Events.ProposalAcceptance", b =>
@@ -574,6 +621,23 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.HasIndex("Status", "ExpiresAt");
 
                     b.ToTable("invite", (string)null);
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.Invites.InviteLocation", b =>
+                {
+                    b.Property<Guid>("InviteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invite_id");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("location_id");
+
+                    b.HasKey("InviteId", "LocationId");
+
+                    b.HasIndex("LocationId");
+
+                    b.ToTable("invite_location", (string)null);
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Invites.InviteOption", b =>
@@ -666,9 +730,18 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("invite_expiry_days");
 
+                    b.Property<int>("InviteOptionCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("invite_option_count");
+
                     b.Property<int>("MaxAutoRetryCount")
                         .HasColumnType("integer")
                         .HasColumnName("max_auto_retry_count");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
 
                     b.HasKey("Id");
 
@@ -678,8 +751,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = 1,
-                            InviteExpiryDays = 4,
-                            MaxAutoRetryCount = 2
+                            InviteExpiryDays = 7,
+                            InviteOptionCount = 3,
+                            MaxAutoRetryCount = 2,
+                            Version = 1L
                         });
                 });
 
@@ -758,6 +833,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                                 .HasColumnType("date")
                                 .HasColumnName("date");
 
+                            b1.Property<int>("DurationMinutes")
+                                .HasColumnType("integer")
+                                .HasColumnName("duration_minutes");
+
                             b1.Property<TimeOnly>("StartTime")
                                 .HasColumnType("time without time zone")
                                 .HasColumnName("start_time");
@@ -794,16 +873,15 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                                 .HasColumnType("date")
                                 .HasColumnName("date");
 
+                            b1.Property<int>("DurationMinutes")
+                                .HasColumnType("integer")
+                                .HasColumnName("duration_minutes");
+
                             b1.Property<TimeOnly>("StartTime")
                                 .HasColumnType("time without time zone")
                                 .HasColumnName("start_time");
 
                             b1.HasKey("EventProposalId");
-
-                            b1.HasIndex("Date", "StartTime")
-                                .IsUnique()
-                                .HasDatabaseName("ux_event_proposal_open_window")
-                                .HasFilter("status = 1");
 
                             b1.ToTable("event_proposal");
 
@@ -812,6 +890,15 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         });
 
                     b.Navigation("Window")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.Events.EventProposalAppointmentType", b =>
+                {
+                    b.HasOne("EventBooking.Domain.Events.EventProposal", null)
+                        .WithMany("ListedTypes")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
@@ -830,6 +917,15 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("RecoveryOfBookingId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.Invites.InviteLocation", b =>
+                {
+                    b.HasOne("EventBooking.Domain.Invites.Invite", null)
+                        .WithMany("Locations")
+                        .HasForeignKey("InviteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Invites.InviteOption", b =>
@@ -874,10 +970,14 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("EventBooking.Domain.Events.EventProposal", b =>
                 {
                     b.Navigation("Acceptances");
+
+                    b.Navigation("ListedTypes");
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Invites.Invite", b =>
                 {
+                    b.Navigation("Locations");
+
                     b.Navigation("Options");
 
                     b.Navigation("Requirements");

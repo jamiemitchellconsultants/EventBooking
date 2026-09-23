@@ -28,9 +28,10 @@ public sealed class BookingAppointmentSnapshotTests
             Guid.NewGuid(),
             "Amara Novak",
             "amara@example.com",
-            pilots);
+            pilots,
+            ProposalFixture.Now);
         attendees.Add(attendee);
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         var events = new InMemoryEventRepository();
         var selected = AddEvent(events, new DateOnly(2026, 9, 8));
@@ -44,6 +45,7 @@ public sealed class BookingAppointmentSnapshotTests
             attendee.Id,
             token.TokenHash,
             clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [selected.Id, second.Id, third.Id],
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
             0));
@@ -110,12 +112,15 @@ public sealed class BookingAppointmentSnapshotTests
         var tokens = new FakeTokenService();
         var attendees = new InMemoryAttendeeRepository();
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "amara@example.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            "amara@example.com",
             AttendeeGroup.Define(
                 Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting]),
+            ProposalFixture.Now);
         attendees.Add(attendee);
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         var events = new InMemoryEventRepository();
         var selected = AddEvent(events, new DateOnly(2026, 9, 8));
@@ -123,10 +128,15 @@ public sealed class BookingAppointmentSnapshotTests
         var token = tokens.Issue(inviteId);
         var invites = new InMemoryInviteRepository();
         invites.Add(Invite.CreateInitial(
-            inviteId, attendee.Id, token.TokenHash, clock.UtcNow.AddDays(4),
+            inviteId,
+            attendee.Id,
+            token.TokenHash,
+            clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [selected.Id, AddEvent(events, new DateOnly(2026, 9, 9)).Id,
                 AddEvent(events, new DateOnly(2026, 9, 10)).Id],
-            snapshot, 0));
+            snapshot,
+            0));
 
         var bookings = new InMemoryBookingRepository();
         var appointments = new InMemoryBookingAppointmentRepository(bookings);
@@ -181,8 +191,8 @@ public sealed class BookingAppointmentSnapshotTests
         InMemoryEventRepository events,
         DateOnly date)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 10);

@@ -71,6 +71,12 @@ public sealed class AcceptProposalHandler(
                 command.ManagerUserId,
                 command.Headcount);
         }
+        catch (ProposalNotOpenException ex)
+        {
+            // FR-2.11: nothing about the request is malformed; the proposal moved on.
+            return Result<AcceptProposalOutcome>.Failure(
+                Error.Conflict($"The proposal is {ex.CurrentStatus} and can no longer be changed."));
+        }
         catch (DomainException ex)
         {
             return Result<AcceptProposalOutcome>.Failure(Error.Validation(ex.Message));

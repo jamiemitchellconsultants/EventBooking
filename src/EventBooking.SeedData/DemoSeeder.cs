@@ -259,7 +259,7 @@ public sealed class DemoSeeder(
 
         foreach (var item in missing)
         {
-            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(item.Date, item.StartTime),
+            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(item.Date, item.StartTime, 240),
                 new Dictionary<Guid, int>
                 {
                     [AppointmentTypeIds.DrugAndAlcoholTesting] = item.DatHeadcount,
@@ -380,7 +380,7 @@ public sealed class DemoSeeder(
 
             DemoEventFactory.Create(database,
                 id,
-                new EventWindow(date, start),
+                new EventWindow(date, start, 240),
                 AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20),
                 clock.UtcNow);
             added++;
@@ -521,6 +521,8 @@ public sealed class DemoSeeder(
                         originalBooking.Id,
                         $"seed-recovery-{position}",
                         now.AddDays(7),
+                        TransitionalLocation.Id,
+                        null,
                         [recoveryEventId, SeedId(attendee.Email, "recovery:spare1"),
                         SeedId(attendee.Email, "recovery:spare2")],
                         [types[0]]);
@@ -573,6 +575,7 @@ public sealed class DemoSeeder(
             attendee.Id,
             $"seed-{tag}-{attendee.Email}",
             createdAt.AddDays(7),
+            [TransitionalLocation.Id],
             [eventId, SeedId(attendee.Email, $"{tag}:spare1"), SeedId(attendee.Email, $"{tag}:spare2")],
             types,
             0);

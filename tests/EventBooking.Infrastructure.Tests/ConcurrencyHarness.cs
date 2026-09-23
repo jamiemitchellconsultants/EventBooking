@@ -68,6 +68,10 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             new ClockOptions("Europe/London"),
             new TokenOptions("a-concurrency-test-signing-key-long-enough"));
 
+        services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
+
+            new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
+
         services.AddEventBookingApplication(
             new AttendeePortalOptions("https://booking.example.com", "recruitment@example.com"));
 
@@ -88,11 +92,11 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
     public async Task<Guid> GivenEventAsync(int drugAndAlcohol, int medical, int uniform)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
             new EventWindow(
                 DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30 + Interlocked.Increment(ref _nextEventOffset)),
-                new TimeOnly(9, 0)),
+                new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), drugAndAlcohol);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), medical);
@@ -119,8 +123,12 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             Guid.NewGuid(), $"HARNESS_{Guid.NewGuid():N}".ToUpperInvariant(), "Harness", true,
             requiredTypeIds);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Concurrent Attendee", $"{Guid.NewGuid():N}@mail.com", group);
-        attendee.MarkInvited();
+            Guid.NewGuid(),
+            "Concurrent Attendee",
+            $"{Guid.NewGuid():N}@mail.com",
+            group,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
 
         var inviteId = Guid.NewGuid();
         var issued = tokens.Issue(inviteId);
@@ -131,6 +139,7 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             attendee.Id,
             issued.TokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [eventId, .. _fallbackEventIds],
             requiredTypeIds,
             0);

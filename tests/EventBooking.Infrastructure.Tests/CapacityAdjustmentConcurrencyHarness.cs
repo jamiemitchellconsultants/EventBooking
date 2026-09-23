@@ -27,9 +27,9 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
 
     public async Task<Guid> GivenEventAsync(int totalHeadcount)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0)),
+            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), totalHeadcount);
@@ -51,7 +51,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
         var context = _fixture.NewContext();
         var transaction = await context.Database.BeginTransactionAsync();
         var capacity = await LockAsync(context, eventId);
-        capacity.AdjustTotalHeadcount(totalHeadcount);
+        capacity.AdjustTotalHeadcount(totalHeadcount, capacity.OccupiedCapacity);
         await context.SaveChangesAsync();
         return new HeldCapacityChange(context, transaction);
     }
@@ -81,7 +81,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
         await using var context = _fixture.NewContext();
         await using var transaction = await context.Database.BeginTransactionAsync();
         var capacity = await LockAsync(context, eventId);
-        capacity.AdjustTotalHeadcount(totalHeadcount);
+        capacity.AdjustTotalHeadcount(totalHeadcount, capacity.OccupiedCapacity);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }

@@ -22,7 +22,7 @@ public class ImportAttendeesHandlerTests
     private readonly FakeUnitOfWork _unitOfWork = new();
 
     private ImportAttendeesHandler Handler => new(
-        _attendees, _groups, new StaffAccessAuthorizer(_roles), _unitOfWork);
+        _attendees, _groups, new StaffAccessAuthorizer(_roles), new FakeClock(), _unitOfWork);
 
     public ImportAttendeesHandlerTests()
     {
@@ -134,8 +134,11 @@ public class ImportAttendeesHandlerTests
     public async Task AnEmailThatAlreadyExistsIsReportedAgainstItsLine()
     {
         _attendees.Add(Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
-            _groups.Items.Single(group => group.Id == AttendeeGroupIds.Engineering)));
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            _groups.Items.Single(group => group.Id == AttendeeGroupIds.Engineering),
+            ProposalFixture.Now));
 
         var result = await Import($"{Header}\nAmara N,a.novak@mail.com,PILOTS");
 

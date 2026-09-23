@@ -31,10 +31,13 @@ public class ViewInviteHandlerTests
     public ViewInviteHandlerTests()
     {
         _attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
             AttendeeGroup.Define(
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+            ProposalFixture.Now);
         _attendees.Add(_attendee);
 
         var eventIds = new[] { AddEvent(10, 9), AddEvent(11, 13), AddEvent(13, 9) };
@@ -43,10 +46,16 @@ public class ViewInviteHandlerTests
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), eventIds,
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            inviteId,
+            _attendee.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
+            eventIds,
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         _invites.Add(_invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
     }
 
     [Fact]
@@ -130,7 +139,7 @@ public class ViewInviteHandlerTests
     [Fact]
     public async Task AnOptionWhoseEventHasBeenCancelledIsNotShown()
     {
-        _events.Items[1].Cancel();
+        _events.Items[1].CancelBeforeStart();
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
@@ -145,8 +154,8 @@ public class ViewInviteHandlerTests
     {
         _invite.RemoveOption(_events.Items[0].Id);
         _invite.RemoveOption(_events.Items[1].Id);
-        _events.Items[0].Cancel();
-        _events.Items[1].Cancel();
+        _events.Items[0].CancelBeforeStart();
+        _events.Items[1].CancelBeforeStart();
         _invite.AddOption(AddEvent(3, 9));
         _invite.AddOption(AddEvent(2, 13));
 
@@ -158,8 +167,8 @@ public class ViewInviteHandlerTests
 
     private Guid AddEvent(int day, int hour)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

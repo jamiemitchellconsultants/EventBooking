@@ -112,14 +112,14 @@ public sealed class AttendeeGroupLifecycleTests
         profiles.Add(StaffAccessProfile.Create(coordinator, [Role.Coordinator], null));
         var groups = new InMemoryAttendeeGroupRepository();
         groups.Items.AddRange([CabinCrew, GroundTransport, Pilots]);
-        var attendee = Attendee.Create(Guid.NewGuid(), "Amara", "amara@example.com", group);
+        var attendee = Attendee.Create(Guid.NewGuid(), "Amara", "amara@example.com", group, ProposalFixture.Now);
         if (status == AttendeeStatus.Invited || status == AttendeeStatus.Booked)
         {
-            attendee.MarkInvited();
+            attendee.MarkInvited(ProposalFixture.Now);
         }
         if (status == AttendeeStatus.Booked)
         {
-            attendee.MarkBooked();
+            attendee.MarkBooked(ProposalFixture.Now);
         }
         var attendees = new InMemoryAttendeeRepository(operations);
         attendees.Add(attendee);
@@ -129,8 +129,14 @@ public sealed class AttendeeGroupLifecycleTests
         {
             var eventId = Guid.NewGuid();
             invite = Invite.CreateInitial(
-                Guid.NewGuid(), attendee.Id, "token", DateTimeOffset.UtcNow.AddDays(1),
-                [eventId, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
+                Guid.NewGuid(),
+                attendee.Id,
+                "token",
+                DateTimeOffset.UtcNow.AddDays(1),
+                [ProposalFixture.LocationId],
+                [eventId, Guid.NewGuid(), Guid.NewGuid()],
+                attendee.RequiredAppointmentTypeIds,
+                0);
             invites.Add(invite);
         }
         var bookings = new InMemoryBookingRepository(operations);
@@ -143,7 +149,8 @@ public sealed class AttendeeGroupLifecycleTests
         var audit = new RecordingAuditLogger();
         var unitOfWork = new FakeUnitOfWork();
         var handler = new SaveAttendeeHandler(
-            attendees, groups, invites, bookings, new StaffAccessAuthorizer(profiles), audit, unitOfWork);
+            attendees, groups, invites, bookings, new StaffAccessAuthorizer(profiles), audit,
+            new FakeClock(), unitOfWork);
         return new Fixture(handler, attendee, invite, coordinator, operations, audit, unitOfWork);
     }
 

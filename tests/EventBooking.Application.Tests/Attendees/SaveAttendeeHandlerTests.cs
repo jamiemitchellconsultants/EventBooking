@@ -33,6 +33,7 @@ public class SaveAttendeeHandlerTests
         _bookings,
         new StaffAccessAuthorizer(_roles),
         new RecordingAuditLogger(),
+        new FakeClock(),
         _unitOfWork);
 
     public SaveAttendeeHandlerTests()
@@ -104,7 +105,11 @@ public class SaveAttendeeHandlerTests
     public async Task ADuplicateEmailIsAConflict()
     {
         _attendees.Add(Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots));
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            Pilots,
+            ProposalFixture.Now));
 
         var result = await Handler.CreateAsync(
             new CreateAttendeeCommand(
@@ -134,7 +139,11 @@ public class SaveAttendeeHandlerTests
     public async Task UpdatingChangesTheDetailsAndTheGroup()
     {
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            Pilots,
+            ProposalFixture.Now);
         _attendees.Add(attendee);
 
         var result = await Handler.UpdateAsync(
@@ -154,9 +163,17 @@ public class SaveAttendeeHandlerTests
     public async Task UpdatingToAnotherAttendeesEmailIsAConflict()
     {
         var first = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            Pilots,
+            ProposalFixture.Now);
         var second = Attendee.Create(
-            Guid.NewGuid(), "B. Chen", "b.chen@mail.com", Pilots);
+            Guid.NewGuid(),
+            "B. Chen",
+            "b.chen@mail.com",
+            Pilots,
+            ProposalFixture.Now);
         _attendees.Add(first);
         _attendees.Add(second);
 
@@ -175,7 +192,11 @@ public class SaveAttendeeHandlerTests
     public async Task KeepingTheSameEmailOnUpdateIsNotAConflict()
     {
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            Pilots,
+            ProposalFixture.Now);
         _attendees.Add(attendee);
 
         var result = await Handler.UpdateAsync(
@@ -203,7 +224,11 @@ public class SaveAttendeeHandlerTests
     public async Task UpdatingWithoutAGroupIsRequired()
     {
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            Pilots,
+            ProposalFixture.Now);
         _attendees.Add(attendee);
 
         var result = await Handler.UpdateAsync(

@@ -8,9 +8,9 @@ public class EventCapacityTests
 {
     private static EventCapacity CapacityOf(int headcount)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), headcount);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), headcount);
@@ -51,7 +51,10 @@ public class EventCapacityTests
         capacity.Decrement();
 
         var ex = Assert.Throws<DomainException>(() => capacity.Decrement());
-        Assert.Equal("No remaining capacity for this appointment type on this eventItem.", ex.Message);
+        Assert.Equal(
+            "capacity-exhausted: appointment type "
+            + $"{AppointmentTypeIds.DrugAndAlcoholTesting} has no remaining capacity on this event.",
+            ex.Message);
         Assert.Equal(0, capacity.RemainingCapacity);
     }
 

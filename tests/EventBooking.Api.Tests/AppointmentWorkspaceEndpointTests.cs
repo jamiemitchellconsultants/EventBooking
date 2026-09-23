@@ -322,18 +322,27 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
         var eventItem = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0)),
+            Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp
             ? AttendeeGroupIds.GroundOperationsAgent
             : AttendeeGroupIds.Pilots;
         var group = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == groupId);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), attendeeName, $"alex-{Guid.NewGuid():N}@example.com", group);
+            Guid.NewGuid(),
+            attendeeName,
+            $"alex-{Guid.NewGuid():N}@example.com",
+            group,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
-            attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, eventItem.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(

@@ -450,8 +450,8 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         for (var index = 0; index < 3; index++)
         {
-            var proposal = EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(date.AddDays(index), new TimeOnly(9, 0)), Guid.NewGuid());
+            var proposal = ProposalFixture.Create(
+                Guid.NewGuid(), new EventWindow(date.AddDays(index), new TimeOnly(9, 0), 240), Guid.NewGuid());
             foreach (var appointmentTypeId in AppointmentTypeIds.All)
             {
                 proposal.Accept(appointmentTypeId, Guid.NewGuid(), 8);
@@ -473,9 +473,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         foreach (var day in new[] { 14, 15, 16 })
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
-                new EventWindow(new DateOnly(2030, 1, day), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2030, 1, day), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());
             foreach (var appointmentTypeId in AppointmentTypeIds.All)
             {
@@ -493,8 +493,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
             Guid.NewGuid(),
             "Retry Attendee",
             $"{Guid.NewGuid():N}@mail.com",
-            pilots);
-        attendee.MarkInvited();
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
@@ -504,6 +505,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
             attendee.Id,
             issued.TokenHash,
             new DateTimeOffset(2030, 1, 20, 0, 0, 0, TimeSpan.Zero),
+            [ProposalFixture.LocationId],
             eventIds,
             attendee.RequiredAppointmentTypeIds,
             0);

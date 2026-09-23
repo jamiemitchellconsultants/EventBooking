@@ -39,6 +39,8 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         services.AddEventBookingInfrastructure(_postgres.GetConnectionString(),
             new ClockOptions("Europe/London"),
             new TokenOptions("test-seed-and-api-share-this-signing-key"));
+        services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
+            new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
         services.AddEventBookingApplication(new AttendeePortalOptions(
             "https://demo.example.test", "help@example.com"));
         services.AddSingleton<IClock>(_clock);

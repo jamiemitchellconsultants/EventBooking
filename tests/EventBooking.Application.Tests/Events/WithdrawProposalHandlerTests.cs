@@ -29,9 +29,9 @@ public class WithdrawProposalHandlerTests
             OtherManager, Role.Manager, AppointmentTypeIds.MedicalCheckUp));
         _roles.Add(StaffAccessProfile.Create(Admin, Role.Admin, null));
 
-        _proposal = EventProposal.Create(
+        _proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Creator);
         _proposals.Add(_proposal);
     }
@@ -50,31 +50,34 @@ public class WithdrawProposalHandlerTests
     }
 
     [Fact]
-    public async Task AnotherManagerCanWithdrawIt()
+    public async Task AManagerOfAnotherListedTypeCannotWithdrawIt()
     {
+        // FR-2.9: the whole proposal belongs to the proposing type. Another listed type may only
+        // withdraw its own acceptance.
         var result = await Handler.HandleAsync(
             new WithdrawProposalCommand(OtherManager, _proposal.Id), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(EventProposalStatus.Withdrawn, _proposal.Status);
-        Assert.True(_audit.Contains(AuditAction.ProposalWithdrawn));
+        Assert.True(result.IsFailure);
+        Assert.Equal(EventProposalStatus.Open, _proposal.Status);
+        Assert.False(_audit.Contains(AuditAction.ProposalWithdrawn));
     }
 
     [Fact]
-    public async Task AnAdminCanWithdrawIt()
+    public async Task AnAdminCannotWithdrawIt()
     {
+        // Admin holds no negotiation capability in the design's matrix, and has no appointment
+        // type to act for; the predecessor's Admin fallback is retired.
         var result = await Handler.HandleAsync(
             new WithdrawProposalCommand(Admin, _proposal.Id), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(EventProposalStatus.Withdrawn, _proposal.Status);
-        Assert.True(_audit.Contains(AuditAction.ProposalWithdrawn));
+        Assert.True(result.IsFailure);
+        Assert.Equal(EventProposalStatus.Open, _proposal.Status);
     }
 
     [Fact]
     public async Task AlreadyWithdrawnIsAConflict()
     {
-        _proposal.Withdraw(Creator);
+        _proposal.Withdraw(ProposalFixture.ProposerType);
 
         var result = await Handler.HandleAsync(
             new WithdrawProposalCommand(Creator, _proposal.Id), CancellationToken.None);

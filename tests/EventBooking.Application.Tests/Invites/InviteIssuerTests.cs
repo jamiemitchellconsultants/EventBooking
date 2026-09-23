@@ -34,7 +34,7 @@ public class InviteIssuerTests
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
     }
 
     private InviteIssuer Issuer => new(
@@ -138,11 +138,16 @@ public class InviteIssuerTests
     {
         AddThreeEvents();
         var old = Invite.CreateInitial(
-            Guid.NewGuid(), _attendee.Id, "old-hash", _clock.UtcNow.AddDays(4),
+            Guid.NewGuid(),
+            _attendee.Id,
+            "old-hash",
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
-            _attendee.RequiredAppointmentTypeIds, 0);
+            _attendee.RequiredAppointmentTypeIds,
+            0);
         _invites.Add(old);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
 
         await Issue();
 
@@ -211,8 +216,8 @@ public class InviteIssuerTests
 
     private void AddEvent(DateOnly date)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

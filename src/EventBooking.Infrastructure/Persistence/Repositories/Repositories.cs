@@ -32,6 +32,7 @@ public sealed class EventProposalRepository(EventBookingDbContext context) : IEv
     public Task<EventProposal?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         context.EventProposals
             .Include(p => p.Acceptances)
+            .Include(p => p.ListedTypes)
             .SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
 
     /// <summary>Locks the proposal row and then loads its current acceptance collection.</summary>
@@ -45,6 +46,7 @@ public sealed class EventProposalRepository(EventBookingDbContext context) : IEv
         if (proposal is not null)
         {
             await context.Entry(proposal).Collection(item => item.Acceptances).LoadAsync(cancellationToken);
+            await context.Entry(proposal).Collection(item => item.ListedTypes).LoadAsync(cancellationToken);
         }
 
         return proposal;
@@ -53,6 +55,7 @@ public sealed class EventProposalRepository(EventBookingDbContext context) : IEv
     public async Task<IReadOnlyList<EventProposal>> ListOpenAsync(CancellationToken cancellationToken) =>
         await context.EventProposals
             .Include(p => p.Acceptances)
+            .Include(p => p.ListedTypes)
             .Where(p => p.Status == EventProposalStatus.Open)
             .ToListAsync(cancellationToken);
 

@@ -25,6 +25,15 @@ public sealed class InviteConfiguration : IEntityTypeConfiguration<Invite>
 
         builder.Ignore(i => i.OfferedEventIds);
         builder.Ignore(i => i.RequiredAppointmentTypeIds);
+        builder.Ignore(i => i.LocationIds);
+
+        builder
+            .HasMany(i => i.Locations)
+            .WithOne()
+            .HasForeignKey(l => l.InviteId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Navigation(i => i.Locations).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder
             .HasMany(i => i.Options)

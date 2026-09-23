@@ -28,11 +28,13 @@ public sealed record AttendeeImportOutcome(
 /// <param name="attendees">Persists attendee rows.</param>
 /// <param name="groups">Resolves row Attendee Group codes.</param>
 /// <param name="access">Authorizes attendee management.</param>
+/// <param name="clock">Stamps each new attendee's status.</param>
 /// <param name="unitOfWork">Owns the attendee save.</param>
 public sealed class ImportAttendeesHandler(
     IAttendeeRepository attendees,
     IAttendeeGroupRepository groups,
     IStaffAccessAuthorizer access,
+    IClock clock,
     IUnitOfWork unitOfWork)
 {
     /// <summary>Validates every row before persisting any Attendee.</summary>
@@ -92,7 +94,7 @@ public sealed class ImportAttendeesHandler(
 
             try
             {
-                built.Add(Attendee.Create(Guid.NewGuid(), row.Name, row.Email, group));
+                built.Add(Attendee.Create(Guid.NewGuid(), row.Name, row.Email, group, clock.UtcNow));
             }
             catch (DomainException ex)
             {

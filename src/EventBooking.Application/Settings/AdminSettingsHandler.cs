@@ -119,7 +119,9 @@ public sealed class AdminSettingsHandler(
 
         try
         {
-            current.Update(command.InviteExpiryDays, command.MaxAutoRetryCount);
+            // The option count is domain state from Task 5 but not yet editable: Task 12 adds it to
+            // this command, the API and MCP together. Passing the current value keeps it unchanged.
+            current.Update(command.InviteExpiryDays, command.MaxAutoRetryCount, current.InviteOptionCount);
         }
         catch (DomainException ex)
         {

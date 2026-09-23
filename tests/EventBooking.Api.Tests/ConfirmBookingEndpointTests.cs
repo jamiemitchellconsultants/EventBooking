@@ -120,8 +120,8 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
                      (new DateOnly(2030, 1, 16), new TimeOnly(13, 0)),
                  })
         {
-            var proposal = EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(date, startTime), Guid.NewGuid());
+            var proposal = ProposalFixture.Create(
+                Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
@@ -132,8 +132,8 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             offeredEventIds.Add(eventId);
         }
 
-        var unofferedProposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2030, 1, 17), new TimeOnly(9, 0)), Guid.NewGuid());
+        var unofferedProposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2030, 1, 17), new TimeOnly(9, 0), 240), Guid.NewGuid());
         unofferedProposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         unofferedProposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         unofferedProposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
@@ -143,8 +143,12 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
 
         var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", $"{Guid.NewGuid():N}@mail.com", pilots);
-        attendee.MarkInvited();
+            Guid.NewGuid(),
+            "Amara Novak",
+            $"{Guid.NewGuid():N}@mail.com",
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
@@ -154,8 +158,10 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             attendee.Id,
             issued.TokenHash,
             new DateTimeOffset(2030, 1, 20, 0, 0, 0, TimeSpan.Zero),
+            [ProposalFixture.LocationId],
             offeredEventIds,
-            attendee.RequiredAppointmentTypeIds, 0));
+            attendee.RequiredAppointmentTypeIds,
+            0));
         await context.SaveChangesAsync();
 
         return new InviteFixture(issued.Token, unofferedEventId);

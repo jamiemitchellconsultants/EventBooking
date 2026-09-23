@@ -32,9 +32,9 @@ public class AdjustEventCapacityHandlerTests
             AppointmentTypeIds.DrugAndAlcoholTesting));
         _roles.Add(StaffAccessProfile.Create(Coordinator, Role.Coordinator, null));
 
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
         proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, 10);
@@ -174,7 +174,7 @@ public class AdjustEventCapacityHandlerTests
     [Fact]
     public async Task ACancelledEventCannotBeAdjusted()
     {
-        _event.Cancel();
+        _event.CancelBeforeStart();
 
         var result = await Adjust(12);
 

@@ -56,12 +56,17 @@ public class AuditEndpointTests(ApiFactory factory)
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
-            var attendee = Attendee.Create(attendeeId, "Amara Novak", "a.novak@mail.com", pilots);
+            var attendee = Attendee.Create(attendeeId, "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
             context.Attendees.Add(attendee);
             context.Invites.Add(Invite.CreateInitial(
-                inviteId, attendee.Id, "hash", Now.AddDays(4),
+                inviteId,
+                attendee.Id,
+                "hash",
+                Now.AddDays(4),
+                [ProposalFixture.LocationId],
                 [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
-                attendee.RequiredAppointmentTypeIds, 0));
+                attendee.RequiredAppointmentTypeIds,
+                0));
             context.AuditLogs.Add(AuditLog.Record(
                 Guid.NewGuid(), AuditEntityTypes.Invite, inviteId, AuditAction.InviteCreated,
                 ActorType.System, null, Now, "retry 0"));

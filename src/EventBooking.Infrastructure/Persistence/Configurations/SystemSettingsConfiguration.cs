@@ -14,8 +14,17 @@ public sealed class SystemSettingsConfiguration : IEntityTypeConfiguration<Syste
         builder.Property(s => s.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(s => s.InviteExpiryDays).HasColumnName("invite_expiry_days");
         builder.Property(s => s.MaxAutoRetryCount).HasColumnName("max_auto_retry_count");
+        builder.Property(s => s.InviteOptionCount).HasColumnName("invite_option_count");
+        builder.Property(s => s.Version).HasColumnName("version").IsConcurrencyToken();
 
         builder.HasData(
-            new { Id = Domain.Settings.SystemSettings.SingletonId, InviteExpiryDays = 4, MaxAutoRetryCount = 2 });
+            new
+            {
+                Id = Domain.Settings.SystemSettings.SingletonId,
+                InviteExpiryDays = 7,
+                MaxAutoRetryCount = 2,
+                InviteOptionCount = 3,
+                Version = 1L,
+            });
     }
 }

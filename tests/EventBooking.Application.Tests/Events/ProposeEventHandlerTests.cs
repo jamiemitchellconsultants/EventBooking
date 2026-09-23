@@ -18,7 +18,7 @@ public class ProposeEventHandlerTests
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
 
-    private ProposeEventHandler Handler => new(_proposals, _roles, _unitOfWork, _audit, _clock);
+    private ProposeEventHandler Handler => new(_proposals, _roles, _unitOfWork, _audit, _clock, ProposalFixture.Zones);
 
     public ProposeEventHandlerTests()
     {
@@ -38,9 +38,11 @@ public class ProposeEventHandlerTests
         var proposal = Assert.Single(_proposals.Items);
         Assert.Equal(result.Value, proposal.Id);
         Assert.Equal(EventProposalStatus.Open, proposal.Status);
-        Assert.Equal(new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)), proposal.Window);
+        Assert.Equal(new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240), proposal.Window);
         Assert.Equal(Manager, proposal.CreatedByManagerUserId);
-        Assert.Empty(proposal.Acceptances);
+        // The proposing Manager commits in the same step (FR-2.1).
+        var acceptance = Assert.Single(proposal.Acceptances);
+        Assert.Equal(AppointmentTypeIds.DrugAndAlcoholTesting, acceptance.AppointmentTypeId);
         Assert.Equal(1, _unitOfWork.SaveCount);
     }
 
@@ -106,7 +108,7 @@ public class ProposeEventHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("validation", result.Error.Code);
         Assert.Equal(
-            "startTime must leave room for the full 4-hour window on the same day.",
+            "The window must end on the local date it starts.",
             result.Error.Message);
     }
 
@@ -122,6 +124,27 @@ public class ProposeEventHandlerTests
         Assert.Equal("conflict", result.Error.Code);
         Assert.Equal("An open proposal already exists for that window.", result.Error.Message);
         Assert.Single(_proposals.Items);
+    }
+
+    [Fact]
+    public async Task SameLocalWindowAtAnotherLocationDoesNotConflict()
+    {
+        var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240);
+        var otherLocationProposal = EventProposal.Propose(
+            Guid.NewGuid(), Guid.NewGuid(), true, ProposalFixture.TimeZoneId,
+            window, ProposalFixture.Zones, ProposalFixture.Now,
+            [
+                new ProposableAppointmentType(AppointmentTypeIds.DrugAndAlcoholTesting, "DAT", true, true),
+                new ProposableAppointmentType(AppointmentTypeIds.MedicalCheckUp, "MED", true, true),
+            ],
+            AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 1);
+        _proposals.Add(otherLocationProposal);
+
+        var result = await Handler.HandleAsync(
+            new ProposeEventCommand(Manager, window.Date, window.StartTime), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, _proposals.Items.Count);
     }
 
     [Fact]

@@ -14,8 +14,14 @@ public class InviteTests
 
     private static Invite NewInvite(int retryCount = 0) =>
         Invite.CreateInitial(
-            Guid.NewGuid(), Guid.NewGuid(), "hash-of-the-token", Now.AddDays(4),
-            [EventA, EventB, EventC], [AppointmentTypeIds.DrugAndAlcoholTesting], retryCount);
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hash-of-the-token",
+            Now.AddDays(4),
+            [ProposalFixture.LocationId],
+            [EventA, EventB, EventC],
+            [AppointmentTypeIds.DrugAndAlcoholTesting],
+            retryCount);
 
     [Fact]
     public void ANewInviteIsPendingWithThreeOptions()
@@ -47,8 +53,14 @@ public class InviteTests
 
         var ex = Assert.Throws<DomainException>(
             () => Invite.CreateInitial(
-                Guid.NewGuid(), Guid.NewGuid(), "hash", Now.AddDays(4),
-                events, [AppointmentTypeIds.DrugAndAlcoholTesting], 0));
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "hash",
+                Now.AddDays(4),
+                [ProposalFixture.LocationId],
+                events,
+                [AppointmentTypeIds.DrugAndAlcoholTesting],
+                0));
         Assert.Equal("An invite must offer exactly 3 event options.", ex.Message);
     }
 
@@ -57,8 +69,14 @@ public class InviteTests
     {
         var ex = Assert.Throws<DomainException>(
             () => Invite.CreateInitial(
-                Guid.NewGuid(), Guid.NewGuid(), "hash", Now.AddDays(4),
-                [EventA, EventA, EventB], [AppointmentTypeIds.DrugAndAlcoholTesting], 0));
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "hash",
+                Now.AddDays(4),
+                [ProposalFixture.LocationId],
+                [EventA, EventA, EventB],
+                [AppointmentTypeIds.DrugAndAlcoholTesting],
+                0));
         Assert.Equal("An invite cannot offer the same event twice.", ex.Message);
     }
 
@@ -67,8 +85,14 @@ public class InviteTests
     {
         var ex = Assert.Throws<DomainException>(
             () => Invite.CreateInitial(
-                Guid.NewGuid(), Guid.NewGuid(), "  ", Now.AddDays(4),
-                [EventA, EventB, EventC], [AppointmentTypeIds.DrugAndAlcoholTesting], 0));
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "  ",
+                Now.AddDays(4),
+                [ProposalFixture.LocationId],
+                [EventA, EventB, EventC],
+                [AppointmentTypeIds.DrugAndAlcoholTesting],
+                0));
         Assert.Equal("tokenHash must not be blank.", ex.Message);
     }
 
@@ -77,8 +101,14 @@ public class InviteTests
     {
         Assert.Throws<DomainException>(
             () => Invite.CreateInitial(
-                Guid.NewGuid(), Guid.NewGuid(), "hash", Now.AddDays(4),
-                [EventA, EventB, EventC], [AppointmentTypeIds.DrugAndAlcoholTesting], -1));
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "hash",
+                Now.AddDays(4),
+                [ProposalFixture.LocationId],
+                [EventA, EventB, EventC],
+                [AppointmentTypeIds.DrugAndAlcoholTesting],
+                -1));
     }
 
     [Fact]

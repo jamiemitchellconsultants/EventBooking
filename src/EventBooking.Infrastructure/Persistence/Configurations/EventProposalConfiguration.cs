@@ -17,19 +17,22 @@ public sealed class EventProposalConfiguration : IEntityTypeConfiguration<EventP
         builder.Property(p => p.Id).HasColumnName("id");
         builder.Property(p => p.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(p => p.CreatedByManagerUserId).HasColumnName("created_by_manager_user_id");
+        builder.Property(p => p.LocationId).HasColumnName("location_id");
+        // The proposing type, not the proposing person, decides who may withdraw the proposal.
+        builder.Property(p => p.ProposerAppointmentTypeId).HasColumnName("proposer_appointment_type_id");
 
-        // The 4-hour window lives in this table's own date and start_time columns.
+        // The window lives in this table's own date, start_time and duration_minutes columns.
         builder.OwnsOne(p => p.Window, window =>
         {
             window.Property(w => w.Date).HasColumnName("date");
             window.Property(w => w.StartTime).HasColumnName("start_time");
+            window.Property(w => w.DurationMinutes).HasColumnName("duration_minutes");
             window.Ignore(w => w.EndTime);
-            window.HasIndex(item => new { item.Date, item.StartTime })
-                .HasDatabaseName("ux_event_proposal_open_window")
-                .HasFilter("status = 1")
-                .IsUnique();
         });
         builder.Navigation(p => p.Window).IsRequired();
+
+        // EF cannot define an index across the owner LocationId and the owned Window fields.
+        // The migration maintains ux_event_proposal_open_window on the shared table directly.
 
         builder
             .HasMany(p => p.Acceptances)
@@ -38,6 +41,14 @@ public sealed class EventProposalConfiguration : IEntityTypeConfiguration<EventP
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Navigation(p => p.Acceptances).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(p => p.ListedTypes)
+            .WithOne()
+            .HasForeignKey(listed => listed.ProposalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Navigation(p => p.ListedTypes).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(p => p.Status);
 

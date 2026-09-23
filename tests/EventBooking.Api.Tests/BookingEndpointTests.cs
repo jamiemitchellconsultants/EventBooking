@@ -132,9 +132,9 @@ public class BookingEndpointTests(ApiFactory factory)
 
         foreach (var offeredEvent in offeredEvents)
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
-                new EventWindow(offeredEvent.Date, offeredEvent.StartTime),
+                new EventWindow(offeredEvent.Date, offeredEvent.StartTime, 240),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
@@ -147,16 +147,25 @@ public class BookingEndpointTests(ApiFactory factory)
 
         var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", $"{Guid.NewGuid():N}@mail.com", pilots);
-        attendee.MarkInvited();
+            Guid.NewGuid(),
+            "Amara Novak",
+            $"{Guid.NewGuid():N}@mail.com",
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
         var issued = tokens.Issue(inviteId);
         context.Invites.Add(Invite.CreateInitial(
-            inviteId, attendee.Id, issued.TokenHash, DateTimeOffset.UtcNow.AddDays(4),
+            inviteId,
+            attendee.Id,
+            issued.TokenHash,
+            DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             offeredEvents.Select(eventItem => eventItem.Id).ToList(),
-            attendee.RequiredAppointmentTypeIds, 0));
+            attendee.RequiredAppointmentTypeIds,
+            0));
 
         await context.SaveChangesAsync();
 

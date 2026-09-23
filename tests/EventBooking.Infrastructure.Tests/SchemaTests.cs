@@ -58,7 +58,8 @@ public class SchemaTests(PostgresFixture fixture)
 
                 var settings = await context.SystemSettings.SingleAsync();
                 Assert.Equal(1, settings.Id);
-                Assert.Equal(4, settings.InviteExpiryDays);
+                Assert.Equal(7, settings.InviteExpiryDays);
+                Assert.Equal(3, settings.InviteOptionCount);
                 Assert.Equal(2, settings.MaxAutoRetryCount);
             }
 
@@ -203,7 +204,8 @@ public class SchemaTests(PostgresFixture fixture)
         await using var context = fixture.NewContext();
         var settings = await context.SystemSettings.SingleAsync();
 
-        Assert.Equal(4, settings.InviteExpiryDays);
+        Assert.Equal(7, settings.InviteExpiryDays);
+        Assert.Equal(3, settings.InviteOptionCount);
         Assert.Equal(2, settings.MaxAutoRetryCount);
     }
 
@@ -212,8 +214,8 @@ public class SchemaTests(PostgresFixture fixture)
     {
         await fixture.ResetAsync();
 
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
@@ -238,12 +240,39 @@ public class SchemaTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task OpenProposalsAtDifferentLocationsMayShareALocalWindow()
+    {
+        await fixture.ResetAsync();
+
+        var listedTypes = new[]
+        {
+            new ProposableAppointmentType(AppointmentTypeIds.DrugAndAlcoholTesting, "DAT", true, true),
+            new ProposableAppointmentType(AppointmentTypeIds.MedicalCheckUp, "MED", true, true),
+        };
+        EventProposal ProposalAt(Guid locationId) => EventProposal.Propose(
+            Guid.NewGuid(), locationId, true, ProposalFixture.TimeZoneId,
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+            ProposalFixture.Zones, ProposalFixture.Now, listedTypes,
+            AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 1);
+
+        await using (var write = fixture.NewContext())
+        {
+            write.EventProposals.AddRange(
+                ProposalAt(ProposalFixture.LocationId), ProposalAt(Guid.NewGuid()));
+            await write.SaveChangesAsync();
+        }
+
+        await using var read = fixture.NewContext();
+        Assert.Equal(2, await read.EventProposals.CountAsync());
+    }
+
+    [Fact]
     public async Task AEventRoundTripsWithItsThreeCapacityRows()
     {
         await fixture.ResetAsync();
 
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
@@ -308,9 +337,9 @@ public class SchemaTests(PostgresFixture fixture)
 
     private static async Task<Guid> CreateEventWithoutCapacitiesAsync(EventBookingDbContext context)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 1);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 1);

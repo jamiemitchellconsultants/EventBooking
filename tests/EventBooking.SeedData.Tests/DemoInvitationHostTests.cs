@@ -106,6 +106,8 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
         services.AddLogging();
         services.AddEventBookingInfrastructure(_postgres.GetConnectionString(),
             new ClockOptions("Europe/London"), new TokenOptions(SigningKey));
+        services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
+            new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
         services.AddEventBookingApplication(new AttendeePortalOptions(
             "https://host-demo.example.test", "help@example.com"));
         return services.BuildServiceProvider();

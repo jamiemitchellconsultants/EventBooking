@@ -91,21 +91,16 @@ public sealed class AdjustEventCapacityHandler(
                 Error.Conflict("A cancelled event cannot have its capacity adjusted."));
         }
 
-        if (command.TotalHeadcount < capacity.OccupiedCapacity)
-        {
-            return Result<AdjustEventCapacityOutcome>.Failure(
-                Error.Conflict(
-                    "Headcount cannot be lower than the active-booking count of "
-                    + $"{capacity.OccupiedCapacity}."));
-        }
-
         var previousTotal = capacity.TotalHeadcount;
         var previousRemaining = capacity.RemainingCapacity;
 
-        bool changed;
+        CapacityAdjustment adjustment;
         try
         {
-            changed = capacity.AdjustTotalHeadcount(command.TotalHeadcount);
+            // The occupied count on the locked row is this type's active-booking count: every
+            // active booking requiring the type holds exactly one place on it.
+            adjustment = capacity.AdjustTotalHeadcount(
+                command.TotalHeadcount, capacity.OccupiedCapacity);
         }
         catch (DomainException exception)
         {
@@ -113,7 +108,15 @@ public sealed class AdjustEventCapacityHandler(
                 Error.Validation(exception.Message));
         }
 
-        if (!changed)
+        if (adjustment.Status == CapacityAdjustmentStatus.BelowActiveBookings)
+        {
+            return Result<AdjustEventCapacityOutcome>.Failure(
+                Error.Conflict(
+                    "Headcount cannot be lower than the active-booking count of "
+                    + $"{adjustment.MinimumTotalHeadcount}."));
+        }
+
+        if (!adjustment.Changed)
         {
             await transaction.CommitAsync(cancellationToken);
             return Success(eventItem.Id, capacity);

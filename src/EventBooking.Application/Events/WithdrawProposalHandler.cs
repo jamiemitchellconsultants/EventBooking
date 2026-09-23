@@ -36,17 +36,20 @@ public sealed class WithdrawProposalHandler(
             StaffCapability.ManageEventNegotiation,
             null,
             cancellationToken);
+        // The predecessor let an Admin withdraw any proposal. FR-2.9 judges withdrawal by the
+        // proposing appointment type, and the design's capability matrix gives Admin no
+        // negotiation capability at all, so that fallback is gone.
         if (authorized.IsFailure)
         {
-            var admin = await access.AuthorizeAsync(
-                command.ManagerUserId,
-                StaffCapability.ManageSettings,
-                null,
-                cancellationToken);
-            if (admin.IsFailure)
-            {
-                return Result.Failure(authorized.Error);
-            }
+            return Result.Failure(authorized.Error);
+        }
+
+
+        // A scoped role with no scope is granted nothing (FR-10.7), and negotiation is judged on
+        // the caller's own appointment type.
+        if (authorized.Value.AppointmentTypeId is not { } actingType)
+        {
+            return Result.Failure(Error.Forbidden("This action needs an assigned appointment type."));
         }
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -64,7 +67,8 @@ public sealed class WithdrawProposalHandler(
 
         try
         {
-            proposal.Withdraw(command.ManagerUserId);
+            // FR-2.9: the proposing appointment type withdraws, whoever currently holds it.
+            proposal.Withdraw(actingType);
         }
         catch (DomainException ex)
         {

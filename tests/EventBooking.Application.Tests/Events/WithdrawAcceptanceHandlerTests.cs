@@ -30,9 +30,9 @@ public class WithdrawAcceptanceHandlerTests
         _roles.Add(StaffAccessProfile.Create(
             UniformManager, Role.Manager, AppointmentTypeIds.UniformFitting));
 
-        _proposal = EventProposal.Create(
+        _proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
         _proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, 10);
         _proposal.Accept(AppointmentTypeIds.MedicalCheckUp, MedicalManager, 6);

@@ -94,19 +94,29 @@ public sealed class LateNoShowOutcomeTests
         profiles.Add(StaffAccessProfile.Create(
             staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "amara@example.com", DatOnly());
+            Guid.NewGuid(),
+            "Amara Novak",
+            "amara@example.com",
+            DatOnly(),
+            ProposalFixture.Now);
         var operations = new TransactionOperationLog();
         var attendees = new InMemoryAttendeeRepository(operations);
         attendees.Add(attendee);
         var eventItem = EventFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
         var events = new InMemoryEventRepository(operations);
         events.Add(eventItem);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
-            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            "invite-token",
+            now.AddDays(1),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(

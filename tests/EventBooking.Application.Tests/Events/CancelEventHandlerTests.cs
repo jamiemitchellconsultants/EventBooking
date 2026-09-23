@@ -55,6 +55,7 @@ public class CancelEventHandlerTests
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
         _audit,
         _clock,
+        ProposalFixture.Zones,
         _unitOfWork);
 
     public CancelEventHandlerTests()
@@ -84,6 +85,32 @@ public class CancelEventHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("conflict", result.Error.Code);
         Assert.Equal(EventStatus.Active, past.Status);
+    }
+
+    [Fact]
+    public async Task AEventWhoseWindowStartedEarlierTodayCannotBeCancelled()
+    {
+        var started = AddEventAt(new EventWindow(new DateOnly(2026, 9, 3), new TimeOnly(8, 0), 240));
+
+        var result = await Handler.HandleAsync(
+            new CancelEventCommand(Coordinator, started.Id, true), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal(EventStatus.Active, started.Status);
+    }
+
+    [Fact]
+    public async Task AEventLaterTodayCanStillBeCancelled()
+    {
+        var laterToday =
+            AddEventAt(new EventWindow(new DateOnly(2026, 9, 3), new TimeOnly(14, 0), 240));
+
+        var result = await Handler.HandleAsync(
+            new CancelEventCommand(Coordinator, laterToday.Id, false), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(EventStatus.Cancelled, laterToday.Status);
     }
 
     [Fact]
@@ -216,7 +243,7 @@ public class CancelEventHandlerTests
     [Fact]
     public async Task CancellingAnAlreadyCancelledEventIsAConflict()
     {
-        _event.Cancel();
+        _event.CancelBeforeStart();
 
         var result = await Handler.HandleAsync(
             new CancelEventCommand(Coordinator, _event.Id, true), CancellationToken.None);
@@ -256,23 +283,28 @@ public class CancelEventHandlerTests
             _groups.Items.Add(pilots);
         }
 
-        var attendee = Attendee.Create(Guid.NewGuid(), name, email, pilots);
+        var attendee = Attendee.Create(Guid.NewGuid(), name, email, pilots, ProposalFixture.Now);
         _attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
         var issued = _tokens.Issue(inviteId);
         var invite = Invite.CreateInitial(
-            inviteId, attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
+            inviteId,
+            attendee.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [_event.Id, _events.Items[1].Id, _events.Items[2].Id],
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         _invites.Add(invite);
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
 
         var bookingId = Guid.NewGuid();
         var manage = _tokens.Issue(bookingId);
         _bookings.Add(Booking.Create(bookingId, invite, _event.Id, manage.TokenHash, _clock.UtcNow));
         invite.MarkUsed();
-        attendee.MarkBooked();
+        attendee.MarkBooked(ProposalFixture.Now);
 
         _event.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
         _appointments.Add(BookingAppointment.Create(
@@ -363,8 +395,13 @@ public class CancelEventHandlerTests
         var recoveryInviteId = Guid.NewGuid();
         var issued = _tokens.Issue(recoveryInviteId);
         var recoveryInvite = Invite.CreateRecovery(
-            recoveryInviteId, attendee.Id, original.Id, issued.TokenHash,
+            recoveryInviteId,
+            attendee.Id,
+            original.Id,
+            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            ProposalFixture.LocationId,
+            null,
             [recoveryEvent.Id, _events.Items[2].Id, _events.Items[3].Id],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recoveryInvite);
@@ -384,11 +421,12 @@ public class CancelEventHandlerTests
         return recovery;
     }
 
-    private Event AddEvent(int day)
+    private Event AddEvent(int day) =>
+        AddEventAt(new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240));
+
+    private Event AddEventAt(EventWindow window)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
-            Guid.NewGuid());
+        var proposal = ProposalFixture.Create(Guid.NewGuid(), window, Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

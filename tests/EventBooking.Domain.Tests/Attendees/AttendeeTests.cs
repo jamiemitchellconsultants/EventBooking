@@ -15,7 +15,7 @@ public class AttendeeTests
         AttendeeGroup.Define(AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true, TwoTypes);
 
     private static Attendee NewAttendee() =>
-        Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots());
+        Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", Pilots(), ProposalFixture.Now);
 
     [Fact]
     public void ANewAttendeeStartsNotYetInvited()
@@ -31,7 +31,11 @@ public class AttendeeTests
     public void NameAndEmailAreTrimmedAndTheEmailIsLowerCased()
     {
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "  Amara Novak  ", "  A.Novak@Mail.COM ", Pilots());
+            Guid.NewGuid(),
+            "  Amara Novak  ",
+            "  A.Novak@Mail.COM ",
+            Pilots(),
+            ProposalFixture.Now);
 
         Assert.Equal("Amara Novak", attendee.Name);
         Assert.Equal("a.novak@mail.com", attendee.Email);
@@ -53,7 +57,7 @@ public class AttendeeTests
     public void AMissingNameIsRejected()
     {
         var ex = Assert.Throws<DomainException>(
-            () => Attendee.Create(Guid.NewGuid(), "  ", "a.novak@mail.com", Pilots()));
+            () => Attendee.Create(Guid.NewGuid(), "  ", "a.novak@mail.com", Pilots(), ProposalFixture.Now));
         Assert.Equal("name must not be blank.", ex.Message);
     }
 
@@ -67,7 +71,7 @@ public class AttendeeTests
     public void AnInvalidEmailIsRejected(string? email)
     {
         var ex = Assert.Throws<DomainException>(
-            () => Attendee.Create(Guid.NewGuid(), "Amara Novak", email, Pilots()));
+            () => Attendee.Create(Guid.NewGuid(), "Amara Novak", email, Pilots(), ProposalFixture.Now));
         Assert.Equal("email is not a valid email address.", ex.Message);
     }
 
@@ -105,7 +109,11 @@ public class AttendeeTests
         var cabinCrew = AttendeeGroup.Define(
             AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true, AppointmentTypeIds.All);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", cabinCrew);
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
+            cabinCrew,
+            ProposalFixture.Now);
 
         Assert.Equal(3, attendee.Requirements.Count);
     }

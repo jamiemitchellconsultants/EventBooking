@@ -125,7 +125,7 @@ public sealed class DemoInvitationSeeder(
         var missing = dates.Where(date => !existing.Contains((date, new TimeOnly(11, 0)))).ToList();
         if (missing.Count == 0) return;
         foreach (var date in missing)
-            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(date, new TimeOnly(11, 0)),
+            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(date, new TimeOnly(11, 0), 240),
                 AppointmentTypeIds.All.ToDictionary(type => type, _ => 20), clock.UtcNow);
         await database.SaveChangesAsync(cancellationToken);
         Report($"Invitation demo events created: {missing.Count} with accepted proposals.");

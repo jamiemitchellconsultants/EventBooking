@@ -46,8 +46,12 @@ public class DashboardQueryTests(PostgresFixture fixture)
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp]);
             write.AttendeeGroups.Add(awaitingGroup);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "C. Diallo", "c.diallo@mail.com", awaitingGroup);
-            attendee.MarkAwaitingAvailability();
+                Guid.NewGuid(),
+                "C. Diallo",
+                "c.diallo@mail.com",
+                awaitingGroup,
+                clock.UtcNow);
+            attendee.MarkAwaitingAvailability(clock.UtcNow);
             write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
         }
@@ -78,7 +82,11 @@ public class DashboardQueryTests(PostgresFixture fixture)
                 [AppointmentTypeIds.UniformFitting]);
             write.AttendeeGroups.Add(uniformOnly);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "B. Chen", "b.chen@mail.com", uniformOnly);
+                Guid.NewGuid(),
+                "B. Chen",
+                "b.chen@mail.com",
+                uniformOnly,
+                clock.UtcNow);
             write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
             attendeeId = attendee.Id;
@@ -87,8 +95,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         await using (var addedRead = NewContext(clock))
         {
             var added = await addedRead.Attendees.SingleAsync(c => c.Id == attendeeId);
-            Assert.Equal(clock.UtcNow, addedRead.Entry(added)
-                .Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty).CurrentValue);
+            Assert.Equal(clock.UtcNow, added.StatusChangedAt);
         }
 
         clock.UtcNow = new DateTimeOffset(2026, 9, 1, 9, 0, 0, TimeSpan.Zero);
@@ -104,22 +111,20 @@ public class DashboardQueryTests(PostgresFixture fixture)
             var renamed = await renamedRead.Attendees.SingleAsync(c => c.Id == attendeeId);
             Assert.Equal(
                 new DateTimeOffset(2026, 8, 30, 9, 0, 0, TimeSpan.Zero),
-                renamedRead.Entry(renamed)
-                    .Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty).CurrentValue);
+                renamed.StatusChangedAt);
         }
 
         clock.UtcNow = new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero);
         await using (var statusChange = NewContext(clock))
         {
             var attendee = await statusChange.Attendees.SingleAsync(c => c.Id == attendeeId);
-            attendee.MarkAwaitingAvailability();
+            attendee.MarkAwaitingAvailability(clock.UtcNow);
             await statusChange.SaveChangesAsync();
         }
 
         await using var changedRead = NewContext(clock);
         var changed = await changedRead.Attendees.SingleAsync(c => c.Id == attendeeId);
-        Assert.Equal(clock.UtcNow, changedRead.Entry(changed)
-            .Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty).CurrentValue);
+        Assert.Equal(clock.UtcNow, changed.StatusChangedAt);
     }
 
     [Fact]
@@ -136,7 +141,11 @@ public class DashboardQueryTests(PostgresFixture fixture)
                 [AppointmentTypeIds.UniformFitting]);
             write.AttendeeGroups.Add(uniformOnly);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "S. Patel", "s.patel@mail.com", uniformOnly);
+                Guid.NewGuid(),
+                "S. Patel",
+                "s.patel@mail.com",
+                uniformOnly,
+                clock.UtcNow);
             write.Attendees.Add(attendee);
             write.SaveChanges();
             attendeeId = attendee.Id;
@@ -145,8 +154,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         await using (var addedRead = NewContext(clock))
         {
             var attendee = await addedRead.Attendees.SingleAsync(c => c.Id == attendeeId);
-            Assert.Equal(clock.UtcNow, addedRead.Entry(attendee)
-                .Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty).CurrentValue);
+            Assert.Equal(clock.UtcNow, attendee.StatusChangedAt);
         }
 
         clock.UtcNow = new DateTimeOffset(2026, 9, 1, 9, 0, 0, TimeSpan.Zero);
@@ -162,22 +170,20 @@ public class DashboardQueryTests(PostgresFixture fixture)
             var attendee = await renamedRead.Attendees.SingleAsync(c => c.Id == attendeeId);
             Assert.Equal(
                 new DateTimeOffset(2026, 8, 30, 9, 0, 0, TimeSpan.Zero),
-                renamedRead.Entry(attendee)
-                    .Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty).CurrentValue);
+                attendee.StatusChangedAt);
         }
 
         clock.UtcNow = new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero);
         await using (var statusChange = NewContext(clock))
         {
             var attendee = await statusChange.Attendees.SingleAsync(c => c.Id == attendeeId);
-            attendee.MarkAwaitingAvailability();
+            attendee.MarkAwaitingAvailability(clock.UtcNow);
             statusChange.SaveChanges();
         }
 
         await using var changedRead = NewContext(clock);
         var changed = await changedRead.Attendees.SingleAsync(c => c.Id == attendeeId);
-        Assert.Equal(clock.UtcNow, changedRead.Entry(changed)
-            .Property<DateTimeOffset>(StatusStampingInterceptor.ShadowProperty).CurrentValue);
+        Assert.Equal(clock.UtcNow, changed.StatusChangedAt);
     }
 
     [Fact]
@@ -190,9 +196,13 @@ public class DashboardQueryTests(PostgresFixture fixture)
         {
             var groundOps = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "D. Reyes", "d.reyes@mail.com", groundOps);
-            attendee.MarkInvited();
-            attendee.MarkNoResponse();
+                Guid.NewGuid(),
+                "D. Reyes",
+                "d.reyes@mail.com",
+                groundOps,
+                clock.UtcNow);
+            attendee.MarkInvited(clock.UtcNow);
+            attendee.MarkNoResponse(clock.UtcNow);
             write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
         }
@@ -223,11 +233,21 @@ public class DashboardQueryTests(PostgresFixture fixture)
 
             var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "E. Martin", "e.martin@mail.com", pilots);
-            attendee.MarkInvited();
+                Guid.NewGuid(),
+                "E. Martin",
+                "e.martin@mail.com",
+                pilots,
+                clock.UtcNow);
+            attendee.MarkInvited(clock.UtcNow);
             var invite = Invite.CreateInitial(
-                Guid.NewGuid(), attendee.Id, "invite-hash", clock.UtcNow.AddDays(4),
-                events.Select(s => s.Id), attendee.RequiredAppointmentTypeIds, 0);
+                Guid.NewGuid(),
+                attendee.Id,
+                "invite-hash",
+                clock.UtcNow.AddDays(4),
+                [ProposalFixture.LocationId],
+                events.Select(s => s.Id),
+                attendee.RequiredAppointmentTypeIds,
+                0);
             var booking = Booking.Create(
                 Guid.NewGuid(), invite, events[0].Id, "booking-hash", clock.UtcNow);
 
@@ -259,7 +279,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         await using (var write = NewContext(clock))
         {
             var eventItem = EventFor(new DateOnly(2026, 9, 21), new TimeOnly(9, 0));
-            eventItem.Cancel();
+            eventItem.CancelBeforeStart();
             write.Events.Add(eventItem);
             await write.SaveChangesAsync();
         }
@@ -279,7 +299,11 @@ public class DashboardQueryTests(PostgresFixture fixture)
         {
             var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
-                attendeeId, "A. Novak", "a.novak@mail.com", pilots);
+                attendeeId,
+                "A. Novak",
+                "a.novak@mail.com",
+                pilots,
+                clock.UtcNow);
             write.Attendees.Add(attendee);
             write.EmailLogs.Add(EmailLog.Record(
                 Guid.NewGuid(), attendeeId, EmailTemplate.AttendeeInvite,
@@ -312,7 +336,11 @@ public class DashboardQueryTests(PostgresFixture fixture)
                 [AppointmentTypeIds.UniformFitting]);
             write.AttendeeGroups.Add(uniformOnly);
             write.Attendees.Add(Attendee.Create(
-                Guid.NewGuid(), "B. Chen", "b.chen@mail.com", uniformOnly));
+                Guid.NewGuid(),
+                "B. Chen",
+                "b.chen@mail.com",
+                uniformOnly,
+                clock.UtcNow));
             await write.SaveChangesAsync();
         }
 
@@ -330,7 +358,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         var actionableId = Guid.NewGuid();
         var staleId = Guid.NewGuid();
         var cancelledEvent = EventFor(new DateOnly(2026, 9, 21), new TimeOnly(9, 0));
-        cancelledEvent.Cancel();
+        cancelledEvent.CancelBeforeStart();
         // Production stages the cancellation notice with its booking identifier, so the
         // retryable delivery carries one; the stale delivery below omits it on purpose.
         var cancelledBookingId = Guid.NewGuid();
@@ -352,14 +380,27 @@ public class DashboardQueryTests(PostgresFixture fixture)
         {
             var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var actionableAttendee = Attendee.Create(
-                actionableId, "Actionable", "actionable@mail.com", pilots);
-            actionableAttendee.MarkAwaitingAvailability();
+                actionableId,
+                "Actionable",
+                "actionable@mail.com",
+                pilots,
+                clock.UtcNow);
+            actionableAttendee.MarkAwaitingAvailability(clock.UtcNow);
             var staleAttendee = Attendee.Create(
-                staleId, "Stale", "stale@mail.com", pilots);
+                staleId,
+                "Stale",
+                "stale@mail.com",
+                pilots,
+                clock.UtcNow);
             var cancelledInvite = Invite.CreateInitial(
-                Guid.NewGuid(), actionableId, "cancelled-invite-hash", clock.UtcNow.AddDays(4),
+                Guid.NewGuid(),
+                actionableId,
+                "cancelled-invite-hash",
+                clock.UtcNow.AddDays(4),
+                [ProposalFixture.LocationId],
                 [cancelledEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
-                actionableAttendee.RequiredAppointmentTypeIds, 0);
+                actionableAttendee.RequiredAppointmentTypeIds,
+                0);
             var cancelledBooking = Booking.Create(
                 cancelledBookingId, cancelledInvite, cancelledEvent.Id, "cancelled-booking-hash", clock.UtcNow);
             cancelledBooking.Cancel();
@@ -409,7 +450,6 @@ public class DashboardQueryTests(PostgresFixture fixture)
     {
         var options = new DbContextOptionsBuilder<EventBookingDbContext>()
             .UseNpgsql(fixture.ConnectionString)
-            .AddInterceptors(new StatusStampingInterceptor(clock))
             .Options;
 
         return new EventBookingDbContext(options);
@@ -417,7 +457,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
 
     private static Event EventFor(DateOnly date, TimeOnly startTime)
     {
-        var proposal = EventProposal.Create(Guid.NewGuid(), new EventWindow(date, startTime), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

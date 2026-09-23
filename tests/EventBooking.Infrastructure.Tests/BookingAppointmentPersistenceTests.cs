@@ -187,6 +187,7 @@ public sealed class BookingAppointmentPersistenceTests(PostgresFixture fixture)
             attendeeId,
             "invite-token-hash",
             DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting],
             0);

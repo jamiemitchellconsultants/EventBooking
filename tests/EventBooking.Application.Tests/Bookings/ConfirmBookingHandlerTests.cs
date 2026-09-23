@@ -65,7 +65,7 @@ public class ConfirmBookingHandlerTests
         var pilots = AttendeeGroup.Define(
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
-        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
         _attendees.Add(_attendee);
 
         _chosen = AddEvent(10, 9);
@@ -75,11 +75,16 @@ public class ConfirmBookingHandlerTests
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
+            inviteId,
+            _attendee.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [_chosen.Id, others[0], others[1]],
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         _invites.Add(_invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
     }
 
     private Task<Result<ConfirmBookingOutcome>> Confirm(Guid? eventId = null) =>
@@ -257,7 +262,7 @@ public class ConfirmBookingHandlerTests
     [Fact]
     public async Task ChoosingAEventThatWasCancelledIsTreatedTheSameWay()
     {
-        _chosen.Cancel();
+        _chosen.CancelBeforeStart();
 
         var result = await Confirm();
 
@@ -427,7 +432,7 @@ public class ConfirmBookingHandlerTests
         var original = Booking.Create(originalId, _invite, _chosen.Id, manage.TokenHash, _clock.UtcNow);
         _bookings.Add(original);
         _invite.MarkUsed();
-        _attendee.MarkBooked();
+        _attendee.MarkBooked(ProposalFixture.Now);
 
         foreach (var typeId in _attendee.RequiredAppointmentTypeIds)
         {
@@ -448,7 +453,13 @@ public class ConfirmBookingHandlerTests
         var recoveryId = Guid.NewGuid();
         var issued = _tokens.Issue(recoveryId);
         var recovery = Invite.CreateRecovery(
-            recoveryId, _attendee.Id, original.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
+            recoveryId,
+            _attendee.Id,
+            original.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            ProposalFixture.LocationId,
+            null,
             [_chosen.Id, AddEvent(15, 9).Id, AddEvent(17, 9).Id],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recovery);
@@ -458,8 +469,8 @@ public class ConfirmBookingHandlerTests
 
     private Event AddEvent(int day, int hour)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

@@ -39,10 +39,13 @@ public class DeleteAttendeeHandlerTests
         _appointments = new InMemoryBookingAppointmentRepository(_bookings);
         _roles.Add(StaffAccessProfile.Create(Coordinator, Role.Coordinator, null));
         _attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
             AttendeeGroup.Define(
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+            ProposalFixture.Now);
         _attendees.Add(_attendee);
     }
 
@@ -137,8 +140,8 @@ public class DeleteAttendeeHandlerTests
     private Event GiveTheAttendeeARecoveryBooking()
     {
         var original = _bookings.Items.Single();
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 11), new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 11), new TimeOnly(9, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 10);
@@ -146,7 +149,13 @@ public class DeleteAttendeeHandlerTests
         _events.Add(recoveryEvent);
 
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), _attendee.Id, original.Id, "recovery-hash", Now.AddDays(4),
+            Guid.NewGuid(),
+            _attendee.Id,
+            original.Id,
+            "recovery-hash",
+            Now.AddDays(4),
+            ProposalFixture.LocationId,
+            null,
             [recoveryEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recoveryInvite);
@@ -165,8 +174,8 @@ public class DeleteAttendeeHandlerTests
 
     private Event GiveTheAttendeeABooking()
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
@@ -174,8 +183,14 @@ public class DeleteAttendeeHandlerTests
         _events.Add(eventItem);
 
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), _attendee.Id, "hash", Now.AddDays(4),
-            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], _attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            _attendee.Id,
+            "hash",
+            Now.AddDays(4),
+            [ProposalFixture.LocationId],
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            _attendee.RequiredAppointmentTypeIds,
+            0);
         _invites.Add(invite);
 
         var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, "manage-hash", Now);

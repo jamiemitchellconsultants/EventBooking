@@ -193,11 +193,11 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
 
         var bookedEvent = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(30), new TimeOnly(9, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(30), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var spareEvents = new[] { new TimeOnly(11, 0), new TimeOnly(13, 0), new TimeOnly(15, 0) }
             .Select(start => EventFixture.Create(
-                Guid.NewGuid(), new EventWindow(today.AddDays(31), start),
+                Guid.NewGuid(), new EventWindow(today.AddDays(31), start, 240),
                 AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
             .ToList();
 
@@ -205,17 +205,26 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
             .Include(g => g.Requirements)
             .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
+            Guid.NewGuid(),
+            "Alex Morgan",
+            $"alex-{Guid.NewGuid():N}@example.com",
+            group,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
-            attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
 
-        attendee.MarkInvited();
+        attendee.MarkInvited(ProposalFixture.Now);
         invite.MarkUsed();
-        attendee.MarkBooked();
+        attendee.MarkBooked(ProposalFixture.Now);
 
         context.AddRange(bookedEvent);
         context.AddRange(spareEvents);
@@ -238,12 +247,17 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
 
         var recoveryEvent = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(40), new TimeOnly(13, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(40), new TimeOnly(13, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var original = await context.Bookings.SingleAsync(b => b.Id == originalId);
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), attendeeId, originalId, $"recovery-{Guid.NewGuid():N}",
+            Guid.NewGuid(),
+            attendeeId,
+            originalId,
+            $"recovery-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(2),
+            ProposalFixture.LocationId,
+            null,
             [recoveryEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp]);
         var recovery = Booking.CreateRecovery(

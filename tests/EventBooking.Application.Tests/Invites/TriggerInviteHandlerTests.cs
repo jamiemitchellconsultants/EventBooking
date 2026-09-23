@@ -49,7 +49,7 @@ public class TriggerInviteHandlerTests
             AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
         _attendees.Add(_attendee);
     }
 
@@ -110,8 +110,8 @@ public class TriggerInviteHandlerTests
     public async Task ReInvitingAAttendeeWhoNeverRespondedResetsTheRetryCount()
     {
         AddThreeEvents();
-        _attendee.MarkInvited();
-        _attendee.MarkNoResponse();
+        _attendee.MarkInvited(ProposalFixture.Now);
+        _attendee.MarkNoResponse(ProposalFixture.Now);
 
         var result = await Handler.HandleAsync(
             new TriggerInviteCommand(Coordinator, _attendee.Id), CancellationToken.None);
@@ -125,8 +125,8 @@ public class TriggerInviteHandlerTests
     public async Task ABookedAttendeeCannotBeReInvited()
     {
         AddThreeEvents();
-        _attendee.MarkInvited();
-        _attendee.MarkBooked();
+        _attendee.MarkInvited(ProposalFixture.Now);
+        _attendee.MarkBooked(ProposalFixture.Now);
 
         var result = await Handler.HandleAsync(
             new TriggerInviteCommand(Coordinator, _attendee.Id), CancellationToken.None);
@@ -150,8 +150,8 @@ public class TriggerInviteHandlerTests
     {
         foreach (var day in new[] { 10, 12, 14 })
         {
-            var proposal = EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
+            var proposal = ProposalFixture.Create(
+                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

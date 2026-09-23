@@ -24,4 +24,11 @@
     <ProjectReference Include="..\..\src\EventBooking.Application\EventBooking.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- One proposal builder shared by every suite: proposals now need a location, a listed
+         type set and a proposing type, and no suite should reinvent that shape. -->
+    <Compile Include="..\TestSupport\ProposalFixture.cs" Link="TestSupport\ProposalFixture.cs" />
+    <Using Include="EventBooking.TestSupport" />
+  </ItemGroup>
+
 </Project>

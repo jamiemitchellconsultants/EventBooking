@@ -16,9 +16,9 @@ public class ProposalAcceptanceHeadcountRevisionTests
         Guid.Parse("c0000003-0000-0000-0000-000000000003");
 
     private static EventProposal NewProposal() =>
-        EventProposal.Create(
+        ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
 
     [Fact]
@@ -77,7 +77,7 @@ public class ProposalAcceptanceHeadcountRevisionTests
         var ex = Assert.Throws<DomainException>(() => proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, headcount));
 
-        Assert.Equal("headcount must be greater than zero.", ex.Message);
+        Assert.Equal("headcount must be between 1 and 1000.", ex.Message);
         Assert.Equal(10, Assert.Single(proposal.Acceptances).Headcount);
     }
 
@@ -86,13 +86,17 @@ public class ProposalAcceptanceHeadcountRevisionTests
     {
         var proposal = NewProposal();
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, MedicalManager, 6);
-        proposal.Withdraw(DrugAndAlcoholManager);
+        proposal.Withdraw(ProposalFixture.ProposerType);
 
-        var ex = Assert.Throws<DomainException>(() => proposal.Accept(
+        var ex = Assert.Throws<ProposalNotOpenException>(() => proposal.Accept(
             AppointmentTypeIds.MedicalCheckUp, MedicalManager, 8));
 
-        Assert.Equal("Only an open proposal can be accepted.", ex.Message);
-        Assert.Equal(6, Assert.Single(proposal.Acceptances).Headcount);
+        Assert.Equal(EventProposalStatus.Withdrawn, ex.CurrentStatus);
+        Assert.Equal(
+            6,
+            proposal.Acceptances
+                .Single(acceptance => acceptance.AppointmentTypeId == AppointmentTypeIds.MedicalCheckUp)
+                .Headcount);
     }
 
     [Fact]
@@ -105,10 +109,10 @@ public class ProposalAcceptanceHeadcountRevisionTests
         proposal.Accept(AppointmentTypeIds.UniformFitting, UniformManager, 8);
         Event.CreateFrom(Guid.NewGuid(), proposal);
 
-        var ex = Assert.Throws<DomainException>(() => proposal.Accept(
+        var ex = Assert.Throws<ProposalNotOpenException>(() => proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, 12));
 
-        Assert.Equal("Only an open proposal can be accepted.", ex.Message);
+        Assert.Equal(EventProposalStatus.Confirmed, ex.CurrentStatus);
         Assert.Equal(
             10,
             proposal.Acceptances.Single(acceptance =>

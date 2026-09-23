@@ -51,7 +51,8 @@ public class RetryEmailHandlerTests
             "a.novak@mail.com",
             AttendeeGroup.Define(
                 Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting]),
+            ProposalFixture.Now);
         _attendees.Add(_attendee);
         AddEvent(10);
         AddEvent(12);
@@ -69,11 +70,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             inviteToken.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         var bookingId = Guid.NewGuid();
         var manage = _tokens.Issue(bookingId);
         var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, manage.TokenHash, _clock.UtcNow);
@@ -81,7 +83,7 @@ public class RetryEmailHandlerTests
         _appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
         invite.MarkUsed();
-        _attendee.MarkBooked();
+        _attendee.MarkBooked(ProposalFixture.Now);
         var oldHash = booking.ManageTokenHash;
         AddFailedDelivery(EmailTemplate.BookingConfirmation, bookingId: bookingId);
 
@@ -114,8 +116,8 @@ public class RetryEmailHandlerTests
     public async Task CancellationRetryDoesNotCreateOrSendAnInvite()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
-        _attendee.MarkAwaitingAvailability();
+        eventItem.CancelBeforeStart();
+        _attendee.MarkAwaitingAvailability(ProposalFixture.Now);
         var booking = GivenCancelledBooking(eventItem.Id);
         AddFailedDelivery(
             EmailTemplate.EventCancelledRebookingNeeded,
@@ -142,11 +144,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         AddFailedDelivery(EmailTemplate.AttendeeInvite, inviteId: invite.Id);
         var oldHash = invite.TokenHash;
 
@@ -169,11 +172,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             1);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         AddFailedDelivery(EmailTemplate.AttendeeReinvite, inviteId: invite.Id);
 
         var result = await Handler().HandleAsync(
@@ -198,11 +202,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             reminderCount);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         AddPendingDelivery(template, inviteId: invite.Id);
 
         var result = await Handler().HandleAsync(
@@ -225,11 +230,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             inviteToken.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         var bookingId = Guid.NewGuid();
         var manage = _tokens.Issue(bookingId);
         var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, manage.TokenHash, _clock.UtcNow);
@@ -237,7 +243,7 @@ public class RetryEmailHandlerTests
         _appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
         invite.MarkUsed();
-        _attendee.MarkBooked();
+        _attendee.MarkBooked(ProposalFixture.Now);
         AddPendingDelivery(EmailTemplate.BookingConfirmation, bookingId: booking.Id);
 
         var result = await Handler().HandleAsync(
@@ -254,8 +260,8 @@ public class RetryEmailHandlerTests
     public async Task PendingCancellationRetryCompletesThePendingDelivery()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
-        _attendee.MarkAwaitingAvailability();
+        eventItem.CancelBeforeStart();
+        _attendee.MarkAwaitingAvailability(ProposalFixture.Now);
         var booking = GivenCancelledBooking(eventItem.Id);
         _deliveries.Add(EmailLog.RecordPending(
             Guid.NewGuid(),
@@ -296,9 +302,9 @@ public class RetryEmailHandlerTests
     public async Task CancellationRetryAfterAttendeeBooksAgainReturnsConflictWithoutSending()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
-        _attendee.MarkInvited();
-        _attendee.MarkBooked();
+        eventItem.CancelBeforeStart();
+        _attendee.MarkInvited(ProposalFixture.Now);
+        _attendee.MarkBooked(ProposalFixture.Now);
         AddFailedDelivery(
             EmailTemplate.EventCancelledRebookingNeeded,
             eventId: eventItem.Id);
@@ -347,8 +353,8 @@ public class RetryEmailHandlerTests
     public async Task ConcurrentRetriesProduceOneReplacementSend()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
-        _attendee.MarkAwaitingAvailability();
+        eventItem.CancelBeforeStart();
+        _attendee.MarkAwaitingAvailability(ProposalFixture.Now);
         var booking = GivenCancelledBooking(eventItem.Id);
         var repository = new SerializedRetryDeliveryRepository();
         var failed = EmailLog.RecordPending(
@@ -388,11 +394,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             inviteToken.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         var bookingId = Guid.NewGuid();
         var manage = _tokens.Issue(bookingId);
         var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, manage.TokenHash, _clock.UtcNow);
@@ -400,7 +407,7 @@ public class RetryEmailHandlerTests
         _appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
         invite.MarkUsed();
-        _attendee.MarkBooked();
+        _attendee.MarkBooked(ProposalFixture.Now);
         AddFailedDelivery(EmailTemplate.BookingConfirmation, bookingId: bookingId);
 
         _attendee.AssignAttendeeGroup(AttendeeGroup.Define(
@@ -427,11 +434,12 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
         _invites.Add(invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
         invite.MarkSuperseded();
         AddFailedDelivery(EmailTemplate.AttendeeInvite, inviteId: invite.Id);
 
@@ -453,6 +461,7 @@ public class RetryEmailHandlerTests
             _attendee.Id,
             issued.TokenHash,
             _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
@@ -564,9 +573,9 @@ public class RetryEmailHandlerTests
 
     private Event AddEvent(int day)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

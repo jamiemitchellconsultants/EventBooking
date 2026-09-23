@@ -175,7 +175,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
         var bookedEvent = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(-1), new TimeOnly(9, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(-1), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var spareEvents = new[]
         {
@@ -184,18 +184,27 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             new TimeOnly(15, 0),
         }
         .Select(start => EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(2), start),
+            Guid.NewGuid(), new EventWindow(today.AddDays(2), start, 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
         .ToList();
         var group = context.AttendeeGroups
             .Include(g => g.Requirements)
             .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
+            Guid.NewGuid(),
+            "Alex Morgan",
+            $"alex-{Guid.NewGuid():N}@example.com",
+            group,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
-            attendee.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(),
+            attendee.Id,
+            $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(

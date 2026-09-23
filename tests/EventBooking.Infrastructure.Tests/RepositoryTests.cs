@@ -21,7 +21,7 @@ public class RepositoryTests(PostgresFixture fixture)
             write.Events.Add(pastEvent);
 
             write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 20), out var cancelled));
-            cancelled.Cancel();
+            cancelled.CancelBeforeStart();
             write.Events.Add(cancelled);
 
             write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 21), out var live));
@@ -49,7 +49,11 @@ public class RepositoryTests(PostgresFixture fixture)
         {
             var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
-                Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+                Guid.NewGuid(),
+                "Amara Novak",
+                "a.novak@mail.com",
+                pilots,
+                ProposalFixture.Now);
             write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
         }
@@ -71,13 +75,14 @@ public class RepositoryTests(PostgresFixture fixture)
         await using var context = fixture.NewContext();
         var settings = await new SystemSettingsRepository(context).GetAsync(CancellationToken.None);
 
-        Assert.Equal(4, settings.InviteExpiryDays);
+        Assert.Equal(7, settings.InviteExpiryDays);
+        Assert.Equal(3, settings.InviteOptionCount);
     }
 
     private static EventProposal ProposalOn(DateOnly date, out Event eventItem)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

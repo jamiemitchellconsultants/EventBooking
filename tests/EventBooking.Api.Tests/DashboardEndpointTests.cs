@@ -74,6 +74,7 @@ public class DashboardEndpointTests(ApiFactory factory)
     public async Task TheResponseCarriesEveryFieldThePageBindsTo()
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var stampedAt = DateTimeOffset.UtcNow;
         var awaitingId = Guid.NewGuid();
         var noResponseId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
@@ -84,20 +85,28 @@ public class DashboardEndpointTests(ApiFactory factory)
 
             var cabinCrew = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.CabinCrew);
             var awaiting = Attendee.Create(
-                awaitingId, "A. Waiting", "a.waiting@mail.com", cabinCrew);
-            awaiting.MarkAwaitingAvailability();
+                awaitingId,
+                "A. Waiting",
+                "a.waiting@mail.com",
+                cabinCrew,
+                stampedAt);
+            awaiting.MarkAwaitingAvailability(stampedAt);
             context.Attendees.Add(awaiting);
 
             var groundOps = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
             var noResponse = Attendee.Create(
-                noResponseId, "B. Stuck", "b.stuck@mail.com", groundOps);
-            noResponse.MarkInvited();
-            noResponse.MarkNoResponse();
+                noResponseId,
+                "B. Stuck",
+                "b.stuck@mail.com",
+                groundOps,
+                stampedAt);
+            noResponse.MarkInvited(stampedAt);
+            noResponse.MarkNoResponse(stampedAt);
             context.Attendees.Add(noResponse);
 
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
-                new EventWindow(today.AddDays(30), new TimeOnly(9, 0)),
+                new EventWindow(today.AddDays(30), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

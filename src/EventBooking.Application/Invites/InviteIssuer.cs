@@ -1,6 +1,7 @@
 using System.Text.Json;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
+using EventBooking.Application.Events;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
@@ -101,7 +102,18 @@ public sealed class InviteIssuer(
 
             if (options.Count < Invite.RequiredOptionCount)
             {
-                attendee.MarkAwaitingAvailability();
+                // FR-5.4 parks a not-yet-invited attendee on AwaitingAvailability. FR-5.7 says a
+                // failed automatic re-issue ends at NoResponseNeedsFollowUp instead, and the
+                // closed status table is what tells the two apart.
+                if (Attendee.IsLegalTransition(attendee.Status, AttendeeStatus.AwaitingAvailability))
+                {
+                    attendee.MarkAwaitingAvailability(clock.UtcNow);
+                }
+                else
+                {
+                    attendee.MarkNoResponse(clock.UtcNow);
+                }
+
                 return Result<InviteIssueResult>.Success(new InviteIssueResult(false, null, false));
             }
 
@@ -115,12 +127,15 @@ public sealed class InviteIssuer(
                 attendee.Id,
                 token.TokenHash,
                 clock.UtcNow.AddDays(configuration.InviteExpiryDays),
+                // The Coordinator cannot choose locations until Task 12 puts them on the command,
+                // so every invite is restricted to the transitional site.
+                [TransitionalLocation.Id],
                 options.Select(o => o.Id),
                 mapping,
                 retryCount);
 
             invites.Add(invite);
-            attendee.MarkInvited();
+            attendee.MarkInvited(clock.UtcNow);
 
             audit.Record(
                 AuditEntityTypes.Invite,
@@ -202,6 +217,8 @@ public sealed class InviteIssuer(
                 rootBookingId,
                 token.TokenHash,
                 clock.UtcNow.AddDays(configuration.InviteExpiryDays),
+                TransitionalLocation.Id,
+                null,
                 options.Select(o => o.Id),
                 selectedTypeIds);
 

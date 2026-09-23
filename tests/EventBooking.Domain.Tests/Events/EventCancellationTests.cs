@@ -8,9 +8,9 @@ public class EventCancellationTests
 {
     private static Event ActiveEvent()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 11), new TimeOnly(13, 0)),
+            new EventWindow(new DateOnly(2026, 9, 11), new TimeOnly(13, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
@@ -24,7 +24,7 @@ public class EventCancellationTests
     {
         var eventItem = ActiveEvent();
 
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
 
         Assert.Equal(EventStatus.Cancelled, eventItem.Status);
     }
@@ -35,7 +35,7 @@ public class EventCancellationTests
         var eventItem = ActiveEvent();
         Assert.True(eventItem.HasSpareCapacityForAll(AppointmentTypeIds.All));
 
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
 
         Assert.False(eventItem.HasSpareCapacityForAll(AppointmentTypeIds.All));
         Assert.Equal(10, eventItem.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).RemainingCapacity);
@@ -45,9 +45,9 @@ public class EventCancellationTests
     public void CancellingTwiceIsRejected()
     {
         var eventItem = ActiveEvent();
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
 
-        var ex = Assert.Throws<DomainException>(() => eventItem.Cancel());
+        var ex = Assert.Throws<DomainException>(() => eventItem.CancelBeforeStart());
         Assert.Equal("This event has already been cancelled.", ex.Message);
     }
 }

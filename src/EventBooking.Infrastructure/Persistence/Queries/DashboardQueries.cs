@@ -63,6 +63,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 eventItem.Id,
                 eventItem.Window.Date,
                 eventItem.Window.StartTime,
+                eventItem.Window.DurationMinutes,
                 Capacities = eventItem.Capacities.Select(capacity => new
                 {
                     capacity.AppointmentTypeId,
@@ -79,7 +80,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 row.Id,
                 row.Date,
                 row.StartTime,
-                row.StartTime.Add(EventWindow.Duration),
+                row.StartTime.Add(TimeSpan.FromMinutes(row.DurationMinutes)),
                 row.Capacities.Select(capacity => new EventCapacityRow(
                     AppointmentTypeIds.CodeOf(capacity.AppointmentTypeId),
                     capacity.TotalHeadcount,
@@ -181,7 +182,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 attendee.Id,
                 attendee.Name,
                 attendee.Email,
-                EF.Property<DateTimeOffset>(attendee, StatusStampingInterceptor.ShadowProperty),
+                attendee.StatusChangedAt,
                 attendee.Requirements.Select(requirement => requirement.AppointmentTypeId).ToList()));
 
     private sealed record AttendeeRow(

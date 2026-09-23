@@ -302,8 +302,13 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             recoveryToken = issued.Token;
             await using var context = fixture.NewContext();
             context.Invites.Add(Invite.CreateRecovery(
-                recoveryId, attendeeId, originalId, issued.TokenHash,
+                recoveryId,
+                attendeeId,
+                originalId,
+                issued.TokenHash,
                 DateTimeOffset.UtcNow.AddDays(4),
+                ProposalFixture.LocationId,
+                null,
                 [recoveryEventId, ..harness.FallbackEventIds],
                 [AppointmentTypeIds.DrugAndAlcoholTesting]));
             await context.SaveChangesAsync();

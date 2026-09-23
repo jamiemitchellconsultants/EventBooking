@@ -33,8 +33,8 @@ public class GetManagerEventBoardHandlerTests
     [Fact]
     public async Task OpenProposalsShowWhoHasAcceptedAndWhetherIHave()
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, MedicalManager, 6);
@@ -55,11 +55,30 @@ public class GetManagerEventBoardHandlerTests
     }
 
     [Fact]
+    public async Task SuccessorManagerInheritsProposalAcceptanceAndWithdrawalControls()
+    {
+        var formerManager = Guid.NewGuid();
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+            formerManager);
+        proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, formerManager, 4);
+        _proposals.Add(proposal);
+
+        var board = (await Handler.HandleAsync(
+            new GetManagerEventBoardQuery(DrugAndAlcoholManager), CancellationToken.None)).Value;
+
+        var view = Assert.Single(board.OpenProposals);
+        Assert.Equal(4, view.MyAcceptedHeadcount);
+        Assert.True(view.AcceptedByMe);
+        Assert.True(view.CreatedByMe);
+    }
+
+    [Fact]
     public async Task AProposalIAmYetToAcceptIsFlaggedAsSuch()
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 12), new TimeOnly(13, 0)),
-            UniformManager);
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 12), new TimeOnly(13, 0), 240),
+            UniformManager, AppointmentTypeIds.UniformFitting);
         proposal.Accept(AppointmentTypeIds.UniformFitting, UniformManager, 8);
         _proposals.Add(proposal);
 
@@ -73,12 +92,32 @@ public class GetManagerEventBoardHandlerTests
     }
 
     [Fact]
+    public async Task OpenProposalsNotListingMyTypeAreOmitted()
+    {
+        var proposal = EventProposal.Propose(
+            Guid.NewGuid(), ProposalFixture.LocationId, true, ProposalFixture.TimeZoneId,
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+            ProposalFixture.Zones, ProposalFixture.Now,
+            [
+                new ProposableAppointmentType(AppointmentTypeIds.MedicalCheckUp, "MED", true, true),
+                new ProposableAppointmentType(AppointmentTypeIds.UniformFitting, "UNI", true, true),
+            ],
+            AppointmentTypeIds.UniformFitting, UniformManager, 8);
+        _proposals.Add(proposal);
+
+        var board = (await Handler.HandleAsync(
+            new GetManagerEventBoardQuery(DrugAndAlcoholManager), CancellationToken.None)).Value;
+
+        Assert.Empty(board.OpenProposals);
+    }
+
+    [Fact]
     public async Task OpenProposalsAreOrderedEarliestFirst()
     {
         foreach (var day in new[] { 14, 10, 12 })
         {
-            _proposals.Add(EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
+            _proposals.Add(ProposalFixture.Create(
+                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240),
                 UniformManager));
         }
 
@@ -107,10 +146,27 @@ public class GetManagerEventBoardHandlerTests
     }
 
     [Fact]
+    public async Task ActiveEventsNotListingMyTypeAreOmitted()
+    {
+        var proposal = EventProposal.Propose(
+            Guid.NewGuid(), ProposalFixture.LocationId, true, ProposalFixture.TimeZoneId,
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+            ProposalFixture.Zones, ProposalFixture.Now,
+            [new ProposableAppointmentType(AppointmentTypeIds.UniformFitting, "UNI", true, true)],
+            AppointmentTypeIds.UniformFitting, UniformManager, 8);
+        _events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
+
+        var board = (await Handler.HandleAsync(
+            new GetManagerEventBoardQuery(DrugAndAlcoholManager), CancellationToken.None)).Value;
+
+        Assert.Empty(board.Events);
+    }
+
+    [Fact]
     public async Task CancelledAndPastEventsAreNotOnTheBoard()
     {
         var cancelled = Event.CreateFrom(Guid.NewGuid(), FullyAcceptedProposal());
-        cancelled.Cancel();
+        cancelled.CancelBeforeStart();
         _events.Add(cancelled);
         _events.Add(Event.CreateFrom(
             Guid.NewGuid(), FullyAcceptedProposal(new DateOnly(2026, 8, 30))));
@@ -133,9 +189,9 @@ public class GetManagerEventBoardHandlerTests
 
     private static EventProposal FullyAcceptedProposal(DateOnly? date = null)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(date ?? new DateOnly(2026, 9, 8), new TimeOnly(9, 0)),
+            new EventWindow(date ?? new DateOnly(2026, 9, 8), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManager, 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, MedicalManager, 6);

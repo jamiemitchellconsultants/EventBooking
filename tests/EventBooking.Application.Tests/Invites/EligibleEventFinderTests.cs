@@ -70,7 +70,7 @@ public class EligibleEventFinderTests
     public async Task CancelledEventsAreNeverEligible()
     {
         var eventItem = AddEvent(new DateOnly(2026, 9, 10));
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
 
         var result = await Finder.FindAsync(NeedsTwo, 3, [], CancellationToken.None);
 
@@ -117,8 +117,8 @@ public class EligibleEventFinderTests
         int medicalHeadcount = 6,
         int uniformHeadcount = 8)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(date, new TimeOnly(startHour, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(startHour, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), drugAndAlcoholHeadcount);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), medicalHeadcount);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), uniformHeadcount);

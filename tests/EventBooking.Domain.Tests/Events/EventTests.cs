@@ -9,9 +9,9 @@ public class EventTests
     private static EventProposal FullyAcceptedProposal(
         int drugAndAlcohol = 10, int medical = 6, int uniform = 8)
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), drugAndAlcohol);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), medical);
@@ -67,14 +67,16 @@ public class EventTests
     [Fact]
     public void APartlyAcceptedProposalCannotBeConfirmed()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
 
         var ex = Assert.Throws<DomainException>(() => Event.CreateFrom(Guid.NewGuid(), proposal));
-        Assert.Equal("A proposal can only be confirmed once all 3 managers have accepted it.", ex.Message);
+        Assert.Equal(
+            "A proposal is confirmed only once every listed appointment type has accepted it.",
+            ex.Message);
     }
 
     [Fact]

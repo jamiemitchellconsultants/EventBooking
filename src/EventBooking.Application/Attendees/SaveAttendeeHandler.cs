@@ -51,6 +51,7 @@ public sealed class SaveAttendeeHandler
     private readonly IBookingRepository _bookings;
     private readonly IStaffAccessAuthorizer _access;
     private readonly IAuditLogger _audit;
+    private readonly IClock _clock;
     private readonly IUnitOfWork _unitOfWork;
 
     /// <summary>Creates handler dependencies for group-derived attendee management.</summary>
@@ -60,6 +61,7 @@ public sealed class SaveAttendeeHandler
     /// <param name="bookings">Locks the attendee's active booking for the requirement invariant.</param>
     /// <param name="access">Authorizes attendee management.</param>
     /// <param name="audit">Records Attendee Group assignment.</param>
+    /// <param name="clock">Stamps the attendee's status changes.</param>
     /// <param name="unitOfWork">Owns the attendee save.</param>
     public SaveAttendeeHandler(
         IAttendeeRepository attendees,
@@ -68,6 +70,7 @@ public sealed class SaveAttendeeHandler
         IBookingRepository bookings,
         IStaffAccessAuthorizer access,
         IAuditLogger audit,
+        IClock clock,
         IUnitOfWork unitOfWork)
     {
         _attendees = attendees;
@@ -76,6 +79,7 @@ public sealed class SaveAttendeeHandler
         _bookings = bookings;
         _access = access;
         _audit = audit;
+        _clock = clock;
         _unitOfWork = unitOfWork;
     }
 
@@ -114,7 +118,7 @@ public sealed class SaveAttendeeHandler
         Attendee attendee;
         try
         {
-            attendee = Attendee.Create(id, command.Name, command.Email, resolved.Value);
+            attendee = Attendee.Create(id, command.Name, command.Email, resolved.Value, _clock.UtcNow);
         }
         catch (DomainException ex)
         {
@@ -224,7 +228,7 @@ public sealed class SaveAttendeeHandler
             if (setChanged)
             {
                 pendingInvite?.MarkSuperseded();
-                attendee.ResetAfterRequirementChange();
+                attendee.ResetAfterRequirementChange(_clock.UtcNow);
             }
 
             attendee.AssignAttendeeGroup(resolved.Value);

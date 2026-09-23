@@ -12,9 +12,9 @@ public class EventProposalAcceptanceTests
     private static readonly Guid MedicalManager = Guid.Parse("c0000002-0000-0000-0000-000000000002");
 
     private static EventProposal NewProposal() =>
-        EventProposal.Create(
+        ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
 
     [Fact]
@@ -65,9 +65,10 @@ public class EventProposalAcceptanceTests
         var proposal = NewProposal();
 
         var ex = Assert.Throws<DomainException>(
-            () => proposal.Accept(DrugAndAlcohol, DrugAndAlcoholManager, headcount));
-        Assert.Equal("headcount must be greater than zero.", ex.Message);
-        Assert.Empty(proposal.Acceptances);
+            () => proposal.Accept(Medical, MedicalManager, headcount));
+        Assert.Equal("headcount must be between 1 and 1000.", ex.Message);
+        // The proposer's own acceptance is recorded at creation and is unaffected by a refusal.
+        Assert.Single(proposal.Acceptances);
     }
 
     [Fact]
@@ -84,12 +85,12 @@ public class EventProposalAcceptanceTests
     {
         var proposal = NewProposal();
         proposal.Accept(DrugAndAlcohol, DrugAndAlcoholManager, 10);
-        var unknownAppointmentType = Guid.Parse("a0000004-0000-0000-0000-000000000004");
+        var unlistedAppointmentType = Guid.Parse("a0000004-0000-0000-0000-000000000004");
 
         var ex = Assert.Throws<DomainException>(
-            () => proposal.WithdrawAcceptance(unknownAppointmentType, DrugAndAlcoholManager));
+            () => proposal.WithdrawAcceptance(unlistedAppointmentType));
 
-        Assert.Equal($"{unknownAppointmentType} is not one of the 3 appointment types.", ex.Message);
+        Assert.Equal("This appointment type is not listed on the proposal.", ex.Message);
         Assert.Single(proposal.Acceptances);
     }
 
@@ -97,11 +98,11 @@ public class EventProposalAcceptanceTests
     public void AWithdrawnProposalCannotBeAccepted()
     {
         var proposal = NewProposal();
-        proposal.Withdraw(DrugAndAlcoholManager);
+        proposal.Withdraw(ProposalFixture.ProposerType);
 
-        var ex = Assert.Throws<DomainException>(
+        var ex = Assert.Throws<ProposalNotOpenException>(
             () => proposal.Accept(DrugAndAlcohol, DrugAndAlcoholManager, 10));
-        Assert.Equal("Only an open proposal can be accepted.", ex.Message);
+        Assert.Equal(EventProposalStatus.Withdrawn, ex.CurrentStatus);
     }
 
     [Fact]
@@ -111,7 +112,7 @@ public class EventProposalAcceptanceTests
         proposal.Accept(DrugAndAlcohol, DrugAndAlcoholManager, 10);
         proposal.Accept(Medical, MedicalManager, 6);
 
-        proposal.WithdrawAcceptance(Medical, MedicalManager);
+        proposal.WithdrawAcceptance(Medical);
 
         Assert.Single(proposal.Acceptances);
         Assert.False(proposal.IsAcceptedBy(Medical));
@@ -123,9 +124,10 @@ public class EventProposalAcceptanceTests
         var proposal = NewProposal();
         proposal.Accept(Medical, MedicalManager, 6);
 
-        proposal.WithdrawAcceptance(Medical, DrugAndAlcoholManager);
+        proposal.WithdrawAcceptance(Medical);
 
-        Assert.Empty(proposal.Acceptances);
+        // The proposing type's own acceptance stays: only the proposal itself can take that back.
+        Assert.Equal(ProposalFixture.ProposerType, Assert.Single(proposal.Acceptances).AppointmentTypeId);
     }
 
     [Fact]
@@ -134,7 +136,7 @@ public class EventProposalAcceptanceTests
         var proposal = NewProposal();
 
         var ex = Assert.Throws<DomainException>(
-            () => proposal.WithdrawAcceptance(Medical, MedicalManager));
+            () => proposal.WithdrawAcceptance(Medical));
         Assert.Equal("This appointment type has not accepted the proposal.", ex.Message);
     }
 }

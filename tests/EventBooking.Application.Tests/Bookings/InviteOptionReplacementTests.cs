@@ -31,10 +31,13 @@ public class InviteOptionReplacementTests
     public InviteOptionReplacementTests()
     {
         _attendee = Attendee.Create(
-            Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
+            Guid.NewGuid(),
+            "Amara Novak",
+            "a.novak@mail.com",
             AttendeeGroup.Define(
                 AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
-                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
+                [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
+            ProposalFixture.Now);
         _attendees.Add(_attendee);
 
         var eventIds = new[] { AddEvent(10, 9), AddEvent(11, 13), AddEvent(13, 9) };
@@ -43,17 +46,23 @@ public class InviteOptionReplacementTests
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), eventIds,
-            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
+            inviteId,
+            _attendee.Id,
+            issued.TokenHash,
+            _clock.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
+            eventIds,
+            [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
+            0);
         _invites.Add(_invite);
-        _attendee.MarkInvited();
+        _attendee.MarkInvited(ProposalFixture.Now);
     }
 
     /// <summary>A cancelled option is replaced so the attendee still sees three live options.</summary>
     [Fact]
     public async Task View_ReplacesCancelledOption_ToRestoreThreeOptions()
     {
-        _events.Items[1].Cancel();
+        _events.Items[1].CancelBeforeStart();
         var spareId = AddEvent(14, 9);
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
@@ -71,8 +80,8 @@ public class InviteOptionReplacementTests
     [Fact]
     public async Task View_WithNoReplacementAvailable_FlagsAttendeeForFollowUp()
     {
-        _events.Items[1].Cancel();
-        _events.Items[2].Cancel();
+        _events.Items[1].CancelBeforeStart();
+        _events.Items[2].CancelBeforeStart();
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
@@ -84,8 +93,8 @@ public class InviteOptionReplacementTests
 
     private Guid AddEvent(int day, int hour)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

@@ -23,7 +23,8 @@ public class CombinedManagerAuthorizationTests
             new StaffAccessAuthorizer(profiles),
             new FakeUnitOfWork(),
             new RecordingAuditLogger(),
-            new FakeClock());
+            new FakeClock(),
+            ProposalFixture.Zones);
 
         var result = await handler.HandleAsync(
             new ProposeEventCommand(staffUserId, new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
@@ -48,7 +49,8 @@ public class CombinedManagerAuthorizationTests
             new StaffAccessAuthorizer(profiles),
             new FakeUnitOfWork(),
             new RecordingAuditLogger(),
-            new FakeClock());
+            new FakeClock(),
+            ProposalFixture.Zones);
 
         var result = await handler.HandleAsync(
             new ProposeEventCommand(staffUserId, new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),

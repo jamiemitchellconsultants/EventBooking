@@ -26,11 +26,19 @@ public class FakesSelfTests
         var uniformOnly = AttendeeGroup.Define(
             Guid.NewGuid(), "UNI_ONLY", "UNI only", true, [AppointmentTypeIds.UniformFitting]);
         var invited = Attendee.Create(
-            Guid.NewGuid(), "B. Chen", "b.chen@mail.com", uniformOnly);
-        invited.MarkInvited();
+            Guid.NewGuid(),
+            "B. Chen",
+            "b.chen@mail.com",
+            uniformOnly,
+            ProposalFixture.Now);
+        invited.MarkInvited(ProposalFixture.Now);
         repository.Add(invited);
         repository.Add(Attendee.Create(
-            Guid.NewGuid(), "A. Novak", "a.novak@mail.com", uniformOnly));
+            Guid.NewGuid(),
+            "A. Novak",
+            "a.novak@mail.com",
+            uniformOnly,
+            ProposalFixture.Now));
 
         var result = await repository.ListAsync(AttendeeStatus.Invited, CancellationToken.None);
 
@@ -44,7 +52,7 @@ public class FakesSelfTests
         var repository = new InMemoryEventRepository();
         repository.Add(EventFor(new DateOnly(2026, 9, 1)));
         var cancelled = EventFor(new DateOnly(2026, 9, 20));
-        cancelled.Cancel();
+        cancelled.CancelBeforeStart();
         repository.Add(cancelled);
         repository.Add(EventFor(new DateOnly(2026, 9, 21)));
 
@@ -101,8 +109,8 @@ public class FakesSelfTests
 
     private static Event EventFor(DateOnly date)
     {
-        var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = ProposalFixture.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

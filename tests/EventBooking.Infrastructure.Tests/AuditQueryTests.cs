@@ -58,12 +58,21 @@ public class AuditQueryTests(PostgresFixture fixture)
         {
             var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
-                attendeeId, "Amara Novak", "a.novak@mail.com", pilots);
+                attendeeId,
+                "Amara Novak",
+                "a.novak@mail.com",
+                pilots,
+                ProposalFixture.Now);
             write.Attendees.Add(attendee);
             write.Invites.Add(Invite.CreateInitial(
-                inviteId, attendee.Id, "hash", Now.AddDays(4),
+                inviteId,
+                attendee.Id,
+                "hash",
+                Now.AddDays(4),
+                [ProposalFixture.LocationId],
                 [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
-                attendee.RequiredAppointmentTypeIds, 0));
+                attendee.RequiredAppointmentTypeIds,
+                0));
 
             write.AuditLogs.Add(AuditLog.Record(
                 Guid.NewGuid(), AuditEntityTypes.Invite, inviteId, AuditAction.InviteCreated,
@@ -251,12 +260,17 @@ public class AuditQueryTests(PostgresFixture fixture)
     {
         await using var write = fixture.NewContext();
         var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
-        var attendee = Attendee.Create(attendeeId, "Amara Novak", "a.novak@mail.com", pilots);
+        var attendee = Attendee.Create(attendeeId, "Amara Novak", "a.novak@mail.com", pilots, ProposalFixture.Now);
         var eventId = Guid.NewGuid();
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendeeId, "hash", Now.AddDays(4),
+            Guid.NewGuid(),
+            attendeeId,
+            "hash",
+            Now.AddDays(4),
+            [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
-            attendee.RequiredAppointmentTypeIds, 0);
+            attendee.RequiredAppointmentTypeIds,
+            0);
         var booking = Booking.Create(Guid.NewGuid(), invite, eventId, "manage-token-hash", Now);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);

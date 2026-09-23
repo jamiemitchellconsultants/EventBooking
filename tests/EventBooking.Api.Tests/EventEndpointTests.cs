@@ -140,9 +140,9 @@ public class EventEndpointTests(ApiFactory factory)
     /// <summary>Seeds one event with capacity for every appointment type.</summary>
     private async Task<Guid> GivenEventAsync()
     {
-        var proposal = EventProposal.Create(
+        var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60), new TimeOnly(9, 0)),
+            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 10);
@@ -168,19 +168,24 @@ public class EventEndpointTests(ApiFactory factory)
             .Include(g => g.Requirements)
             .SingleAsync(g => g.Id == AttendeeGroupIds.Pilots);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "S. Booked", $"s.booked.{Guid.NewGuid():N}@mail.com", pilots);
+            Guid.NewGuid(),
+            "S. Booked",
+            $"s.booked.{Guid.NewGuid():N}@mail.com",
+            pilots,
+            ProposalFixture.Now);
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
             $"hash-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, eventId, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
-        attendee.MarkInvited();
-        attendee.MarkBooked();
+        attendee.MarkInvited(ProposalFixture.Now);
+        attendee.MarkBooked(ProposalFixture.Now);
 
         // Mirrors ConfirmBookingHandler: one appointment per required type, each holding a place.
         var eventItem = await context.Events

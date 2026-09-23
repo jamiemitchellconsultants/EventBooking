@@ -1,4 +1,5 @@
 using EventBooking.Application.Abstractions;
+using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
@@ -20,10 +21,8 @@ public static class InfrastructureServiceCollectionExtensions
         // Registered as a factory, with a scoped context created from it. Task 51's email sender
         // needs a context of its own that is not tied to the request's unit of work, and this is
         // the pattern that gives it one without a second registration of the context type.
-        services.AddSingleton<StatusStampingInterceptor>();
         services.AddDbContextFactory<EventBookingDbContext>((sp, options) => options
-            .UseNpgsql(connectionString)
-            .AddInterceptors(sp.GetRequiredService<StatusStampingInterceptor>()));
+            .UseNpgsql(connectionString));
         services.AddScoped(sp =>
             sp.GetRequiredService<IDbContextFactory<EventBookingDbContext>>().CreateDbContext());
 
@@ -62,6 +61,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton(tokens);
 
         services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IEventWindowZones, NodaTimeEventWindowZones>();
         services.AddSingleton<ITokenService, HmacTokenService>();
 
         services.AddScoped<IEmailSender, LoggingEmailSender>();

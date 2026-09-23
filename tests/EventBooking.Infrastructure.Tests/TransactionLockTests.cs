@@ -39,7 +39,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         var confirmationPid = await waitingBackend.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilBlockedOnDatabaseLockAsync(cancellationContext, confirmationPid);
 
-        lockedEvent!.Cancel();
+        lockedEvent!.CancelBeforeStart();
         await cancellationContext.SaveChangesAsync();
         await cancellationTransaction.CommitAsync();
 
@@ -74,7 +74,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         var cancellationPid = await waitingBackend.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilBlockedOnDatabaseLockAsync(eventCancellationContext, cancellationPid);
 
-        lockedEvent!.Cancel();
+        lockedEvent!.CancelBeforeStart();
         activeBooking.Cancel();
         await IncrementCapacityAsync(eventCancellationContext, scenario.EventId);
         await eventCancellationContext.SaveChangesAsync();
@@ -231,9 +231,9 @@ public class TransactionLockTests(PostgresFixture fixture)
         var events = new List<Event>();
         for (var offset = 0; offset < Invite.RequiredOptionCount; offset++)
         {
-            var proposal = EventProposal.Create(
+            var proposal = ProposalFixture.Create(
                 Guid.NewGuid(),
-                new EventWindow(new DateOnly(2026, 9, 10 + offset), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2026, 9, 10 + offset), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());
             proposal.Accept(
                 AppointmentTypeIds.DrugAndAlcoholTesting,
@@ -258,8 +258,9 @@ public class TransactionLockTests(PostgresFixture fixture)
             Guid.NewGuid(),
             "Amara Novak",
             "amara@example.com",
-            pilots);
-        attendee.MarkInvited();
+            pilots,
+            ProposalFixture.Now);
+        attendee.MarkInvited(ProposalFixture.Now);
 
         const string inviteTokenHash = "invite-token-hash";
         const string manageTokenHash = "manage-token-hash";
@@ -268,6 +269,7 @@ public class TransactionLockTests(PostgresFixture fixture)
             attendee.Id,
             inviteTokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
+            [ProposalFixture.LocationId],
             events.Select(s => s.Id),
             attendee.RequiredAppointmentTypeIds,
             retryCount: 0);
@@ -279,7 +281,7 @@ public class TransactionLockTests(PostgresFixture fixture)
                 Guid.NewGuid(), invite, events[0].Id, manageTokenHash, DateTimeOffset.UtcNow);
             events[0].CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             invite.MarkUsed();
-            attendee.MarkBooked();
+            attendee.MarkBooked(ProposalFixture.Now);
         }
 
         await using var write = fixture.NewContext();

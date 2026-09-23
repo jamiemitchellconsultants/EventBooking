@@ -18,7 +18,7 @@ public class EventPersistenceTests(PostgresFixture fixture)
     public async Task AnEventPersistsWithItsProposalId()
     {
         await using var context = fixture.NewContext();
-        var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0));
+        var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240);
         var eventItem = EventFixture.Create(Guid.NewGuid(), window, FullHeadcounts());
 
         context.Events.Add(eventItem);
@@ -41,9 +41,9 @@ public class EventPersistenceTests(PostgresFixture fixture)
     {
         await using var context = fixture.NewContext();
         var first = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 12), new TimeOnly(9, 0)), FullHeadcounts());
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 12), new TimeOnly(9, 0), 240), FullHeadcounts());
         var second = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 13), new TimeOnly(9, 0)), FullHeadcounts());
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 13), new TimeOnly(9, 0), 240), FullHeadcounts());
 
         context.Events.AddRange(first, second);
 
