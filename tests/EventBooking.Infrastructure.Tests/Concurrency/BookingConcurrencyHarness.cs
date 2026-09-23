@@ -32,64 +32,14 @@ public sealed record ConcurrentAttempt(
     int? MinimumAccepted = null);
 
 /// <summary>
-/// Drives the lock helpers from many connections at once. It deliberately does **not** go through
-/// an Application handler: none exists until Task 15, and the point here is to prove the ordering
-/// the helpers impose, not the booking rules on top of it. Task 15 replaces this routine with the
-/// real handler and keeps these scenarios.
+/// The two races that stay below the Application layer: the capacities-only shuffle, which the
+/// real handler cannot drive because it always takes the event lock first, and the headcount
+/// adjustment racing real bookings. Booking attempts themselves go through the real
+/// ConfirmBookingHandler via <see cref="ConcurrencyHarness"/>.
 /// </summary>
 /// <param name="fixture">The PostgreSQL fixture whose container every connection uses.</param>
 public sealed class BookingConcurrencyHarness(PostgresFixture fixture)
 {
-    /// <summary>
-    /// Locks the event, then its capacity rows for the required types in the domain's order, and
-    /// charges them all or nothing. Every attempt gets its own context, connection and transaction,
-    /// which is what makes the lock order observable at all.
-    /// </summary>
-    /// <param name="eventIds">The events to charge, named in whatever order the caller received.</param>
-    /// <param name="appointmentTypeIds">The types each event must charge.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    public async Task<ConcurrentAttempt> TryChargeAsync(
-        IReadOnlyList<Guid> eventIds,
-        IReadOnlyList<Guid> appointmentTypeIds,
-        CancellationToken cancellationToken)
-    {
-        await using var context = NewContext();
-        var locks = new TransactionLocks(enforced: true);
-        var rowLocks = new RowLocks(context, locks);
-
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        try
-        {
-            await rowLocks.LockEventsAsync(eventIds, cancellationToken);
-
-            var keys = eventIds
-                .SelectMany(eventId => appointmentTypeIds
-                    .Select(typeId => new EventCapacityKey(eventId, typeId)));
-            var rows = await rowLocks.LockCapacitiesAsync(keys, cancellationToken);
-
-            if (rows.FirstOrDefault(row => !row.HasSpare) is { } exhausted)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return new ConcurrentAttempt(
-                    ConcurrentOutcome.CapacityExhausted, exhausted.AppointmentTypeId);
-            }
-
-            foreach (var row in rows)
-            {
-                row.Decrement();
-            }
-
-            await context.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return new ConcurrentAttempt(ConcurrentOutcome.Booked);
-        }
-        catch (Exception exception) when (IsDeadlock(exception))
-        {
-            await SafeRollbackAsync(transaction, cancellationToken);
-            return new ConcurrentAttempt(ConcurrentOutcome.Deadlocked);
-        }
-    }
-
     /// <summary>
     /// Charges capacity rows across several events **without** taking the event locks first, so
     /// the capacity ordering is the only thing between two attempts and a deadlock. The event lock

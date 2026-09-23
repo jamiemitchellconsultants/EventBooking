@@ -56,7 +56,7 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
             {
                 return cancel is not null
                     ? cancel(request)
-                    : Json(new CancelAttendeeBookingDto(false, false, "Unavailable", null));
+                    : Json(new CancelAttendeeBookingDto(false, 0, Guid.NewGuid()));
             }
 
             if (path == $"/api/attendees/{AttendeeId}/bookings")
@@ -138,7 +138,7 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
     }
 
     [Fact]
-    public void RecoveryRowOmitsCancelAndRebook()
+    public void EveryRowOffersCancelOnly()
     {
         var (cut, _) = RenderWith(Pages(
         [
@@ -151,9 +151,12 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
 
         cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("ul.booking-list li").Count));
         var rows = cut.FindAll("ul.booking-list li");
-        Assert.Contains(rows[0].QuerySelectorAll("button"), b => b.TextContent.Trim() == "Cancel & rebook");
-        Assert.DoesNotContain(rows[1].QuerySelectorAll("button"), b => b.TextContent.Trim() == "Cancel & rebook");
-        Assert.Contains(rows[1].QuerySelectorAll("button"), b => b.TextContent.Trim() == "Cancel booking");
+        Assert.All(rows, row =>
+        {
+            Assert.Contains(row.QuerySelectorAll("button"), b => b.TextContent.Trim() == "Cancel booking");
+            Assert.DoesNotContain(
+                row.QuerySelectorAll("button"), b => b.TextContent.Trim() == "Cancel & rebook");
+        });
         Assert.Contains("(recovery)", rows[1].TextContent);
     }
 
@@ -178,49 +181,7 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
         Assert.Equal(
             $"/api/attendees/{AttendeeId}/bookings/{bookingId}/cancel",
             post.RequestUri!.AbsolutePath);
-    }
-
-    [Fact]
-    public void CancelAndRebookRequiresAConfirmingSecondClick()
-    {
-        var bookingId = Guid.NewGuid();
-        var (cut, handler) = RenderWith(
-            Pages([Booking(bookingId, true, 10)], []),
-            cancel: _ => Json(new CancelAttendeeBookingDto(true, true, "Sent", Guid.NewGuid())));
-        cut.WaitForAssertion(() => Assert.Contains("Amara Novak", cut.Markup));
-        cut.Find("button.booking-badge").Click();
-        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("ul.booking-list li")));
-
-        FindButton(cut, "Cancel & rebook").Click();
-
-        cut.WaitForAssertion(() => Assert.Contains("Confirm cancel", cut.Markup));
-        Assert.DoesNotContain(handler.Requests, r => r.Method == HttpMethod.Post);
-        // Arming rebook must not arm the plain cancel on the same row.
-        Assert.Contains(cut.FindAll("button"), b => b.TextContent.Trim() == "Cancel booking");
-
-        FindButton(cut, "Confirm cancel").Click();
-
-        cut.WaitForAssertion(() =>
-            Assert.Contains("Booking cancelled; replacement invite sent.", cut.Markup));
-    }
-
-    [Fact]
-    public void SuccessMessageReportsAnUndeliveredReplacementInvite()
-    {
-        var bookingId = Guid.NewGuid();
-        var (cut, _) = RenderWith(
-            Pages([Booking(bookingId, true, 10)], []),
-            cancel: _ => Json(new CancelAttendeeBookingDto(true, true, "Failed", Guid.NewGuid())));
-        cut.WaitForAssertion(() => Assert.Contains("Amara Novak", cut.Markup));
-        cut.Find("button.booking-badge").Click();
-        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("ul.booking-list li")));
-
-        FindButton(cut, "Cancel & rebook").Click();
-        cut.WaitForAssertion(() => Assert.Contains("Confirm cancel", cut.Markup));
-        FindButton(cut, "Confirm cancel").Click();
-
-        cut.WaitForAssertion(() =>
-            Assert.Contains("replacement invite could not be delivered", cut.Markup));
+        Assert.Equal("?confirm=true", post.RequestUri!.Query);
     }
 
     [Fact]

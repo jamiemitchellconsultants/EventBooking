@@ -27,6 +27,10 @@ public static class ResultResponses
         Error.VersionConflictCode => StatusCodes.Status409Conflict,
         Error.CapacityBelowBookingsCode => StatusCodes.Status409Conflict,
         Error.InsufficientEventsCode => StatusCodes.Status409Conflict,
+        Error.AlreadyConfirmedCode => StatusCodes.Status409Conflict,
+        Error.CapacityExhaustedCode => StatusCodes.Status409Conflict,
+        Error.ConfirmationRequiredCode => StatusCodes.Status409Conflict,
+        Error.WindowStartedCode => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError,
     };
 

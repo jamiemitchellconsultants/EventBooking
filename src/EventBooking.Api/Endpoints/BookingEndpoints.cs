@@ -11,7 +11,7 @@ public static class BookingEndpoints
 
     public sealed record ConfirmBookingRequest(Guid EventId);
 
-    public sealed record CancelBookingRequest(bool Rebook);
+    public sealed record CancelBookingRequest(bool RequestNewTime);
 
     public static IEndpointRouteBuilder MapBookingEndpoints(this IEndpointRouteBuilder app)
     {
@@ -75,10 +75,10 @@ public static class BookingEndpoints
         group.MapPost("/manage/{token}/cancel", async (
             string token,
             CancelBookingRequest request,
-            CancelBookingHandler handler,
+            CancelBookingByAttendeeHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new CancelBookingCommand(token, request.Rebook), cancellationToken))
+                new CancelBookingByAttendeeCommand(token, request.RequestNewTime), cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("cancelManagedBooking")
             .Produces(200)

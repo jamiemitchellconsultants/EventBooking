@@ -416,6 +416,12 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
     }
 
     public void Add(Booking booking) => Items.Add(booking);
+
+    public Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(b => b.InviteId == inviteId));
+
+    public Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.Count(b => b.AttendeeId == attendeeId && b.Status == BookingStatus.Active));
 }
 
 /// <summary>Provides Attendee Group reference data with identifier and code lookups.</summary>

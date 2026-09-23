@@ -32,6 +32,14 @@ public sealed class ExpireInviteHandler(
     public async Task<Result> HandleAsync(ExpireInviteCommand command, CancellationToken ct)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        // Port read first: the attendee lock must precede the invite lock in canonical
+        // order. Everything is re-validated after locking.
+        var port = await invites.GetAsync(command.InviteId, ct);
+        if (port is null) return Result.Failure(Error.NotFound("No such invite."));
+
+        var attendee = await attendees.LockForUpdateAsync(port.AttendeeId, ct);
+        if (attendee is null) return Result.Failure(Error.NotFound("No such attendee."));
+
         var invite = await invites.LockForUpdateAsync(command.InviteId, ct);
         if (invite is null) return Result.Failure(Error.NotFound("No such invite."));
         if (invite.Status != Domain.Invites.InviteStatus.Pending || invite.IsUsableAt(clock.UtcNow))
@@ -39,9 +47,6 @@ public sealed class ExpireInviteHandler(
             await transaction.CommitAsync(ct);
             return Result.Success();
         }
-
-        var attendee = await attendees.LockForUpdateAsync(invite.AttendeeId, ct);
-        if (attendee is null) return Result.Failure(Error.NotFound("No such attendee."));
 
         // Recovery invites expire without reissue and without moving the attendee: the
         // attendee already travelled once, and the recovery flow owns what happens next.

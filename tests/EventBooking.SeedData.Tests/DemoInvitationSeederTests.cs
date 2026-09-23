@@ -108,11 +108,12 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         var booking = await scope.ServiceProvider.GetRequiredService<ConfirmBookingHandler>()
             .HandleAsync(new ConfirmBookingCommand(first, offered.Value.Options[0].EventId), default);
         Assert.True(booking.IsSuccess);
-        Assert.Equal("Sent", booking.Value.DeliveryStatus);
         Assert.True((await scope.ServiceProvider.GetRequiredService<ViewBookingHandler>()
             .HandleAsync(new ViewBookingQuery(booking.Value.ManageToken), default)).IsSuccess);
         Assert.False((await view.HandleAsync(new ViewInviteQuery(first), default)).IsSuccess);
-        Assert.Equal(EmailTemplate.BookingConfirmation, _mail.Messages[^1].Template);
+        var staged = await db.EmailLogs.SingleAsync(e => e.BookingId == booking.Value.BookingId);
+        Assert.Equal(EmailTemplate.BookingConfirmation, staged.TemplateName);
+        Assert.Equal(EmailStatus.Pending, staged.Status);
     }
 
     /// <summary>A rerun preserves successful tokens, capacities and an already-consumed invitation.</summary>
@@ -135,7 +136,8 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         var before = capacities.SelectMany(s => s.Capacities.OrderBy(c => c.AppointmentTypeId))
             .Select(c => c.RemainingCapacity).ToArray();
         Assert.Equal(0, await SeedAsync());
-        Assert.Equal(6, _mail.Messages.Count);
+        // Five seed sends; the confirmation stages its email instead of sending it.
+        Assert.Equal(5, _mail.Messages.Count);
         Assert.Equal(versions, await db.Invites.AsNoTracking().OrderBy(i => i.Id)
             .Select(i => i.TokenVersion).ToListAsync());
         var after = await db.Events.AsNoTracking().Include(s => s.Capacities)

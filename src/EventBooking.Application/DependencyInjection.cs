@@ -81,8 +81,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ViewInviteHandler>();
         services.AddScoped<ViewBookingHandler>();
         services.AddScoped<ConfirmBookingHandler>();
-        services.AddScoped<CancelBookingHandler>();
-        services.AddScoped<CancelAttendeeBookingHandler>();
+        services.AddScoped<CancelBookingByAttendeeHandler>();
+        services.AddScoped<CancelBookingByCoordinatorHandler>();
 
         return services;
     }

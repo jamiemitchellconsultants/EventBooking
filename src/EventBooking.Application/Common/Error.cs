@@ -129,4 +129,34 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
             ["found"] = found,
             ["required"] = required,
         });
+
+    /// <summary>Identifies a confirmation replayed against an already-used invite.</summary>
+    public const string AlreadyConfirmedCode = "already-confirmed";
+
+    /// <summary>Creates a replay refusal naming the existing booking in the message.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="existingBookingId">The booking the invite already confirmed.</param>
+    public static Error AlreadyConfirmed(string message, Guid existingBookingId) =>
+        new(AlreadyConfirmedCode, message, new Dictionary<string, long>());
+
+    /// <summary>Identifies a booking refused because a required type has nothing left.</summary>
+    public const string CapacityExhaustedCode = "capacity-exhausted";
+
+    /// <summary>Creates an exhaustion refusal; nothing moved.</summary>
+    /// <param name="message">The message.</param>
+    public static Error CapacityExhausted(string message) => new(CapacityExhaustedCode, message);
+
+    /// <summary>Identifies a two-step cancellation awaiting its confirmation.</summary>
+    public const string ConfirmationRequiredCode = "confirmation-required";
+
+    /// <summary>Creates a confirmation-required refusal for transports that surface the two-step as one.</summary>
+    /// <param name="message">The message.</param>
+    public static Error ConfirmationRequired(string message) => new(ConfirmationRequiredCode, message);
+
+    /// <summary>Identifies a booking or cancellation refused because the window started.</summary>
+    public const string WindowStartedCode = "window-started";
+
+    /// <summary>Creates a window-started refusal judged in the event's location zone.</summary>
+    /// <param name="message">The message.</param>
+    public static Error WindowStarted(string message) => new(WindowStartedCode, message);
 }

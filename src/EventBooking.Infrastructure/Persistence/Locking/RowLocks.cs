@@ -151,6 +151,19 @@ public sealed class RowLocks(EventBookingDbContext context, TransactionLocks loc
         return proposal;
     }
 
+    /// <summary>
+    /// Records an invite lock the invite repository is about to take. The SQL stays in the
+    /// repository with its option loading; the order is recorded here, through the same tracker
+    /// as every other level, so a descent fails in a test instead of deadlocking in production.
+    /// </summary>
+    public void EnterInvite() => locks.Enter(LockLevel.Invite);
+
+    /// <summary>
+    /// Records a booking lock the booking repository is about to take. The SQL stays in the
+    /// repository; the order is recorded here, through the same tracker as every other level.
+    /// </summary>
+    public void EnterBooking() => locks.Enter(LockLevel.Booking);
+
     /// <summary>Takes the event row only if it is free, returning null when it is held.</summary>
     /// <param name="id">The event id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>

@@ -52,14 +52,12 @@ public sealed record StartRecoveryResourceResponse(
 
 /// <summary>Coordinator-facing outcome of cancelling one attendee booking.</summary>
 public sealed record CancelAttendeeBookingResourceResponse(
-    /// <summary>Gets whether a replacement Invite was created for the Attendee.</summary>
-    bool Reinvited,
-    /// <summary>Gets the explicit replacement-invite creation state.</summary>
-    bool InviteCreated,
-    /// <summary>Gets the provider outcome, or Unavailable when no replacement Invite exists.</summary>
-    string? DeliveryStatus,
-    /// <summary>Gets the durable replacement delivery identifier, when one was staged.</summary>
-    Guid? DeliveryId,
+    /// <summary>Gets whether this call only previews the cancellation's consequence.</summary>
+    bool ConfirmationRequired,
+    /// <summary>Gets how many active bookings the attendee holds (preview only).</summary>
+    int ActiveBookingCount,
+    /// <summary>Gets the cancelled booking identifier (confirmed call only).</summary>
+    Guid? CancelledBookingId,
     /// <summary>Gets the safe follow-up operations for the Attendee.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 

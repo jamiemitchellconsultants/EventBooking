@@ -40,13 +40,13 @@ public sealed class BookingAppointment
     /// <summary>Creates an Expected appointment for one booking requirement.</summary>
     /// <param name="id">The stable appointment-record identifier.</param>
     /// <param name="bookingId">The parent booking identifier.</param>
-    /// <param name="appointmentTypeId">The required fixed appointment-type identifier.</param>
+    /// <param name="appointmentTypeId">The required appointment-type identifier.</param>
     /// <returns>A new untouched appointment at version one.</returns>
     public static BookingAppointment Create(Guid id, Guid bookingId, Guid appointmentTypeId)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
         Guard.Against(bookingId == Guid.Empty, "bookingId must not be empty.");
-        AppointmentTypeIds.EnsureKnown(appointmentTypeId);
+        Guard.Against(appointmentTypeId == Guid.Empty, "appointmentTypeId must not be empty.");
 
         return new BookingAppointment
         {

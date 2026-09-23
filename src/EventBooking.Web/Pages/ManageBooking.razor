@@ -23,13 +23,17 @@
             <h1>Booking cancelled</h1>
         </div>
         <div class="manage-booking-page__status manage-booking-page__status--cancelled" role="status">
-            @if (_reinvited && _deliveryStatus == "Sent")
+            @if (_rebookRequested && _cancelOutcome == "reinvited")
             {
-                <p class="manage-booking-page__lead">Your booking has been cancelled and a new invitation with fresh times has been sent.</p>
+                <p class="manage-booking-page__lead">Your booking has been cancelled and a new invitation with fresh times is on its way.</p>
+            }
+            else if (_rebookRequested && _cancelOutcome == "reinvitePending")
+            {
+                <p class="manage-booking-page__lead">Your booking has been cancelled. You already have a pending invitation; use that link to choose a new time.</p>
             }
             else if (_rebookRequested)
             {
-                <p class="manage-booking-page__lead">Your booking has been cancelled. @(_inviteCreated ? "We could not confirm delivery of a replacement invitation; " : "There are no times available right now; ")the recruitment team will be in touch with the next available times.</p>
+                <p class="manage-booking-page__lead">Your booking has been cancelled. There are no times available right now; the recruitment team will be in touch with the next available times.</p>
             }
             else
             {
@@ -92,9 +96,7 @@
     private bool _busy;
     private bool _cancelled;
     private bool _rebookRequested;
-    private bool _reinvited;
-    private bool _inviteCreated;
-    private string? _deliveryStatus;
+    private string? _cancelOutcome;
     private int _requestVersion;
 
     protected override Task OnParametersSetAsync() => ReloadAsync();
@@ -109,9 +111,7 @@
         _expired = false;
         _cancelled = false;
         _rebookRequested = false;
-        _reinvited = false;
-        _inviteCreated = false;
-        _deliveryStatus = null;
+        _cancelOutcome = null;
 
         try
         {
@@ -163,9 +163,7 @@
 
             if (outcome.IsSuccess)
             {
-                _inviteCreated = rebook && outcome.Value?.InviteCreated == true;
-                _reinvited = _inviteCreated;
-                _deliveryStatus = outcome.Value?.DeliveryStatus;
+                _cancelOutcome = outcome.Value?.Outcome;
                 _cancelled = true;
                 _booking = null;
                 return;

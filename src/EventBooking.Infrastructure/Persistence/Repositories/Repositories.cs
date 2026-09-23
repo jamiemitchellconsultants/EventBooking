@@ -279,28 +279,43 @@ public sealed class AttendeeRepository(EventBookingDbContext context, RowLocks r
 }
 
 /// <summary>Persists invite rows and their option collections, including lifecycle locks.</summary>
-public sealed class InviteRepository(EventBookingDbContext context) : IInviteRepository
+public sealed class InviteRepository(EventBookingDbContext context, RowLocks rowLocks)
+    : IInviteRepository
 {
+    /// <summary>For a test driving one context directly, with a lock tracker of its own.</summary>
+    /// <param name="context">The context to read through.</param>
+    public InviteRepository(EventBookingDbContext context)
+        : this(context, new RowLocks(context))
+    {
+    }
+
     public Task<Invite?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         context.Invites
             .Include(i => i.Options)
             .Include(i => i.Requirements)
+            .Include(i => i.Locations)
             .SingleOrDefaultAsync(i => i.Id == id, cancellationToken);
 
     /// <summary>Locks the identified invite and loads its offered event IDs.</summary>
-    public async Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
-        await LockAndLoadOptionsAsync(
+    public async Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        rowLocks.EnterInvite();
+        return await LockAndLoadOptionsAsync(
             context.Invites.FromSqlInterpolated($"SELECT * FROM invite WHERE id = {id} FOR UPDATE"),
             cancellationToken);
+    }
 
     /// <summary>Locks the attendee's current pending invite and loads its offered event IDs.</summary>
     public async Task<Invite?> LockPendingForAttendeeAsync(
         Guid attendeeId,
-        CancellationToken cancellationToken) =>
-        await LockAndLoadOptionsAsync(
+        CancellationToken cancellationToken)
+    {
+        rowLocks.EnterInvite();
+        return await LockAndLoadOptionsAsync(
             context.Invites.FromSqlInterpolated(
                 $"SELECT * FROM invite WHERE attendee_id = {attendeeId} AND status = {(int)InviteStatus.Pending} FOR UPDATE"),
             cancellationToken);
+    }
 
     public Task<Invite?> GetPendingForAttendeeAsync(
         Guid attendeeId,
@@ -308,6 +323,7 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
         context.Invites
             .Include(i => i.Options)
             .Include(i => i.Requirements)
+            .Include(i => i.Locations)
             .SingleOrDefaultAsync(
                 i => i.AttendeeId == attendeeId && i.Status == InviteStatus.Pending,
                 cancellationToken);
@@ -315,17 +331,21 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
     /// <summary>Locks the attendee's pending initial invite and loads its offered event IDs.</summary>
     public async Task<Invite?> LockPendingInitialForAttendeeAsync(
         Guid attendeeId,
-        CancellationToken cancellationToken) =>
-        await LockAndLoadOptionsAsync(
+        CancellationToken cancellationToken)
+    {
+        rowLocks.EnterInvite();
+        return await LockAndLoadOptionsAsync(
             context.Invites.FromSqlInterpolated(
                 $"SELECT * FROM invite WHERE attendee_id = {attendeeId} AND status = {(int)InviteStatus.Pending} AND recovery_of_booking_id IS NULL FOR UPDATE"),
             cancellationToken);
+    }
 
     /// <summary>Locks every pending invite for the attendee in ID order with events loaded.</summary>
     public async Task<IReadOnlyList<Invite>> LockPendingListForAttendeeAsync(
         Guid attendeeId,
         CancellationToken cancellationToken)
     {
+        rowLocks.EnterInvite();
         var pending = await context.Invites.FromSqlInterpolated(
                 $"SELECT * FROM invite WHERE attendee_id = {attendeeId} AND status = {(int)InviteStatus.Pending} ORDER BY id FOR UPDATE")
             .ToListAsync(cancellationToken);
@@ -334,6 +354,7 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
         {
             await context.Entry(invite).Collection(item => item.Options).LoadAsync(cancellationToken);
             await context.Entry(invite).Collection(item => item.Requirements).LoadAsync(cancellationToken);
+            await context.Entry(invite).Collection(item => item.Locations).LoadAsync(cancellationToken);
         }
 
         return pending;
@@ -345,6 +366,7 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
         await context.Invites
             .Include(i => i.Options)
             .Include(i => i.Requirements)
+            .Include(i => i.Locations)
             .Where(i => i.Status == InviteStatus.Pending && i.ExpiresAt <= asAt)
             .ToListAsync(cancellationToken);
 
@@ -359,6 +381,7 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
         {
             await context.Entry(invite).Collection(item => item.Options).LoadAsync(cancellationToken);
             await context.Entry(invite).Collection(item => item.Requirements).LoadAsync(cancellationToken);
+            await context.Entry(invite).Collection(item => item.Locations).LoadAsync(cancellationToken);
         }
 
         return invite;
@@ -421,14 +444,23 @@ public sealed class EmailDeliveryRepository(EventBookingDbContext context) : IEm
 }
 
 /// <summary>Persists booking rows and exposes token and attendee lifecycle locks.</summary>
-public sealed class BookingRepository(EventBookingDbContext context) : IBookingRepository
+public sealed class BookingRepository(EventBookingDbContext context, RowLocks rowLocks)
+    : IBookingRepository
 {
+    /// <summary>For a test driving one context directly, with a lock tracker of its own.</summary>
+    /// <param name="context">The context to read through.</param>
+    public BookingRepository(EventBookingDbContext context)
+        : this(context, new RowLocks(context))
+    {
+    }
+
     public Task<Booking?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         context.Bookings.SingleOrDefaultAsync(b => b.Id == id, cancellationToken);
 
     /// <summary>Locks one booking row before rotating its management-token hash.</summary>
     public async Task<Booking?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
+        rowLocks.EnterBooking();
         var rows = await context.Bookings
             .FromSqlInterpolated($"SELECT * FROM booking WHERE id = {id} FOR UPDATE")
             .ToListAsync(cancellationToken);
@@ -457,6 +489,7 @@ public sealed class BookingRepository(EventBookingDbContext context) : IBookingR
         Guid attendeeId,
         CancellationToken cancellationToken)
     {
+        rowLocks.EnterBooking();
         var rows = await context.Bookings
             .FromSqlInterpolated(
                 $"SELECT * FROM booking WHERE id = {bookingId} AND attendee_id = {attendeeId} FOR UPDATE")
@@ -476,6 +509,7 @@ public sealed class BookingRepository(EventBookingDbContext context) : IBookingR
         Guid attendeeId,
         CancellationToken cancellationToken)
     {
+        rowLocks.EnterBooking();
         var rows = await context.Bookings
             .FromSqlInterpolated(
                 $"SELECT * FROM booking WHERE attendee_id = {attendeeId} AND status = {(int)BookingStatus.Active} AND recovery_of_booking_id IS NULL FOR UPDATE")
@@ -500,6 +534,7 @@ public sealed class BookingRepository(EventBookingDbContext context) : IBookingR
         Guid originalBookingId,
         CancellationToken cancellationToken)
     {
+        rowLocks.EnterBooking();
         var rows = await context.Bookings
             .FromSqlInterpolated(
                 $"SELECT * FROM booking WHERE recovery_of_booking_id = {originalBookingId} AND status = {(int)BookingStatus.Active} FOR UPDATE")
@@ -534,4 +569,18 @@ public sealed class BookingRepository(EventBookingDbContext context) : IBookingR
             .ToListAsync(cancellationToken);
 
     public void Add(Booking booking) => context.Bookings.Add(booking);
+
+    /// <inheritdoc/>
+    public Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationToken) =>
+        context.Bookings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(b => b.InviteId == inviteId, cancellationToken);
+
+    /// <inheritdoc/>
+    public Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
+        context.Bookings
+            .AsNoTracking()
+            .CountAsync(
+                b => b.AttendeeId == attendeeId && b.Status == BookingStatus.Active,
+                cancellationToken);
 }

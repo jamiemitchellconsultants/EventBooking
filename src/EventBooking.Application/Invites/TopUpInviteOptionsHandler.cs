@@ -45,6 +45,14 @@ public sealed class TopUpInviteOptionsHandler(
         if (authorized.IsFailure) return Result.Failure(authorized.Error);
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        // Port read first: the attendee lock (taken on the no-replacement path) must
+        // precede the invite lock in canonical order. Everything is re-validated below.
+        var port = await invites.GetAsync(command.InviteId, ct);
+        if (port is null) return Result.Failure(Error.NotFound("No such invite."));
+
+        var attendee = await attendees.LockForUpdateAsync(port.AttendeeId, ct);
+        if (attendee is null) return Result.Failure(Error.NotFound("No such attendee."));
+
         var invite = await invites.LockForUpdateAsync(command.InviteId, ct);
         if (invite is null) return Result.Failure(Error.NotFound("No such invite."));
         if (invite.Status != Domain.Invites.InviteStatus.Pending)
@@ -74,8 +82,6 @@ public sealed class TopUpInviteOptionsHandler(
 
         // The attendee is flagged only from Invited: any other status already says what
         // needs saying, and the transition table refuses most moves from elsewhere.
-        var attendee = await attendees.LockForUpdateAsync(invite.AttendeeId, ct);
-        if (attendee is null) return Result.Failure(Error.NotFound("No such attendee."));
         if (attendee.Status == AttendeeStatus.Invited)
             attendee.MarkNoResponse(clock.UtcNow);
         audit.Record(AuditEntityTypes.Invite, invite.Id, AuditAction.InviteOptionReplaced,

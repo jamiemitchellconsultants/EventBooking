@@ -47,11 +47,11 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync(
-            $"/api/booking/manage/{booking.ManageToken}/cancel", new { Rebook = false });
+            $"/api/booking/manage/{booking.ManageToken}/cancel", new { RequestNewTime = false });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var outcome = await response.Content.ReadFromJsonAsync<CancelResponse>();
-        Assert.False(outcome!.Reinvited);
+        Assert.Equal("cancelled", outcome!.Outcome);
 
         var afterwards = await client.GetAsync($"/api/booking/manage/{booking.ManageToken}");
         Assert.Equal(HttpStatusCode.NotFound, afterwards.StatusCode);
@@ -70,18 +70,19 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync(
-            $"/api/booking/manage/{booking.ManageToken}/cancel", new { Rebook = true });
+            $"/api/booking/manage/{booking.ManageToken}/cancel", new { RequestNewTime = true });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var outcome = await response.Content.ReadFromJsonAsync<CancelResponse>();
-        Assert.True(outcome!.Reinvited);
+        Assert.Equal("reinvited", outcome!.Outcome);
 
         var persisted = await ReadCancellationStateAsync(booking);
         Assert.Equal(BookingStatus.Cancelled, persisted.BookingStatus);
-        Assert.Equal(AttendeeStatus.Invited, persisted.AttendeeStatus);
+        Assert.Equal(AttendeeStatus.Booked, persisted.AttendeeStatus);
         Assert.Equal(persisted.TotalHeadcount, persisted.RemainingCapacity);
         var inviteId = Assert.Single(persisted.PendingInviteIds);
         Assert.NotEqual(booking.OriginalInviteId, inviteId);
+        Assert.Equal(inviteId, outcome.InviteId);
     }
 
     [Fact]
@@ -141,6 +142,18 @@ public class ManageBookingEndpointTests(ApiFactory factory)
             context.EventProposals.Add(proposal);
             context.Events.Add(Event.CreateFrom(eventId, proposal));
             eventIds.Add(eventId);
+        }
+
+        // Eligible but never offered: cancelling the booked event still leaves three options,
+        // so a rebook has somewhere to go.
+        {
+            var proposal = ProposalFixture.Create(
+                Guid.NewGuid(), new EventWindow(new DateOnly(2030, 1, 17), new TimeOnly(9, 0), 240), Guid.NewGuid());
+            proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
+            proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
+            proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
+            context.EventProposals.Add(proposal);
+            context.Events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
         }
 
         var attendee = Attendee.Create(
@@ -212,5 +225,5 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
     private sealed record BookingResponse(DateOnly Date, string Display, string AttendeeName);
 
-    private sealed record CancelResponse(bool Reinvited);
+    private sealed record CancelResponse(string Outcome, Guid? InviteId);
 }

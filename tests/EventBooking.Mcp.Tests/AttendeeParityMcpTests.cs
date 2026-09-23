@@ -43,9 +43,9 @@ public sealed class AttendeeParityMcpTests(McpFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
         using var result = await CallResultAsync("cancel_attendee_booking", new
         {
-            attendeeId = seeded.AttendeeId, bookingId = seeded.BookingId, rebook = false,
+            attendeeId = seeded.AttendeeId, bookingId = seeded.BookingId, confirm = true,
         });
-        Assert.False(result.RootElement.GetProperty("reinvited").GetBoolean());
+        Assert.Equal(seeded.BookingId, result.RootElement.GetProperty("cancelledBookingId").GetGuid());
     }
 
     [Fact]

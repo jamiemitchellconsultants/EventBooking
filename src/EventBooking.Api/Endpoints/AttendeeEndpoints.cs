@@ -20,13 +20,6 @@ public static class AttendeeEndpoints
     /// <summary>Attendee fields accepted by create and update operations.</summary>
     public sealed record SaveAttendeeRequest(string? Name, string? Email, Guid? AttendeeGroupId);
 
-    /// <summary>The coordinator's choice when cancelling one attendee booking.</summary>
-    /// <param name="Rebook">
-    /// Whether to issue a replacement invite. Valid only for an original booking; requesting it
-    /// for a recovery booking is refused as a conflict.
-    /// </param>
-    public sealed record CancelAttendeeBookingRequest(bool Rebook);
-
     public sealed record InviteAttendeeRequest(IReadOnlyList<Guid> LocationIds);
 
     /// <summary>Registers attendee CRUD, invite, and template-aware retry routes.</summary>
@@ -226,14 +219,14 @@ public static class AttendeeEndpoints
         group.MapPost("/{attendeeId:guid}/bookings/{bookingId:guid}/cancel", async (
             Guid attendeeId,
             Guid bookingId,
-            CancelAttendeeBookingRequest request,
+            bool? confirm,
             ICallerAccessor caller,
-            CancelAttendeeBookingHandler handler,
+            CancelBookingByCoordinatorHandler handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
-                new CancelAttendeeBookingCommand(
-                    caller.RequireStaffUserId(), attendeeId, bookingId, request.Rebook),
+                new CancelBookingByCoordinatorCommand(
+                    caller.RequireStaffUserId(), attendeeId, bookingId, confirm ?? false),
                 cancellationToken);
             if (result.IsFailure)
             {
@@ -242,10 +235,9 @@ public static class AttendeeEndpoints
 
             var outcome = result.Value;
             return Results.Ok(new CancelAttendeeBookingResourceResponse(
-                outcome.Reinvited,
-                outcome.InviteCreated,
-                outcome.DeliveryStatus,
-                outcome.DeliveryId,
+                outcome.ConfirmationRequired,
+                outcome.ActiveBookingCount,
+                outcome.CancelledBookingId,
                 AttendeeLinks.ForAttendee(attendeeId, AttendeeStatus.Booked)));
         })
             .WithAgentMetadata("cancelAttendeeBooking")

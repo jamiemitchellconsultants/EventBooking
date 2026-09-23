@@ -3,9 +3,10 @@ using EventBooking.Infrastructure.Persistence.Locking;
 namespace EventBooking.Infrastructure.Tests.Concurrency;
 
 /// <summary>
-/// The documented order is `Attendee`, `EventProposal`, `Event`, `EventCapacity`. Two transactions
-/// that take the same rows in different orders deadlock, and a deadlock is a 500 to whichever
-/// attendee PostgreSQL picks. The tracker turns that runtime coin-toss into a failing test.
+/// The documented order is `Attendee`, `EventProposal`, `Invite`, `Booking`, `Event`,
+/// `EventCapacity`. Two transactions that take the same rows in different orders deadlock, and a
+/// deadlock is a 500 to whichever attendee PostgreSQL picks. The tracker turns that runtime
+/// coin-toss into a failing test.
 /// </summary>
 public class LockOrderTests
 {
@@ -30,6 +31,8 @@ public class LockOrderTests
 
         locks.Enter(LockLevel.Attendee);
         locks.Enter(LockLevel.EventProposal);
+        locks.Enter(LockLevel.Invite);
+        locks.Enter(LockLevel.Booking);
         locks.Enter(LockLevel.Event);
         locks.Enter(LockLevel.EventCapacity);
 
@@ -50,6 +53,9 @@ public class LockOrderTests
 
     [Theory]
     [InlineData(LockLevel.EventProposal, LockLevel.Attendee)]
+    [InlineData(LockLevel.Invite, LockLevel.Attendee)]
+    [InlineData(LockLevel.Booking, LockLevel.Invite)]
+    [InlineData(LockLevel.Event, LockLevel.Booking)]
     [InlineData(LockLevel.Event, LockLevel.EventProposal)]
     [InlineData(LockLevel.Event, LockLevel.Attendee)]
     [InlineData(LockLevel.EventCapacity, LockLevel.Event)]

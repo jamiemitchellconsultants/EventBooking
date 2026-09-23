@@ -63,15 +63,13 @@ public sealed record AttendeeBookingDto(
     TimeOnly EventEndTime);
 
 /// <summary>Coordinator-facing outcome of cancelling one attendee booking.</summary>
-/// <param name="Reinvited">Whether a replacement invite was created for the attendee.</param>
-/// <param name="InviteCreated">The explicit replacement-invite creation state.</param>
-/// <param name="DeliveryStatus">The provider outcome, or Unavailable when no replacement invite exists.</param>
-/// <param name="DeliveryId">The durable replacement delivery identifier, when one was staged.</param>
+/// <param name="ConfirmationRequired">Whether this call only previews the consequence.</param>
+/// <param name="ActiveBookingCount">How many active bookings the attendee holds (preview only).</param>
+/// <param name="CancelledBookingId">The cancelled booking identifier (confirmed call only).</param>
 public sealed record CancelAttendeeBookingDto(
-    bool Reinvited,
-    bool InviteCreated,
-    string? DeliveryStatus,
-    Guid? DeliveryId);
+    bool ConfirmationRequired,
+    int ActiveBookingCount,
+    Guid? CancelledBookingId);
 
 /// <summary>Coordinator-facing readiness for one attendee.</summary>
 /// <param name="AttendeeId">The stable attendee identifier.</param>
@@ -201,24 +199,21 @@ public sealed class AttendeesClient(HttpClient http)
         return await ApiCall.ReadAsync<List<AttendeeBookingDto>>(response, cancellationToken);
     }
 
-    /// <summary>
-    /// Cancels one of the attendee's active bookings. Requesting a replacement invite is valid
-    /// only for the original booking; the API refuses it for a recovery booking.
-    /// </summary>
+    /// <summary>Cancels one of the attendee's active bookings, previewing before confirming.</summary>
     /// <param name="attendeeId">The attendee the booking belongs to.</param>
     /// <param name="bookingId">The booking to cancel.</param>
-    /// <param name="rebook">Whether to issue a replacement invite.</param>
+    /// <param name="confirm">Whether this call carries the confirmation.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <returns>The cancellation outcome, or the failure the API reported.</returns>
     public async Task<ApiOutcome<CancelAttendeeBookingDto>> CancelBookingAsync(
         Guid attendeeId,
         Guid bookingId,
-        bool rebook,
+        bool confirm,
         CancellationToken cancellationToken = default)
     {
         using var response = await http.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel",
-            new { Rebook = rebook },
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm={(confirm ? "true" : "false")}",
+            new { },
             cancellationToken);
         return await ApiCall.ReadAsync<CancelAttendeeBookingDto>(response, cancellationToken);
     }

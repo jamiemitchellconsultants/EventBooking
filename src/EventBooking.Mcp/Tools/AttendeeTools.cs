@@ -351,26 +351,26 @@ public sealed class AttendeeTools
         return result.ValueOrThrow();
     }
 
-    /// <summary>Cancels one attendee booking, optionally rebooking the attendee.</summary>
+    /// <summary>Cancels one attendee booking in two steps: preview, then confirm.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The cancellation handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
     /// <param name="bookingId">The booking identifier.</param>
-    /// <param name="rebook">Whether to issue a replacement invite.</param>
+    /// <param name="confirm">Whether this call carries the confirmation.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The cancellation outcome.</returns>
     [McpServerTool(Name = "cancel_attendee_booking", Title = "Cancel attendee booking", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Cancel one attendee booking, optionally rebooking. Caller must have ManageAttendees; cancels the booking and optionally sends a replacement invite.")]
-    public async Task<CancelBookingOutcome> CancelAttendeeBookingAsync(
+    [Description("Cancel one attendee booking in two steps. Caller must have ManageAttendees; call first with confirm false to preview the consequence, then with confirm true to cancel.")]
+    public async Task<CoordinatorCancelOutcome> CancelAttendeeBookingAsync(
         ICallerAccessor caller,
-        CancelAttendeeBookingHandler handler,
+        CancelBookingByCoordinatorHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
         [Description("The booking identifier.")] Guid bookingId,
-        [Description("Whether to issue a replacement invite.")] bool rebook,
+        [Description("Whether this call carries the confirmation.")] bool confirm,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new CancelAttendeeBookingCommand(caller.RequireStaffUserId(), attendeeId, bookingId, rebook), cancellationToken);
+            new CancelBookingByCoordinatorCommand(caller.RequireStaffUserId(), attendeeId, bookingId, confirm), cancellationToken);
         return result.ValueOrThrow();
     }
 
