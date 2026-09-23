@@ -71,7 +71,8 @@ public class RepositoryTests(PostgresFixture fixture)
         await using var context = fixture.NewContext();
         var settings = await new SystemSettingsRepository(context).GetAsync(CancellationToken.None);
 
-        Assert.Equal(4, settings.InviteExpiryDays);
+        Assert.Equal(7, settings.InviteExpiryDays);
+        Assert.Equal(3, settings.InviteOptionCount);
     }
 
     private static EventProposal ProposalOn(DateOnly date, out Event eventItem)

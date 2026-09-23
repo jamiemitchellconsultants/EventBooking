@@ -58,7 +58,8 @@ public class SchemaTests(PostgresFixture fixture)
 
                 var settings = await context.SystemSettings.SingleAsync();
                 Assert.Equal(1, settings.Id);
-                Assert.Equal(4, settings.InviteExpiryDays);
+                Assert.Equal(7, settings.InviteExpiryDays);
+                Assert.Equal(3, settings.InviteOptionCount);
                 Assert.Equal(2, settings.MaxAutoRetryCount);
             }
 
@@ -203,7 +204,8 @@ public class SchemaTests(PostgresFixture fixture)
         await using var context = fixture.NewContext();
         var settings = await context.SystemSettings.SingleAsync();
 
-        Assert.Equal(4, settings.InviteExpiryDays);
+        Assert.Equal(7, settings.InviteExpiryDays);
+        Assert.Equal(3, settings.InviteOptionCount);
         Assert.Equal(2, settings.MaxAutoRetryCount);
     }
 

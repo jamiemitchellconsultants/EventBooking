@@ -1,9 +1,12 @@
 namespace EventBooking.Domain.Common;
 
-/// <summary>The single failure mode of the domain layer: an invariant was violated.</summary>
-public sealed class DomainException : Exception
+/// <summary>
+/// The failure mode of the domain layer: an invariant was violated. Reference-data refusals that
+/// must name what is blocking them derive from this rather than inventing a second failure mode.
+/// </summary>
+public class DomainException : Exception
 {
-    /// <summary>Defines domain exception for the current use case.</summary>
+    /// <summary>Creates a refusal carrying the rule that was broken.</summary>
     /// <param name="message">The message.</param>
     public DomainException(string message) : base(message)
     {
