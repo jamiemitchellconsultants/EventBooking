@@ -21,6 +21,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [11](#entry-phase-4-api-conventions-the-endpoint-catalogue-and-mcp-parity) | 2026-09-21 | Phase 4 — API conventions, the endpoint catalogue and MCP parity | product | **Master Task 22 is split into 22a and 22b**, the way master Task 20 was split into 20a and 20b. Task 22a adds the missing Application queries, read models and command shapes; Task 22b is the endpoint catalogue over them and holds no rule. |
 | [12](#entry-phase-5-handoff-prompt-hand-authored-with-the-axe-gate-moved-to-task-24) | 2026-09-21 | Phase 5 handoff prompt: hand-authored, with the axe gate moved to Task 24 | product | **Phase 5 stays hand-authored, and the Playwright and axe-core project moves from Task 27 to Task 24.** Task 24 creates it alongside the design-system components, every later task adds its own routes to it, and the phase gate is zero axe… |
 | [13](#entry-docs-plan-add-phase-5-web-implementation-plan) | 2026-09-22 | docs(plan): add Phase 5 web implementation plan | product | Hand-author Phase 5, but move the Playwright project, axe integration, two-viewport route/state manifest, API stub, and Web-change workflow job from the phase-ending task into Task 24. |
+| [14](#entry-add-phase-6-seed-and-deployment-plans) | 2026-09-23 | Add Phase 6 seed and deployment plans | product | Add LAB as a sixth active, managed appointment type and keep live events and proposals on MED, FIT, IND, and LAB. Keep ESC active but unmanaged and DOC inactive. |
 
 ---
 
@@ -624,3 +625,27 @@ Keep the standalone Web project server-reference-free. Where the OpenAPI contrac
 ## Consequences
 
 An executor can implement Tasks 24–27 as four TDD-shaped commits with browser and accessibility coverage present from the first task. The earlier safety net increases Task 24's scope, but prevents visual and accessibility debt from accumulating until Task 27. The plans make no claim that Phase 5 builds or passes yet; observed counts belong to the future execution. Phases 6–7, Tasks 28–33, remain to be authored.
+
+---
+
+<a id="entry-add-phase-6-seed-and-deployment-plans"></a>
+
+## Entry 14 — 2026-09-23 — Add Phase 6 seed and deployment plans
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 6 needed to turn the seed and deployment requirements into self-sufficient plans for a smaller execution model. The original five-type demo dataset could not satisfy four-type live scenarios while keeping ESC unmanaged and DOC inactive. The existing single-zone clock also remained due for retirement.
+
+## Decision
+
+Add LAB as a sixth active, managed appointment type and keep live events and proposals on MED, FIT, IND, and LAB. Keep ESC active but unmanaged and DOC inactive. Retire the single-zone clock in Task 28, and retain the master boundaries for local Compose, home-lab deployment, and artifact publication.
+
+## Consequences
+
+Task 28 can cover all required demo axes without weakening negative-reference cases. Tasks 29–31 specify non-root images, local and isolated home-lab topologies, recovery rehearsal, pinned Actions, and the migrations bundle. Phase 6 remains hand-authored and unexecuted; execution must supply real build, test, and rehearsal evidence.
+
+---
+
+AI-Fingerprint: sha256:28ffbff3b63e
