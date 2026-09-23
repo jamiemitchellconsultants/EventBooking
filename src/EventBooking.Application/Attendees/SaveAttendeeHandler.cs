@@ -212,11 +212,7 @@ public sealed class SaveAttendeeHandler
                 + "Cancel and rebook first."));
         }
 
-        string? oldGroupCode = null;
-        if (attendee.AttendeeGroupId.HasValue)
-        {
-            oldGroupCode = (await _groups.GetAsync(attendee.AttendeeGroupId.Value, cancellationToken))?.Code;
-        }
+        var oldGroupCode = (await _groups.GetAsync(attendee.AttendeeGroupId, cancellationToken))?.Code;
 
         var oldRequirementCodes = RequirementCodes(attendee.RequiredAppointmentTypeIds);
         var newRequirementCodes = RequirementCodes(resolved.Value.RequiredAppointmentTypeIds);

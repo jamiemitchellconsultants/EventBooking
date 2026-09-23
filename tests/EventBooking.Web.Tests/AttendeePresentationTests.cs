@@ -49,7 +49,6 @@ public class AttendeePresentationTests : BunitContext
 
     [Theory]
     [InlineData("Ready", "status-success")]
-    [InlineData("AttendeeGroupUnassigned", "status-warning")]
     [InlineData("NoActiveBooking", "status-neutral")]
     [InlineData("RequirementSnapshotMismatch", "status-warning")]
     [InlineData("AppointmentsOutstanding", "status-warning")]
@@ -61,7 +60,6 @@ public class AttendeePresentationTests : BunitContext
 
     [Theory]
     [InlineData("Ready", "✓")]
-    [InlineData("AttendeeGroupUnassigned", "!")]
     [InlineData("NoActiveBooking", "○")]
     [InlineData("RequirementSnapshotMismatch", "≠")]
     [InlineData("AppointmentsOutstanding", "•")]
@@ -73,7 +71,6 @@ public class AttendeePresentationTests : BunitContext
 
     [Theory]
     [InlineData("Ready", "status-success", "✓", "Ready to book")]
-    [InlineData("AttendeeGroupUnassigned", "status-warning", "!", "Needs attendee group")]
     [InlineData("NoActiveBooking", "status-neutral", "○", "No active booking")]
     [InlineData("RequirementSnapshotMismatch", "status-warning", "≠", "Requirements changed")]
     [InlineData("AppointmentsOutstanding", "status-warning", "•", "Appointments outstanding")]
@@ -213,7 +210,7 @@ public class AttendeePresentationTests : BunitContext
                 return Json(new[]
                 {
                     new AttendeeDto(
-                        attendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false,
+                        attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical",
                         [], 1, "Not yet invited"),
                 });
             }

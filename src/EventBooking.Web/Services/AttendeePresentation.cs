@@ -23,7 +23,7 @@ internal static class AttendeePresentation
     internal static string ReadinessCssClass(string code) => code switch
     {
         "Ready" => "status-success",
-        "AttendeeGroupUnassigned" or "RequirementSnapshotMismatch" or "AppointmentsOutstanding" => "status-warning",
+        "RequirementSnapshotMismatch" or "AppointmentsOutstanding" => "status-warning",
         "NoActiveBooking" => "status-neutral",
         _ => "status-neutral",
     };
@@ -32,7 +32,6 @@ internal static class AttendeePresentation
     internal static string ReadinessIcon(string code) => code switch
     {
         "Ready" => "✓",
-        "AttendeeGroupUnassigned" => "!",
         "NoActiveBooking" => "○",
         "RequirementSnapshotMismatch" => "≠",
         "AppointmentsOutstanding" => "•",

@@ -13,14 +13,12 @@ public sealed record AttendeeResourceResponse(
     string Name,
     /// <summary>Gets the Attendee contact email address.</summary>
     string Email,
-    /// <summary>Gets the assigned Attendee Group identifier, when assigned.</summary>
-    Guid? AttendeeGroupId,
-    /// <summary>Gets the canonical Attendee Group code, when assigned.</summary>
-    string? AttendeeGroupCode,
-    /// <summary>Gets the Attendee Group display name, when assigned.</summary>
-    string? AttendeeGroupName,
-    /// <summary>Gets whether the Attendee needs legacy Attendee Group reconciliation.</summary>
-    bool RequiresAttendeeGroupReconciliation,
+    /// <summary>Gets the assigned Attendee Group identifier.</summary>
+    Guid AttendeeGroupId,
+    /// <summary>Gets the canonical Attendee Group code.</summary>
+    string AttendeeGroupCode,
+    /// <summary>Gets the Attendee Group display name.</summary>
+    string AttendeeGroupName,
     /// <summary>Gets the Appointment Types currently required by the Attendee.</summary>
     IReadOnlyList<AppointmentTypeSummary> RequiredAppointmentTypes,
     /// <summary>Gets where the Attendee sits in the invite and booking lifecycle.</summary>
@@ -36,7 +34,7 @@ public sealed record AttendeeResourceResponse(
     public static AttendeeResourceResponse From(AttendeeListItem item) =>
         new(item.AttendeeId, item.Name, item.Email, item.AttendeeGroupId,
             item.AttendeeGroupCode, item.AttendeeGroupName,
-            item.RequiresAttendeeGroupReconciliation, item.RequiredAppointmentTypes,
+            item.RequiredAppointmentTypes,
             item.Status, item.StatusDisplay,
             AttendeeLinks.ForAttendee(item.AttendeeId, item.Status));
 }

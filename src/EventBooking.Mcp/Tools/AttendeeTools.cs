@@ -21,12 +21,10 @@ public sealed record AttendeeToolView
     public required string Email { get; init; }
     /// <summary>Gets the attendee lifecycle status name.</summary>
     public required string Status { get; init; }
-    /// <summary>Gets the assigned Attendee Group name, or null during reconciliation.</summary>
-    public required string? AttendeeGroupName { get; init; }
-    /// <summary>Gets the canonical Attendee Group code, or null during Release 1 reconciliation.</summary>
-    public required string? AttendeeGroupCode { get; init; }
-    /// <summary>Gets whether explicit Coordinator assignment is still required.</summary>
-    public required bool RequiresAttendeeGroupReconciliation { get; init; }
+    /// <summary>Gets the assigned Attendee Group name.</summary>
+    public required string AttendeeGroupName { get; init; }
+    /// <summary>Gets the canonical Attendee Group code.</summary>
+    public required string AttendeeGroupCode { get; init; }
     /// <summary>Gets read-only derived Appointment Type summaries.</summary>
     public required IReadOnlyList<AppointmentTypeSummary> RequiredAppointmentTypes { get; init; }
     /// <summary>Gets internal readiness without exposing recovery mutation.</summary>
@@ -108,7 +106,6 @@ public sealed class AttendeeTools
                 Status = item.Status.ToString(),
                 AttendeeGroupName = item.AttendeeGroupName,
                 AttendeeGroupCode = item.AttendeeGroupCode,
-                RequiresAttendeeGroupReconciliation = item.RequiresAttendeeGroupReconciliation,
                 RequiredAppointmentTypes = item.RequiredAppointmentTypes,
                 Readiness = readinessResult.IsSuccess ? readinessResult.Value : null,
             });

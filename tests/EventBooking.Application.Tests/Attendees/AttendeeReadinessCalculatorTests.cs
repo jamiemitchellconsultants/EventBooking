@@ -73,14 +73,14 @@ public sealed class AttendeeReadinessCalculatorTests
         Assert.True(outstanding.IsRecoverable);
     }
 
-    /// <summary>Unassigned reconciliation state wins over missing Booking state.</summary>
+    /// <summary>A required group without an active original booking is not ready.</summary>
     [Fact]
-    public void UnassignedGroupHasHighestFailurePrecedence()
+    public void AssignedGroupWithoutBookingIsNotReady()
     {
         var actual = _calculator.Calculate(new AttendeeReadinessSnapshot(
-            Guid.NewGuid(), null, [], null, []));
+            Guid.NewGuid(), Guid.NewGuid(), [], null, []));
 
-        Assert.Equal(AttendeeReadinessCode.AttendeeGroupUnassigned, actual.Code);
+        Assert.Equal(AttendeeReadinessCode.NoActiveBooking, actual.Code);
     }
 
     private static AttendeeReadinessAttempt Attempt(

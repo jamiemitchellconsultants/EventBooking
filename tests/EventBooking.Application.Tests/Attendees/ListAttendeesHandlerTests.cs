@@ -60,7 +60,6 @@ public class ListAttendeesHandlerTests
         Assert.Equal(AttendeeGroupIds.CabinCrew, novak.AttendeeGroupId);
         Assert.Equal("CABIN_CREW", novak.AttendeeGroupCode);
         Assert.Equal("Cabin Crew", novak.AttendeeGroupName);
-        Assert.False(novak.RequiresAttendeeGroupReconciliation);
         Assert.Equal(
             new[] { "DAT", "MED", "UNI" },
             novak.RequiredAppointmentTypes.Select(summary => summary.Code));
@@ -71,7 +70,6 @@ public class ListAttendeesHandlerTests
         Assert.Equal(AttendeeGroupIds.GroundOperationsAgent, diallo.AttendeeGroupId);
         Assert.Equal("GROUND_OPERATIONS_AGENT", diallo.AttendeeGroupCode);
         Assert.Equal("Ground Operations Agent", diallo.AttendeeGroupName);
-        Assert.False(diallo.RequiresAttendeeGroupReconciliation);
 
         Assert.Equal(
             "Invited (pending response)",

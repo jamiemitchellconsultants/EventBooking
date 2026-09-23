@@ -25,7 +25,7 @@ public sealed class AttendeeMcpTests(McpFactory factory)
         var item = items.EnumerateArray().Single();
 
         Assert.Equal("PILOTS", item.GetProperty("attendeeGroupCode").GetString());
-        Assert.False(item.GetProperty("requiresAttendeeGroupReconciliation").GetBoolean());
+        Assert.False(item.TryGetProperty("requiresAttendeeGroupReconciliation", out _));
         Assert.Equal(2, item.GetProperty("requiredAppointmentTypes").GetArrayLength());
         Assert.Equal(
             "NoActiveBooking",

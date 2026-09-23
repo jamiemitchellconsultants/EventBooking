@@ -11,12 +11,6 @@ public sealed class AttendeeReadinessCalculator
     /// <returns>Ready, or the highest-precedence failure with outstanding types.</returns>
     public AttendeeReadiness Calculate(AttendeeReadinessSnapshot snapshot)
     {
-        if (!snapshot.AttendeeGroupId.HasValue)
-        {
-            return new AttendeeReadiness(
-                snapshot.AttendeeId, AttendeeReadinessCode.AttendeeGroupUnassigned, []);
-        }
-
         if (!snapshot.ActiveOriginalBookingId.HasValue)
         {
             return new AttendeeReadiness(

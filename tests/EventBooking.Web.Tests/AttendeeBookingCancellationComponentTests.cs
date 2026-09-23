@@ -71,7 +71,7 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
                 return Json(new[]
                 {
                     new AttendeeDto(
-                        AttendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false,
+                        AttendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical",
                         [], 4, "Booked"),
                 });
             }

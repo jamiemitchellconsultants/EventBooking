@@ -319,7 +319,6 @@ public static class AttendeeEndpoints
     private static string DisplayFor(AttendeeReadinessCode code) => code switch
     {
         AttendeeReadinessCode.Ready => "Ready",
-        AttendeeReadinessCode.AttendeeGroupUnassigned => "Needs attendee group",
         AttendeeReadinessCode.NoActiveBooking => "No active booking",
         AttendeeReadinessCode.RequirementSnapshotMismatch => "Requirements changed",
         AttendeeReadinessCode.AppointmentsOutstanding => "Appointments outstanding",

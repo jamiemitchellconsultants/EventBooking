@@ -18,7 +18,6 @@ public static class ResultResponses
         "conflict" => StatusCodes.Status409Conflict,
         Error.AppointmentVersionConflictCode => StatusCodes.Status409Conflict,
         Error.AttendeeGroupActiveBookingConflictCode => StatusCodes.Status409Conflict,
-        Error.AttendeeReconciliationRequiredCode => StatusCodes.Status409Conflict,
         Error.AttendeeRequirementSnapshotMismatchCode => StatusCodes.Status409Conflict,
         Error.RecoveryNotAvailableCode => StatusCodes.Status409Conflict,
         Error.RecoveryAlreadyPendingCode => StatusCodes.Status409Conflict,

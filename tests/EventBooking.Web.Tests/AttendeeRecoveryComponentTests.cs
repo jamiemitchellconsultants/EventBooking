@@ -234,7 +234,7 @@ public class AttendeeRecoveryComponentTests : BunitContext
                 return Task.FromResult(Json(new[]
                 {
                     new AttendeeDto(
-                        attendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false,
+                        attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical",
                         [], 1, "Not yet invited"),
                 }));
             }

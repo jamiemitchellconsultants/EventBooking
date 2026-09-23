@@ -14,7 +14,6 @@ namespace EventBooking.Application.Attendees;
 /// <param name="AttendeeGroupId">The attendee group id.</param>
 /// <param name="AttendeeGroupCode">The attendee group code.</param>
 /// <param name="AttendeeGroupName">The attendee group name.</param>
-/// <param name="RequiresAttendeeGroupReconciliation">The requires attendee group reconciliation.</param>
 /// <param name="RequiredAppointmentTypes">The required appointment types.</param>
 /// <param name="Status">The status.</param>
 /// <param name="StatusDisplay">The status display.</param>
@@ -22,10 +21,9 @@ public sealed record AttendeeListItem(
     Guid AttendeeId,
     string Name,
     string Email,
-    Guid? AttendeeGroupId,
-    string? AttendeeGroupCode,
-    string? AttendeeGroupName,
-    bool RequiresAttendeeGroupReconciliation,
+    Guid AttendeeGroupId,
+    string AttendeeGroupCode,
+    string AttendeeGroupName,
     IReadOnlyList<AppointmentTypeSummary> RequiredAppointmentTypes,
     AttendeeStatus Status,
     string StatusDisplay);
@@ -91,8 +89,7 @@ public sealed class ListAttendeesHandler(
             .ToDictionary(group => group.Id);
         foreach (var missing in filtered
             .Select(attendee => attendee.AttendeeGroupId)
-            .Where(id => id.HasValue && !reference.ContainsKey(id.Value))
-            .Select(id => id!.Value)
+            .Where(id => !reference.ContainsKey(id))
             .Distinct()
             .ToList())
         {
@@ -110,13 +107,8 @@ public sealed class ListAttendeesHandler(
                 c.Name,
                 c.Email,
                 c.AttendeeGroupId,
-                c.AttendeeGroupId.HasValue && reference.TryGetValue(c.AttendeeGroupId.Value, out var group)
-                    ? group.Code
-                    : null,
-                c.AttendeeGroupId.HasValue && reference.TryGetValue(c.AttendeeGroupId.Value, out var named)
-                    ? named.Name
-                    : null,
-                !c.AttendeeGroupId.HasValue,
+                reference[c.AttendeeGroupId].Code,
+                reference[c.AttendeeGroupId].Name,
                 c.RequiredAppointmentTypeIds
                     .Select(typeId => new AppointmentTypeSummary(
                         AppointmentTypeIds.CodeOf(typeId), AppointmentTypeIds.NameOf(typeId)))

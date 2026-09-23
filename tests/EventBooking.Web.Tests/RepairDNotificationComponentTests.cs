@@ -256,7 +256,7 @@ public class RepairDNotificationComponentTests : BunitContext
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new List<AttendeeDto>
         {
-            new(attendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited"),
+            new(attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited"),
         }));
         handler.Enqueue(_ => Json(new DashboardsDto(
             AwaitingAvailability: [],
@@ -292,7 +292,7 @@ public class RepairDNotificationComponentTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var attendee = new AttendeeDto(
-            attendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited");
+            attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited");
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
         handler.Enqueue(_ => Json(new DashboardsDto(

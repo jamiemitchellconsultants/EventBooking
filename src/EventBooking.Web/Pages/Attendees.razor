@@ -206,19 +206,12 @@
                                     <td data-label="Name">@attendee.Name</td>
                                     <td data-label="Email"><a href="mailto:@attendee.Email">@attendee.Email</a></td>
                                     <td data-label="Required types">
-                                        @if (attendee.RequiresAttendeeGroupReconciliation)
-                                        {
-                                            <span class="attendee-status status-warning">Attendee Group required</span>
-                                        }
-                                        else
-                                        {
-                                            <div class="chip-row">
-                                                @foreach (var requiredType in attendee.RequiredAppointmentTypes)
-                                                {
-                                                    <span class="chip">@requiredType.Code</span>
-                                                }
-                                            </div>
-                                        }
+                                        <div class="chip-row">
+                                            @foreach (var requiredType in attendee.RequiredAppointmentTypes)
+                                            {
+                                                <span class="chip">@requiredType.Code</span>
+                                            }
+                                        </div>
                                     </td>
                                     <td data-label="Status"><span class="attendee-status @AttendeePresentation.StatusCssClass(attendee.Status)">@attendee.StatusDisplay</span></td>
                                     <td data-label="Readiness">
@@ -379,17 +372,12 @@
                                             <button class="button button-small button-icon-edit" @onclick="() => StartEdit(attendee)" disabled="@(_busy || _editingId.HasValue)"
                                                     title="Change the name, email address or attendee group.">Edit</button>
                                             <button class="button button-primary button-small" @onclick="() => InviteAsync(attendee)" disabled="@(_busy || _editingId.HasValue)"
-                                                    aria-disabled="@(attendee.RequiresAttendeeGroupReconciliation ? "true" : null)"
-                                                    title="@(attendee.RequiresAttendeeGroupReconciliation ? "Assign an attendee group before inviting" : "Emails a single-use booking link showing only the windows this attendee can take.")">Invite now</button>
+                                                    title="Emails a single-use booking link showing only the windows this attendee can take.">Invite now</button>
                                             <button class="button button-danger button-small button-icon-delete" @onclick="() => DeleteAsync(attendee.AttendeeId)" disabled="@(_busy || _editingId.HasValue)"
                                                     title="Removes the attendee. Press a second time to confirm.">
                                                 @(awaitingDeleteConfirmation ? "Confirm delete" : "Delete")
                                             </button>
                                         </div>
-                                        @if (attendee.RequiresAttendeeGroupReconciliation)
-                                        {
-                                            <span class="invite-help">Needs an attendee group first.</span>
-                                        }
                                     </td>
                                 }
                             </tr>
@@ -606,7 +594,7 @@
         _editingId = attendee.AttendeeId;
         _editName = attendee.Name;
         _editEmail = attendee.Email;
-        _editAttendeeGroupId = attendee.AttendeeGroupId?.ToString() ?? string.Empty;
+        _editAttendeeGroupId = attendee.AttendeeGroupId.ToString();
     }
 
     private void CancelEdit() => _editingId = null;
@@ -658,12 +646,6 @@
 
     private Task InviteAsync(AttendeeDto attendee)
     {
-        if (attendee.RequiresAttendeeGroupReconciliation)
-        {
-            _error = "Assign an attendee group before inviting.";
-            return Task.CompletedTask;
-        }
-
         return RunAsync(() => AttendeesApi.TriggerInviteAsync(attendee.AttendeeId, CancellationToken.None));
     }
 

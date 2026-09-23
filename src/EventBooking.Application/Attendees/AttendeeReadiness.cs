@@ -5,8 +5,6 @@ public enum AttendeeReadinessCode
 {
     /// <summary>Every current requirement has a Completed non-cancelled attempt.</summary>
     Ready = 1,
-    /// <summary>The Attendee has no assigned Attendee Group during Release 1 reconciliation.</summary>
-    AttendeeGroupUnassigned = 2,
     /// <summary>The Attendee has no Active original Booking journey.</summary>
     NoActiveBooking = 3,
     /// <summary>The current requirements differ from the journey's Appointment Type snapshots.</summary>
@@ -32,13 +30,13 @@ public sealed record AttendeeReadinessAttempt(
 
 /// <summary>The authorized persistence projection consumed by the readiness calculator.</summary>
 /// <param name="AttendeeId">The attendee identifier.</param>
-/// <param name="AttendeeGroupId">The assigned group, or null during reconciliation.</param>
+/// <param name="AttendeeGroupId">The required assigned group.</param>
 /// <param name="CurrentRequirementTypeIds">The group's current requirement set.</param>
 /// <param name="ActiveOriginalBookingId">The active journey root, or null when absent.</param>
 /// <param name="Attempts">Every booked attempt in the original and recovery journey.</param>
 public sealed record AttendeeReadinessSnapshot(
     Guid AttendeeId,
-    Guid? AttendeeGroupId,
+    Guid AttendeeGroupId,
     IReadOnlyList<Guid> CurrentRequirementTypeIds,
     Guid? ActiveOriginalBookingId,
     IReadOnlyList<AttendeeReadinessAttempt> Attempts);

@@ -71,13 +71,7 @@ public sealed class InviteIssuer(
         bool isReinvite,
         CancellationToken cancellationToken)
     {
-        if (!attendee.AttendeeGroupId.HasValue)
-        {
-            return Result<InviteIssueResult>.Failure(Error.AttendeeReconciliationRequired(
-                "Assign an attendee group before issuing an invite."));
-        }
-
-        var group = await groups.GetAsync(attendee.AttendeeGroupId.Value, cancellationToken);
+        var group = await groups.GetAsync(attendee.AttendeeGroupId, cancellationToken);
         var mapping = group?.RequiredAppointmentTypeIds
             .Order()
             .ToList();

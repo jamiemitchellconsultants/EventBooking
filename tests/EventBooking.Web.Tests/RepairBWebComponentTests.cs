@@ -125,7 +125,7 @@ public class RepairBWebComponentTests : BunitContext
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new List<AttendeeDto>
         {
-            new(attendeeId, "C. Attendee", "attendee@example.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 3, "Invited"),
+            new(attendeeId, "C. Attendee", "attendee@example.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 3, "Invited"),
         }));
         handler.Enqueue(_ => Json(new DashboardsDto(
             AwaitingAvailability: [],

@@ -36,14 +36,6 @@ public sealed record Error(string Code, string Message)
     public static Error AttendeeGroupActiveBookingConflict(string message) =>
         new(AttendeeGroupActiveBookingConflictCode, message);
 
-    /// <summary>Identifies an Invite or readiness action for a legacy unassigned Attendee.</summary>
-    public const string AttendeeReconciliationRequiredCode = "attendee_reconciliation_required";
-
-    /// <summary>Creates a reconciliation hold for a legacy unassigned Attendee.</summary>
-    /// <param name="message">The message.</param>
-    public static Error AttendeeReconciliationRequired(string message) =>
-        new(AttendeeReconciliationRequiredCode, message);
-
     /// <summary>Identifies materialized requirements disagreeing with authoritative state.</summary>
     public const string AttendeeRequirementSnapshotMismatchCode = "attendee_requirement_snapshot_mismatch";
 

@@ -26,8 +26,8 @@ public sealed class Attendee
     /// <summary>Gets the normalized attendee email address.</summary>
     public string Email { get; private set; }
 
-    /// <summary>Gets the assigned Attendee Group, or null during legacy reconciliation.</summary>
-    public Guid? AttendeeGroupId { get; private set; }
+    /// <summary>Gets the required assigned Attendee Group identifier.</summary>
+    public Guid AttendeeGroupId { get; private set; }
 
     /// <summary>Gets where the attendee sits in the invite and booking lifecycle.</summary>
     public AttendeeStatus Status { get; private set; } = AttendeeStatus.NotYetInvited;

@@ -15,10 +15,9 @@ public sealed record AttendeeDto(
     Guid AttendeeId,
     string Name,
     string Email,
-    Guid? AttendeeGroupId,
-    string? AttendeeGroupCode,
-    string? AttendeeGroupName,
-    bool RequiresAttendeeGroupReconciliation,
+    Guid AttendeeGroupId,
+    string AttendeeGroupCode,
+    string AttendeeGroupName,
     IReadOnlyList<AppointmentTypeSummaryDto> RequiredAppointmentTypes,
     int Status,
     string StatusDisplay);
