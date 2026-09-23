@@ -68,6 +68,34 @@ public class RepositoryTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task AAttendeeIsFoundByEmailWhateverTheCaseOfTheLookup()
+    {
+        await fixture.ResetAsync();
+
+        Guid id;
+        await using (var write = fixture.NewContext())
+        {
+            var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+            var attendee = Attendee.Create(
+                Guid.NewGuid(),
+                "Amara Novak",
+                "a.novak@mail.com",
+                pilots,
+                ProposalFixture.Now);
+            id = attendee.Id;
+            write.Attendees.Add(attendee);
+            await write.SaveChangesAsync();
+        }
+
+        await using var read = fixture.NewContext();
+        var found = await new AttendeeRepository(read)
+            .GetByEmailAsync("A.NOVAK@MAIL.COM", CancellationToken.None);
+
+        Assert.NotNull(found);
+        Assert.Equal(id, found!.Id);
+    }
+
+    [Fact]
     public async Task TheSettingsSingletonIsAlwaysThere()
     {
         await fixture.ResetAsync();

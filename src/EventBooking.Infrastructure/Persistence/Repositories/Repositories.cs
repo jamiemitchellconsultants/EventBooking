@@ -223,7 +223,10 @@ public sealed class AttendeeRepository(EventBookingDbContext context, RowLocks r
     public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
         context.Attendees
             .Include(c => c.Requirements)
-            .SingleOrDefaultAsync(c => c.Email == email, cancellationToken);
+            // Case-insensitive to match the unique index on lower(email): one mailbox, whatever
+            // case the caller was given. The lower() call is what lets PostgreSQL use that index.
+            .SingleOrDefaultAsync(
+                c => c.Email.ToLower() == email.ToLower(), cancellationToken);
 
     public async Task<IReadOnlyList<Attendee>> ListAsync(
         AttendeeStatus? status,

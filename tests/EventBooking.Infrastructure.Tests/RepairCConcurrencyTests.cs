@@ -16,6 +16,7 @@ using EventBooking.Domain.Events;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Persistence.Locking;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Tokens;
@@ -637,7 +638,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             EventBookingDbContext context,
             AttendeeLifecycleRaceGate gate) : IEventCapacityRepository
         {
-            private readonly EventCapacityRepository _inner = new(context);
+            private readonly EventCapacityRepository _inner = new(new RowLocks(context));
 
             /// <inheritdoc />
             public async Task<IReadOnlyList<EventCapacity>> LockForUpdateAsync(
