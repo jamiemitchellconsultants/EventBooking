@@ -23,6 +23,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [13](#entry-docs-plan-add-phase-5-web-implementation-plan) | 2026-09-22 | docs(plan): add Phase 5 web implementation plan | product | Hand-author Phase 5, but move the Playwright project, axe integration, two-viewport route/state manifest, API stub, and Web-change workflow job from the phase-ending task into Task 24. |
 | [14](#entry-add-phase-6-seed-and-deployment-plans) | 2026-09-23 | Add Phase 6 seed and deployment plans | product | Add LAB as a sixth active, managed appointment type and keep live events and proposals on MED, FIT, IND, and LAB. Keep ESC active but unmanaged and DOC inactive. |
 | [15](#entry-docs-phase-7-verification-and-documentation-for-review) | 2026-09-23 | docs: Phase 7 verification and documentation for review | product | Measure capacity-lock hold time through an Application observer implemented by the API metrics service, and render cumulative histogram buckets so the release test can assert the under-50-ms p95 target. |
+| [16](#entry-phase-0-port-and-strip-tasks-1-2-3a-3d) | 2026-09-23 | Phase 0: port and strip (Tasks 1, 2, 3a-3d) | product | This pull request takes decisions D5, D6, D8, D9 and D11 into effect in code. D5: port the predecessor solution and generalise it here. D6: drop bulk event import, which contradicts negotiation-only event creation. |
 
 ---
 
@@ -672,3 +673,27 @@ Measure capacity-lock hold time through an Application observer implemented by t
 The future executor must build and test the application, run the 500-way burst, and walk the demo from a fresh clone before treating Phase 7 as verified. The load fixture contains private book tokens and belongs only in a disposable project. The design package records six seeded appointment types, the guarded fixture mode, and the emitted lock-hold metric. Project Narrative should capture this reviewed decision from this pull request, not from the closed proposal #38 associated with the accidental merge.
 
 AI-Fingerprint: sha256:8c8dfc4b90fc
+
+---
+
+<a id="entry-phase-0-port-and-strip-tasks-1-2-3a-3d"></a>
+
+## Entry 16 — 2026-09-23 — Phase 0: port and strip (Tasks 1, 2, 3a-3d)
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 0 ports the JointBooking predecessor solution into this repository and generalises it toward the EventBooking design, rather than rebuilding from the redesign documents or generalising the predecessor in place. The port lands under EventBooking names with the documented vocabulary mapping, while the strip removes everything the design does not carry over: cloud dependencies, bulk event import, head-office configuration, and the organisation-specific staff identifier format. The no-overbooking guarantee survives unchanged, enforced in the application and the database as before.
+
+## Decision
+
+This pull request takes decisions D5, D6, D8, D9 and D11 into effect in code. D5: port the predecessor solution and generalise it here. D6: drop bulk event import, which contradicts negotiation-only event creation. D8: Keycloak is the only identity provider for local and home-lab deployments, keeping the authentication-provider seam so another OIDC provider can be added later. D9: drop MinIO object storage, which nothing reads or writes. D11: the staff identifier format is a deployment-configured regular expression defaulting to ^[A-Z0-9]{1,32}$; the identity provider validation and the seed data validation follow the same deployment policy.
+
+## Consequences
+
+The repository now builds and runs with no cloud dependencies and no provider-specific identity adapter beyond Keycloak. Events become bookable through manager negotiation only; the direct creation and import paths are gone, and seeded events reconstruct the same proposal, acceptance, and confirmation audit history the handlers record. Staff identifier policy is a deployment concern end to end: application boundaries, the Keycloak realm profiles, and the demo seed all validate against it. The migration chain is still inherited from the predecessor and is replaced by a fresh initial migration in Phase 2 under D12. The user guides ship without screenshots until valid captures are produced; fresh EventBooking captures are tracked in #43.
+
+---
+
+AI-Fingerprint: sha256:d458d77954b4
