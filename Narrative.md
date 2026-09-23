@@ -22,6 +22,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [12](#entry-phase-5-handoff-prompt-hand-authored-with-the-axe-gate-moved-to-task-24) | 2026-09-21 | Phase 5 handoff prompt: hand-authored, with the axe gate moved to Task 24 | product | **Phase 5 stays hand-authored, and the Playwright and axe-core project moves from Task 27 to Task 24.** Task 24 creates it alongside the design-system components, every later task adds its own routes to it, and the phase gate is zero axe… |
 | [13](#entry-docs-plan-add-phase-5-web-implementation-plan) | 2026-09-22 | docs(plan): add Phase 5 web implementation plan | product | Hand-author Phase 5, but move the Playwright project, axe integration, two-viewport route/state manifest, API stub, and Web-change workflow job from the phase-ending task into Task 24. |
 | [14](#entry-add-phase-6-seed-and-deployment-plans) | 2026-09-23 | Add Phase 6 seed and deployment plans | product | Add LAB as a sixth active, managed appointment type and keep live events and proposals on MED, FIT, IND, and LAB. Keep ESC active but unmanaged and DOC inactive. |
+| [15](#entry-docs-author-phase-7-verification-and-documentation-plans) | 2026-09-23 | docs: author Phase 7 verification and documentation plans | product | Measure capacity-lock hold time through an Application observer implemented by the API metrics service, and render cumulative histogram buckets so the release test can assert the under-50-ms p95 target. |
 
 ---
 
@@ -649,3 +650,25 @@ Task 28 can cover all required demo axes without weakening negative-reference ca
 ---
 
 AI-Fingerprint: sha256:28ffbff3b63e
+
+---
+
+<a id="entry-docs-author-phase-7-verification-and-documentation-plans"></a>
+
+## Entry 15 — 2026-09-23 — docs: author Phase 7 verification and documentation plans
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 7 is the last authoring phase of the EventBooking master plan. Earlier hand-authored phases have not been built into a running application, so this pull request records executable verification and documentation instructions without claiming runtime results.
+
+## Decision
+
+Measure capacity-lock hold time through an Application observer implemented by the API metrics service, and render cumulative histogram buckets so the release test can assert the under-50-ms p95 target. Use a guarded fixture and an isolated load-only Compose override at 600 attendee requests per IP per minute for the 500-confirmation burst. Keep the normal 30-per-minute limit and the per-token limiter unchanged. Document the resulting local demo and home-lab operating paths.
+
+## Consequences
+
+The future executor must build and test the application, run the 500-way burst, and walk the demo from a fresh clone before treating Phase 7 as verified. The load fixture contains private book tokens and belongs only in a disposable project. The design package now records the six seeded appointment types, the guarded fixture mode, and the emitted lock-hold metric.
+
+AI-Fingerprint: sha256:aa13b035f064
