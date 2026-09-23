@@ -49,15 +49,17 @@ flowchart LR
 | keycloak | `quay.io/keycloak/keycloak:26.x`, `start-dev --import-realm` | Imports `deploy/keycloak/realm-export.json`, the `eventbooking` realm |
 | mailpit | `axllent/mailpit` | Catches all email; UI on 8025 |
 | api, mcp, web | Built from source, or `ghcr.io/…/eventbooking-*:${EVENTBOOKING_IMAGE_TAG:-latest}` | Development-only settings inline (a local signing key, `Portal__BaseUrl=http://localhost:5002`) |
-| seed | `eventbooking-seed`, profile `seed` | `docker compose --profile seed run --rm seed [--reseed] [--reanchor]` |
+| seed | `eventbooking-seed`, profile `seed` | `docker compose --profile seed run --rm seed` migrates only; add `--demo --reanchor` for the local demonstration |
 
-To bring the stack up:
+To bring up the local demo stack:
 
 ```bash
-docker compose up -d postgres keycloak mailpit
-docker compose --profile seed run --rm seed
-docker compose up -d
+docker compose up --detach --build --wait postgres keycloak mailpit
+docker compose --profile seed run --rm seed --demo --reanchor
+docker compose up --detach --build --wait api mcp web
 ```
+
+Running the seed job without `--demo` applies database roles and migrations only.
 
 ## Home lab (`deploy/home-lab/`)
 
@@ -142,13 +144,19 @@ The SeedData CLI takes these options:
 | `--demo` | Also upsert the demo dataset, matched by natural key so that re-running is idempotent; converge Keycloak demo users and roles when Keycloak settings are present; send demo invitations through the configured SMTP (Mailpit) |
 | `--reanchor` | Shift demo event dates relative to today |
 | `--reseed` | Destructive: wipe the domain tables and recreate the `eventbooking` Keycloak realm from the realm file, then seed. Refused unless `--demo` is also given and `EVENTBOOKING_ALLOW_RESEED=true` |
+| `--load-fixture` | Disposable local load test only: after `--demo`, create a 100-place event and 500 invitations. Requires `EVENTBOOKING_ENABLE_LOAD_FIXTURE=true` and an absolute `EVENTBOOKING_LOAD_FIXTURE_PATH` for the private token manifest |
+
+The fixture mode is used only with `tests/load/compose.load.yml`. That override allows 600
+attendee requests per IP per minute for the 500-way burst; the normal local and home-lab limit
+remains 30. The per-token limit remains enabled.
 
 The demo dataset exercises every generalised axis:
 
-- **3 `Location`s:** two in `Europe/London` and one in `Europe/Dublin`. One London location is
-  inactive.
-- **5 `AppointmentType`s:** MED, FIT, IND, ESC and DOC. ESC is active but has no Manager, to
-  demonstrate the disabled picker state. DOC is inactive.
+- **3 `Location`s:** London and Manchester in `Europe/London`, and Dublin in `Europe/Dublin`.
+  Manchester is inactive.
+- **6 `AppointmentType`s:** MED, FIT, IND, LAB, ESC and DOC. LAB is active and managed, so a
+  four-type event can include it. ESC is active but has no Manager, to demonstrate the disabled
+  picker state. DOC is inactive.
 - **4 `AttendeeGroup`s:**
   - one requiring IND only;
   - one requiring MED, FIT and IND;
@@ -164,7 +172,7 @@ The demo dataset exercises every generalised axis:
   - one Admin;
   - one Coordinator;
   - one Coordinator who is also Manager of MED;
-  - Managers of FIT and IND;
+  - Managers of FIT, IND and LAB;
   - two AppointmentStaff, one of them unscoped to demonstrate the awaiting-assignment state.
 
 ## CI/CD
