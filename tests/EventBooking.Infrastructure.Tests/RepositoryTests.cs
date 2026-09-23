@@ -21,7 +21,7 @@ public class RepositoryTests(PostgresFixture fixture)
             write.Events.Add(pastEvent);
 
             write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 20), out var cancelled));
-            cancelled.Cancel();
+            cancelled.CancelBeforeStart();
             write.Events.Add(cancelled);
 
             write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 21), out var live));

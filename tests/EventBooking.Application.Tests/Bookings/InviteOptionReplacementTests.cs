@@ -53,7 +53,7 @@ public class InviteOptionReplacementTests
     [Fact]
     public async Task View_ReplacesCancelledOption_ToRestoreThreeOptions()
     {
-        _events.Items[1].Cancel();
+        _events.Items[1].CancelBeforeStart();
         var spareId = AddEvent(14, 9);
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
@@ -71,8 +71,8 @@ public class InviteOptionReplacementTests
     [Fact]
     public async Task View_WithNoReplacementAvailable_FlagsAttendeeForFollowUp()
     {
-        _events.Items[1].Cancel();
-        _events.Items[2].Cancel();
+        _events.Items[1].CancelBeforeStart();
+        _events.Items[2].CancelBeforeStart();
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 

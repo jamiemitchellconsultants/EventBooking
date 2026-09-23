@@ -257,7 +257,7 @@ public class ConfirmBookingHandlerTests
     [Fact]
     public async Task ChoosingAEventThatWasCancelledIsTreatedTheSameWay()
     {
-        _chosen.Cancel();
+        _chosen.CancelBeforeStart();
 
         var result = await Confirm();
 

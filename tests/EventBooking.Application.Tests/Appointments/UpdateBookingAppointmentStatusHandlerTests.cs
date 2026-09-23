@@ -154,7 +154,7 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
     public async Task CancelledEventRejectsTheUpdate()
     {
         var scenario = GivenScenario(new DateTimeOffset(2026, 9, 7, 9, 5, 0, TimeSpan.Zero));
-        scenario.Event.Cancel();
+        scenario.Event.CancelBeforeStart();
 
         var result = await scenario.Handler.HandleAsync(
             Command(scenario, BookingAppointmentStatus.CheckedIn, 1),

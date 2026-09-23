@@ -11,6 +11,7 @@ using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Events;
 
@@ -43,6 +44,7 @@ public sealed record CancelEventOutcome(int BookingsVoided, int AttendeesReinvit
 /// <param name="eventFinder">The event finder.</param>
 /// <param name="appointments">The appointments.</param>
 /// <param name="clock">The clock.</param>
+/// <param name="zones">The zone abstraction the window's start instant is read in.</param>
 public sealed class CancelEventHandler(
     IEventRepository events,
     IBookingRepository bookings,
@@ -56,6 +58,7 @@ public sealed class CancelEventHandler(
     EmailDeliveryService deliveries,
     IAuditLogger audit,
     IClock clock,
+    IEventWindowZones zones,
     IUnitOfWork unitOfWork)
 {
     /// <summary>
@@ -132,8 +135,10 @@ public sealed class CancelEventHandler(
                 Error.Conflict("This event has already been cancelled."));
         }
 
-        // A event can no longer be cancelled once its date has started.
-        if (eventItem.Window.Date < clock.TodayAtTransitionalLocation)
+        // An event can no longer be cancelled once its window has started (Task 7). The zone is
+        // still the transitional location's until Phase 3 gives the handler the event's own.
+        if (eventItem.Window.HasStarted(
+                zones, TransitionalLocation.TimeZoneId, clock.UtcNow))
         {
             await transaction.RollbackAsync(cancellationToken);
             return Result<CancelEventOutcome>.Failure(Error.Conflict(
@@ -190,7 +195,7 @@ public sealed class CancelEventHandler(
         try
         {
             // Cancel first: the re-invites below must not be able to offer this event back.
-            eventItem.Cancel();
+            eventItem.Cancel(zones, TransitionalLocation.TimeZoneId, clock.UtcNow);
 
             audit.Record(
                 AuditEntityTypes.Event,

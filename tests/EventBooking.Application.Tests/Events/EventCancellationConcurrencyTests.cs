@@ -128,6 +128,7 @@ public class EventCancellationConcurrencyTests
             EmailDeliveryTestFactory.Create(Deliveries, Email, _eventCancellationUnitOfWork, Clock),
             Audit,
             Clock,
+            ProposalFixture.Zones,
             _eventCancellationUnitOfWork);
 
         public ConfirmBookingHandler Confirmation => new(

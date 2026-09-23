@@ -141,7 +141,7 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 20));
         if (cancelled)
         {
-            eventItem.Cancel();
+            eventItem.CancelBeforeStart();
         }
 
         context.Events.Add(eventItem);

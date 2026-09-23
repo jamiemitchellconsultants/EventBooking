@@ -39,7 +39,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         var confirmationPid = await waitingBackend.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilBlockedOnDatabaseLockAsync(cancellationContext, confirmationPid);
 
-        lockedEvent!.Cancel();
+        lockedEvent!.CancelBeforeStart();
         await cancellationContext.SaveChangesAsync();
         await cancellationTransaction.CommitAsync();
 
@@ -74,7 +74,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         var cancellationPid = await waitingBackend.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilBlockedOnDatabaseLockAsync(eventCancellationContext, cancellationPid);
 
-        lockedEvent!.Cancel();
+        lockedEvent!.CancelBeforeStart();
         activeBooking.Cancel();
         await IncrementCapacityAsync(eventCancellationContext, scenario.EventId);
         await eventCancellationContext.SaveChangesAsync();

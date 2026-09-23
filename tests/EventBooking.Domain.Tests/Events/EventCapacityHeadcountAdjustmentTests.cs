@@ -34,9 +34,9 @@ public class EventCapacityHeadcountAdjustmentTests
     {
         var capacity = CapacityOf(totalHeadcount: 10, occupied: 6);
 
-        var changed = capacity.AdjustTotalHeadcount(12);
+        var adjustment = capacity.AdjustTotalHeadcount(12, activeBookingCount: 6);
 
-        Assert.True(changed);
+        Assert.Equal(CapacityAdjustmentStatus.Adjusted, adjustment.Status);
         Assert.Equal(12, capacity.TotalHeadcount);
         Assert.Equal(6, capacity.RemainingCapacity);
         Assert.Equal(6, capacity.OccupiedCapacity);
@@ -47,9 +47,9 @@ public class EventCapacityHeadcountAdjustmentTests
     {
         var capacity = CapacityOf(totalHeadcount: 10, occupied: 6);
 
-        var changed = capacity.AdjustTotalHeadcount(8);
+        var adjustment = capacity.AdjustTotalHeadcount(8, activeBookingCount: 6);
 
-        Assert.True(changed);
+        Assert.Equal(CapacityAdjustmentStatus.Adjusted, adjustment.Status);
         Assert.Equal(8, capacity.TotalHeadcount);
         Assert.Equal(2, capacity.RemainingCapacity);
         Assert.Equal(6, capacity.OccupiedCapacity);
@@ -60,7 +60,7 @@ public class EventCapacityHeadcountAdjustmentTests
     {
         var capacity = CapacityOf(totalHeadcount: 10, occupied: 6);
 
-        capacity.AdjustTotalHeadcount(6);
+        capacity.AdjustTotalHeadcount(6, activeBookingCount: 6);
 
         Assert.Equal(6, capacity.TotalHeadcount);
         Assert.Equal(0, capacity.RemainingCapacity);
@@ -68,16 +68,14 @@ public class EventCapacityHeadcountAdjustmentTests
     }
 
     [Fact]
-    public void ATotalBelowOccupiedCapacityIsRejectedWithoutMutation()
+    public void ATotalBelowTheActiveBookingCountIsRejectedWithoutMutation()
     {
         var capacity = CapacityOf(totalHeadcount: 10, occupied: 6);
 
-        var exception = Assert.Throws<DomainException>(
-            () => capacity.AdjustTotalHeadcount(5));
+        var adjustment = capacity.AdjustTotalHeadcount(5, activeBookingCount: 6);
 
-        Assert.Equal(
-            "totalHeadcount cannot be lower than occupied capacity.",
-            exception.Message);
+        Assert.Equal(CapacityAdjustmentStatus.BelowActiveBookings, adjustment.Status);
+        Assert.Equal(6, adjustment.MinimumTotalHeadcount);
         Assert.Equal(10, capacity.TotalHeadcount);
         Assert.Equal(4, capacity.RemainingCapacity);
     }
@@ -90,7 +88,7 @@ public class EventCapacityHeadcountAdjustmentTests
         var capacity = CapacityOf(totalHeadcount: 10, occupied: 2);
 
         var exception = Assert.Throws<DomainException>(
-            () => capacity.AdjustTotalHeadcount(totalHeadcount));
+            () => capacity.AdjustTotalHeadcount(totalHeadcount, activeBookingCount: 2));
 
         Assert.Equal("totalHeadcount must be greater than zero.", exception.Message);
         Assert.Equal(10, capacity.TotalHeadcount);
@@ -102,9 +100,9 @@ public class EventCapacityHeadcountAdjustmentTests
     {
         var capacity = CapacityOf(totalHeadcount: 10, occupied: 6);
 
-        var changed = capacity.AdjustTotalHeadcount(10);
+        var adjustment = capacity.AdjustTotalHeadcount(10, activeBookingCount: 6);
 
-        Assert.False(changed);
+        Assert.Equal(CapacityAdjustmentStatus.Unchanged, adjustment.Status);
         Assert.Equal(10, capacity.TotalHeadcount);
         Assert.Equal(4, capacity.RemainingCapacity);
     }

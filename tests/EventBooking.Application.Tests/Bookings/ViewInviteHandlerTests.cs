@@ -130,7 +130,7 @@ public class ViewInviteHandlerTests
     [Fact]
     public async Task AnOptionWhoseEventHasBeenCancelledIsNotShown()
     {
-        _events.Items[1].Cancel();
+        _events.Items[1].CancelBeforeStart();
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
@@ -145,8 +145,8 @@ public class ViewInviteHandlerTests
     {
         _invite.RemoveOption(_events.Items[0].Id);
         _invite.RemoveOption(_events.Items[1].Id);
-        _events.Items[0].Cancel();
-        _events.Items[1].Cancel();
+        _events.Items[0].CancelBeforeStart();
+        _events.Items[1].CancelBeforeStart();
         _invite.AddOption(AddEvent(3, 9));
         _invite.AddOption(AddEvent(2, 13));
 

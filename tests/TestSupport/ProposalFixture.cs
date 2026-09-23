@@ -66,3 +66,23 @@ public static class ProposalFixture
         public string AbbreviationOf(DateTimeOffset instant, string timeZoneId) => "GMT";
     }
 }
+
+/// <summary>
+/// Cancels an event the way every suite written before Task 7's window rule means to: at an
+/// instant before the window starts, which is now the only time cancellation is allowed.
+/// </summary>
+public static class EventCancellationFixture
+{
+    /// <summary>Cancels the event one minute before its window starts.</summary>
+    /// <param name="eventItem">The event to cancel.</param>
+    public static void CancelBeforeStart(this Event eventItem)
+    {
+        ArgumentNullException.ThrowIfNull(eventItem);
+
+        var start = eventItem.Window.StartInstant(
+            ProposalFixture.Zones, ProposalFixture.TimeZoneId);
+
+        eventItem.Cancel(
+            ProposalFixture.Zones, ProposalFixture.TimeZoneId, start.AddMinutes(-1));
+    }
+}

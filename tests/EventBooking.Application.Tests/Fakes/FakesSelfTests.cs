@@ -44,7 +44,7 @@ public class FakesSelfTests
         var repository = new InMemoryEventRepository();
         repository.Add(EventFor(new DateOnly(2026, 9, 1)));
         var cancelled = EventFor(new DateOnly(2026, 9, 20));
-        cancelled.Cancel();
+        cancelled.CancelBeforeStart();
         repository.Add(cancelled);
         repository.Add(EventFor(new DateOnly(2026, 9, 21)));
 

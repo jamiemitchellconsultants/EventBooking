@@ -110,7 +110,7 @@ public class GetManagerEventBoardHandlerTests
     public async Task CancelledAndPastEventsAreNotOnTheBoard()
     {
         var cancelled = Event.CreateFrom(Guid.NewGuid(), FullyAcceptedProposal());
-        cancelled.Cancel();
+        cancelled.CancelBeforeStart();
         _events.Add(cancelled);
         _events.Add(Event.CreateFrom(
             Guid.NewGuid(), FullyAcceptedProposal(new DateOnly(2026, 8, 30))));

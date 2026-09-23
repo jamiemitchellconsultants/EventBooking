@@ -70,7 +70,7 @@ public class EligibleEventFinderTests
     public async Task CancelledEventsAreNeverEligible()
     {
         var eventItem = AddEvent(new DateOnly(2026, 9, 10));
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
 
         var result = await Finder.FindAsync(NeedsTwo, 3, [], CancellationToken.None);
 

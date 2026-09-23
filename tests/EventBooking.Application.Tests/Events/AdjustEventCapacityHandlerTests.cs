@@ -174,7 +174,7 @@ public class AdjustEventCapacityHandlerTests
     [Fact]
     public async Task ACancelledEventCannotBeAdjusted()
     {
-        _event.Cancel();
+        _event.CancelBeforeStart();
 
         var result = await Adjust(12);
 

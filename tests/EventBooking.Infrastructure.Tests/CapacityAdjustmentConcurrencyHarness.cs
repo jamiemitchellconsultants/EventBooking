@@ -51,7 +51,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
         var context = _fixture.NewContext();
         var transaction = await context.Database.BeginTransactionAsync();
         var capacity = await LockAsync(context, eventId);
-        capacity.AdjustTotalHeadcount(totalHeadcount);
+        capacity.AdjustTotalHeadcount(totalHeadcount, capacity.OccupiedCapacity);
         await context.SaveChangesAsync();
         return new HeldCapacityChange(context, transaction);
     }
@@ -81,7 +81,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
         await using var context = _fixture.NewContext();
         await using var transaction = await context.Database.BeginTransactionAsync();
         var capacity = await LockAsync(context, eventId);
-        capacity.AdjustTotalHeadcount(totalHeadcount);
+        capacity.AdjustTotalHeadcount(totalHeadcount, capacity.OccupiedCapacity);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }

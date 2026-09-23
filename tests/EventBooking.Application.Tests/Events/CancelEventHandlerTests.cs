@@ -55,6 +55,7 @@ public class CancelEventHandlerTests
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
         _audit,
         _clock,
+        ProposalFixture.Zones,
         _unitOfWork);
 
     public CancelEventHandlerTests()
@@ -84,6 +85,32 @@ public class CancelEventHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("conflict", result.Error.Code);
         Assert.Equal(EventStatus.Active, past.Status);
+    }
+
+    [Fact]
+    public async Task AEventWhoseWindowStartedEarlierTodayCannotBeCancelled()
+    {
+        var started = AddEventAt(new EventWindow(new DateOnly(2026, 9, 3), new TimeOnly(8, 0), 240));
+
+        var result = await Handler.HandleAsync(
+            new CancelEventCommand(Coordinator, started.Id, true), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal(EventStatus.Active, started.Status);
+    }
+
+    [Fact]
+    public async Task AEventLaterTodayCanStillBeCancelled()
+    {
+        var laterToday =
+            AddEventAt(new EventWindow(new DateOnly(2026, 9, 3), new TimeOnly(14, 0), 240));
+
+        var result = await Handler.HandleAsync(
+            new CancelEventCommand(Coordinator, laterToday.Id, false), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(EventStatus.Cancelled, laterToday.Status);
     }
 
     [Fact]
@@ -216,7 +243,7 @@ public class CancelEventHandlerTests
     [Fact]
     public async Task CancellingAnAlreadyCancelledEventIsAConflict()
     {
-        _event.Cancel();
+        _event.CancelBeforeStart();
 
         var result = await Handler.HandleAsync(
             new CancelEventCommand(Coordinator, _event.Id, true), CancellationToken.None);
@@ -384,11 +411,12 @@ public class CancelEventHandlerTests
         return recovery;
     }
 
-    private Event AddEvent(int day)
+    private Event AddEvent(int day) =>
+        AddEventAt(new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240));
+
+    private Event AddEventAt(EventWindow window)
     {
-        var proposal = ProposalFixture.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0), 240),
-            Guid.NewGuid());
+        var proposal = ProposalFixture.Create(Guid.NewGuid(), window, Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

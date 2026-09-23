@@ -259,7 +259,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         await using (var write = NewContext(clock))
         {
             var eventItem = EventFor(new DateOnly(2026, 9, 21), new TimeOnly(9, 0));
-            eventItem.Cancel();
+            eventItem.CancelBeforeStart();
             write.Events.Add(eventItem);
             await write.SaveChangesAsync();
         }
@@ -330,7 +330,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         var actionableId = Guid.NewGuid();
         var staleId = Guid.NewGuid();
         var cancelledEvent = EventFor(new DateOnly(2026, 9, 21), new TimeOnly(9, 0));
-        cancelledEvent.Cancel();
+        cancelledEvent.CancelBeforeStart();
         // Production stages the cancellation notice with its booking identifier, so the
         // retryable delivery carries one; the stale delivery below omits it on purpose.
         var cancelledBookingId = Guid.NewGuid();

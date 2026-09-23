@@ -114,7 +114,7 @@ public class RetryEmailHandlerTests
     public async Task CancellationRetryDoesNotCreateOrSendAnInvite()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
         _attendee.MarkAwaitingAvailability();
         var booking = GivenCancelledBooking(eventItem.Id);
         AddFailedDelivery(
@@ -254,7 +254,7 @@ public class RetryEmailHandlerTests
     public async Task PendingCancellationRetryCompletesThePendingDelivery()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
         _attendee.MarkAwaitingAvailability();
         var booking = GivenCancelledBooking(eventItem.Id);
         _deliveries.Add(EmailLog.RecordPending(
@@ -296,7 +296,7 @@ public class RetryEmailHandlerTests
     public async Task CancellationRetryAfterAttendeeBooksAgainReturnsConflictWithoutSending()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
         _attendee.MarkInvited();
         _attendee.MarkBooked();
         AddFailedDelivery(
@@ -347,7 +347,7 @@ public class RetryEmailHandlerTests
     public async Task ConcurrentRetriesProduceOneReplacementSend()
     {
         var eventItem = _events.Items[0];
-        eventItem.Cancel();
+        eventItem.CancelBeforeStart();
         _attendee.MarkAwaitingAvailability();
         var booking = GivenCancelledBooking(eventItem.Id);
         var repository = new SerializedRetryDeliveryRepository();

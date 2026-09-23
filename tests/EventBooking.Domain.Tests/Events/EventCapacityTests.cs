@@ -51,7 +51,10 @@ public class EventCapacityTests
         capacity.Decrement();
 
         var ex = Assert.Throws<DomainException>(() => capacity.Decrement());
-        Assert.Equal("No remaining capacity for this appointment type on this eventItem.", ex.Message);
+        Assert.Equal(
+            "capacity-exhausted: appointment type "
+            + $"{AppointmentTypeIds.DrugAndAlcoholTesting} has no remaining capacity on this event.",
+            ex.Message);
         Assert.Equal(0, capacity.RemainingCapacity);
     }
 
