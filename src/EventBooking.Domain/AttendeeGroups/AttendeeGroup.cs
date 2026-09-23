@@ -205,14 +205,18 @@ public sealed class AttendeeGroup
         Version++;
     }
 
-    /// <summary>Returns the group to use as assignment authority.</summary>
-    public void Reactivate()
+    /// <summary>Returns the group to use as assignment authority only if every mapped type is active.</summary>
+    /// <param name="activeAppointmentTypeIds">Every appointment type currently active.</param>
+    public void Reactivate(IReadOnlyCollection<Guid> activeAppointmentTypeIds)
     {
+        ArgumentNullException.ThrowIfNull(activeAppointmentTypeIds);
+
         if (IsActive)
         {
             return;
         }
 
+        ValidatedMapping(RequiredAppointmentTypeIds, activeAppointmentTypeIds);
         IsActive = true;
         Version++;
     }

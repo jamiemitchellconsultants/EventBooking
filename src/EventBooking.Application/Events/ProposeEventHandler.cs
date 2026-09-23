@@ -75,7 +75,10 @@ public sealed class ProposeEventHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         var open = await proposals.ListOpenAsync(cancellationToken);
-        if (open.Any(p => p.Window == window))
+        if (open.Any(p =>
+                p.LocationId == TransitionalLocation.Id
+                && p.Window.Date == window.Date
+                && p.Window.StartTime == window.StartTime))
         {
             return Result<Guid>.Failure(Error.Conflict("An open proposal already exists for that window."));
         }

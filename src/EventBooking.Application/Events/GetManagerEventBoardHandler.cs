@@ -82,13 +82,12 @@ public sealed class GetManagerEventBoardHandler(
         var myType = authorized.Value.AppointmentTypeId!.Value;
 
         var open = (await proposals.ListOpenAsync(cancellationToken))
+            .Where(proposal => proposal.ListedTypes.Any(type => type.AppointmentTypeId == myType))
             .OrderBy(proposal => proposal.Window)
             .Select(proposal =>
             {
                 var myAcceptance = proposal.Acceptances.SingleOrDefault(
-                    acceptance =>
-                        acceptance.AppointmentTypeId == myType
-                        && acceptance.ManagerUserId == query.ManagerUserId);
+                    acceptance => acceptance.AppointmentTypeId == myType);
 
                 return new OpenProposalView(
                     proposal.Id,
@@ -102,11 +101,12 @@ public sealed class GetManagerEventBoardHandler(
                         .ToList(),
                     myAcceptance?.Headcount,
                     myAcceptance is not null,
-                    proposal.CreatedByManagerUserId == query.ManagerUserId);
+                    proposal.ProposerAppointmentTypeId == myType);
             })
             .ToList();
 
         var confirmed = (await events.ListActiveAsync(clock.TodayAtTransitionalLocation, cancellationToken))
+            .Where(eventItem => eventItem.Capacities.Any(capacity => capacity.AppointmentTypeId == myType))
             .OrderBy(s => s.Window)
             .Select(s =>
             {

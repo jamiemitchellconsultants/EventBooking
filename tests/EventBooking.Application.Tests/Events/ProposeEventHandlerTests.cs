@@ -127,6 +127,27 @@ public class ProposeEventHandlerTests
     }
 
     [Fact]
+    public async Task SameLocalWindowAtAnotherLocationDoesNotConflict()
+    {
+        var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240);
+        var otherLocationProposal = EventProposal.Propose(
+            Guid.NewGuid(), Guid.NewGuid(), true, ProposalFixture.TimeZoneId,
+            window, ProposalFixture.Zones, ProposalFixture.Now,
+            [
+                new ProposableAppointmentType(AppointmentTypeIds.DrugAndAlcoholTesting, "DAT", true, true),
+                new ProposableAppointmentType(AppointmentTypeIds.MedicalCheckUp, "MED", true, true),
+            ],
+            AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 1);
+        _proposals.Add(otherLocationProposal);
+
+        var result = await Handler.HandleAsync(
+            new ProposeEventCommand(Manager, window.Date, window.StartTime), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, _proposals.Items.Count);
+    }
+
+    [Fact]
     public async Task ADifferentWindowOnTheSameDayIsAllowed()
     {
         await Handler.HandleAsync(

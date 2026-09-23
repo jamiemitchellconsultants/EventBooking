@@ -240,6 +240,33 @@ public class SchemaTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task OpenProposalsAtDifferentLocationsMayShareALocalWindow()
+    {
+        await fixture.ResetAsync();
+
+        var listedTypes = new[]
+        {
+            new ProposableAppointmentType(AppointmentTypeIds.DrugAndAlcoholTesting, "DAT", true, true),
+            new ProposableAppointmentType(AppointmentTypeIds.MedicalCheckUp, "MED", true, true),
+        };
+        EventProposal ProposalAt(Guid locationId) => EventProposal.Propose(
+            Guid.NewGuid(), locationId, true, ProposalFixture.TimeZoneId,
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+            ProposalFixture.Zones, ProposalFixture.Now, listedTypes,
+            AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 1);
+
+        await using (var write = fixture.NewContext())
+        {
+            write.EventProposals.AddRange(
+                ProposalAt(ProposalFixture.LocationId), ProposalAt(Guid.NewGuid()));
+            await write.SaveChangesAsync();
+        }
+
+        await using var read = fixture.NewContext();
+        Assert.Equal(2, await read.EventProposals.CountAsync());
+    }
+
+    [Fact]
     public async Task AEventRoundTripsWithItsThreeCapacityRows()
     {
         await fixture.ResetAsync();

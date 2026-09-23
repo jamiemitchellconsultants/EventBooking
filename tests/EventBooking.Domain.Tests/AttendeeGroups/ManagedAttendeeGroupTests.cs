@@ -1,3 +1,4 @@
+using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Common;
 
@@ -86,8 +87,21 @@ public class ManagedAttendeeGroupTests
         group.Deactivate(memberCount: 0);
         Assert.False(group.IsActive);
 
-        group.Reactivate();
+        group.Reactivate(ActiveTypes);
         Assert.True(group.IsActive);
+    }
+
+    [Fact]
+    public void ReactivationRejectsMappingsToTypesDeactivatedWhileTheGroupWasInactive()
+    {
+        var type = AppointmentType.Create(Guid.NewGuid(), "MEDICAL", "Medical");
+        var group = AttendeeGroup.Create(Guid.NewGuid(), "GROUP", "Group", [type.Id], [type.Id]);
+        group.Deactivate(memberCount: 0);
+        type.Deactivate(AppointmentTypeUsage.None);
+
+        Assert.Throws<DomainException>(() => group.Reactivate([]));
+        Assert.False(group.IsActive);
+        Assert.Equal(2, group.Version);
     }
 
     [Fact]
