@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventBooking.Application\EventBooking.Application.csproj" />
+    <ProjectReference Include="..\EventBooking.Infrastructure\EventBooking.Infrastructure.csproj" />
+    <ProjectReference Include="..\EventBooking.Api.Auth\EventBooking.Api.Auth.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,79 @@
+@using EventBooking.Web.Services
+@inject AuditClient Audit
+@inject HeadOfficeTimePresentation TimePresentation
+
+<details class="audit-history" @ontoggle="OnToggleAsync">
+    <summary title="Every recorded change, newest first, with who made it. Loaded when you expand it.">History</summary>
+
+    @if (_error is not null)
+    {
+        <p class="error" role="alert">@_error</p>
+    }
+    else if (!_requested)
+    {
+        <p>Loading…</p>
+    }
+    else if (_rows is { Count: 0 })
+    {
+        <p>Nothing recorded yet.</p>
+    }
+    else if (_rows is not null)
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th scope="col">When</th><th scope="col">What</th><th scope="col">Who</th><th scope="col">Details</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td data-label="When">@TimePresentation.Format(row.Timestamp)</td>
+                            <td data-label="What">@row.Action</td>
+                            <td data-label="Who">@row.ActorType @row.ActorId</td>
+                            <td data-label="Details">@row.Details</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</details>
+
+@code {
+    /// <summary>Either a confirmed slot or a candidate. Set exactly one.</summary>
+    [Parameter]
+    public Guid? SlotId { get; set; }
+
+    [Parameter]
+    public Guid? CandidateId { get; set; }
+
+    private List<AuditRowDto>? _rows;
+    private string? _error;
+    private bool _requested;
+
+    // Loaded on first expand rather than on render: a table of 20 slots should not fire 20 requests.
+    private async Task OnToggleAsync()
+    {
+        if (_requested)
+        {
+            return;
+        }
+
+        _requested = true;
+
+        try
+        {
+            var outcome = SlotId is not null
+                ? await Audit.ForSlotAsync(SlotId.Value, CancellationToken.None)
+                : await Audit.ForCandidateAsync(CandidateId!.Value, CancellationToken.None);
+
+            _rows = outcome.Value;
+            _error = outcome.ErrorMessage;
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+    }
+}

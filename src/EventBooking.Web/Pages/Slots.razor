@@ -1,0 +1,393 @@
+@page "/slots"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using EventBooking.Web.Services
+@inject SlotsClient SlotsApi
+
+<PageTitle>Slot proposals</PageTitle>
+
+<div class="page slot-board" aria-busy="@(_loading || _busy ? "true" : "false")">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Slot negotiation</span>
+            <h1>Slot proposals</h1>
+            <p>Propose shared windows, accept with your headcount, and adjust capacity on confirmed slots.</p>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <p class="banner error" role="alert">@_error</p>
+    }
+
+    @if (_board is null)
+    {
+        <div class="card loading-block" aria-label="Loading slot board">
+            <span class="loading-line loading-line-medium"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-short"></span>
+        </div>
+    }
+    else
+    {
+        <section class="card" aria-labelledby="propose-heading">
+            <div class="card-heading">
+                <h2 id="propose-heading">
+                    Propose a new slot
+                    <span class="tip" tabindex="0" role="note"
+                          aria-label="A proposal only becomes a confirmed slot once every appointment type has accepted it."
+                          data-tip="A proposal only becomes a confirmed slot once every appointment type has accepted it."></span>
+                </h2>
+            </div>
+            <div class="card-body proposal-form">
+                <div class="field">
+                    <label for="new-slot-date">Date</label>
+                    <InputDate id="new-slot-date" @bind-Value="_newDate" />
+                    <span class="hint">Must be a future date.</span>
+                </div>
+                <div class="field">
+                    <label for="new-slot-start">Start time</label>
+                    <input id="new-slot-start" type="time" step="3600" @bind="_newStartTime" />
+                    <span class="hint">Windows are fixed at four hours.</span>
+                </div>
+                <button class="button button-primary" @onclick="ProposeAsync" disabled="@_busy"
+                        title="Sends the window to the other appointment types for acceptance.">
+                    Submit proposal
+                </button>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="open-heading">
+            <div class="card-heading">
+                <h2 id="open-heading">
+                    Open proposals
+                    <span class="tip" tabindex="0" role="note"
+                          aria-label="Windows waiting on acceptances. Accept with the number of candidates you can handle; you can revise it until the slot confirms."
+                          data-tip="Windows waiting on acceptances. Accept with the number of candidates you can handle; you can revise it until the slot confirms."></span>
+                </h2>
+            </div>
+            @if (_board.OpenProposals.Count == 0)
+            {
+                <div class="empty-state">
+                    <strong>No open proposals.</strong>
+                    <p>Propose a slot above to start a negotiation.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Window</th>
+                                <th scope="col" title="Appointment types that have already accepted this window.">Accepted by</th>
+                                <th scope="col" title="How many candidates your appointment type can see in this window.">My headcount</th>
+                                <th scope="col" class="actions-column"><span class="muted">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var proposal in _board.OpenProposals)
+                            {
+                                <tr>
+                                    <td data-label="Date">@proposal.Date.ToString("yyyy-MM-dd")</td>
+                                    <td data-label="Window">
+                                        @proposal.StartTime.ToString("HH\\:mm")-@proposal.EndTime.ToString("HH\\:mm")
+                                    </td>
+                                    <td data-label="Accepted by">
+                                        <span class="chip-row">
+                                            @foreach (var name in proposal.AcceptedByAppointmentTypeNames)
+                                            {
+                                                <span class="chip">@name</span>
+                                            }
+                                        </span>
+                                    </td>
+                                    <td data-label="My headcount">
+                                        <input class="number-input"
+                                               type="number"
+                                               min="1"
+                                               @bind="_headcounts[proposal.ProposalId]"
+                                               title="Candidates your appointment type can take in this window."
+                                               aria-label="@($"Headcount for {proposal.Date:yyyy-MM-dd}")" />
+                                    </td>
+                                    <td data-label="Actions">
+                                        <span class="row-actions">
+                                            <button class="button button-primary" @onclick="() => AcceptAsync(proposal.ProposalId)"
+                                                    disabled="@_busy"
+                                                    title="Records your acceptance with the headcount shown.">
+                                                @(proposal.AcceptedByMe ? "Update acceptance" : "Accept")
+                                            </button>
+                                            @if (proposal.AcceptedByMe)
+                                            {
+                                                <button class="button button-quiet" @onclick="() => WithdrawAcceptanceAsync(proposal.ProposalId)"
+                                                        disabled="@_busy"
+                                                        title="Removes your acceptance. The proposal stays open for the others.">Withdraw acceptance</button>
+                                            }
+                                            @if (proposal.CreatedByMe)
+                                            {
+                                                <button class="button button-quiet" @onclick="() => WithdrawProposalAsync(proposal.ProposalId)"
+                                                        disabled="@_busy"
+                                                        title="Takes the whole proposal off the board for everyone.">Withdraw proposal</button>
+                                            }
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="card" aria-labelledby="confirmed-heading">
+            <div class="card-heading">
+                <h2 id="confirmed-heading">
+                    Confirmed slots (this type)
+                    <span class="tip tip-end" tabindex="0" role="note"
+                          aria-label="Confirmed windows candidates can book into. Lowering your headcount below the candidates already booked is refused."
+                          data-tip="Confirmed windows candidates can book into. Lowering your headcount below the candidates already booked is refused."></span>
+                </h2>
+            </div>
+            @if (_board.ConfirmedSlots.Count == 0)
+            {
+                <div class="empty-state">
+                    <strong>No confirmed slots.</strong>
+                    <p>Slots appear here once all three managers have accepted them.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Window</th>
+                                <th scope="col" title="Total candidates your appointment type will see in this window.">My total</th>
+                                <th scope="col" title="Places left after the candidates already booked in.">Remaining</th>
+                                <th scope="col" class="actions-column"><span class="muted">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var slot in _board.ConfirmedSlots)
+                            {
+                                <tr class="@(_cancelAwaitingConfirmation == slot.ConfirmedSlotId ? "awaiting-confirmation" : null)">
+                                    <td data-label="Date">@slot.Date.ToString("yyyy-MM-dd")</td>
+                                    <td data-label="Window">@slot.StartTime.ToString("HH\\:mm")-@slot.EndTime.ToString("HH\\:mm")</td>
+                                    <td data-label="My total">
+                                        <input class="number-input"
+                                               type="number"
+                                               min="1"
+                                               @bind="_confirmedTotals[slot.ConfirmedSlotId]"
+                                               title="Cannot go below the number of candidates already booked."
+                                               aria-label="@($"Total headcount for {slot.Date:yyyy-MM-dd}")" />
+                                    </td>
+                                    <td data-label="Remaining">@slot.MyRemainingCapacity</td>
+                                    <td data-label="Actions">
+                                        <span class="row-actions">
+                                            <button class="button" @onclick="() => AdjustCapacityAsync(slot.ConfirmedSlotId)"
+                                                    disabled="@_busy"
+                                                    title="Saves the total shown against this slot.">Adjust headcount</button>
+                                            <button class="button button-danger" @onclick="() => CancelSlotAsync(slot.ConfirmedSlotId)"
+                                                    disabled="@_busy"
+                                                    title="Cancels the window for every appointment type. Booked candidates have to be re-invited.">
+                                                @(_cancelAwaitingConfirmation == slot.ConfirmedSlotId ? "Confirm cancel" : "Cancel slot")
+                                            </button>
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private SlotBoardDto? _board;
+    private string? _error;
+    private bool _busy;
+    private bool _loading;
+
+    private DateOnly _newDate = DateOnly.FromDateTime(DateTime.Today).AddDays(7);
+    private TimeOnly? _newStartTime = new(9, 0);
+
+    private readonly Dictionary<Guid, int> _headcounts = [];
+    private readonly Dictionary<Guid, int> _confirmedTotals = [];
+
+    // Set when a cancel was refused pending confirmation; the next click on the same slot confirms.
+    private Guid? _cancelAwaitingConfirmation;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        if (_loading || _busy)
+        {
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            await ReloadBoardAsync();
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ProposeAsync()
+    {
+        if (_newStartTime is not { } startTime)
+        {
+            _error = "Enter a start time as HH:mm.";
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var outcome = await SlotsApi.ProposeAsync(
+                _newDate, startTime, CancellationToken.None);
+            return AsBool(outcome);
+        });
+    }
+
+    private Task AcceptAsync(Guid proposalId) =>
+        RunAsync(() => SlotsApi.AcceptAsync(
+            proposalId,
+            _headcounts[proposalId],
+            CancellationToken.None));
+
+    private Task WithdrawAcceptanceAsync(Guid proposalId) =>
+        RunAsync(() => SlotsApi.WithdrawAcceptanceAsync(proposalId, CancellationToken.None));
+
+    private Task WithdrawProposalAsync(Guid proposalId) =>
+        RunAsync(() => SlotsApi.WithdrawProposalAsync(proposalId, CancellationToken.None));
+
+    private async Task AdjustCapacityAsync(Guid slotId)
+    {
+        if (_busy || _loading)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var outcome = await SlotsApi.AdjustCapacityAsync(
+                slotId,
+                _confirmedTotals[slotId],
+                CancellationToken.None);
+            _error = outcome.ErrorMessage;
+            if (outcome.IsSuccess)
+            {
+                await ReloadBoardAsync();
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CancelSlotAsync(Guid slotId)
+    {
+        if (_busy || _loading)
+        {
+            return;
+        }
+
+        var confirm = _cancelAwaitingConfirmation == slotId;
+
+        _busy = true;
+        try
+        {
+            var outcome = await SlotsApi.CancelConfirmedSlotAsync(
+                slotId, confirm, CancellationToken.None);
+
+            if (!outcome.IsSuccess && outcome.StatusCode == 409 && !confirm)
+            {
+                _cancelAwaitingConfirmation = slotId;
+                _error = outcome.ErrorMessage + " Press Cancel slot again to confirm.";
+                return;
+            }
+
+            _cancelAwaitingConfirmation = null;
+            _error = outcome.ErrorMessage;
+            await ReloadBoardAsync();
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync(Func<Task<ApiOutcome<bool>>> action)
+    {
+        if (_busy || _loading)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var outcome = await action();
+            _error = outcome.ErrorMessage;
+            await ReloadBoardAsync();
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ReloadBoardAsync()
+    {
+        var outcome = await SlotsApi.GetBoardAsync(CancellationToken.None);
+        if (!outcome.IsSuccess || outcome.Value is null)
+        {
+            _error = outcome.ErrorMessage;
+            return;
+        }
+
+        _board = outcome.Value;
+        _error = null;
+        _headcounts.Clear();
+        _confirmedTotals.Clear();
+
+        foreach (var proposal in _board.OpenProposals)
+        {
+            _headcounts[proposal.ProposalId] = proposal.MyAcceptedHeadcount ?? 1;
+        }
+
+        foreach (var slot in _board.ConfirmedSlots)
+        {
+            _confirmedTotals[slot.ConfirmedSlotId] = slot.MyHeadcount;
+        }
+    }
+
+    private static ApiOutcome<bool> AsBool(ApiOutcome<Guid> outcome) =>
+        outcome.IsSuccess
+            ? ApiOutcome<bool>.Success(true, outcome.StatusCode)
+            : ApiOutcome<bool>.Failure(outcome.ErrorMessage!, outcome.StatusCode);
+}

@@ -1,0 +1,216 @@
+@page "/audit"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using EventBooking.Web.Services
+@inject AuditClient Audits
+@inject MeClient Me
+@inject HeadOfficeTimePresentation TimePresentation
+
+<PageTitle>Audit trail</PageTitle>
+
+<section class="page audit-page" aria-labelledby="audit-heading">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Assurance</span>
+            <h1 id="audit-heading">Audit trail</h1>
+            <p>Search what changed, who changed it, and when.</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body audit-filters" aria-label="Audit search filters">
+            <div class="field">
+                <label class="field-label" for="audit-from">From</label>
+                <input id="audit-from" type="date" @bind="_from"
+                       title="Only shows changes recorded on or after this date." />
+            </div>
+            <div class="field">
+                <label class="field-label" for="audit-to">To</label>
+                <input id="audit-to" type="date" @bind="_to"
+                       title="Only shows changes recorded on or before this date." />
+            </div>
+            <div class="field">
+                <label class="field-label" for="audit-actor-type">Actor</label>
+                <select id="audit-actor-type" @bind="_actorType"
+                        title="Who caused the change: a staff member, a candidate's link, or the system.">
+                    <option value="">Any actor</option>
+                    @foreach (var actorType in ActorTypes)
+                    {
+                        <option value="@actorType">@actorType</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label" for="audit-action">Action</label>
+                <select id="audit-action" @bind="_action"
+                        title="The recorded change to look for.">
+                    <option value="">Any action</option>
+                    @foreach (var action in Actions)
+                    {
+                        <option value="@action">@action</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label" for="audit-identifier">Identifier</label>
+                <input id="audit-identifier" @bind="_identifier" placeholder="Entity or actor id"
+                       title="Matches an audited entity identifier or an actor identifier exactly." />
+            </div>
+            @if (_showEntityType)
+            {
+                <div class="field">
+                    <label class="field-label" for="audit-entity-type">Entity</label>
+                    <select id="audit-entity-type" @bind="_entityType"
+                            title="Narrows the search to one kind of audited entity.">
+                        <option value="">All entities</option>
+                        @foreach (var entityType in EntityTypes)
+                        {
+                            <option value="@entityType">@entityType</option>
+                        }
+                    </select>
+                </div>
+            }
+            <button id="audit-search" type="button" class="button button-primary" @onclick="SearchAsync" disabled="@_busy">
+                Search
+            </button>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <p class="error" role="alert">@_error</p>
+    }
+    else if (_rows.Count == 0 && !_busy)
+    {
+        <p>Nothing matches these filters.</p>
+    }
+
+    @if (_rows.Count > 0)
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">When</th>
+                        <th scope="col">What</th>
+                        <th scope="col">Who</th>
+                        <th scope="col">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td data-label="When">@TimePresentation.Format(row.Timestamp)</td>
+                            <td data-label="What">@row.EntityType @row.Action</td>
+                            <td data-label="Who">@row.ActorType @row.ActorId</td>
+                            <td data-label="Details">@row.Details</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (_nextCursor is not null)
+    {
+        <button id="audit-load-more" type="button" class="button" @onclick="LoadMoreAsync" disabled="@_busy">
+            Load more
+        </button>
+    }
+</section>
+
+@code {
+    // The web app deliberately does not reference the domain assembly, so the server's enum names
+    // are repeated here as plain strings; the API rejects anything it does not recognise.
+    private static readonly string[] ActorTypes = ["Staff", "CandidateToken", "System"];
+
+    private static readonly string[] Actions =
+    [
+        "ProposalCreated", "ProposalWithdrawn", "AcceptanceRecorded", "AcceptanceWithdrawn",
+        "SlotConfirmed", "SlotCancelled", "CapacityDecremented", "CapacityIncremented",
+        "InviteCreated", "InviteSent", "InviteExpired", "InviteOptionReplaced",
+        "BookingCreated", "BookingCancelled", "CapacityAdjusted", "SlotImported",
+        "StaffAccessChanged", "StaffAccessRemoved", "AppointmentCheckedIn", "AppointmentCompleted",
+        "AppointmentMarkedNoShow", "AppointmentStatusCorrected", "EmployeeGroupAssigned",
+        "EmployeeGroupChanged", "RecoveryInviteCreated", "RecoveryInviteCancelled",
+        "RecoveryBookingCreated", "RecoveryBookingConcluded", "StaffRolesSynced",
+    ];
+
+    private static readonly string[] EntityTypes =
+    [
+        "SlotProposal", "ConfirmedSlot", "Invite", "Booking",
+        "StaffAccessProfile", "BookingAppointment", "Candidate",
+    ];
+
+    private const int PageSize = 50;
+
+    private readonly List<AuditRowDto> _rows = [];
+    private DateTime? _from;
+    private DateTime? _to;
+    private string? _actorType;
+    private string? _action;
+    private string? _identifier;
+    private string? _entityType;
+    private string? _nextCursor;
+    private string? _error;
+    private bool _busy;
+    private bool _showEntityType;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var me = await Me.GetAsync(CancellationToken.None);
+        _showEntityType = me.Value?.Roles.Contains("Coordinator") == true;
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _rows.Clear();
+        _nextCursor = null;
+        await LoadMoreAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var outcome = await Audits.SearchAsync(
+                new AuditSearchFilterDto(
+                    ToOffset(_from),
+                    ToOffset(_to),
+                    EmptyToNull(_actorType),
+                    EmptyToNull(_action),
+                    EmptyToNull(_identifier),
+                    EmptyToNull(_entityType),
+                    _nextCursor,
+                    PageSize),
+                CancellationToken.None);
+
+            if (outcome is { IsSuccess: true, Value: not null })
+            {
+                _rows.AddRange(outcome.Value.Rows);
+                _nextCursor = outcome.Value.NextCursor;
+            }
+            else
+            {
+                _error = outcome.ErrorMessage ?? "Something went wrong. Please try again.";
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static DateTimeOffset? ToOffset(DateTime? value) =>
+        value is null ? null : new DateTimeOffset(DateTime.SpecifyKind(value.Value, DateTimeKind.Utc));
+
+    private static string? EmptyToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+}

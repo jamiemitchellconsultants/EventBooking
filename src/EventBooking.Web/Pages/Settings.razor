@@ -1,0 +1,223 @@
+@page "/settings"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using EventBooking.Web.Services
+@inject AdminClient Admin
+
+<PageTitle>System settings</PageTitle>
+
+<section class="page settings-page" aria-labelledby="settings-heading" aria-busy="@(_isLoading || _busy ? "true" : "false")">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Administration</span>
+            <h1 id="settings-heading">System settings</h1>
+            <p>Fixed appointment types and invitation timing.</p>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="banner error" role="alert">
+            <strong>@(_settings is null ? "Couldn’t load settings." : "Couldn’t refresh settings.")</strong>
+            @_error
+        </div>
+    }
+
+    @if (_saved)
+    {
+        <div class="banner saved" role="status">
+            <strong>Saved.</strong> These changes apply to invites created from now on.
+        </div>
+    }
+
+    @if (_isLoading && _settings is null)
+    {
+        <div class="card loading-block" role="status">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+            <span class="visually-hidden">Loading system settings…</span>
+        </div>
+    }
+    else if (_settings is null)
+    {
+        <div class="card">
+            <div class="empty-state">
+                <strong>Settings could not be loaded.</strong>
+                <p>Try again to fetch the current appointment types and invite timing.</p>
+                <button class="button" @onclick="ReloadPageAsync" disabled="@(_isLoading || _busy)">Try again</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <section class="card" aria-labelledby="types-heading">
+            <div class="card-heading">
+                <h2 id="types-heading">
+                    Fixed appointment types
+                    <span class="tip" tabindex="0" role="note"
+                          aria-label="The three appointment types are fixed by the system. Only the manager assignment changes."
+                          data-tip="The three appointment types are fixed by the system. Only the manager assignment changes."></span>
+                </h2>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Appointment type</th>
+                            <th scope="col" title="The staff account that negotiates slots for this appointment type.">Manager identifier</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var type in _settings.AppointmentTypes)
+                        {
+                            <tr @key="type.Id">
+                                <td data-label="Appointment type">
+                                    <strong>@type.Name</strong>
+                                    <span class="type-code">@type.Code</span>
+                                </td>
+                                <td data-label="Manager identifier">
+                                    @ManagerLabel(type)
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="invite-timing-heading">
+            <div class="card-heading">
+                <h2 id="invite-timing-heading">
+                    Invite timing
+                    <span class="tip" tabindex="0" role="note"
+                          aria-label="These two values shape how long a candidate has to respond and how hard the system chases them."
+                          data-tip="These two values shape how long a candidate has to respond and how hard the system chases them."></span>
+                </h2>
+            </div>
+            <div class="card-body settings-form-row">
+                <div class="field">
+                    <label for="invite-expiry-days">Invite expiry window (days)</label>
+                    <input id="invite-expiry-days" class="number-input" type="number" min="1" @bind="_inviteExpiryDays" disabled="@_busy" />
+                    <span class="hint">How long a booking link stays usable.</span>
+                </div>
+                <div class="field">
+                    <label for="max-auto-retries">Max auto-retry count</label>
+                    <input id="max-auto-retries" class="number-input" type="number" min="0" @bind="_maxAutoRetryCount" disabled="@_busy" />
+                    <span class="hint">Automatic re-invites for an unanswered invitation before a human is asked to step in.</span>
+                </div>
+                <button class="button button-primary" @onclick="SaveAsync" disabled="@_busy"
+                        title="Applies to invites created after you save.">Save changes</button>
+            </div>
+            <p class="callout settings-callout">
+                <strong>Applies going forward:</strong> a change here governs invites created after you save — it does not reach back and change invites already sent.
+            </p>
+        </section>
+
+    }
+</section>
+
+@code {
+    // The staff number stays visible next to the name: it is the identifier an admin acts on.
+    private static string ManagerLabel(AppointmentTypeDto type) => type switch
+    {
+        { ManagerDisplayName: not null, ManagerStaffId: not null } =>
+            $"{type.ManagerDisplayName} ({type.ManagerStaffId})",
+        { ManagerStaffId: not null } => type.ManagerStaffId,
+        { ManagerUserId: null } => "Unassigned",
+        _ => "Assigned (pending identity sync)",
+    };
+
+    private const string UnexpectedError = "Something went wrong. Please try again.";
+
+    private SettingsDto? _settings;
+    private string? _error;
+    private bool _busy;
+    private bool _isLoading;
+    private bool _saved;
+    private int _inviteExpiryDays;
+    private int _maxAutoRetryCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadPageAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private Task<bool> ReloadAsync()
+    {
+        if (_isLoading || _busy)
+        {
+            return Task.FromResult(false);
+        }
+
+        return ReloadCoreAsync();
+    }
+
+    private async Task<bool> ReloadCoreAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var outcome = await Admin.GetAsync(CancellationToken.None);
+            if (outcome.IsSuccess && outcome.Value is not null)
+            {
+                _settings = outcome.Value;
+                _inviteExpiryDays = _settings.InviteExpiryDays;
+                _maxAutoRetryCount = _settings.MaxAutoRetryCount;
+                _error = null;
+                return true;
+            }
+
+            _error = outcome.ErrorMessage ?? UnexpectedError;
+            return false;
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+            return false;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy || _isLoading)
+        {
+            return;
+        }
+
+        _saved = false;
+        _error = null;
+        _busy = true;
+        try
+        {
+            var outcome = await Admin.UpdateAsync(
+                _inviteExpiryDays,
+                _maxAutoRetryCount,
+                CancellationToken.None);
+            if (!outcome.IsSuccess)
+            {
+                _error = outcome.ErrorMessage ?? UnexpectedError;
+                return;
+            }
+
+            _saved = true;
+            await ReloadCoreAsync();
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

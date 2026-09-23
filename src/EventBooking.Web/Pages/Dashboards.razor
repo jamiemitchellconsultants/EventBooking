@@ -1,0 +1,340 @@
+@page "/dashboards"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using EventBooking.Web.Services
+@inject DashboardsClient DashboardsApi
+@inject CandidatesClient CandidatesApi
+
+<PageTitle>Dashboards</PageTitle>
+
+<section class="page dashboards-page" aria-labelledby="dashboards-heading" aria-busy="@(_isLoading || _busy)">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Coordination</span>
+            <h1 id="dashboards-heading">Dashboards</h1>
+            <p>Read-only views of current availability, follow-ups, and slots.</p>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="banner error dashboard-banner" role="alert">
+            @_error
+            @if (!_isLoading)
+            {
+                <button class="button button-quiet button-small" @onclick="ReloadAsync" disabled="@_busy">Try again</button>
+            }
+        </div>
+    }
+
+    @if (_isLoading && _data is null)
+    {
+        <div class="card loading-block" role="status">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+            <span class="visually-hidden">Loading dashboards…</span>
+        </div>
+    }
+    else if (_data is null)
+    {
+        <div class="card">
+            <div class="empty-state">
+                <strong>Couldn’t load dashboards</strong>
+                <p>Try again to load the latest information.</p>
+                <button class="button" @onclick="ReloadAsync">Try again</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-tabs-row">
+            <div class="dashboard-tabs" role="tablist" aria-label="Dashboard views" @onkeydown="OnTabListKeyDownAsync">
+                <button @ref="_awaitingTabRef" id="awaiting-tab" class="@TabClass(Tab.Awaiting)" role="tab"
+                        aria-selected="@AriaSelected(Tab.Awaiting)" aria-controls="dashboard-panel"
+                        tabindex="@TabIndexFor(Tab.Awaiting)"
+                        @onclick="() => SelectTab(Tab.Awaiting)" disabled="@_busy">
+                    Awaiting availability <span class="tab-count">(@_data.AwaitingAvailability.Count)</span>
+                </button>
+                <button @ref="_noResponseTabRef" id="no-response-tab" class="@TabClass(Tab.NoResponse)" role="tab"
+                        aria-selected="@AriaSelected(Tab.NoResponse)" aria-controls="dashboard-panel"
+                        tabindex="@TabIndexFor(Tab.NoResponse)"
+                        @onclick="() => SelectTab(Tab.NoResponse)" disabled="@_busy">
+                    No response <span class="tab-count">(@_data.NoResponse.Count)</span>
+                </button>
+                <button @ref="_slotsTabRef" id="slots-tab" class="@TabClass(Tab.Slots)" role="tab"
+                        aria-selected="@AriaSelected(Tab.Slots)" aria-controls="dashboard-panel"
+                        tabindex="@TabIndexFor(Tab.Slots)"
+                        @onclick="() => SelectTab(Tab.Slots)" disabled="@_busy">
+                    Slots <span class="tab-count">(@_data.Slots.Count)</span>
+                </button>
+                @{
+                    var failedCount = _data.EmailStatuses.Count(e => e.Status == "Failed");
+                    var pendingCount = _data.EmailStatuses.Count(e => e.Status == "Pending");
+                }
+                @if (failedCount > 0)
+                {
+                    <span class="error">@failedCount failed email@(failedCount == 1 ? "" : "s")</span>
+                }
+                @if (pendingCount > 0)
+                {
+                    <span class="warning">@pendingCount pending email@(pendingCount == 1 ? "" : "s")</span>
+                }
+            </div>
+        </div>
+
+        <div id="dashboard-panel" class="card dashboard-card" role="tabpanel" aria-labelledby="@ActiveTabId">
+            @if (_tab == Tab.Awaiting)
+            {
+                @if (_data.AwaitingAvailability.Count == 0)
+                {
+                    <div class="empty-state">
+                        <strong>Nobody is waiting</strong>
+                        <p>Every candidate either has an invitation or is ready for follow-up.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th scope="col">Candidate</th><th scope="col" title="The appointment types this candidate's employee group requires.">Required types</th><th scope="col" title="When the candidate first became available to invite.">Waiting since</th><th scope="col" title="Every recorded change for this candidate, with who made it.">History</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _data.AwaitingAvailability)
+                                {
+                                    <tr @key="row.CandidateId">
+                                        <td data-label="Candidate"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
+                                        <td data-label="Required types">
+                                            <div class="chip-row">
+                                                @foreach (var requiredCode in row.RequiredCodes)
+                                                {
+                                                    <span class="chip">@requiredCode</span>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td data-label="Waiting since">@row.WaitingSince.ToString("dd MMM yyyy") · @row.DaysWaiting day@(row.DaysWaiting == 1 ? string.Empty : "s")</td>
+                                        <td data-label="History"><AuditHistory CandidateId="@row.CandidateId" /></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+            else if (_tab == Tab.NoResponse)
+            {
+                @if (_data.NoResponse.Count == 0)
+                {
+                    <div class="empty-state">
+                        <strong>Nobody is stuck</strong>
+                        <p>Every invited candidate has responded or is still within the follow-up window.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th scope="col">Candidate</th><th scope="col" title="The appointment types this candidate's employee group requires.">Required types</th><th scope="col" title="When the invitation stopped being chased.">Gave up on</th><th scope="col" title="Every recorded change for this candidate, with who made it.">History</th><th scope="col" class="actions-column"><span class="visually-hidden">Actions</span></th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _data.NoResponse)
+                                {
+                                    <tr @key="row.CandidateId">
+                                        <td data-label="Candidate"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
+                                        <td data-label="Required types">
+                                            <div class="chip-row">
+                                                @foreach (var requiredCode in row.RequiredCodes)
+                                                {
+                                                    <span class="chip">@requiredCode</span>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td data-label="Gave up on">@row.GaveUpOn.ToString("dd MMM yyyy")</td>
+                                        <td data-label="History"><AuditHistory CandidateId="@row.CandidateId" /></td>
+                                        <td data-label="Actions">
+                                            <button class="button button-primary button-small" @onclick="() => ReinviteAsync(row.CandidateId)" disabled="@_busy"
+                                                    title="Sends a fresh single-use booking link and restarts the follow-up window.">
+                                                @(_busy ? "Re-inviting…" : "Re-invite now")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+            else if (_data.Slots.Count == 0)
+            {
+                <div class="empty-state">
+                    <strong>No confirmed slots</strong>
+                    <p>Confirmed appointment windows will appear here once all appointment types have accepted them.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th scope="col">Date</th><th scope="col">Window</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Candidates currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this slot, with who made it.">History</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var slot in _data.Slots)
+                            {
+                                <tr @key="slot.ConfirmedSlotId">
+                                    <td data-label="Date">@slot.Date.ToString("dd MMM yyyy")</td>
+                                    <td data-label="Window">@FormatWindow(slot.StartTime, slot.EndTime)</td>
+                                    <td data-label="Capacity by type">
+                                        <div class="chip-row">
+                                            @foreach (var capacity in slot.Capacities)
+                                            {
+                                                <span class="chip">@capacity.Code @capacity.RemainingCapacity/@capacity.TotalHeadcount</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td data-label="Active bookings">@slot.ActiveBookings</td>
+                                    <td data-label="History"><AuditHistory SlotId="@slot.ConfirmedSlotId" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private const string UnexpectedError = "Something went wrong. Please try again.";
+
+    private enum Tab { Awaiting, NoResponse, Slots }
+
+    private static readonly Tab[] TabOrder = [Tab.Awaiting, Tab.NoResponse, Tab.Slots];
+
+    private DashboardsDto? _data;
+    private Tab _tab = Tab.Awaiting;
+    private string? _error;
+    private bool _busy;
+    private bool _isLoading = true;
+
+    private ElementReference _awaitingTabRef;
+    private ElementReference _noResponseTabRef;
+    private ElementReference _slotsTabRef;
+
+    private string ActiveTabId => _tab switch
+    {
+        Tab.Awaiting => "awaiting-tab",
+        Tab.NoResponse => "no-response-tab",
+        _ => "slots-tab",
+    };
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private void SelectTab(Tab tab) => _tab = tab;
+
+    private string AriaSelected(Tab tab) => _tab == tab ? "true" : "false";
+
+    private ElementReference TabRefFor(Tab tab) => tab switch
+    {
+        Tab.Awaiting => _awaitingTabRef,
+        Tab.NoResponse => _noResponseTabRef,
+        _ => _slotsTabRef,
+    };
+
+    private int TabIndexFor(Tab tab) => _tab == tab ? 0 : -1;
+
+    /// <summary>
+    /// The WAI-ARIA tabs pattern: left/right (with wraparound) and home/end move both the selection
+    /// and keyboard focus together, so a screen reader user never lands on a tab that isn't active.
+    /// </summary>
+    private async Task OnTabListKeyDownAsync(KeyboardEventArgs e)
+    {
+        var currentIndex = Array.IndexOf(TabOrder, _tab);
+        var newIndex = e.Key switch
+        {
+            "ArrowRight" => (currentIndex + 1) % TabOrder.Length,
+            "ArrowLeft" => (currentIndex - 1 + TabOrder.Length) % TabOrder.Length,
+            "Home" => 0,
+            "End" => TabOrder.Length - 1,
+            _ => currentIndex,
+        };
+
+        if (newIndex == currentIndex)
+        {
+            return;
+        }
+
+        _tab = TabOrder[newIndex];
+        StateHasChanged();
+        await TabRefFor(_tab).FocusAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _isLoading = true;
+
+        try
+        {
+            var outcome = await DashboardsApi.GetAsync(CancellationToken.None);
+            if (outcome.IsSuccess)
+            {
+                _data = outcome.Value;
+                _error = null;
+            }
+            else
+            {
+                _error = outcome.ErrorMessage ?? UnexpectedError;
+            }
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ReinviteAsync(Guid candidateId)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+
+        try
+        {
+            var outcome = await CandidatesApi.TriggerInviteAsync(candidateId, CancellationToken.None);
+            if (!outcome.IsSuccess)
+            {
+                _error = outcome.ErrorMessage ?? UnexpectedError;
+                return;
+            }
+
+            await ReloadAsync();
+            if (_error is not null)
+            {
+                // The invite itself succeeded; do not let the refresh's own failure read as if the
+                // invite had failed.
+                _error = $"Invite sent, but the dashboard could not refresh: {_error}";
+            }
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string TabClass(Tab tab) => _tab == tab ? "dashboard-tab selected" : "dashboard-tab";
+
+    private static string FormatWindow(TimeOnly startTime, TimeOnly endTime) =>
+        $"{startTime:HH\\:mm}–{endTime:HH\\:mm}";
+}

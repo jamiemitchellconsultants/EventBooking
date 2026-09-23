@@ -1,0 +1,66 @@
+namespace EventBooking.Domain.Audit;
+
+/// <summary>Defines audit action for the current use case.</summary>
+public enum AuditAction
+{
+    /// <summary>Defines proposal created for the current use case.</summary>
+    ProposalCreated = 1,
+    /// <summary>Defines proposal withdrawn for the current use case.</summary>
+    ProposalWithdrawn = 2,
+    /// <summary>Defines acceptance recorded for the current use case.</summary>
+    AcceptanceRecorded = 3,
+    /// <summary>Defines acceptance withdrawn for the current use case.</summary>
+    AcceptanceWithdrawn = 4,
+    /// <summary>Defines slot confirmed for the current use case.</summary>
+    SlotConfirmed = 5,
+    /// <summary>Defines slot cancelled for the current use case.</summary>
+    SlotCancelled = 6,
+    /// <summary>Defines capacity decremented for the current use case.</summary>
+    CapacityDecremented = 7,
+    /// <summary>Defines capacity incremented for the current use case.</summary>
+    CapacityIncremented = 8,
+    /// <summary>Defines invite created for the current use case.</summary>
+    InviteCreated = 9,
+    /// <summary>Defines invite sent for the current use case.</summary>
+    InviteSent = 10,
+    /// <summary>Defines invite expired for the current use case.</summary>
+    InviteExpired = 11,
+    /// <summary>Defines invite option replaced for the current use case.</summary>
+    InviteOptionReplaced = 12,
+    /// <summary>Defines booking created for the current use case.</summary>
+    BookingCreated = 13,
+    /// <summary>Defines booking cancelled for the current use case.</summary>
+    BookingCancelled = 14,
+    /// <summary>Defines capacity adjusted for the current use case.</summary>
+    CapacityAdjusted = 15,
+    /// <summary>Defines slot imported for the current use case.</summary>
+    SlotImported = 16,
+    /// <summary>Defines staff access changed for the current use case.</summary>
+    StaffAccessChanged = 17,
+    /// <summary>Defines staff access removed for the current use case.</summary>
+    StaffAccessRemoved = 18,
+    /// <summary>Records an Expected appointment moving to CheckedIn.</summary>
+    AppointmentCheckedIn = 19,
+    /// <summary>Records a CheckedIn appointment moving to Completed.</summary>
+    AppointmentCompleted = 20,
+    /// <summary>Records an Expected appointment moving to NoShow.</summary>
+    AppointmentMarkedNoShow = 21,
+    /// <summary>Records one approved reverse appointment transition.</summary>
+    AppointmentStatusCorrected = 22,
+    /// <summary>Records the initial Employee Group assignment of a Candidate.</summary>
+    EmployeeGroupAssigned = 23,
+    /// <summary>Records a Candidate Employee Group change and its derived requirements.</summary>
+    EmployeeGroupChanged = 24,
+    /// <summary>Records a Coordinator issuing a recovery Invite for missed appointments.</summary>
+    RecoveryInviteCreated = 25,
+    /// <summary>Records a Coordinator cancelling a pending recovery Invite.</summary>
+    RecoveryInviteCancelled = 26,
+    /// <summary>Records a recovery Booking linked to its original journey root.</summary>
+    RecoveryBookingCreated = 27,
+    /// <summary>Records a recovery Booking concluded after terminal appointment outcomes.</summary>
+    RecoveryBookingConcluded = 28,
+    /// <summary>Records an identity-provider-driven role change applied by the claims sync.</summary>
+    StaffRolesSynced = 29,
+    /// <summary>Records a Coordinator deleting a Candidate and cascading onto their active bookings.</summary>
+    CandidateDeleted = 30,
+}

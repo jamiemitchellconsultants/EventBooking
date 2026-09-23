@@ -1,0 +1,131 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Microsoft.AspNetCore.Components.Authorization
+@using EventBooking.Web.Services
+@implements IDisposable
+@inject NavigationManager Navigation
+@inject MeClient Me
+@inject AuthenticationStateProvider AuthState
+
+<div class="app-shell">
+    <header class="topbar">
+        <div class="brand-lockup">
+            <BrandMark />
+            <div>
+                <span class="brand-name">British Airways</span>
+                <a class="brand" href="/" aria-label="EventBooking home">EventBooking</a>
+            </div>
+        </div>
+        <AuthorizeView>
+            <Authorized>
+                <div class="identity" aria-label="Signed-in staff member">
+                    <strong>@context.User.Identity?.Name</strong>
+                    <span>Staff workspace</span>
+                    <button type="button" @onclick="SignOut"
+                            title="End this session on this device. Any unsaved changes on the page are discarded.">
+                        Sign out
+                    </button>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <a class="sign-in-button" href="authentication/login">Sign in</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </header>
+
+    @if (_navLinks.Count > 0)
+    {
+        <nav class="staff-nav" aria-label="Workspace sections">
+            @foreach (var link in _navLinks)
+            {
+                <a class="staff-nav-link @(IsActive(link.Href) ? "active" : null)"
+                   href="@link.Href" title="@link.Description">
+                    @link.Label
+                </a>
+            }
+        </nav>
+    }
+
+    <main class="main-content">
+        <CascadingValue Value="_meOutcome">
+            @Body
+        </CascadingValue>
+    </main>
+
+    <footer class="app-footer">
+        <span>British Airways · Recruitment appointment coordination</span>
+        <span>Times shown at head office local time</span>
+    </footer>
+</div>
+
+@code {
+    private IReadOnlyList<StaffLink> _navLinks = [];
+
+    // Cascaded so pages needing the caller's roles (e.g. Home) reuse this single fetch instead
+    // of racing it with a second concurrent call to the same token-protected endpoint.
+    private ApiOutcome<MeDto>? _meOutcome;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        AuthState.AuthenticationStateChanged += OnAuthenticationStateChanged;
+
+        await LoadMeAsync();
+    }
+
+    // Right after the OIDC login redirect completes, the first GetAuthenticationStateAsync call
+    // here can still race the provider and see an unauthenticated user even though the header's
+    // AuthorizeView (subscribed to this same event via CascadingAuthenticationState) goes on to
+    // render as signed in. Without this subscription that miss was permanent: OnInitializedAsync
+    // runs once, so _meOutcome stayed null and the workspace tiles never left "Loading…".
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> _)
+    {
+        await LoadMeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadMeAsync()
+    {
+        if (_meOutcome is not null)
+        {
+            return;
+        }
+
+        var state = await AuthState.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        _meOutcome = await Me.GetAsync(CancellationToken.None);
+        if (_meOutcome.IsSuccess && _meOutcome.Value is not null)
+        {
+            var links = StaffNavigation.LinksFor(_meOutcome.Value);
+            if (links.Count > 0)
+            {
+                links = [.. links, new StaffLink("/help", "Help", "Read the guide for your role")];
+            }
+
+            _navLinks = links;
+        }
+    }
+
+    private bool IsActive(string href) =>
+        string.Equals(
+            Navigation.ToBaseRelativePath(Navigation.Uri).TrimEnd('/'),
+            href.TrimStart('/').TrimEnd('/'),
+            StringComparison.OrdinalIgnoreCase);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => StateHasChanged();
+
+    // Sign-out must start as in-page navigation: landing on authentication/logout
+    // any other way makes the framework reject it as not initiated from the page.
+    private void SignOut() =>
+        Navigation.NavigateToLogout("authentication/logout");
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        AuthState.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+}

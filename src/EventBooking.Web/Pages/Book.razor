@@ -1,0 +1,232 @@
+@page "/book/{Token}"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Services
+@layout EventBooking.Web.Layout.CandidateLayout
+@inject BookingClient Booking
+@inject CandidatePageOptions PageOptions
+
+<PageTitle>Choose a time</PageTitle>
+
+
+<section class="booking-page" aria-busy="@_loading">
+    @if (_loading)
+    {
+        <div class="booking-page__status" aria-label="Loading booking link">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+        </div>
+    }
+    else if (_confirmed is not null)
+    {
+        <div class="booking-page__intro">
+            <h1>Booking confirmed</h1>
+            <p class="booking-page__lead">You're booked in for:</p>
+        </div>
+        <div class="booking-page__status">
+            @if (_confirmed.DeliveryStatus == "Sent")
+            {
+                <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your confirmation email has been sent.</p>
+            }
+            else
+            {
+                <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your booking is confirmed. We could not confirm email delivery; use your management link below.</p>
+            }
+            <p class="booking-page__confirmed-window">@_confirmed.Date.ToString("dddd, dd MMM yyyy") · @_confirmed.StartTime.ToString("HH\\:mm") – @_confirmed.EndTime.ToString("HH\\:mm")</p>
+            @if (!string.IsNullOrWhiteSpace(_confirmed.HeadOfficeAddress))
+            {
+                <p class="booking-page__note">Head office: @_confirmed.HeadOfficeAddress</p>
+            }
+            <p class="booking-page__note">Need to change or cancel? <a href="@ManageUrl">Use your booking management link.</a></p>
+        </div>
+    }
+    else if (_expired)
+    {
+        <div class="booking-page__status booking-page__expired">
+            <p class="booking-page__note"><strong>This link has expired.</strong><br />Contact your coordinator at @PageOptions.CoordinatorContact and they’ll send you a fresh one.</p>
+        </div>
+    }
+    else if (_invite is null)
+    {
+        <div class="booking-page__intro">
+            <h1>We couldn’t load your booking link</h1>
+        </div>
+        <div class="booking-page__status">
+            <p class="booking-page__banner" role="alert">@(_error ?? "Something went wrong. Please try again.")</p>
+            <button class="booking-page__button" @onclick="ReloadAsync">Try again</button>
+        </div>
+    }
+    else
+    {
+        <div class="booking-page__intro">
+            <h1>@BookHeading(_invite)</h1>
+            <p class="booking-page__lead">Hi <strong>@_invite.CandidateName</strong> — pick a time for your <strong>@string.Join(" and ", _invite.AppointmentTypeNames)</strong> appointment.</p>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="booking-page__banner" role="alert"><strong>Something went wrong confirming that time.</strong> @_error</p>
+        }
+
+        @if (_invite.Options.Count == 0)
+        {
+            <div class="booking-page__status">
+                <p class="booking-page__note"><strong>Nothing fits right now.</strong> There’s no time currently open for your appointment type. Please contact @PageOptions.CoordinatorContact and the team will be in touch to arrange one.</p>
+            </div>
+        }
+        else
+        {
+            <p class="booking-page__note booking-page__choose-hint">
+                Each option is a four-hour window. Once you confirm, you can still cancel or move
+                it using the link in your confirmation email.
+            </p>
+
+            <div class="booking-page__card">
+                <fieldset class="booking-page__options">
+                    <legend class="visually-hidden">Available appointment times</legend>
+                    @foreach (var option in _invite.Options)
+                    {
+                        <label class="booking-page__option">
+                            <input type="radio"
+                                   name="slot"
+                                   checked="@(_chosen == option.ConfirmedSlotId)"
+                                   @onchange="() => _chosen = option.ConfirmedSlotId" />
+                            <span class="booking-page__option-copy">
+                                <span class="booking-page__option-date">@option.Date.ToString("dddd, dd MMM yyyy")</span>
+                                <span class="booking-page__option-time">@option.StartTime.ToString("HH\\:mm") – @option.EndTime.ToString("HH\\:mm")</span>
+                            </span>
+                        </label>
+                    }
+                </fieldset>
+            </div>
+
+            <button class="booking-page__button" @onclick="ConfirmAsync" disabled="@(_busy || _chosen is null)">
+                @(_busy ? "Confirming…" : "Confirm this time")
+            </button>
+        }
+
+        <p class="booking-page__note booking-page__footnote">This link is single-use and only works for you — no sign-in required. Please do not forward it.</p>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public string Token { get; set; } = string.Empty;
+
+    private InviteDto? _invite;
+    private ConfirmedBookingDto? _confirmed;
+    private Guid? _chosen;
+    private string? _error;
+    private bool _expired;
+    private bool _loading = true;
+    private bool _busy;
+    private int _requestVersion;
+
+    private string ManageUrl => _confirmed is null
+        ? "/"
+        : $"/manage/{Uri.EscapeDataString(_confirmed.ManageToken)}";
+
+    private static string BookHeading(InviteDto invite) =>
+        invite.IsRecovery switch
+        {
+            false => "Choose a time",
+            true when invite.AppointmentTypeNames.Count == 1 =>
+                "Choose a new time for your missed appointment",
+            _ => "Choose a new time for your missed appointments",
+        };
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        var version = ++_requestVersion;
+        _loading = true;
+        _busy = false;
+        _invite = null;
+        _confirmed = null;
+        _chosen = null;
+        _error = null;
+        _expired = false;
+
+        try
+        {
+            var outcome = await Booking.GetInviteAsync(Token, CancellationToken.None);
+            if (version != _requestVersion)
+            {
+                return;
+            }
+
+            _invite = outcome.Value;
+            _expired = outcome.StatusCode == 404;
+            _error = _expired ? null : outcome.IsSuccess ? null : outcome.ErrorMessage;
+        }
+        catch (Exception)
+        {
+            if (version == _requestVersion)
+            {
+                _error = "Something went wrong. Please try again.";
+            }
+        }
+        finally
+        {
+            if (version == _requestVersion)
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_chosen is null || _busy)
+        {
+            return;
+        }
+
+        var version = _requestVersion;
+        var chosen = _chosen.Value;
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var outcome = await Booking.ConfirmAsync(Token, chosen, CancellationToken.None);
+            if (version != _requestVersion)
+            {
+                return;
+            }
+
+            if (outcome.IsSuccess)
+            {
+                _confirmed = outcome.Value;
+                _invite = null;
+                return;
+            }
+
+            _error = outcome.ErrorMessage;
+            if (outcome.StatusCode == 409)
+            {
+                var conflictMessage = _error;
+                await ReloadAsync();
+                if (version + 1 == _requestVersion && !_expired)
+                {
+                    _error = conflictMessage;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            if (version == _requestVersion)
+            {
+                _error = "Something went wrong. Please try again.";
+            }
+        }
+        finally
+        {
+            if (version == _requestVersion)
+            {
+                _busy = false;
+            }
+        }
+    }
+}
