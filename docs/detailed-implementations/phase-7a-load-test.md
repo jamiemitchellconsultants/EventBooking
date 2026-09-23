@@ -554,6 +554,7 @@ public sealed class CapacityLockHoldTests
         var outcome = await handler.HandleAsync(
             new ConfirmBookingCommand("invalid", fixture.EventId), default);
         Assert.False(outcome.IsSuccess);
+        Assert.Equal("validation", outcome.Error.Code);
         Assert.Empty(observer.Intervals);
     }
 
@@ -582,6 +583,10 @@ using Xunit;
 
 namespace EventBooking.Api.Tests.Observability;
 
+[CollectionDefinition("capacity-lock-histogram", DisableParallelization = true)]
+public sealed class CapacityLockHoldHistogramCollection;
+
+[Collection("capacity-lock-histogram")]
 public sealed class CapacityLockHoldHistogramTests
 {
     [Fact]
@@ -607,6 +612,10 @@ public sealed class CapacityLockHoldHistogramTests
 }
 ```
 
+The dedicated collection disables parallel execution against every other class in the API test
+assembly. This keeps another test host's confirmation measurement out of the exact bucket and
+count assertions without starting the shared ApiFactory just for this unit test.
+
 Run both focused suites. Expected: FAIL because the port, instrument and histogram buckets do
 not exist. If a prior phase cannot compile, fix that separately before calling these tests red.
 
@@ -628,8 +637,9 @@ Change ConfirmBookingHandler's constructor to append
 `ICapacityLockHoldObserver? lockObserver = null`. The optional final argument keeps the many
 existing direct-construction tests valid. Import System.Diagnostics and
 EventBooking.Application.Invites for ViewInviteHandler. Replace its transaction
-body with the complete control-flow pattern below, retaining the Task 21 token-shaped error
-changes in the indicated validation section. The lock clock starts only after
+body with the complete control-flow pattern below. Keep Task 15's malformed-token Validation
+and missing-row NotFound branches; Task 21 changed only the four link-shaped refusals inside
+the locked invite section. The lock clock starts only after
 `capacities.LockForUpdateAsync` returns, so time waiting to acquire rows is excluded; the
 `finally` disposes the transaction first, so the observation includes commit/rollback and lock
 release. Every return and exception after acquisition is measured exactly once.
@@ -643,7 +653,7 @@ public async Task<Result<ConfirmBookingOutcome>> HandleAsync(
         || reference.Purpose != TokenPurpose.Book
         || reference.Version < Invite.InitialTokenVersion)
         return Result<ConfirmBookingOutcome>.Failure(
-            Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
+            Error.Validation("This link cannot be used to confirm a booking."));
 
     var transaction = await unitOfWork.BeginTransactionAsync(ct);
     long? lockAcquiredAt = null;
@@ -651,16 +661,14 @@ public async Task<Result<ConfirmBookingOutcome>> HandleAsync(
     {
         var port = await invites.GetAsync(reference.EntityId, ct);
         if (port is null)
-            return Result<ConfirmBookingOutcome>.Failure(
-                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such invite."));
         var attendee = await attendees.LockForUpdateAsync(port.AttendeeId, ct);
         if (attendee is null)
-            return Result<ConfirmBookingOutcome>.Failure(
-                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such attendee."));
         var invite = await invites.LockForUpdateAsync(reference.EntityId, ct);
-        if (invite is null || invite.AttendeeId != attendee.Id
-            || invite.TokenVersion != reference.Version
-            || invite.Status != InviteStatus.Pending && invite.Status != InviteStatus.Used)
+        if (invite is null)
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such invite."));
+        if (invite.AttendeeId != attendee.Id || invite.TokenVersion != reference.Version)
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         if (invite.Status == InviteStatus.Used)
@@ -671,6 +679,9 @@ public async Task<Result<ConfirmBookingOutcome>> HandleAsync(
                 $"This invite already confirmed booking {existing?.Id}.",
                 existing?.Id ?? Guid.Empty));
         }
+        if (invite.Status != InviteStatus.Pending)
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         if (!invite.IsUsableAt(clock.UtcNow))
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.TokenExpired(ViewInviteHandler.ExpiredLinkMessage));
