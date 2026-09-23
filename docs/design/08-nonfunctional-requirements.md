@@ -52,8 +52,6 @@ Targets below apply at that scale.
 - **Metrics.** OpenTelemetry metrics are exposed at `/metrics` (Prometheus format) for:
   - request rate, errors and latency per endpoint group;
   - `capacity-exhausted` count, as a business signal of undersupply;
-  - booking capacity-lock hold duration, including cumulative counts under 50 ms, used by the
-    500-way release load test to assert NFR-P3 from the booking handler's measurement;
   - sweep runs, failures and items processed;
   - outbox pending count and oldest pending age;
   - connection pool usage.
