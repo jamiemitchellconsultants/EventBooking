@@ -372,7 +372,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
     public async Task ACoordinatorCanRetryAFailedInviteWithAFreshHashedToken()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
-        var (attendeeId, oldHash) = await GivenFailedInviteAsync();
+        var (attendeeId, link) = await GivenFailedInviteAsync();
         var client = factory.CreateClient();
 
         var response = await client.PostAsync($"/api/attendees/{attendeeId}/email-retry", null);
@@ -388,8 +388,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var invite = await context.Invites.SingleAsync(item => item.AttendeeId == attendeeId);
-        Assert.NotEqual(oldHash, invite.TokenHash);
-        Assert.DoesNotContain(invite.TokenHash, message.TextBody, StringComparison.Ordinal);
+        // A resend reuses the current link (design 06), so the version does not move.
+        Assert.Equal(Invite.InitialTokenVersion, invite.TokenVersion);
+        Assert.Contains($"/book/{link}", message.TextBody, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -499,11 +500,10 @@ public class AttendeeEndpointTests(ApiFactory factory)
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
-        var issued = tokens.Issue(inviteId);
+        var issued = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            issued.TokenHash,
             new DateTimeOffset(2030, 1, 20, 0, 0, 0, TimeSpan.Zero),
             [ProposalFixture.LocationId],
             eventIds,
@@ -521,6 +521,6 @@ public class AttendeeEndpointTests(ApiFactory factory)
         context.EmailLogs.Add(delivery);
         await context.SaveChangesAsync();
 
-        return (attendee.Id, issued.TokenHash);
+        return (attendee.Id, issued);
     }
 }

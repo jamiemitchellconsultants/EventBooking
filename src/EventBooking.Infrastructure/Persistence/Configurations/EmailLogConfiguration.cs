@@ -20,6 +20,7 @@ public sealed class EmailLogConfiguration : IEntityTypeConfiguration<EmailLog>
         builder.Property(e => e.BookingId).HasColumnName("booking_id");
         builder.Property(e => e.EventId).HasColumnName("event_id");
         builder.Property(e => e.ClaimedAt).HasColumnName("claimed_at");
+        builder.Property(e => e.ClaimCount).HasColumnName("claim_count");
 
         builder.HasIndex(e => e.AttendeeId);
         builder.HasIndex(e => new { e.AttendeeId, e.SentAt });

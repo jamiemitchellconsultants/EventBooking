@@ -20,14 +20,13 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
         var initial = Invite.CreateInitial(
             Guid.NewGuid(),
             attendeeId,
-            "initial",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp],
             0);
         var original = Booking.Create(
-            Guid.NewGuid(), initial, eventId, "manage-original", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), initial, eventId, DateTimeOffset.UtcNow);
         var first = RecoveryFor(attendeeId, original, DateTimeOffset.UtcNow.AddHours(1));
         var second = RecoveryFor(attendeeId, original, DateTimeOffset.UtcNow.AddHours(2));
         first.Conclude();
@@ -87,13 +86,12 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendeeId,
-            "initial",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp],
             0);
-        return Booking.Create(Guid.NewGuid(), invite, eventId, "manage", DateTimeOffset.UtcNow);
+        return Booking.Create(Guid.NewGuid(), invite, eventId, DateTimeOffset.UtcNow);
     }
 
     private static Booking RecoveryFor(Guid attendeeId, Booking original, DateTimeOffset createdAt)
@@ -103,13 +101,12 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
             Guid.NewGuid(),
             attendeeId,
             original.Id,
-            "recovery",
             DateTimeOffset.UtcNow.AddDays(2),
             ProposalFixture.LocationId,
             null,
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp]);
         return Booking.CreateRecovery(
-            Guid.NewGuid(), invite, original, eventId, $"manage-recovery-{Guid.NewGuid():N}", createdAt);
+            Guid.NewGuid(), invite, original, eventId, createdAt);
     }
 }

@@ -166,7 +166,7 @@ public sealed class RecoveryInviteHandlerTests
             new StartRecoveryCommand(Coordinator, attendee.Id), CancellationToken.None);
         Assert.True(started.IsSuccess);
         var invite = _invites.Items.Single(i => i.Id == started.Value.InviteId);
-        var staleHash = invite.TokenHash;
+        var staleVersion = invite.TokenVersion;
         var remainingBefore = _events.Items
             .Select(eventItem => eventItem.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).RemainingCapacity)
             .ToList();
@@ -177,8 +177,7 @@ public sealed class RecoveryInviteHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(InviteStatus.Cancelled, invite.Status);
-        Assert.NotEqual(staleHash, invite.TokenHash);
-        Assert.Null(await _invites.GetByTokenHashAsync(staleHash, CancellationToken.None));
+        Assert.NotEqual(staleVersion, invite.TokenVersion);
         Assert.True(_audit.Contains(AuditAction.RecoveryInviteCancelled));
         Assert.Equal(AttendeeStatus.Booked, attendee.Status);
         Assert.Equal(
@@ -223,7 +222,6 @@ public sealed class RecoveryInviteHandlerTests
         var initial = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "hash-initial-pending",
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
@@ -338,10 +336,10 @@ public sealed class RecoveryInviteHandlerTests
         _bookings,
         appointmentOverride ?? _appointments,
         new InviteIssuer(
-            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             new FakeTokenService(), EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
-        new EligibleEventFinder(_events, _clock),
+        new EligibleEventFinder(_events, _events, _clock),
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
         _unitOfWork);
 
@@ -364,14 +362,13 @@ public sealed class RecoveryInviteHandlerTests
         var initial = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "hash-initial",
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             eventIds,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
             0);
         var original = Booking.Create(
-            Guid.NewGuid(), initial, eventIds[0], "manage-original", _clock.UtcNow);
+            Guid.NewGuid(), initial, eventIds[0], _clock.UtcNow);
         initial.MarkUsed();
         _invites.Add(initial);
         _bookings.Add(original);

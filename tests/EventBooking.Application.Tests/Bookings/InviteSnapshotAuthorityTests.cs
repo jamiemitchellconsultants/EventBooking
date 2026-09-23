@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Tests.Fakes;
@@ -34,11 +35,11 @@ public sealed class InviteSnapshotAuthorityTests
                 })).ToList();
         events.Items.AddRange(options);
         var tokens = new FakeTokenService();
-        var issued = tokens.Issue(Guid.NewGuid());
+        var inviteId = Guid.NewGuid();
+        var issued = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(),
+            inviteId,
             attendee.Id,
-            issued.TokenHash,
             DateTimeOffset.Parse("2026-10-01T00:00:00Z"),
             [ProposalFixture.LocationId],
             options.Select(eventItem => eventItem.Id),
@@ -49,9 +50,9 @@ public sealed class InviteSnapshotAuthorityTests
         var clock = new FakeClock(DateTimeOffset.Parse("2026-09-20T00:00:00Z"));
 
         var result = await new ViewInviteHandler(
-                invites, attendees, events, new EligibleEventFinder(events, clock),
+                invites, attendees, events, new EligibleEventFinder(events, events, clock),
                 new RecordingAuditLogger(), new FakeUnitOfWork(), tokens, clock)
-            .HandleAsync(new ViewInviteQuery(issued.Token), CancellationToken.None);
+            .HandleAsync(new ViewInviteQuery(issued), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(["Medical Check-up"], result.Value.AppointmentTypeNames);

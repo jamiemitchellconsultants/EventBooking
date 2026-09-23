@@ -28,7 +28,19 @@ public interface IEventRepository
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<IReadOnlyList<Event>> ListAllAsync(CancellationToken cancellationToken);
 
-    /// <summary>Provides add within this contract.</summary>
+    /// <summary>The events with these identifiers, capacities loaded, in no particular order.</summary>
+    /// <param name="ids">The event ids.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<IReadOnlyList<Event>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds a eventItem, computing its derived start instant from the window and the location's
+    /// zone so the row is written complete in the transaction that inserts it (design 04 — invite
+    /// selection). Asynchronous because the zone is a property of the location row.
+    /// </summary>
     /// <param name="eventItem">The eventItem.</param>
-    void Add(Event eventItem);
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task AddAsync(Event eventItem, CancellationToken cancellationToken);
 }

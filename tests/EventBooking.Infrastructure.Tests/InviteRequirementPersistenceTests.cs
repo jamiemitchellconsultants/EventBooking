@@ -22,7 +22,6 @@ public sealed class InviteRequirementPersistenceTests(PostgresFixture fixture)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
@@ -59,7 +58,6 @@ public sealed class InviteRequirementPersistenceTests(PostgresFixture fixture)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "hash-of-a-two-location-invite",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId, second],
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],

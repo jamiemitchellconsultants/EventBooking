@@ -7,6 +7,9 @@ using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
+using EventBooking.Infrastructure.Persistence.Locking;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence.Repositories;
@@ -27,30 +30,41 @@ public sealed class SystemSettingsRepository(EventBookingDbContext context) : IS
 }
 
 /// <summary>Persists proposals and exposes their PostgreSQL lifecycle row lock.</summary>
-public sealed class EventProposalRepository(EventBookingDbContext context) : IEventProposalRepository
+public sealed class EventProposalRepository(EventBookingDbContext context, RowLocks rowLocks)
+    : IEventProposalRepository
 {
+    /// <summary>For a test driving one context directly, with a lock tracker of its own.</summary>
+    /// <param name="context">The context to read through.</param>
+    public EventProposalRepository(EventBookingDbContext context)
+        : this(context, new RowLocks(context))
+    {
+    }
+
     public Task<EventProposal?> GetAsync(Guid id, CancellationToken cancellationToken) =>
-        context.EventProposals
-            .Include(p => p.Acceptances)
-            .Include(p => p.ListedTypes)
-            .SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
+        LoadAsync(id, LockMode.None, cancellationToken);
 
     /// <summary>Locks the proposal row and then loads its current acceptance collection.</summary>
-    public async Task<EventProposal?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
-    {
-        var proposal = (await context.EventProposals
-            .FromSqlInterpolated($"SELECT * FROM event_proposal WHERE id = {id} FOR UPDATE")
-            .ToListAsync(cancellationToken))
-            .SingleOrDefault();
+    public Task<EventProposal?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+        LoadAsync(id, LockMode.Update, cancellationToken);
 
-        if (proposal is not null)
+    /// <summary>Loads one proposal under the requested lock mode.</summary>
+    /// <param name="id">The proposal id.</param>
+    /// <param name="mode">How to lock the row.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task<EventProposal?> LoadAsync(
+        Guid id,
+        LockMode mode,
+        CancellationToken cancellationToken) =>
+        mode switch
         {
-            await context.Entry(proposal).Collection(item => item.Acceptances).LoadAsync(cancellationToken);
-            await context.Entry(proposal).Collection(item => item.ListedTypes).LoadAsync(cancellationToken);
-        }
-
-        return proposal;
-    }
+            LockMode.None => await context.EventProposals
+                .Include(p => p.Acceptances)
+                .Include(p => p.ListedTypes)
+                .SingleOrDefaultAsync(p => p.Id == id, cancellationToken),
+            LockMode.Update => await rowLocks.LockProposalAsync(id, cancellationToken),
+            LockMode.SkipLocked => await rowLocks.SkipLockedProposalAsync(id, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+        };
 
     public async Task<IReadOnlyList<EventProposal>> ListOpenAsync(CancellationToken cancellationToken) =>
         await context.EventProposals
@@ -62,30 +76,57 @@ public sealed class EventProposalRepository(EventBookingDbContext context) : IEv
     public void Add(EventProposal proposal) => context.EventProposals.Add(proposal);
 }
 
-public sealed class EventRepository(EventBookingDbContext context) : IEventRepository
+public sealed class EventRepository(
+    EventBookingDbContext context,
+    RowLocks rowLocks,
+    IEventWindowZones zones) : IEventRepository
 {
-    public Task<Event?> GetAsync(Guid id, CancellationToken cancellationToken) =>
-        context.Events
-            .Include(s => s.Capacities)
-            .SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
-
-    public async Task<Event?> LockForUpdateAsync(
-        Guid id,
-        CancellationToken cancellationToken)
+    /// <summary>For a test driving one context directly, with a lock tracker of its own.</summary>
+    /// <param name="context">The context to read through.</param>
+    public EventRepository(EventBookingDbContext context)
+        : this(context, new RowLocks(context), new NodaTimeEventWindowZones())
     {
-        var rows = await context.Events
-            .FromSqlInterpolated(
-                $"SELECT * FROM event WHERE id = {id} FOR UPDATE")
-            .ToListAsync(cancellationToken);
-
-        var eventItem = rows.SingleOrDefault();
-        if (eventItem is not null)
-        {
-            await context.Entry(eventItem).Collection(item => item.Capacities).LoadAsync(cancellationToken);
-        }
-
-        return eventItem;
     }
+
+    /// <summary>For a test that cares which zone rules the start instant is computed under.</summary>
+    /// <param name="context">The context to read through.</param>
+    /// <param name="zones">The zone abstraction.</param>
+    public EventRepository(EventBookingDbContext context, IEventWindowZones zones)
+        : this(context, new RowLocks(context), zones)
+    {
+    }
+
+    public Task<Event?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        LoadAsync(id, LockMode.None, cancellationToken);
+
+    public Task<Event?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+        LoadAsync(id, LockMode.Update, cancellationToken);
+
+    /// <summary>Loads one event under the requested lock mode.</summary>
+    /// <param name="id">The event id.</param>
+    /// <param name="mode">How to lock the row.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task<Event?> LoadAsync(
+        Guid id,
+        LockMode mode,
+        CancellationToken cancellationToken) =>
+        mode switch
+        {
+            LockMode.None => await context.Events
+                .Include(s => s.Capacities)
+                .SingleOrDefaultAsync(s => s.Id == id, cancellationToken),
+            LockMode.Update => await rowLocks.LockEventAsync(id, cancellationToken),
+            LockMode.SkipLocked => await rowLocks.SkipLockedEventAsync(id, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+        };
+
+    /// <summary>Locks several events in ascending id order, whatever order the caller named them in.</summary>
+    /// <param name="ids">The event ids.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public Task<IReadOnlyList<Event>> LockForUpdateAsync(
+        IEnumerable<Guid> ids,
+        CancellationToken cancellationToken) =>
+        rowLocks.LockEventsAsync(ids, cancellationToken);
 
     public async Task<IReadOnlyList<Event>> ListActiveAsync(
         DateOnly onOrAfter,
@@ -101,37 +142,91 @@ public sealed class EventRepository(EventBookingDbContext context) : IEventRepos
             .Include(s => s.Capacities)
             .ToListAsync(cancellationToken);
 
-    public void Add(Event eventItem) => context.Events.Add(eventItem);
+    public async Task<IReadOnlyList<Event>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        return await context.Events
+            .Include(s => s.Capacities)
+            .Where(s => ids.Contains(s.Id))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Adds the event and writes its derived start instant in the same transaction, computed from
+    /// the window and the location's own zone. The column is not nullable, and a row inserted
+    /// without it would be an event the eligibility query silently never sees.
+    /// </summary>
+    /// <param name="eventItem">The eventItem.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task AddAsync(Event eventItem, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(eventItem);
+
+        var timeZoneId = await context.Locations
+            .Where(location => location.Id == eventItem.LocationId)
+            .Select(location => location.TimeZoneId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        context.Events.Add(eventItem);
+        EventStartInstants.Stamp(
+            context,
+            eventItem,
+            EventStartInstants.Required(timeZoneId, eventItem.LocationId),
+            zones);
+    }
 }
 
 /// <summary>Persists attendees and exposes the lifecycle root row lock.</summary>
-public sealed class AttendeeRepository(EventBookingDbContext context) : IAttendeeRepository
+public sealed class AttendeeRepository(EventBookingDbContext context, RowLocks rowLocks)
+    : IAttendeeRepository
 {
+    /// <summary>For a test driving one context directly, with a lock tracker of its own.</summary>
+    /// <param name="context">The context to read through.</param>
+    public AttendeeRepository(EventBookingDbContext context)
+        : this(context, new RowLocks(context))
+    {
+    }
+
     public Task<Attendee?> GetAsync(Guid id, CancellationToken cancellationToken) =>
-        context.Attendees
-            .Include(c => c.Requirements)
-            .SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+        LoadAsync(id, LockMode.None, cancellationToken);
 
     /// <summary>Locks the attendee row and then loads the requirements needed by lifecycle handlers.</summary>
-    public async Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
-    {
-        var attendee = (await context.Attendees
-            .FromSqlInterpolated($"SELECT * FROM attendee WHERE id = {id} FOR UPDATE")
-            .ToListAsync(cancellationToken))
-            .SingleOrDefault();
+    public Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+        LoadAsync(id, LockMode.Update, cancellationToken);
 
-        if (attendee is not null)
+    /// <summary>Loads one attendee under the requested lock mode.</summary>
+    /// <param name="id">The attendee id.</param>
+    /// <param name="mode">How to lock the row.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task<Attendee?> LoadAsync(
+        Guid id,
+        LockMode mode,
+        CancellationToken cancellationToken) =>
+        mode switch
         {
-            await context.Entry(attendee).Collection(item => item.Requirements).LoadAsync(cancellationToken);
-        }
-
-        return attendee;
-    }
+            LockMode.None => await context.Attendees
+                .Include(c => c.Requirements)
+                .SingleOrDefaultAsync(c => c.Id == id, cancellationToken),
+            LockMode.Update => await rowLocks.LockAttendeeAsync(id, cancellationToken),
+            LockMode.SkipLocked => await rowLocks.SkipLockedAttendeeAsync(id, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+        };
 
     public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
         context.Attendees
             .Include(c => c.Requirements)
-            .SingleOrDefaultAsync(c => c.Email == email, cancellationToken);
+            // Case-insensitive to match the unique index on lower(email): one mailbox, whatever
+            // case the caller was given. The lower() call is what lets PostgreSQL use that index.
+            .SingleOrDefaultAsync(
+                c => c.Email.ToLower() == email.ToLower(), cancellationToken);
 
     public async Task<IReadOnlyList<Attendee>> ListAsync(
         AttendeeStatus? status,
@@ -159,22 +254,6 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
     public async Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
         await LockAndLoadOptionsAsync(
             context.Invites.FromSqlInterpolated($"SELECT * FROM invite WHERE id = {id} FOR UPDATE"),
-            cancellationToken);
-
-    public Task<Invite?> GetByTokenHashAsync(
-        string tokenHash,
-        CancellationToken cancellationToken) =>
-        context.Invites
-            .Include(i => i.Options)
-            .Include(i => i.Requirements)
-            .SingleOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
-
-    public async Task<Invite?> LockByTokenHashForUpdateAsync(
-        string tokenHash,
-        CancellationToken cancellationToken) =>
-        await LockAndLoadOptionsAsync(
-            context.Invites.FromSqlInterpolated(
-                $"SELECT * FROM invite WHERE token_hash = {tokenHash} FOR UPDATE"),
             cancellationToken);
 
     /// <summary>Locks the attendee's current pending invite and loads its offered event IDs.</summary>
@@ -320,43 +399,20 @@ public sealed class BookingRepository(EventBookingDbContext context) : IBookingR
         return rows.SingleOrDefault();
     }
 
-    public Task<Booking?> GetByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
-        context.Bookings.SingleOrDefaultAsync(
-            b => b.ManageTokenHash == manageTokenHash,
-            cancellationToken);
-
-    public Task<Guid?> GetEventIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
+    public Task<Guid?> GetEventIdAsync(Guid id, CancellationToken cancellationToken) =>
         context.Bookings
             .AsNoTracking()
-            .Where(b => b.ManageTokenHash == manageTokenHash)
+            .Where(b => b.Id == id)
             .Select(b => (Guid?)b.EventId)
             .SingleOrDefaultAsync(cancellationToken);
 
     /// <summary>Reads only the attendee ID used to establish cancellation lock order.</summary>
-    public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
+    public Task<Guid?> GetAttendeeIdAsync(Guid id, CancellationToken cancellationToken) =>
         context.Bookings
             .AsNoTracking()
-            .Where(b => b.ManageTokenHash == manageTokenHash)
+            .Where(b => b.Id == id)
             .Select(b => (Guid?)b.AttendeeId)
             .SingleOrDefaultAsync(cancellationToken);
-
-    public async Task<Booking?> LockByManageTokenHashForUpdateAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken)
-    {
-        var rows = await context.Bookings
-            .FromSqlInterpolated(
-                $"SELECT * FROM booking WHERE manage_token_hash = {manageTokenHash} FOR UPDATE")
-            .ToListAsync(cancellationToken);
-
-        return rows.SingleOrDefault();
-    }
 
     /// <inheritdoc/>
     public async Task<Booking?> LockByIdForAttendeeAsync(

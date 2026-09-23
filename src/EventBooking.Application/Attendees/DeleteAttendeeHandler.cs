@@ -5,6 +5,7 @@ using EventBooking.Application.Common;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Common;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Attendees;
 
@@ -83,20 +84,38 @@ public sealed class DeleteAttendeeHandler(
 
         try
         {
-            if (activeRecovery is not null)
+            // Both events are locked in ascending id order before either booking is cancelled,
+            // the same order staff cancellation takes them in. Locking the recovery event first
+            // would acquire the same two rows in the opposite order and deadlock against it.
+            var eventIds = new List<Guid>();
+            if (booking is not null)
             {
-                var recoveryEvent = activeRecovery.EventId == booking!.EventId
-                    ? await events.LockForUpdateAsync(booking.EventId, cancellationToken)
-                    : await events.LockForUpdateAsync(activeRecovery.EventId, cancellationToken);
-                if (recoveryEvent is null)
+                eventIds.Add(booking.EventId);
+                if (activeRecovery is not null && activeRecovery.EventId != booking.EventId)
+                {
+                    eventIds.Add(activeRecovery.EventId);
+                }
+            }
+
+            eventIds.Sort();
+            var lockedEvents = new Dictionary<Guid, Event>();
+            foreach (var eventId in eventIds)
+            {
+                var locked = await events.LockForUpdateAsync(eventId, cancellationToken);
+                if (locked is null)
                 {
                     await transaction.RollbackAsync(cancellationToken);
                     return Result.Failure(Error.NotFound("No such eventItem."));
                 }
 
+                lockedEvents[eventId] = locked;
+            }
+
+            if (activeRecovery is not null)
+            {
                 var releasedRecovery = await bookingCanceller.CancelLockedAsync(
                     activeRecovery,
-                    recoveryEvent,
+                    lockedEvents[activeRecovery.EventId],
                     ActorType.Staff,
                     actorId,
                     cancellationToken);
@@ -109,16 +128,9 @@ public sealed class DeleteAttendeeHandler(
 
             if (booking is not null)
             {
-                var eventItem = await events.LockForUpdateAsync(booking.EventId, cancellationToken);
-                if (eventItem is null)
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                    return Result.Failure(Error.NotFound("No such eventItem."));
-                }
-
                 var released = await bookingCanceller.CancelLockedAsync(
                     booking,
-                    eventItem,
+                    lockedEvents[booking.EventId],
                     ActorType.Staff,
                     actorId,
                     cancellationToken);

@@ -55,18 +55,14 @@ public sealed class CancelBookingHandler(
         CancelBookingCommand command,
         CancellationToken cancellationToken)
     {
-        if (command.ManageToken is null || !tokens.TryRead(command.ManageToken, out _))
+        if (!tokens.TryRead(command.ManageToken, out var link) || link.Purpose != TokenPurpose.Manage)
         {
             return Result<CancelBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var eventId = await bookings.GetEventIdByManageTokenHashAsync(
-            tokens.Hash(command.ManageToken),
-            cancellationToken);
-        var attendeeId = await bookings.GetAttendeeIdByManageTokenHashAsync(
-            tokens.Hash(command.ManageToken),
-            cancellationToken);
+        var eventId = await bookings.GetEventIdAsync(link.EntityId, cancellationToken);
+        var attendeeId = await bookings.GetAttendeeIdAsync(link.EntityId, cancellationToken);
         if (eventId is null || attendeeId is null)
         {
             return Result<CancelBookingOutcome>.Failure(
@@ -84,10 +80,11 @@ public sealed class CancelBookingHandler(
 
         var pending = await invites.LockPendingListForAttendeeAsync(attendee.Id, cancellationToken);
 
-        var booking = await bookings.LockByManageTokenHashForUpdateAsync(
-            tokens.Hash(command.ManageToken), cancellationToken);
+        var booking = await bookings.LockForUpdateAsync(link.EntityId, cancellationToken);
 
-        if (booking is null || booking.Status != BookingStatus.Active)
+        if (booking is null
+            || booking.ManageTokenVersion != link.Version
+            || booking.Status != BookingStatus.Active)
         {
             return Result<CancelBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));

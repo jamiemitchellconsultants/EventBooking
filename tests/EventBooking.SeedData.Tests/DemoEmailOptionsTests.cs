@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Tokens;
 using EventBooking.SeedData;
@@ -16,8 +17,8 @@ public sealed class DemoEmailOptionsTests
         var api = new HmacTokenService(new TokenOptions(
             "a-local-signing-key-that-is-at-least-32-characters"));
         var id = Guid.NewGuid();
-        Assert.True(api.TryRead(seed.Issue(id).Token, out var read));
-        Assert.Equal(id, read);
+        Assert.True(api.TryRead(seed.Issue(TokenPurpose.Book, id, 1), out var read));
+        Assert.Equal(new TokenReference(TokenPurpose.Book, id, 1), read);
         Assert.Equal("http://localhost:5002", options.Portal.BaseUrl);
         Assert.Equal("localhost", options.Smtp.Host);
         Assert.Equal(1025, options.Smtp.Port);
@@ -37,7 +38,8 @@ public sealed class DemoEmailOptionsTests
         values["Portal__CoordinatorContact"] = "help@example.com";
         values["Clock__TimeZoneId"] = "UTC";
         var options = DemoEmailOptions.From(values.GetValueOrDefault);
-        var token = new HmacTokenService(options.Tokens).Issue(Guid.NewGuid()).Token;
+        var token = new HmacTokenService(options.Tokens)
+            .Issue(TokenPurpose.Book, Guid.NewGuid(), 1);
         var api = new HmacTokenService(new TokenOptions(values["Tokens__SigningKey"]!));
         Assert.True(api.TryRead(token, out _));
         Assert.Equal("https://demo.example.test/portal", options.Portal.BaseUrl);

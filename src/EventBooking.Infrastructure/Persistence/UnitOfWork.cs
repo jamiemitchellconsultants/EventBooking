@@ -1,14 +1,25 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
+using EventBooking.Infrastructure.Persistence.Locking;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace EventBooking.Infrastructure.Persistence;
 
-/// <summary>Commits one DbContext unit of work and maps uniqueness backstops to application errors.</summary>
-public sealed class UnitOfWork(EventBookingDbContext context) : IUnitOfWork
+/// <summary>
+/// Commits one DbContext unit of work, maps uniqueness backstops to application errors, and owns
+/// the lock-order tracker for the transaction it opens.
+/// </summary>
+public sealed class UnitOfWork(EventBookingDbContext context, TransactionLocks locks) : IUnitOfWork
 {
+    /// <summary>For a test driving one context directly, with a tracker of its own.</summary>
+    /// <param name="context">The context to commit.</param>
+    public UnitOfWork(EventBookingDbContext context)
+        : this(context, new TransactionLocks())
+    {
+    }
+
     /// <summary>Saves pending changes or translates a PostgreSQL uniqueness violation.</summary>
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken)
     {
@@ -33,19 +44,34 @@ public sealed class UnitOfWork(EventBookingDbContext context) : IUnitOfWork
             return new JoinedScope();
         }
 
+        // A fresh transaction holds nothing yet. Without this, one command's capacity lock would
+        // make every later attendee lock on the same scoped context look like a descent.
+        locks.Reset();
+
         var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        return new EfTransactionScope(transaction);
+        return new EfTransactionScope(transaction, locks);
     }
 
-    private sealed class EfTransactionScope(IDbContextTransaction transaction) : ITransactionScope
+    private sealed class EfTransactionScope(IDbContextTransaction transaction, TransactionLocks locks)
+        : ITransactionScope
     {
-        public Task CommitAsync(CancellationToken cancellationToken) =>
-            transaction.CommitAsync(cancellationToken);
+        public async Task CommitAsync(CancellationToken cancellationToken)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            locks.Reset();
+        }
 
-        public Task RollbackAsync(CancellationToken cancellationToken) =>
-            transaction.RollbackAsync(cancellationToken);
+        public async Task RollbackAsync(CancellationToken cancellationToken)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            locks.Reset();
+        }
 
-        public ValueTask DisposeAsync() => transaction.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await transaction.DisposeAsync();
+            locks.Reset();
+        }
     }
 
     private sealed class JoinedScope : ITransactionScope

@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
@@ -38,12 +39,11 @@ public sealed class BookingAppointmentSnapshotTests
         var second = AddEvent(events, new DateOnly(2026, 9, 9));
         var third = AddEvent(events, new DateOnly(2026, 9, 10));
         var inviteId = Guid.NewGuid();
-        var token = tokens.Issue(inviteId);
+        var token = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invites = new InMemoryInviteRepository();
         invites.Add(Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            token.TokenHash,
             clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [selected.Id, second.Id, third.Id],
@@ -65,7 +65,7 @@ public sealed class BookingAppointmentSnapshotTests
             bookings,
             appointments,
             new InMemoryEventCapacityRepository(events),
-            new EligibleEventFinder(events, clock),
+            new EligibleEventFinder(events, events, clock),
             tokens,
             deliveries,
             new RecordingAuditLogger(),
@@ -75,7 +75,7 @@ public sealed class BookingAppointmentSnapshotTests
                 "https://booking.example.com", "help@example.com"));
 
         var result = await handler.HandleAsync(
-            new ConfirmBookingCommand(token.Token, selected.Id),
+            new ConfirmBookingCommand(token, selected.Id),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -125,12 +125,11 @@ public sealed class BookingAppointmentSnapshotTests
         var events = new InMemoryEventRepository();
         var selected = AddEvent(events, new DateOnly(2026, 9, 8));
         var inviteId = Guid.NewGuid();
-        var token = tokens.Issue(inviteId);
+        var token = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invites = new InMemoryInviteRepository();
         invites.Add(Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            token.TokenHash,
             clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [selected.Id, AddEvent(events, new DateOnly(2026, 9, 9)).Id,
@@ -148,7 +147,7 @@ public sealed class BookingAppointmentSnapshotTests
             bookings,
             appointments,
             new InMemoryEventCapacityRepository(events),
-            new EligibleEventFinder(events, clock),
+            new EligibleEventFinder(events, events, clock),
             tokens,
             EmailDeliveryTestFactory.Create(
                 new InMemoryEmailDeliveryRepository(),
@@ -178,7 +177,7 @@ public sealed class BookingAppointmentSnapshotTests
         attendee.AssignAttendeeGroup(group);
 
         var result = await handler.HandleAsync(
-            new ConfirmBookingCommand(token.Token, selected.Id),
+            new ConfirmBookingCommand(token, selected.Id),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);

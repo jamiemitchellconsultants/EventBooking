@@ -156,11 +156,10 @@ public class BookingEndpointTests(ApiFactory factory)
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
-        var issued = tokens.Issue(inviteId);
+        var issued = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         context.Invites.Add(Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            issued.TokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             offeredEvents.Select(eventItem => eventItem.Id).ToList(),
@@ -169,7 +168,7 @@ public class BookingEndpointTests(ApiFactory factory)
 
         await context.SaveChangesAsync();
 
-        return new InviteFixture(issued.Token, inviteId);
+        return new InviteFixture(issued, inviteId);
     }
 
     private static void AssertNoPropertiesNamed(JsonElement element, params string[] forbiddenNames)

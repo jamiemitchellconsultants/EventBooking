@@ -298,14 +298,13 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         {
             var tokens = setup.ServiceProvider.GetRequiredService<ITokenService>();
             var recoveryId = Guid.NewGuid();
-            var issued = tokens.Issue(recoveryId);
-            recoveryToken = issued.Token;
+            var issued = tokens.Issue(TokenPurpose.Book, recoveryId, Invite.InitialTokenVersion);
+            recoveryToken = issued;
             await using var context = fixture.NewContext();
             context.Invites.Add(Invite.CreateRecovery(
                 recoveryId,
                 attendeeId,
                 originalId,
-                issued.TokenHash,
                 DateTimeOffset.UtcNow.AddDays(4),
                 ProposalFixture.LocationId,
                 null,
@@ -327,6 +326,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         services.GetRequiredService<IBookingAppointmentRepository>(),
         new RecordingCapacityRepository(services.GetRequiredService<IEventCapacityRepository>(), trace),
         new EligibleEventFinder(
+            services.GetRequiredService<IEventEligibilityQuery>(),
             services.GetRequiredService<IEventRepository>(),
             services.GetRequiredService<IClock>()),
         services.GetRequiredService<ITokenService>(),
@@ -345,6 +345,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             new RecordingInviteRepository(services.GetRequiredService<IInviteRepository>(), trace),
             services.GetRequiredService<IAttendeeGroupRepository>(),
             new EligibleEventFinder(
+                services.GetRequiredService<IEventEligibilityQuery>(),
                 services.GetRequiredService<IEventRepository>(),
                 services.GetRequiredService<IClock>()),
             services.GetRequiredService<ISystemSettingsRepository>(),
@@ -403,18 +404,10 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         public Task<Invite?> GetAsync(Guid id, CancellationToken cancellationToken) =>
             inner.GetAsync(id, cancellationToken);
 
-        public Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
-            inner.LockForUpdateAsync(id, cancellationToken);
-
-        public Task<Invite?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken) =>
-            inner.GetByTokenHashAsync(tokenHash, cancellationToken);
-
-        public Task<Invite?> LockByTokenHashForUpdateAsync(
-            string tokenHash,
-            CancellationToken cancellationToken)
+        public Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
         {
             trace.Add("invite-locked");
-            return inner.LockByTokenHashForUpdateAsync(tokenHash, cancellationToken);
+            return inner.LockForUpdateAsync(id, cancellationToken);
         }
 
         public Task<Invite?> LockPendingForAttendeeAsync(
@@ -456,34 +449,20 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         public Task<Booking?> GetAsync(Guid id, CancellationToken cancellationToken) =>
             inner.GetAsync(id, cancellationToken);
 
-        public Task<Booking?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
-            inner.LockForUpdateAsync(id, cancellationToken);
-
-        public Task<Booking?> GetByManageTokenHashAsync(
-            string manageTokenHash,
-            CancellationToken cancellationToken) =>
-            inner.GetByManageTokenHashAsync(manageTokenHash, cancellationToken);
-
-        public Task<Guid?> GetEventIdByManageTokenHashAsync(
-            string manageTokenHash,
-            CancellationToken cancellationToken)
-        {
-            trace.Add("booking-event-located");
-            return inner.GetEventIdByManageTokenHashAsync(manageTokenHash, cancellationToken);
-        }
-
-        public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
-            string manageTokenHash,
-            CancellationToken cancellationToken) =>
-            inner.GetAttendeeIdByManageTokenHashAsync(manageTokenHash, cancellationToken);
-
-        public Task<Booking?> LockByManageTokenHashForUpdateAsync(
-            string manageTokenHash,
-            CancellationToken cancellationToken)
+        public Task<Booking?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
         {
             trace.Add("booking-locked");
-            return inner.LockByManageTokenHashForUpdateAsync(manageTokenHash, cancellationToken);
+            return inner.LockForUpdateAsync(id, cancellationToken);
         }
+
+        public Task<Guid?> GetEventIdAsync(Guid id, CancellationToken cancellationToken)
+        {
+            trace.Add("booking-event-located");
+            return inner.GetEventIdAsync(id, cancellationToken);
+        }
+
+        public Task<Guid?> GetAttendeeIdAsync(Guid id, CancellationToken cancellationToken) =>
+            inner.GetAttendeeIdAsync(id, cancellationToken);
 
         public Task<Booking?> LockByIdForAttendeeAsync(
             Guid bookingId,
@@ -560,7 +539,13 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         public Task<IReadOnlyList<Event>> ListAllAsync(CancellationToken cancellationToken) =>
             inner.ListAllAsync(cancellationToken);
 
-        public void Add(Event eventItem) => inner.Add(eventItem);
+        public Task<IReadOnlyList<Event>> ListByIdsAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken cancellationToken) =>
+            inner.ListByIdsAsync(ids, cancellationToken);
+
+        public Task AddAsync(Event eventItem, CancellationToken cancellationToken) =>
+            inner.AddAsync(eventItem, cancellationToken);
     }
 
     /// <summary>Records capacity-lock acquisition around the real repository.</summary>

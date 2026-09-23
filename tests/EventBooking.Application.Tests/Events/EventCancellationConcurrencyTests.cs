@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
@@ -123,7 +124,7 @@ public class EventCancellationConcurrencyTests
             Roles,
             new BookingCanceller(Appointments, _capacities, Audit),
             Issuer,
-            new EligibleEventFinder(Events, Clock),
+            new EligibleEventFinder(Events, Events, Clock),
             Appointments,
             EmailDeliveryTestFactory.Create(Deliveries, Email, _eventCancellationUnitOfWork, Clock),
             Audit,
@@ -138,7 +139,7 @@ public class EventCancellationConcurrencyTests
             Bookings,
             new InMemoryBookingAppointmentRepository(Bookings),
             _capacities,
-            new EligibleEventFinder(Events, Clock),
+            new EligibleEventFinder(Events, Events, Clock),
             Tokens,
             EmailDeliveryTestFactory.Create(Deliveries, Email, _confirmationUnitOfWork, Clock),
             Audit,
@@ -161,7 +162,7 @@ public class EventCancellationConcurrencyTests
         private InviteIssuer Issuer => new(
             Invites,
             Groups,
-            new EligibleEventFinder(Events, Clock),
+            new EligibleEventFinder(Events, Events, Clock),
             Settings,
             Tokens,
             EmailDeliveryTestFactory.Create(Deliveries, Email, _eventCancellationUnitOfWork, Clock),
@@ -198,11 +199,10 @@ public class EventCancellationConcurrencyTests
             Attendees.Add(BookedAttendee);
 
             var bookingInviteId = Guid.NewGuid();
-            var bookingInviteToken = Tokens.Issue(bookingInviteId);
+            var bookingInviteToken = Tokens.Issue(TokenPurpose.Book, bookingInviteId, Invite.InitialTokenVersion);
             var bookingInvite = Invite.CreateInitial(
                 bookingInviteId,
                 BookedAttendee.Id,
-                bookingInviteToken.TokenHash,
                 Clock.UtcNow.AddDays(4),
                 [ProposalFixture.LocationId],
                 [Event.Id, Events.Items[1].Id, Events.Items[2].Id],
@@ -212,10 +212,10 @@ public class EventCancellationConcurrencyTests
             BookedAttendee.MarkInvited(ProposalFixture.Now);
 
             var bookingId = Guid.NewGuid();
-            var issuedManageToken = Tokens.Issue(bookingId);
-            ManageToken = issuedManageToken.Token;
+            var issuedManageToken = Tokens.Issue(TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
+            ManageToken = issuedManageToken;
             Bookings.Add(Booking.Create(
-                bookingId, bookingInvite, Event.Id, issuedManageToken.TokenHash, Clock.UtcNow));
+                bookingId, bookingInvite, Event.Id, Clock.UtcNow));
             bookingInvite.MarkUsed();
             BookedAttendee.MarkBooked(ProposalFixture.Now);
             Event.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
@@ -236,12 +236,11 @@ public class EventCancellationConcurrencyTests
             Attendees.Add(confirmingAttendee);
 
             var confirmationInviteId = Guid.NewGuid();
-            var issuedConfirmationToken = Tokens.Issue(confirmationInviteId);
-            ConfirmationToken = issuedConfirmationToken.Token;
+            var issuedConfirmationToken = Tokens.Issue(TokenPurpose.Book, confirmationInviteId, Invite.InitialTokenVersion);
+            ConfirmationToken = issuedConfirmationToken;
             var confirmationInvite = Invite.CreateInitial(
                 confirmationInviteId,
                 confirmingAttendee.Id,
-                issuedConfirmationToken.TokenHash,
                 Clock.UtcNow.AddDays(4),
                 [ProposalFixture.LocationId],
                 [Event.Id, Events.Items[1].Id, Events.Items[2].Id],

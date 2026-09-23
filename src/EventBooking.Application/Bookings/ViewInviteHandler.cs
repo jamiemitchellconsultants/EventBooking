@@ -74,13 +74,13 @@ public sealed class ViewInviteHandler(
         ViewInviteQuery query,
         CancellationToken cancellationToken)
     {
-        if (query.Token is null || !tokens.TryRead(query.Token, out _))
+        if (!tokens.TryRead(query.Token, out var link) || link.Purpose != TokenPurpose.Book)
         {
             return Result<InviteView>.Failure(Error.NotFound(InvalidLinkMessage));
         }
 
-        var invite = await invites.GetByTokenHashAsync(tokens.Hash(query.Token), cancellationToken);
-        if (invite is null || !invite.IsUsableAt(clock.UtcNow))
+        var invite = await invites.GetAsync(link.EntityId, cancellationToken);
+        if (invite is null || invite.TokenVersion != link.Version || !invite.IsUsableAt(clock.UtcNow))
         {
             return Result<InviteView>.Failure(Error.NotFound(InvalidLinkMessage));
         }

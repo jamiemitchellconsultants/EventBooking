@@ -40,15 +40,16 @@ public sealed class ViewBookingHandler(
         ViewBookingQuery query,
         CancellationToken cancellationToken)
     {
-        if (query.ManageToken is null || !tokens.TryRead(query.ManageToken, out _))
+        if (!tokens.TryRead(query.ManageToken, out var link) || link.Purpose != TokenPurpose.Manage)
         {
             return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var booking = await bookings.GetByManageTokenHashAsync(
-            tokens.Hash(query.ManageToken), cancellationToken);
+        var booking = await bookings.GetAsync(link.EntityId, cancellationToken);
 
-        if (booking is null || booking.Status != BookingStatus.Active)
+        if (booking is null
+            || booking.ManageTokenVersion != link.Version
+            || booking.Status != BookingStatus.Active)
         {
             return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }

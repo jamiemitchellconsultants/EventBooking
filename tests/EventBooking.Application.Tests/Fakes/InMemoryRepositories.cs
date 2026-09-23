@@ -32,10 +32,15 @@ public sealed class InMemoryEventProposalRepository : IEventProposalRepository
     public void Add(EventProposal proposal) => Items.Add(proposal);
 }
 
+/// <summary>
+/// The in-memory event store. It answers the eligibility port as well as the repository, because
+/// both read the same rows and a fake that split them would let the two disagree about what is in
+/// the store. The eligibility rule itself is proved against real SQL in Infrastructure.Tests.
+/// </summary>
 public sealed class InMemoryEventRepository(
     TransactionOperationLog? operations = null,
     TransactionalEventLockCoordinator? locks = null)
-    : IEventRepository
+    : IEventRepository, IEventEligibilityQuery
 {
     public List<Event> Items { get; } = [];
 
@@ -66,7 +71,62 @@ public sealed class InMemoryEventRepository(
     public Task<IReadOnlyList<Event>> ListAllAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Event>>(Items.ToList());
 
+    public Task<IReadOnlyList<Event>> ListByIdsAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Event>>(
+            Items.Where(s => ids.Contains(s.Id)).ToList());
+
+    public Task AddAsync(Event eventItem, CancellationToken cancellationToken)
+    {
+        Add(eventItem);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Seeds the store directly, without the port's asynchronous shape.</summary>
+    /// <param name="eventItem">The event to hold.</param>
     public void Add(Event eventItem) => Items.Add(eventItem);
+
+    public Task<IReadOnlyList<Guid>> FindEligibleEventsAsync(
+        IReadOnlyCollection<Guid> requiredAppointmentTypeIds,
+        IReadOnlyCollection<Guid> locationIds,
+        IReadOnlyCollection<Guid> excludeEventIds,
+        int count,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>(
+            [.. Eligible(requiredAppointmentTypeIds, locationIds, excludeEventIds, asOf)
+                .Take(count)]);
+
+    public Task<int> CountEligibleEventsAsync(
+        IReadOnlyCollection<Guid> requiredAppointmentTypeIds,
+        IReadOnlyCollection<Guid> locationIds,
+        IReadOnlyCollection<Guid> excludeEventIds,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(
+            Eligible(requiredAppointmentTypeIds, locationIds, excludeEventIds, asOf).Count());
+
+    private IEnumerable<Guid> Eligible(
+        IReadOnlyCollection<Guid> requiredAppointmentTypeIds,
+        IReadOnlyCollection<Guid> locationIds,
+        IReadOnlyCollection<Guid> excludeEventIds,
+        DateTimeOffset asOf) =>
+        requiredAppointmentTypeIds.Count == 0 || locationIds.Count == 0
+            ? []
+            : Items
+                .Where(s => s.Status == EventStatus.Active)
+                .Where(s => locationIds.Contains(s.LocationId))
+                .Where(s => !excludeEventIds.Contains(s.Id))
+                .Where(s => StartInstant(s) > asOf)
+                // Relational division: a type the event does not list is a type it cannot cover.
+                .Where(s => requiredAppointmentTypeIds.Distinct().All(typeId =>
+                    s.Capacities.Any(c => c.AppointmentTypeId == typeId && c.RemainingCapacity >= 1)))
+                .OrderBy(StartInstant)
+                .ThenBy(s => s.Id)
+                .Select(s => s.Id);
+
+    private static DateTimeOffset StartInstant(Event eventItem) =>
+        eventItem.Window.StartInstant(ProposalFixture.Zones, ProposalFixture.TimeZoneId);
 }
 
 /// <summary>
@@ -195,18 +255,10 @@ public sealed class InMemoryInviteRepository(TransactionOperationLog? operations
         Task.FromResult(Items.SingleOrDefault(i => i.Id == id));
 
     /// <summary>Returns the in-memory invite because this test double has no database row lock.</summary>
-    public Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(i => i.Id == id));
-
-    public Task<Invite?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(i => i.TokenHash == tokenHash));
-
-    public Task<Invite?> LockByTokenHashForUpdateAsync(
-        string tokenHash,
-        CancellationToken cancellationToken)
+    public Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("invite-locked");
-        return Task.FromResult(Items.SingleOrDefault(i => i.TokenHash == tokenHash));
+        return Task.FromResult(Items.SingleOrDefault(i => i.Id == id));
     }
 
     /// <summary>Returns the current pending in-memory invite because this double has no row lock.</summary>
@@ -264,32 +316,15 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
         return Task.FromResult(Items.SingleOrDefault(b => b.Id == id));
     }
 
-    public Task<Booking?> GetByManageTokenHashAsync(
-        string manageTokenHash, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash));
-
-    public Task<Guid?> GetEventIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken)
+    public Task<Guid?> GetEventIdAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("booking-event-located");
-        return Task.FromResult(
-            Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.EventId);
+        return Task.FromResult(Items.SingleOrDefault(b => b.Id == id)?.EventId);
     }
 
-    /// <summary>Returns the attendee identifier associated with the supplied test manage token.</summary>
-    public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.AttendeeId);
-
-    public Task<Booking?> LockByManageTokenHashForUpdateAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken)
-    {
-        operations?.Record("booking-locked");
-        return Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash));
-    }
+    /// <summary>Returns the attendee identifier of the booking the manage link names.</summary>
+    public Task<Guid?> GetAttendeeIdAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(b => b.Id == id)?.AttendeeId);
 
     /// <inheritdoc/>
     public Task<Booking?> LockByIdForAttendeeAsync(

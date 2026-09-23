@@ -1,6 +1,7 @@
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Persistence.Locking;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -19,7 +20,7 @@ public class EventCapacityRepositoryTests(PostgresFixture fixture)
         await using var context = fixture.NewContext();
         await using var transaction = await context.Database.BeginTransactionAsync();
 
-        var locked = await new EventCapacityRepository(context).LockForUpdateAsync(
+        var locked = await new EventCapacityRepository(new RowLocks(context)).LockForUpdateAsync(
             eventId,
             [AppointmentTypeIds.UniformFitting, AppointmentTypeIds.DrugAndAlcoholTesting],
             CancellationToken.None);
@@ -40,7 +41,7 @@ public class EventCapacityRepositoryTests(PostgresFixture fixture)
         {
             await using var transaction = await context.Database.BeginTransactionAsync();
 
-            var locked = await new EventCapacityRepository(context).LockForUpdateAsync(
+            var locked = await new EventCapacityRepository(new RowLocks(context)).LockForUpdateAsync(
                 eventId, [AppointmentTypeIds.DrugAndAlcoholTesting], CancellationToken.None);
 
             locked.Single().Decrement();
@@ -60,7 +61,7 @@ public class EventCapacityRepositoryTests(PostgresFixture fixture)
 
         await using var first = fixture.NewContext();
         await using var firstTransaction = await first.Database.BeginTransactionAsync();
-        await new EventCapacityRepository(first).LockForUpdateAsync(
+        await new EventCapacityRepository(new RowLocks(first)).LockForUpdateAsync(
             eventId, [AppointmentTypeIds.DrugAndAlcoholTesting], CancellationToken.None);
 
         var waitingBackend = NewBarrier();
@@ -83,10 +84,27 @@ public class EventCapacityRepositoryTests(PostgresFixture fixture)
         await using var context = fixture.NewContext();
         await using var transaction = await context.Database.BeginTransactionAsync();
 
-        var locked = await new EventCapacityRepository(context).LockForUpdateAsync(
+        var locked = await new EventCapacityRepository(new RowLocks(context)).LockForUpdateAsync(
             Guid.NewGuid(), AppointmentTypeIds.All, CancellationToken.None);
 
         Assert.Empty(locked);
+    }
+
+    [Fact]
+    public async Task LockingCapacityRowsRecordsTheCapacityLevelWithTheSharedTracker()
+    {
+        var eventId = await GivenAEvent();
+
+        await using var context = fixture.NewContext();
+        await using var transaction = await context.Database.BeginTransactionAsync();
+
+        var locks = new TransactionLocks(enforced: true);
+        var repository = new EventCapacityRepository(new RowLocks(context, locks));
+
+        await repository.LockForUpdateAsync(
+            eventId, [AppointmentTypeIds.DrugAndAlcoholTesting], CancellationToken.None);
+
+        Assert.Equal(LockLevel.EventCapacity, locks.Highest);
     }
 
     private async Task<Guid> GivenAEvent()
@@ -117,7 +135,7 @@ public class EventCapacityRepositoryTests(PostgresFixture fixture)
         await using var transaction = await context.Database.BeginTransactionAsync();
         waitingBackend.SetResult(await GetBackendPidAsync(context));
 
-        var locked = await new EventCapacityRepository(context).LockForUpdateAsync(
+        var locked = await new EventCapacityRepository(new RowLocks(context)).LockForUpdateAsync(
             eventId, [AppointmentTypeIds.DrugAndAlcoholTesting], CancellationToken.None);
         await transaction.CommitAsync();
 

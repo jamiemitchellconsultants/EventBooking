@@ -16,7 +16,6 @@ public sealed class InviteRequirementSnapshotTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             Options,
@@ -38,7 +37,6 @@ public sealed class InviteRequirementSnapshotTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             root,
-            "hash",
             DateTimeOffset.UtcNow.AddDays(1),
             ProposalFixture.LocationId,
             null,
@@ -59,7 +57,6 @@ public sealed class InviteRequirementSnapshotTests
         Assert.Throws<DomainException>(() => Invite.CreateInitial(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             Options,

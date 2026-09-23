@@ -1,34 +1,20 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.Events;
-using Microsoft.EntityFrameworkCore;
+using EventBooking.Infrastructure.Persistence.Locking;
 
 namespace EventBooking.Infrastructure.Persistence.Repositories;
 
 /// <summary>
-/// The only raw SQL in the system, and the reason overbooking cannot happen. Read the three notes
-/// in Task 47 of the plan before changing a character of the query below.
+/// Capacity rows locked through the shared row-lock helpers, so the lock-order guard sees them
+/// and every caller takes them in the domain's own key order. Takes only the helpers: it reads
+/// nothing except through them.
 /// </summary>
-public sealed class EventCapacityRepository(EventBookingDbContext context) : IEventCapacityRepository
+/// <param name="rowLocks">The shared row locks for the current transaction.</param>
+public sealed class EventCapacityRepository(RowLocks rowLocks) : IEventCapacityRepository
 {
-    public async Task<IReadOnlyList<EventCapacity>> LockForUpdateAsync(
+    public Task<IReadOnlyList<EventCapacity>> LockForUpdateAsync(
         Guid eventId,
         IReadOnlyCollection<Guid> appointmentTypeIds,
-        CancellationToken cancellationToken)
-    {
-        // Sorted so that every caller takes the locks in the same order and two concurrent
-        // confirmations for different type combinations cannot deadlock.
-        var ordered = appointmentTypeIds.OrderBy(id => id).ToArray();
-
-        return await context.EventCapacities
-            .FromSql(
-                $"""
-                 SELECT event_id, appointment_type_id, total_headcount, remaining_capacity
-                 FROM event_capacity
-                 WHERE event_id = {eventId}
-                   AND appointment_type_id = ANY({ordered})
-                 ORDER BY appointment_type_id
-                 FOR UPDATE
-                 """)
-            .ToListAsync(cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        rowLocks.LockCapacitiesAsync(eventId, appointmentTypeIds, cancellationToken);
 }

@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
@@ -86,11 +87,11 @@ public class FakesSelfTests
         var service = new FakeTokenService();
         var id = Guid.NewGuid();
 
-        var issued = service.Issue(id);
+        var issued = service.Issue(TokenPurpose.Book, id, 2);
 
-        Assert.True(service.TryRead(issued.Token, out var read));
-        Assert.Equal(id, read);
-        Assert.Equal(issued.TokenHash, service.Hash(issued.Token));
+        Assert.True(service.TryRead(issued, out var read));
+        Assert.Equal(new TokenReference(TokenPurpose.Book, id, 2), read);
+        Assert.NotEqual(issued, service.Issue(TokenPurpose.Manage, id, 2));
         Assert.False(service.TryRead("nonsense", out _));
     }
 

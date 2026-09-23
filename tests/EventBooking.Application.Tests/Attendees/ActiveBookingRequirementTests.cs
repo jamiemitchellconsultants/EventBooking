@@ -113,13 +113,12 @@ public sealed class ActiveBookingRequirementTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "invite-token-hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         return Booking.Create(
-            Guid.NewGuid(), invite, eventId, "manage-token-hash", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventId, DateTimeOffset.UtcNow);
     }
 }

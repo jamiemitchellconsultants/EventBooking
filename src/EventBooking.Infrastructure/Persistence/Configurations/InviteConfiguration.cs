@@ -17,7 +17,7 @@ public sealed class InviteConfiguration : IEntityTypeConfiguration<Invite>
 
         builder.Property(i => i.Id).HasColumnName("id");
         builder.Property(i => i.AttendeeId).HasColumnName("attendee_id");
-        builder.Property(i => i.TokenHash).HasColumnName("token_hash").HasMaxLength(200).IsRequired();
+        builder.Property(i => i.TokenVersion).HasColumnName("token_version");
         builder.Property(i => i.ExpiresAt).HasColumnName("expires_at");
         builder.Property(i => i.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(i => i.RetryCount).HasColumnName("retry_count");
@@ -57,7 +57,6 @@ public sealed class InviteConfiguration : IEntityTypeConfiguration<Invite>
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(i => i.RecoveryOfBookingId);
 
-        builder.HasIndex(i => i.TokenHash).IsUnique();
         builder.HasIndex(i => new { i.Status, i.ExpiresAt });
         builder.HasIndex(i => i.AttendeeId);
         builder.HasIndex(i => i.AttendeeId)

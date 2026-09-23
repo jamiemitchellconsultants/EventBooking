@@ -46,14 +46,13 @@ public static class McpScenarioSeeder
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            $"invite-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, bookedEvent.Id, DateTimeOffset.UtcNow);
 
         attendee.MarkInvited(ProposalFixture.Now);
         invite.MarkUsed();
@@ -108,14 +107,13 @@ public static class McpScenarioSeeder
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                $"invite-{Guid.NewGuid():N}",
                 DateTimeOffset.UtcNow.AddDays(1),
                 [ProposalFixture.LocationId],
                 [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+                Guid.NewGuid(), invite, bookedEvent.Id, DateTimeOffset.UtcNow);
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.MedicalCheckUp);
             context.AddRange(bookedEvent);
@@ -178,14 +176,13 @@ public static class McpScenarioSeeder
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            $"invite-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, eventItem.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventItem.Id, DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, appointmentTypeId);
         context.AddRange(eventItem, attendee, booking, appointment);

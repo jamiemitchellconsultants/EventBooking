@@ -34,5 +34,15 @@ public sealed class AttendeeGroupConfiguration : IEntityTypeConfiguration<Attend
         builder.Navigation(group => group.Requirements).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(group => group.Code).IsUnique();
+
+        // Change-controlled reference data the predecessor seeded from a migration, kept here so
+        // the fresh schema carries it without a second release. Retires with the fixed appointment
+        // types in Phase 3.
+        builder.HasData(
+            new { Id = AttendeeGroupIds.CabinCrew, Code = "CABIN_CREW", Name = "Cabin Crew", IsActive = true, Version = 1L },
+            new { Id = AttendeeGroupIds.Pilots, Code = "PILOTS", Name = "Pilots", IsActive = true, Version = 1L },
+            new { Id = AttendeeGroupIds.GroundOperationsAgent, Code = "GROUND_OPERATIONS_AGENT", Name = "Ground Operations Agent", IsActive = true, Version = 1L },
+            new { Id = AttendeeGroupIds.Engineering, Code = "ENGINEERING", Name = "Engineering", IsActive = true, Version = 1L },
+            new { Id = AttendeeGroupIds.GroundTransportServices, Code = "GROUND_TRANSPORT_SERVICES", Name = "Ground Transport Services", IsActive = true, Version = 1L });
     }
 }

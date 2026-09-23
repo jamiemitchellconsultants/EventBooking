@@ -94,7 +94,7 @@ public sealed class CancelRecoveryInviteHandler(
 
         try
         {
-            invite.RotateTokenHash(Guid.NewGuid().ToString("N"));
+            invite.RotateToken();
             invite.CancelRecovery();
         }
         catch (DomainException ex)

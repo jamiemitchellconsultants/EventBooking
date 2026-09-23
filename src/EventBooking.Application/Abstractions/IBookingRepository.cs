@@ -15,41 +15,21 @@ public interface IBookingRepository
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<Booking?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
-    /// <summary>Provides get by manage token hash async within this contract.</summary>
-    /// <param name="manageTokenHash">The manage token hash.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Booking?> GetByManageTokenHashAsync(string manageTokenHash, CancellationToken cancellationToken);
-
     /// <summary>
     /// Locates the immutable event identifier needed to take the event guard. It is not
     /// authoritative booking state: callers must lock and re-read the booking after that guard.
     /// </summary>
-    /// <param name="manageTokenHash">The manage token hash.</param>
+    /// <param name="id">The id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Guid?> GetEventIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken);
+    Task<Guid?> GetEventIdAsync(Guid id, CancellationToken cancellationToken);
 
     /// <summary>
     /// Locates the attendee lifecycle identifier needed to take the attendee guard before a
     /// cancellation or rebooking. Callers must re-read and lock the booking inside the transaction.
     /// </summary>
-    /// <param name="manageTokenHash">The manage token hash.</param>
+    /// <param name="id">The id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Takes a row-level write lock on the booking identified by its manage-token hash and returns
-    /// it. Must be called inside the attendee-cancellation transaction before checking whether
-    /// the booking remains active or returning its capacity.
-    /// </summary>
-    /// <param name="manageTokenHash">The manage token hash.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Booking?> LockByManageTokenHashForUpdateAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken);
+    Task<Guid?> GetAttendeeIdAsync(Guid id, CancellationToken cancellationToken);
 
     /// <summary>
     /// Takes a row-level write lock on the booking with the given id belonging to the given

@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Common;
@@ -69,7 +70,7 @@ public class CancelAttendeeBookingHandlerTests
         _invites,
         new BookingCanceller(_appointments, _capacities, _audit),
         new InviteIssuer(
-            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             _tokens, EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
@@ -101,11 +102,10 @@ public class CancelAttendeeBookingHandlerTests
         AddEvent(16);
 
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [_booked.Id, _events.Items[1].Id, _events.Items[2].Id],
@@ -115,8 +115,8 @@ public class CancelAttendeeBookingHandlerTests
         _attendee.MarkInvited(ProposalFixture.Now);
 
         _bookingId = Guid.NewGuid();
-        var manage = _tokens.Issue(_bookingId);
-        _bookings.Add(Booking.Create(_bookingId, invite, _booked.Id, manage.TokenHash, _clock.UtcNow));
+        var manage = _tokens.Issue(TokenPurpose.Manage, _bookingId, Booking.InitialManageTokenVersion);
+        _bookings.Add(Booking.Create(_bookingId, invite, _booked.Id, _clock.UtcNow));
         invite.MarkUsed();
         _attendee.MarkBooked(ProposalFixture.Now);
 
@@ -177,7 +177,6 @@ public class CancelAttendeeBookingHandlerTests
             Guid.NewGuid(),
             _attendee.Id,
             _bookingId,
-            "hash-recovery-pending",
             _clock.UtcNow.AddDays(4),
             ProposalFixture.LocationId,
             null,
@@ -331,12 +330,11 @@ public class CancelAttendeeBookingHandlerTests
     {
         var original = _bookings.Items.Single();
         var recoveryInviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(recoveryInviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, recoveryInviteId, Invite.InitialTokenVersion);
         var recoveryInvite = Invite.CreateRecovery(
             recoveryInviteId,
             _attendee.Id,
             original.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             ProposalFixture.LocationId,
             null,
@@ -345,10 +343,9 @@ public class CancelAttendeeBookingHandlerTests
         _invites.Add(recoveryInvite);
 
         var recoveryId = Guid.NewGuid();
-        var manage = _tokens.Issue(recoveryId);
+        var manage = _tokens.Issue(TokenPurpose.Manage, recoveryId, Booking.InitialManageTokenVersion);
         var recovery = Booking.CreateRecovery(
-            recoveryId, recoveryInvite, original, _events.Items[1].Id,
-            manage.TokenHash, _clock.UtcNow);
+            recoveryId, recoveryInvite, original, _events.Items[1].Id, _clock.UtcNow);
         _bookings.Add(recovery);
         recoveryInvite.MarkUsed();
 

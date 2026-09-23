@@ -13,6 +13,7 @@ using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Persistence.Queries;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using EventBooking.Infrastructure.Tokens;
 using Microsoft.EntityFrameworkCore;
@@ -51,14 +52,13 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "invite-token",
                 now.AddDays(1),
                 [ProposalFixture.LocationId],
                 [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
+                Guid.NewGuid(), invite, eventItem.Id, now.AddDays(-1));
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);
             appointmentId = appointment.Id;
@@ -208,7 +208,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var issuer = new InviteIssuer(
                 new InviteRepository(context),
                 new AttendeeGroupRepository(context),
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 new SystemSettingsRepository(context),
                 tokens,
                 deliveries,
@@ -223,7 +223,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
                 issuer,
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 deliveries,
                 unitOfWork);
             return await handler.HandleAsync(
@@ -315,7 +315,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var issuer = new InviteIssuer(
                 new InviteRepository(context),
                 new AttendeeGroupRepository(context),
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 new SystemSettingsRepository(context),
                 tokens,
                 deliveries,
@@ -330,7 +330,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
                 issuer,
-                new EligibleEventFinder(events, clock),
+                new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
                 deliveries,
                 unitOfWork);
             return await handler.HandleAsync(
@@ -371,14 +371,13 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "invite-token",
                 now.AddDays(1),
                 [ProposalFixture.LocationId],
                 [pastEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, pastEvent.Id, "manage-token", now.AddDays(-1));
+                Guid.NewGuid(), invite, pastEvent.Id, now.AddDays(-1));
             invite.MarkUsed();
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);

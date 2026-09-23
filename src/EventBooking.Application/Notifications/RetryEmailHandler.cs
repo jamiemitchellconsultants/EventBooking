@@ -175,13 +175,14 @@ public sealed class RetryEmailHandler(
             throw new DomainException("The invite no longer has three appointment options.");
         }
 
-        var issued = tokens.Issue(invite.Id);
-        invite.RotateTokenHash(issued.TokenHash);
+        // A retry reuses the current link rather than minting a new one: the token is derived
+        // from the invite and its version, so it is reproducible without being stored (design 06).
+        var issued = tokens.Issue(TokenPurpose.Book, invite.Id, invite.TokenVersion);
         return AttendeeEmailComposer.Invite(
             attendee,
             invite.RequiredAppointmentTypeIds,
             options,
-            $"{portal.BaseUrl}/book/{issued.Token}",
+            $"{portal.BaseUrl}/book/{issued}",
             previous.TemplateName == EmailTemplate.AttendeeReinvite,
             invite.RecoveryOfBookingId.HasValue);
     }
@@ -207,13 +208,12 @@ public sealed class RetryEmailHandler(
 
         var snapshot = await BookingSnapshotAsync(booking.Id, cancellationToken);
 
-        var issued = tokens.Issue(booking.Id);
-        booking.RotateManageTokenHash(issued.TokenHash);
+        var issued = tokens.Issue(TokenPurpose.Manage, booking.Id, booking.ManageTokenVersion);
         return AttendeeEmailComposer.BookingConfirmation(
             attendee,
             snapshot,
             eventItem,
-            $"{portal.BaseUrl}/manage/{issued.Token}",
+            $"{portal.BaseUrl}/manage/{issued}",
             portal);
     }
 

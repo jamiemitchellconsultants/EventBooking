@@ -1,6 +1,7 @@
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Persistence.Locking;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -99,7 +100,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
         EventBookingDbContext context,
         Guid eventId)
     {
-        var rows = await new EventCapacityRepository(context).LockForUpdateAsync(
+        var rows = await new EventCapacityRepository(new RowLocks(context)).LockForUpdateAsync(
             eventId,
             [AppointmentTypeIds.DrugAndAlcoholTesting],
             CancellationToken.None);

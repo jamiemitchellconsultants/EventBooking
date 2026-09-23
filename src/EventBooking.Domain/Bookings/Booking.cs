@@ -6,10 +6,12 @@ namespace EventBooking.Domain.Bookings;
 /// <summary>Defines booking for the current use case.</summary>
 public sealed class Booking
 {
+    /// <summary>The version every new booking's manage link is signed against.</summary>
+    public const int InitialManageTokenVersion = 1;
+
     private Booking()
     {
         // Required by the persistence layer's constructor binding.
-        ManageTokenHash = string.Empty;
     }
 
     /// <summary>Defines id for the current use case.</summary>
@@ -36,28 +38,29 @@ public sealed class Booking
     /// <summary>Gets whether this Booking is the original journey root.</summary>
     public bool IsOriginal => RecoveryOfBookingId is null;
 
-    /// <summary>Hash of the single-use token behind the cancel/reschedule link.</summary>
-    public string ManageTokenHash { get; private set; }
+    /// <summary>
+    /// The version the cancel/reschedule link is signed against. Only the counter is stored; the
+    /// token is reproduced from it, which is how the confirmation page and the confirmation email
+    /// carry the same link (design 06).
+    /// </summary>
+    public int ManageTokenVersion { get; private set; } = InitialManageTokenVersion;
 
-    /// <summary>Replaces the persisted management-link hash after issuing a fresh raw token.</summary>
-    /// <param name="manageTokenHash">The manage token hash.</param>
-    public void RotateManageTokenHash(string? manageTokenHash)
+    /// <summary>Revokes every outstanding manage link for this booking by moving to the next version.</summary>
+    public void RotateManageToken()
     {
         Guard.Against(Status != BookingStatus.Active, "Only an active booking token can be rotated.");
-        ManageTokenHash = Guard.NotBlank(manageTokenHash, "manageTokenHash");
+        ManageTokenVersion++;
     }
 
     /// <summary>Defines create for the current use case.</summary>
     /// <param name="id">The id.</param>
     /// <param name="invite">The invite.</param>
     /// <param name="eventId">The event id.</param>
-    /// <param name="manageTokenHash">The manage token hash.</param>
     /// <param name="createdAt">The created at.</param>
     public static Booking Create(
         Guid id,
         Invite invite,
         Guid eventId,
-        string? manageTokenHash,
         DateTimeOffset createdAt)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
@@ -75,7 +78,6 @@ public sealed class Booking
             InviteId = invite.Id,
             CreatedAt = createdAt,
             Status = BookingStatus.Active,
-            ManageTokenHash = Guard.NotBlank(manageTokenHash, "manageTokenHash"),
         };
     }
 
@@ -91,7 +93,6 @@ public sealed class Booking
     /// <param name="recoveryInvite">The pending recovery invite issued for the original Booking.</param>
     /// <param name="originalBooking">The active original journey root being recovered.</param>
     /// <param name="eventId">The recovery event offered by the invite.</param>
-    /// <param name="manageTokenHash">The management-link hash for the recovery booking.</param>
     /// <param name="createdAt">When the recovery booking is created.</param>
     /// <returns>An active recovery Booking pointing at the original root.</returns>
     public static Booking CreateRecovery(
@@ -99,7 +100,6 @@ public sealed class Booking
         Invite recoveryInvite,
         Booking originalBooking,
         Guid eventId,
-        string? manageTokenHash,
         DateTimeOffset createdAt)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
@@ -131,7 +131,6 @@ public sealed class Booking
             CreatedAt = createdAt,
             Status = BookingStatus.Active,
             RecoveryOfBookingId = originalBooking.Id,
-            ManageTokenHash = Guard.NotBlank(manageTokenHash, "manageTokenHash"),
         };
     }
 

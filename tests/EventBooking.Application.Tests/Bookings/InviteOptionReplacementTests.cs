@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Tests.Fakes;
@@ -25,7 +26,7 @@ public class InviteOptionReplacementTests
     private readonly string _token;
 
     private ViewInviteHandler Handler => new(
-        _invites, _attendees, _events, new EligibleEventFinder(_events, _clock),
+        _invites, _attendees, _events, new EligibleEventFinder(_events, _events, _clock),
         _audit, _unitOfWork, _tokens, _clock);
 
     public InviteOptionReplacementTests()
@@ -43,12 +44,11 @@ public class InviteOptionReplacementTests
         var eventIds = new[] { AddEvent(10, 9), AddEvent(11, 13), AddEvent(13, 9) };
 
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
-        _token = issued.Token;
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
+        _token = issued;
         _invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             eventIds,

@@ -61,7 +61,6 @@ public class AuditEndpointTests(ApiFactory factory)
             context.Invites.Add(Invite.CreateInitial(
                 inviteId,
                 attendee.Id,
-                "hash",
                 Now.AddDays(4),
                 [ProposalFixture.LocationId],
                 [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],

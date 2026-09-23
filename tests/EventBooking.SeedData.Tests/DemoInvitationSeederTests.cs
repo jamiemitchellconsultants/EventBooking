@@ -101,7 +101,7 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
             var invite = await db.Invites.Include(i => i.Requirements)
                 .SingleAsync(i => i.Id == result.Value.InviteId);
             Assert.Equal(attendee.RequiredAppointmentTypeIds.Order(), invite.RequiredAppointmentTypeIds.Order());
-            Assert.NotEqual(token, invite.TokenHash);
+            Assert.Equal(Invite.InitialTokenVersion, invite.TokenVersion);
         }
         var first = Token(_mail.Messages[0]);
         var offered = await view.HandleAsync(new ViewInviteQuery(first), default);
@@ -128,14 +128,16 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         var booked = await scope.ServiceProvider.GetRequiredService<ConfirmBookingHandler>()
             .HandleAsync(new ConfirmBookingCommand(first, offered.Value.Options[0].EventId), default);
         Assert.True(booked.IsSuccess);
-        var hashes = await db.Invites.AsNoTracking().OrderBy(i => i.Id).Select(i => i.TokenHash).ToListAsync();
+        var versions = await db.Invites.AsNoTracking().OrderBy(i => i.Id)
+            .Select(i => i.TokenVersion).ToListAsync();
         var capacities = await db.Events.AsNoTracking().Include(s => s.Capacities)
             .OrderBy(s => s.Id).ToListAsync();
         var before = capacities.SelectMany(s => s.Capacities.OrderBy(c => c.AppointmentTypeId))
             .Select(c => c.RemainingCapacity).ToArray();
         Assert.Equal(0, await SeedAsync());
         Assert.Equal(6, _mail.Messages.Count);
-        Assert.Equal(hashes, await db.Invites.AsNoTracking().OrderBy(i => i.Id).Select(i => i.TokenHash).ToListAsync());
+        Assert.Equal(versions, await db.Invites.AsNoTracking().OrderBy(i => i.Id)
+            .Select(i => i.TokenVersion).ToListAsync());
         var after = await db.Events.AsNoTracking().Include(s => s.Capacities)
             .OrderBy(s => s.Id).ToListAsync();
         Assert.Equal(before, after.SelectMany(s => s.Capacities.OrderBy(c => c.AppointmentTypeId))
@@ -151,7 +153,8 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var failed = await db.EmailLogs.AsNoTracking().SingleAsync(e => e.Status == EmailStatus.Failed);
-        var oldHash = await db.Invites.Where(i => i.Id == failed.InviteId).Select(i => i.TokenHash).SingleAsync();
+        var versionBefore = await db.Invites.Where(i => i.Id == failed.InviteId)
+            .Select(i => i.TokenVersion).SingleAsync();
         Assert.Equal(2, _mail.Messages.Count);
         _mail.FailOnAttempt = null;
         _clock.Advance(TimeSpan.FromSeconds(1));
@@ -161,8 +164,9 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         Assert.Equal(5, await db.Invites.CountAsync(i => i.Status == InviteStatus.Pending));
         Assert.Equal(1, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Resolved));
         Assert.Equal(5, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Sent));
-        Assert.NotEqual(oldHash, await db.Invites.Where(i => i.Id == failed.InviteId)
-            .Select(i => i.TokenHash).SingleAsync());
+        // A resend reuses the current link rather than minting a new one (design 06).
+        Assert.Equal(versionBefore, await db.Invites.Where(i => i.Id == failed.InviteId)
+            .Select(i => i.TokenVersion).SingleAsync());
         Assert.Equal(0, await SeedAsync());
     }
 
@@ -278,14 +282,15 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         _mail.FailOnAttempt = 1;
         await Assert.ThrowsAsync<SeedException>(() => SeedAsync());
         _mail.FailOnAttempt = null;
-        string originalHash;
+        int originalVersion;
         Guid inviteId;
         using (var scope = _services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             var prior = await db.EmailLogs.SingleAsync(e => e.Status == EmailStatus.Failed);
             inviteId = prior.InviteId!.Value;
-            originalHash = await db.Invites.Where(i => i.Id == inviteId).Select(i => i.TokenHash).SingleAsync();
+            originalVersion = await db.Invites.Where(i => i.Id == inviteId)
+                .Select(i => i.TokenVersion).SingleAsync();
             var other = EmailLog.RecordPending(Guid.NewGuid(), prior.AttendeeId,
                 EmailTemplate.AttendeeReinvite, _clock.UtcNow.AddSeconds(1), inviteId);
             db.EmailLogs.Add(other);
@@ -296,8 +301,8 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         Assert.Empty(_mail.Messages);
         using var verify = _services.CreateScope();
         var database = verify.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        Assert.Equal(originalHash, await database.Invites.Where(i => i.Id == inviteId)
-            .Select(i => i.TokenHash).SingleAsync());
+        Assert.Equal(originalVersion, await database.Invites.Where(i => i.Id == inviteId)
+            .Select(i => i.TokenVersion).SingleAsync());
     }
 
     private async Task<int> SeedAsync()

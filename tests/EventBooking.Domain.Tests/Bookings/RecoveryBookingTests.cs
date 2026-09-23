@@ -16,20 +16,18 @@ public sealed class RecoveryBookingTests
         var initialInvite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendeeId,
-            "initial",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp],
             0);
         var original = Booking.Create(
-            Guid.NewGuid(), initialInvite, eventId, "manage-original", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), initialInvite, eventId, DateTimeOffset.UtcNow);
         var recoveryEvent = Guid.NewGuid();
         var recoveryInvite = Invite.CreateRecovery(
             Guid.NewGuid(),
             attendeeId,
             original.Id,
-            "recovery",
             DateTimeOffset.UtcNow.AddDays(2),
             ProposalFixture.LocationId,
             null,
@@ -37,8 +35,7 @@ public sealed class RecoveryBookingTests
             [AppointmentTypeIds.MedicalCheckUp]);
 
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, original, recoveryEvent,
-            "manage-recovery", DateTimeOffset.UtcNow.AddHours(1));
+            Guid.NewGuid(), recoveryInvite, original, recoveryEvent, DateTimeOffset.UtcNow.AddHours(1));
         recovery.Conclude();
         recovery.Reopen();
 
@@ -57,32 +54,29 @@ public sealed class RecoveryBookingTests
         var initial = Invite.CreateInitial(
             Guid.NewGuid(),
             attendeeId,
-            "initial",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [rootEvent, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp],
             0);
-        var root = Booking.Create(Guid.NewGuid(), initial, rootEvent, "root", DateTimeOffset.UtcNow);
+        var root = Booking.Create(Guid.NewGuid(), initial, rootEvent, DateTimeOffset.UtcNow);
         var firstEvent = Guid.NewGuid();
         var firstInvite = Invite.CreateRecovery(
             Guid.NewGuid(),
             attendeeId,
             root.Id,
-            "first",
             DateTimeOffset.UtcNow.AddDays(1),
             ProposalFixture.LocationId,
             null,
             [firstEvent, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp]);
         var first = Booking.CreateRecovery(
-            Guid.NewGuid(), firstInvite, root, firstEvent, "first-manage", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), firstInvite, root, firstEvent, DateTimeOffset.UtcNow);
         var secondEvent = Guid.NewGuid();
         var secondInvite = Invite.CreateRecovery(
             Guid.NewGuid(),
             attendeeId,
             root.Id,
-            "second",
             DateTimeOffset.UtcNow.AddDays(1),
             ProposalFixture.LocationId,
             null,
@@ -90,6 +84,6 @@ public sealed class RecoveryBookingTests
             [AppointmentTypeIds.MedicalCheckUp]);
 
         Assert.Throws<EventBooking.Domain.Common.DomainException>(() => Booking.CreateRecovery(
-            Guid.NewGuid(), secondInvite, first, secondEvent, "second-manage", DateTimeOffset.UtcNow));
+            Guid.NewGuid(), secondInvite, first, secondEvent, DateTimeOffset.UtcNow));
     }
 }

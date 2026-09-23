@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
@@ -47,7 +48,7 @@ public class ConfirmBookingHandlerTests
             return new ConfirmBookingHandler(
                 _invites, _attendees, _events, _bookings,
                 _appointments, capacities,
-                new EligibleEventFinder(_events, _clock), _tokens,
+                new EligibleEventFinder(_events, _events, _clock), _tokens,
                 EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock), _audit,
                 _unitOfWork, _clock, Portal);
         }
@@ -72,12 +73,11 @@ public class ConfirmBookingHandlerTests
         var others = new[] { AddEvent(11, 13).Id, AddEvent(13, 9).Id };
 
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
-        _token = issued.Token;
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
+        _token = issued;
         _invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [_chosen.Id, others[0], others[1]],
@@ -159,13 +159,15 @@ public class ConfirmBookingHandlerTests
     }
 
     [Fact]
-    public async Task OnlyTheManageTokenHashIsStored()
+    public async Task OnlyTheManageTokenVersionIsStored()
     {
         var result = await Confirm();
 
         var booking = _bookings.Items.Single();
-        Assert.Equal(_tokens.Hash(result.Value.ManageToken), booking.ManageTokenHash);
-        Assert.NotEqual(result.Value.ManageToken, booking.ManageTokenHash);
+        Assert.Equal(Booking.InitialManageTokenVersion, booking.ManageTokenVersion);
+        Assert.Equal(
+            _tokens.Issue(TokenPurpose.Manage, booking.Id, booking.ManageTokenVersion),
+            result.Value.ManageToken);
     }
 
     [Fact]
@@ -428,8 +430,8 @@ public class ConfirmBookingHandlerTests
     private (Booking Original, Invite Recovery, string RecoveryToken) BookWithRecoverableNoShow()
     {
         var originalId = Guid.NewGuid();
-        var manage = _tokens.Issue(originalId);
-        var original = Booking.Create(originalId, _invite, _chosen.Id, manage.TokenHash, _clock.UtcNow);
+        var manage = _tokens.Issue(TokenPurpose.Manage, originalId, Booking.InitialManageTokenVersion);
+        var original = Booking.Create(originalId, _invite, _chosen.Id, _clock.UtcNow);
         _bookings.Add(original);
         _invite.MarkUsed();
         _attendee.MarkBooked(ProposalFixture.Now);
@@ -451,12 +453,11 @@ public class ConfirmBookingHandlerTests
         _appointments.Add(completed);
 
         var recoveryId = Guid.NewGuid();
-        var issued = _tokens.Issue(recoveryId);
+        var issued = _tokens.Issue(TokenPurpose.Book, recoveryId, Invite.InitialTokenVersion);
         var recovery = Invite.CreateRecovery(
             recoveryId,
             _attendee.Id,
             original.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             ProposalFixture.LocationId,
             null,
@@ -464,7 +465,7 @@ public class ConfirmBookingHandlerTests
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recovery);
 
-        return (original, recovery, issued.Token);
+        return (original, recovery, issued);
     }
 
     private Event AddEvent(int day, int hour)

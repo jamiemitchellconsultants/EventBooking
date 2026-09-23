@@ -213,14 +213,13 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            $"invite-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [bookedEvent.Id, spareEvents[0].Id, spareEvents[1].Id],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, bookedEvent.Id, DateTimeOffset.UtcNow);
 
         attendee.MarkInvited(ProposalFixture.Now);
         invite.MarkUsed();
@@ -254,15 +253,13 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
             Guid.NewGuid(),
             attendeeId,
             originalId,
-            $"recovery-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(2),
             ProposalFixture.LocationId,
             null,
             [recoveryEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp]);
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, original, recoveryEvent.Id,
-            $"manage-recovery-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddHours(1));
+            Guid.NewGuid(), recoveryInvite, original, recoveryEvent.Id, DateTimeOffset.UtcNow.AddHours(1));
         recoveryInvite.MarkUsed();
 
         context.Add(recoveryEvent);

@@ -131,7 +131,6 @@ public sealed class AttendeeGroupLifecycleTests
             invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "token",
                 DateTimeOffset.UtcNow.AddDays(1),
                 [ProposalFixture.LocationId],
                 [eventId, Guid.NewGuid(), Guid.NewGuid()],
@@ -143,7 +142,7 @@ public sealed class AttendeeGroupLifecycleTests
         if (activeBooking)
         {
             bookings.Add(Booking.Create(
-                Guid.NewGuid(), invite!, invite!.OfferedEventIds[0], "manage", DateTimeOffset.UtcNow));
+                Guid.NewGuid(), invite!, invite!.OfferedEventIds[0], DateTimeOffset.UtcNow));
             invite!.MarkUsed();
         }
         var audit = new RecordingAuditLogger();

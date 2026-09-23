@@ -20,7 +20,7 @@ public sealed class EventCapacityConfiguration : IEntityTypeConfiguration<EventC
         builder.Property(c => c.RemainingCapacity).HasColumnName("remaining_capacity");
 
         builder.ToTable(t => t.HasCheckConstraint(
-            "ck_event_capacity_within_bounds",
-            "remaining_capacity >= 0 AND remaining_capacity <= total_headcount"));
+            "ck_event_capacity_bounds",
+            "remaining_capacity >= 0 AND remaining_capacity <= total_headcount AND total_headcount > 0"));
     }
 }

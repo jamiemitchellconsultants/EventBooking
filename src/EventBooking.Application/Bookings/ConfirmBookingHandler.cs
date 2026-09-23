@@ -78,7 +78,7 @@ public sealed class ConfirmBookingHandler(
         ConfirmBookingCommand command,
         CancellationToken cancellationToken)
     {
-        if (command.Token is null || !tokens.TryRead(command.Token, out _))
+        if (!tokens.TryRead(command.Token, out var link) || link.Purpose != TokenPurpose.Book)
         {
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
@@ -86,7 +86,7 @@ public sealed class ConfirmBookingHandler(
 
         // This pre-read locates only the attendee row that defines the lock order. Invite state
         // is re-read under lock below and this value must not be used as authority.
-        var preflightInvite = await invites.GetByTokenHashAsync(tokens.Hash(command.Token), cancellationToken);
+        var preflightInvite = await invites.GetAsync(link.EntityId, cancellationToken);
         if (preflightInvite is null)
         {
             return Result<ConfirmBookingOutcome>.Failure(
@@ -105,10 +105,10 @@ public sealed class ConfirmBookingHandler(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var invite = await invites.LockByTokenHashForUpdateAsync(
-            tokens.Hash(command.Token),
-            cancellationToken);
-        if (invite is null || !invite.IsUsableAt(clock.UtcNow))
+        var invite = await invites.LockForUpdateAsync(link.EntityId, cancellationToken);
+        if (invite is null
+            || invite.TokenVersion != link.Version
+            || !invite.IsUsableAt(clock.UtcNow))
         {
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
@@ -212,15 +212,15 @@ public sealed class ConfirmBookingHandler(
         }
 
         var bookingId = Guid.NewGuid();
-        var manageToken = tokens.Issue(bookingId);
+        var manageToken = tokens.Issue(
+            TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
 
         Booking booking;
         try
         {
             booking = isRecovery
-                ? Booking.CreateRecovery(
-                    bookingId, invite, original!, eventItem.Id, manageToken.TokenHash, clock.UtcNow)
-                : Booking.Create(bookingId, invite, eventItem.Id, manageToken.TokenHash, clock.UtcNow);
+                ? Booking.CreateRecovery(bookingId, invite, original!, eventItem.Id, clock.UtcNow)
+                : Booking.Create(bookingId, invite, eventItem.Id, clock.UtcNow);
 
             foreach (var capacity in locked)
             {
@@ -269,7 +269,7 @@ public sealed class ConfirmBookingHandler(
             bookingId: bookingId);
         deliveries.ClaimForDispatch(delivery);
         var message = AttendeeEmailComposer.BookingConfirmation(
-            attendee, required, eventItem, $"{portal.BaseUrl}/manage/{manageToken.Token}", portal);
+            attendee, required, eventItem, $"{portal.BaseUrl}/manage/{manageToken}", portal);
 
         try
         {
@@ -297,7 +297,7 @@ public sealed class ConfirmBookingHandler(
                 eventItem.Window.Date,
                 eventItem.Window.StartTime,
                 eventItem.Window.EndTime,
-                manageToken.Token,
+                manageToken,
                 deliveryStatus.ToString(),
                 delivery.Id));
     }

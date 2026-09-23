@@ -18,20 +18,6 @@ public interface IInviteRepository
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
-    /// <summary>Provides get by token hash async within this contract.</summary>
-    /// <param name="tokenHash">The token hash.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Invite?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Takes a row-level write lock on the invite identified by its token hash and returns it.
-    /// Must be called inside the booking-confirmation transaction before checking whether the
-    /// invite remains usable or offers the selected eventItem.
-    /// </summary>
-    /// <param name="tokenHash">The token hash.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Invite?> LockByTokenHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken);
-
     /// <summary>
     /// Takes a row-level write lock on the attendee's current pending invite and loads its
     /// offered events. Callers hold the attendee lifecycle lock before calling this method.

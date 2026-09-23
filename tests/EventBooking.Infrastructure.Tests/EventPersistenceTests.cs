@@ -1,5 +1,7 @@
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
+using EventBooking.Infrastructure.Persistence.Repositories;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Tests;
@@ -51,6 +53,52 @@ public class EventPersistenceTests(PostgresFixture fixture)
         Assert.NotEqual(Guid.Empty, second.ProposalId);
         Assert.NotEqual(first.ProposalId, second.ProposalId);
         await context.SaveChangesAsync();
+
+        await fixture.ResetAsync();
+    }
+
+    [Fact]
+    public async Task TheRepositoryWritesTheStartInstantFromTheLocationsZone()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        // A summer date, so the transitional location is an hour ahead of UTC and a start instant
+        // copied from the local time would be an hour late.
+        var window = new EventWindow(new DateOnly(2026, 7, 15), new TimeOnly(9, 0), 240);
+        var eventItem = EventFixture.Create(Guid.NewGuid(), window, FullHeadcounts());
+
+        await new EventRepository(context, new NodaTimeEventWindowZones())
+            .AddAsync(eventItem, CancellationToken.None);
+
+        Assert.Equal(
+            new DateTimeOffset(2026, 7, 15, 8, 0, 0, TimeSpan.Zero),
+            context.Entry(eventItem).Property<DateTimeOffset?>("StartUtc").CurrentValue);
+
+        await context.SaveChangesAsync();
+
+        await fixture.ResetAsync();
+    }
+
+    [Fact]
+    public async Task AnEventAddedStraightThroughTheContextStillGetsItsStartInstant()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        var window = new EventWindow(new DateOnly(2026, 7, 15), new TimeOnly(9, 0), 240);
+        var eventItem = EventFixture.Create(Guid.NewGuid(), window, FullHeadcounts());
+
+        context.Events.Add(eventItem);
+        await context.SaveChangesAsync();
+
+        await using var reload = fixture.NewContext();
+        var stored = await reload.Database
+            .SqlQuery<DateTimeOffset>(
+                $"SELECT start_utc AS \"Value\" FROM event WHERE id = {eventItem.Id}")
+            .SingleAsync();
+
+        Assert.Equal(new DateTimeOffset(2026, 7, 15, 8, 0, 0, TimeSpan.Zero), stored);
 
         await fixture.ResetAsync();
     }
