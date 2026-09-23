@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Settings;
 using EventBooking.Domain.Access;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -137,6 +139,9 @@ public sealed class AdminTools
     /// <summary>Returns the caller's validated staff number, roles, and scope.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The identity handler.</param>
+    /// <param name="sync">The role sync.</param>
+    /// <param name="appointmentTypes">The appointment types.</param>
+    /// <param name="claims">The claim names plus staff-number pattern.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The caller's access view, including the validated staff number.</returns>
     [McpServerTool(Name = "get_my_access", Title = "Get my access", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
@@ -144,11 +149,29 @@ public sealed class AdminTools
     public async Task<MyAccessToolView> GetMyAccessAsync(
         ICallerAccessor caller,
         MeHandler handler,
+        SyncStaffAccessProfileRolesHandler sync,
+        IAppointmentTypeRepository appointmentTypes,
+        IOptions<AuthClaimOptions> claims,
         CancellationToken cancellationToken)
     {
-        var view = await handler.GetAsync(
-            caller.RequireStaffUserId(), caller.RequireStaffId(), caller.Roles, cancellationToken);
-        return view.ToToolView();
+        var staffUserId = caller.RequireStaffUserId();
+        await sync.SyncAsync(staffUserId, caller.Roles, cancellationToken);
+        var view = (await handler.HandleAsync(
+            staffUserId,
+            caller.RequireStaffId().Value,
+            caller.DisplayName,
+            caller.Roles,
+            claims.Value.StaffIdPattern,
+            cancellationToken)).ValueOrThrow();
+        string? appointmentTypeName = null;
+        if (view.ScopeAppointmentTypeId is not null)
+        {
+            var type = await appointmentTypes.GetAsync(
+                view.ScopeAppointmentTypeId.Value, cancellationToken);
+            appointmentTypeName = type?.Name;
+        }
+
+        return view.ToToolView(appointmentTypeName);
     }
 
     private static async Task<ResolvedStaffTarget> ResolveTargetAsync(

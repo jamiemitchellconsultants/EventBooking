@@ -25,7 +25,7 @@ builder.Services.AddLocalEmailTransport(email, new SmtpOptions(smtpHost, smtpPor
 
 builder.Services.AddEventBookingApplication(portal,
     new EventBooking.Application.Access.StaffIdPolicy(builder.Configuration["Identity:StaffIdPattern"]));
-builder.Services.AddEventBookingAuthentication(builder.Configuration);
+builder.Services.AddEventBookingAuth(builder.Configuration);
 
 builder.Services
     .AddMcpServer()

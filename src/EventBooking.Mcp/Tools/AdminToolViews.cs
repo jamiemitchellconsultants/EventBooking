@@ -55,14 +55,15 @@ internal static class AdminToolViewMapper
 {
     /// <summary>Maps the caller view to a scalar MCP contract.</summary>
     /// <param name="view">The application caller view.</param>
+    /// <param name="appointmentTypeName">The resolved scope name.</param>
     /// <returns>The MCP caller view.</returns>
-    internal static MyAccessToolView ToToolView(this MeView view) => new()
+    internal static MyAccessToolView ToToolView(this StaffMeView view, string? appointmentTypeName) => new()
     {
-        StaffId = view.StaffId?.Value
+        StaffId = view.StaffId
             ?? throw new InvalidOperationException("The MCP staff policy requires a staff number."),
-        Roles = view.Roles.Select(role => role.ToString()).ToList(),
-        AppointmentTypeId = view.AppointmentTypeId,
-        AppointmentTypeName = view.AppointmentTypeName,
+        Roles = view.Roles.ToList(),
+        AppointmentTypeId = view.ScopeAppointmentTypeId,
+        AppointmentTypeName = appointmentTypeName,
     };
 
     /// <summary>Maps a profile to a scalar MCP contract.</summary>

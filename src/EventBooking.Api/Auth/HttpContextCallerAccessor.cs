@@ -1,40 +1,40 @@
 using System.Security.Claims;
 using EventBooking.Application.Access;
 using EventBooking.Domain.Access;
+using Microsoft.Extensions.Options;
 
 namespace EventBooking.Api.Auth;
 
 /// <summary>Reads provider and enterprise staff identifiers from authenticated HTTP claims.</summary>
-public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILogger<HttpContextCallerAccessor> logger, StaffIdPolicy? staffIdPolicy = null) : ICallerAccessor
+public sealed class HttpContextCallerAccessor(
+    IHttpContextAccessor accessor,
+    ILogger<HttpContextCallerAccessor> logger,
+    IOptions<AuthClaimOptions> claims) : ICallerAccessor
 {
-    /// <summary>The claim type a v1 Entra ID token uses.</summary>
-    public const string ObjectIdClaim = "http://schemas.microsoft.com/identity/claims/objectidentifier";
+    /// <summary>The OIDC subject claim. Specification-fixed, so not configurable.</summary>
+    public const string ObjectIdClaim =
+        "http://schemas.microsoft.com/identity/claims/objectidentifier";
 
-    /// <summary>The claim type a v2 Entra ID token uses.</summary>
+    /// <summary>The short form of the same claim.</summary>
     public const string ShortObjectIdClaim = "oid";
 
-    /// <summary>The shared Keycloak and Entra ID claim containing the enterprise staff number.</summary>
-    public const string StaffIdClaim = "staff_id";
-
-    /// <summary>The shared Keycloak and Entra ID claim carrying identity-provider-assigned roles.</summary>
-    public const string RolesClaim = "roles";
-
-    /// <summary>The shared Keycloak and Entra ID claim carrying the caller's full name.</summary>
-    public const string NameClaim = "name";
+    private AuthClaimOptions Claims => claims.Value;
 
     /// <summary>Gets the provider identifier from the current authenticated principal.</summary>
     public Guid? StaffUserId => StaffUserIdOf(accessor.HttpContext?.User);
 
     /// <summary>Gets the validated enterprise staff number from the current principal.</summary>
-    public StaffId? StaffId => StaffIdOf(accessor.HttpContext?.User, staffIdPolicy?.Pattern ?? EventBooking.Domain.Access.StaffId.DefaultPattern);
+    public StaffId? StaffId =>
+        StaffIdOf(accessor.HttpContext?.User, Claims.StaffIdPattern, Claims.StaffIdClaim);
 
     /// <summary>Gets the human-readable name from the current authenticated principal.</summary>
-    public string? DisplayName => DisplayNameOf(accessor.HttpContext?.User);
+    public string? DisplayName => DisplayNameOf(accessor.HttpContext?.User, Claims.NameClaim);
 
     /// <summary>Gets the recognised roles the current authenticated principal's token carries.</summary>
     public IReadOnlySet<Role> Roles => RolesOf(
         accessor.HttpContext?.User,
-        value => logger.LogWarning("Ignoring unknown identity-provider role {Role}.", value));
+        value => logger.LogWarning("Ignoring unknown identity-provider role {Role}.", value),
+        Claims.RolesClaim);
 
     /// <inheritdoc />
     public Guid RequireStaffUserId() =>
@@ -71,8 +71,13 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
 
     /// <summary>Reads and validates a staff number only from an authenticated identity.</summary>
     /// <param name="principal">The request principal.</param>
+    /// <param name="pattern">The deployment's complete-value validation expression.</param>
+    /// <param name="staffIdClaim">The configured staff-number claim name.</param>
     /// <returns>The canonical staff number, or null when absent or malformed.</returns>
-    public static StaffId? StaffIdOf(ClaimsPrincipal? principal, string pattern = EventBooking.Domain.Access.StaffId.DefaultPattern)
+    public static StaffId? StaffIdOf(
+        ClaimsPrincipal? principal,
+        string pattern = EventBooking.Domain.Access.StaffId.DefaultPattern,
+        string staffIdClaim = "staff_id")
     {
         foreach (var identity in principal?.Identities ?? [])
         {
@@ -81,7 +86,7 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
                 continue;
             }
 
-            if (StaffId.TryParse(identity.FindFirst(StaffIdClaim)?.Value, out var staffId, pattern))
+            if (StaffId.TryParse(identity.FindFirst(staffIdClaim)?.Value, out var staffId, pattern))
             {
                 return staffId;
             }
@@ -92,8 +97,9 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
 
     /// <summary>Reads a human-readable name only from an authenticated identity.</summary>
     /// <param name="principal">The request principal.</param>
+    /// <param name="nameClaim">The configured name claim name.</param>
     /// <returns>The name, or null when absent, empty, or whitespace.</returns>
-    public static string? DisplayNameOf(ClaimsPrincipal? principal)
+    public static string? DisplayNameOf(ClaimsPrincipal? principal, string nameClaim = "name")
     {
         foreach (var identity in principal?.Identities ?? [])
         {
@@ -102,7 +108,7 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
                 continue;
             }
 
-            var value = identity.FindFirst(NameClaim)?.Value;
+            var value = identity.FindFirst(nameClaim)?.Value;
             if (!string.IsNullOrWhiteSpace(value))
             {
                 return value;
@@ -115,10 +121,12 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
     /// <summary>Reads and parses every recognised role claim value from an authenticated identity.</summary>
     /// <param name="principal">The request principal.</param>
     /// <param name="onRejected">Receives each rejected claim value for warning-level logging.</param>
+    /// <param name="rolesClaim">The configured roles claim name.</param>
     /// <returns>The parsed role set; empty when the claim is absent or unauthenticated.</returns>
     public static IReadOnlySet<Role> RolesOf(
         ClaimsPrincipal? principal,
-        Action<string>? onRejected = null)
+        Action<string>? onRejected = null,
+        string rolesClaim = "roles")
     {
         foreach (var identity in principal?.Identities ?? [])
         {
@@ -127,7 +135,7 @@ public sealed class HttpContextCallerAccessor(IHttpContextAccessor accessor, ILo
                 continue;
             }
 
-            var claims = identity.FindAll(RolesClaim).ToList();
+            var claims = identity.FindAll(rolesClaim).ToList();
             if (claims.Count == 0)
             {
                 continue;

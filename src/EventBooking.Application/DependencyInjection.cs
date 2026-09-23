@@ -62,6 +62,7 @@ public static class ApplicationServiceCollectionExtensions
         // Administration.
         services.AddScoped<AdminSettingsHandler>();
         services.AddScoped<MeHandler>();
+        services.AddScoped<StaffScopeHandler>();
         services.AddScoped<SyncStaffAccessProfileRolesHandler>();
 
         // Appointments.
