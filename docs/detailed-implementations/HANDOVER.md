@@ -1,6 +1,6 @@
 # Authoring handover — EventBooking detailed implementation plans
 
-Updated 22 September 2026, after Phase 6 was authored. Written for an agent starting with no context:
+Updated 23 September 2026, after Phase 7 was authored. Written for an agent starting with no context:
 read this file, then the governing inputs it lists, before touching anything.
 
 ## 1. What the assignment is
@@ -38,8 +38,8 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
 | Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 merged on 21 September 2026. Hand-authored, like Phase 3, so no build or test has ever run against them |
 | Phase 5 — master Tasks 24–27 | **Written and reviewed, never executed.** Four task documents plus the overview. Hand-authored by the user's settled choice; Task 24 creates the Playwright/axe safety net and Task 27 is the phase gate |
-| Phase 6 — master Tasks 28–31 | **Written, not executed.** Four task documents plus the overview. Task 28 retires the single-zone clock and adds the settled LAB type; Task 31 is the phase gate |
-| Phase 7 — master Tasks 32–33 | Not authored |
+| Phase 6 — master Tasks 28–31 | **Written, reviewed and merged, not executed.** Four task documents plus the overview. Task 28 retires the single-zone clock and adds the settled LAB type; Task 31 is the phase gate. PR #34 merged on 23 September 2026 |
+| Phase 7 — master Tasks 32–33 | **Written, not executed.** The load fixture, capacity-lock metric, 500-way k6 gate, application README and operator runbook are hand-authored. No build, burst or fresh-clone walk has been observed |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -73,6 +73,7 @@ Documents written so far:
 | 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b), `phase-4d-mcp-parity.md` (23, phase gate) (hand-authored, unexecuted) |
 | 5 | `phase-5-web.md` | `phase-5a-design-system.md` (Task 24), `phase-5b-admin-screens.md` (25), `phase-5c-manager-and-operations.md` (26), `phase-5d-coordinator-attendee-help.md` (27, phase gate) (hand-authored, unexecuted) |
 | 6 | `phase-6-seed-and-deployment.md` | `phase-6a-seed-cli.md` (Task 28), `phase-6b-local-compose.md` (29), `phase-6c-home-lab.md` (30), `phase-6d-images-and-release.md` (31, phase gate) (hand-authored, unexecuted) |
+| 7 | `phase-7-verification-and-documentation.md` | `phase-7a-load-test.md` (Task 32), `phase-7b-documentation.md` (33, final phase gate) (hand-authored, unexecuted) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
 phase overview: task order, evidence table, review checklist, pull-request gate.
@@ -262,11 +263,12 @@ documents into the independent checkout.
 
 A count that does not match after a task is a signal to read the diff, not to adjust the number.
 
-**Phases 3, 4, 5 and 6 have no rows here, and must not be given one.** Their documents are
+**Phases 3, 4, 5, 6 and 7 have no rows here, and must not be given one.** Their documents are
 hand-authored: no build and no test has ever run against them, so any figure would be a guess
 wearing the same typeface as eleven measured ones. Each document says so at its gate. The last
 measured checkpoint remains Task 11 at 1570, and the next real figure will be whatever an executor
-reaches at Task 12.
+reaches at Task 12. Phase 7's local-stack burst and fresh-clone runbook walk are similarly
+unobserved in this documentation-only checkout and must be performed by its executor.
 
 ## 8. Decisions already taken
 
@@ -586,6 +588,23 @@ contradiction it closes carry one number between them.
   gate. Existing ported Docker and realm files are modifications even where master Task 29's short
   file list calls them creations.
 
+### Phase 7 settlements (binding on execution)
+
+- **#22 (Task 32).** The user approved an Application timing port supplied by the API's existing
+  metrics service. ConfirmBookingHandler starts timing after the required capacity rows are
+  locked and records only after the transaction is disposed, so the measure includes work and
+  lock release. Task 21's text exporter must render real cumulative histogram buckets; its
+  previous running-sum representation cannot prove NFR-P3. The 500-way script compares before
+  and after metric counts, with at least 475 observations under 50 ms.
+- **#23 (Task 32).** The user approved a load-test-only Compose override for the attendee
+  per-IP limit: 600/min in an isolated disposable project, while the normal local and home-lab
+  default remains 30/min. Every fixture token has a distinct 12-character prefix; the
+  per-token 10/min policy remains enabled. The fixture is guarded and writes ignored token data
+  with owner-only permissions.
+- **Task 33 reconciles the design package.** Design 07 now names Task 28's six seeded types and
+  their Manager assignments; design 08 now names the emitted lock-hold metric. The five role
+  help guides need no edits because Phase 6 did not change their actions or outcomes.
+
 **Found while authoring Task 21; closed in the Task 28 plan, pending execution.** Phase 3's
 transitional-construct table retires the single-zone clock "when handlers carry a `Location`", but
 **no Phase 3 document removes it**:
@@ -670,7 +689,7 @@ fourteen is in this file's history at commit `2b192ca`.
 | 5 | **Settled in Phase 3 (§8):** Task 12 owns reference data and settings only; Task 20 is split into 20a/20b | 12, 20 |
 | 6 | **Settled in Phase 3 (§8):** the email log carries `claimCount`, `notBefore` and `correlationId` | 18 |
 | 7 | **Settled in Phase 3 (§8):** delivery is at-least-once, crash window stated | 18 |
-| 8 | Task 32's 500 same-IP confirmations collide with the 30-per-minute attendee rate limit | 32 |
+| 8 | **Settled in Phase 7 (§8, settlement #23):** use an isolated load-only Compose override at 600/min; normal local and home-lab limits stay at 30/min | 32 |
 | 9 | **Settled in Phase 3 (§8):** invites snapshot the three settings values at issue | 12 |
 | 10 | London and Dublin share an offset, so they cannot demonstrate zone-dependent ordering; use a genuinely different zone such as `Asia/Tokyo` | wherever ordering is proved. **Applied in Task 11**, whose ordering cases pair London with Tokyo, and again in Task 21's event-time contract cases; still open for later tasks that prove an ordering |
 | 11 | **Settled in Phase 4 (§8):** master Task 22 splits into 22a and 22b, because seven of design 05's endpoints have no Phase 3 handler | 22 |
@@ -743,12 +762,16 @@ fourteen is in this file's history at commit `2b192ca`.
    creates the release migrations bundle and carries the phase gate. The C# sweep engaged only on
    Task 28; Tasks 29–31 therefore carry Docker Compose, actionlint, jq, Caddy and shellcheck gates.
    Phase 6 has no observed counts; the last measured checkpoint remains Task 11 at 1,570.
-6. **Phase 7 (Tasks 32–33) remains to be authored.** It inherits the hand-authored method and needs
-   verification proportionate to load testing and documentation rather than a copied Web manifest.
+6. **Phase 7 (Tasks 32–33) is written and has never been executed.** The overview is
+   `phase-7-verification-and-documentation.md`. Task 32 adds the guarded 500-invitation fixture,
+   capacity-lock histogram and k6 release gate. Task 33 adds the application's README, demo
+   walkthrough, operator additions and design-package reconciliation. The user approved the two
+   Task 32 settlements in section 8. Neither the burst nor a fresh-clone runbook walk has run.
+   Task 33 carries the final pull-request gate; the author must ask the user before opening it.
 7. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
    section 8's table before starting any of them; Task 15 in particular inherits three separate
    debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and
    `Booking` levels, and Task 7's charge and release methods finally being called.
 
-Do not claim the assignment is complete while Tasks 32–33 are unwritten. The size of Phase 0 is not
-evidence of progress through the rest.
+The assignment to **write** all 33 master tasks is complete as a set of plans. Execution of
+Tasks 12–33 remains unverified; the size of Phase 0 is not evidence of progress through the rest.
