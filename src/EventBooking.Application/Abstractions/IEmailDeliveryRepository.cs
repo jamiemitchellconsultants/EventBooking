@@ -2,7 +2,7 @@ using EventBooking.Domain.Notifications;
 
 namespace EventBooking.Application.Abstractions;
 
-/// <summary>Persistence port for the durable candidate-email delivery projection.</summary>
+/// <summary>Persistence port for the durable attendee-email delivery projection.</summary>
 public interface IEmailDeliveryRepository
 {
     /// <summary>Loads one delivery without taking a database lock.</summary>
@@ -16,16 +16,16 @@ public interface IEmailDeliveryRepository
     Task<EmailLog?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
     /// <summary>Loads the newest unresolved delivery, or latest terminal row, while holding its row lock.</summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<EmailLog?> LockLatestForCandidateAsync(Guid candidateId, CancellationToken cancellationToken);
+    Task<EmailLog?> LockLatestForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken);
 
     /// <summary>Loads the newest unresolved delivery, or latest terminal row, for one template.</summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="template">The template.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<EmailLog?> GetLatestForCandidateAsync(
-        Guid candidateId,
+    Task<EmailLog?> GetLatestForAttendeeAsync(
+        Guid attendeeId,
         EmailTemplate template,
         CancellationToken cancellationToken);
 

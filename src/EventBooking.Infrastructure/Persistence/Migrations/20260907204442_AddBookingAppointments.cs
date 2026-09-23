@@ -65,8 +65,8 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     gen_random_uuid(), b.id, requirement.appointment_type_id, 1,
                     NULL, NULL, NULL, NULL, 1
                 FROM booking AS b
-                INNER JOIN candidate_requirement AS requirement
-                    ON requirement.candidate_id = b.candidate_id
+                INNER JOIN attendee_requirement AS requirement
+                    ON requirement.attendee_id = b.attendee_id
                 WHERE b.status = 1;
                 """);
         }

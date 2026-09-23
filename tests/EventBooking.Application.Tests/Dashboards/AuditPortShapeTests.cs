@@ -9,7 +9,7 @@ public class AuditPortShapeTests
         public Task<IReadOnlyList<AuditHistoryRow>> ForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AuditHistoryRow>>([]);
 
-        public Task<IReadOnlyList<AuditHistoryRow>> ForCandidateAsync(Guid candidateId, CancellationToken cancellationToken) =>
+        public Task<IReadOnlyList<AuditHistoryRow>> ForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<AuditHistoryRow>>([]);
 
         public Task<AuditSearchPage> SearchAsync(AuditSearchFilter filter, CancellationToken cancellationToken) =>
@@ -20,7 +20,7 @@ public class AuditPortShapeTests
     public async Task SearchAsyncReturnsRowsAndCursor()
     {
         IAuditQueries queries = new StubQueries();
-        var filter = new AuditSearchFilter(null, null, null, null, null, ["ConfirmedSlot"], null, null, 50);
+        var filter = new AuditSearchFilter(null, null, null, null, null, ["Event"], null, null, 50);
         var page = await queries.SearchAsync(filter, CancellationToken.None);
         Assert.NotNull(page.Rows);
         Assert.Null(page.NextCursor);

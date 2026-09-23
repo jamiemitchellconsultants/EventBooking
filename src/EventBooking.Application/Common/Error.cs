@@ -29,28 +29,28 @@ public sealed record Error(string Code, string Message)
         new(AppointmentVersionConflictCode, message);
 
     /// <summary>Identifies a group change that would alter an active Booking's requirements.</summary>
-    public const string CandidateGroupActiveBookingConflictCode = "candidate_group_active_booking_conflict";
+    public const string AttendeeGroupActiveBookingConflictCode = "attendee_group_active_booking_conflict";
 
     /// <summary>Creates a group change rejected by an active Booking.</summary>
     /// <param name="message">The message.</param>
-    public static Error CandidateGroupActiveBookingConflict(string message) =>
-        new(CandidateGroupActiveBookingConflictCode, message);
+    public static Error AttendeeGroupActiveBookingConflict(string message) =>
+        new(AttendeeGroupActiveBookingConflictCode, message);
 
-    /// <summary>Identifies an Invite or readiness action for a legacy unassigned Candidate.</summary>
-    public const string CandidateReconciliationRequiredCode = "candidate_reconciliation_required";
+    /// <summary>Identifies an Invite or readiness action for a legacy unassigned Attendee.</summary>
+    public const string AttendeeReconciliationRequiredCode = "attendee_reconciliation_required";
 
-    /// <summary>Creates a reconciliation hold for a legacy unassigned Candidate.</summary>
+    /// <summary>Creates a reconciliation hold for a legacy unassigned Attendee.</summary>
     /// <param name="message">The message.</param>
-    public static Error CandidateReconciliationRequired(string message) =>
-        new(CandidateReconciliationRequiredCode, message);
+    public static Error AttendeeReconciliationRequired(string message) =>
+        new(AttendeeReconciliationRequiredCode, message);
 
     /// <summary>Identifies materialized requirements disagreeing with authoritative state.</summary>
-    public const string CandidateRequirementSnapshotMismatchCode = "candidate_requirement_snapshot_mismatch";
+    public const string AttendeeRequirementSnapshotMismatchCode = "attendee_requirement_snapshot_mismatch";
 
     /// <summary>Creates a mismatch between materialized and authoritative requirements.</summary>
     /// <param name="message">The message.</param>
-    public static Error CandidateRequirementSnapshotMismatch(string message) =>
-        new(CandidateRequirementSnapshotMismatchCode, message);
+    public static Error AttendeeRequirementSnapshotMismatch(string message) =>
+        new(AttendeeRequirementSnapshotMismatchCode, message);
 
     /// <summary>Defines forbidden for the current use case.</summary>
     /// <param name="message">The message.</param>

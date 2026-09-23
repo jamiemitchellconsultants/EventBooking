@@ -7,7 +7,7 @@ public class SystemClockTests
     private static readonly TimeZoneInfo London = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
 
     [Fact]
-    public void TheLocalDateFollowsTheHeadOfficeZoneNotUtc()
+    public void TheLocalDateFollowsTheTransitionalLocationZoneNotUtc()
     {
         // 23:30 UTC on 9 September is already 00:30 on 10 September in British Summer Time.
         var instant = new DateTimeOffset(2026, 9, 9, 23, 30, 0, TimeSpan.Zero);
@@ -26,7 +26,7 @@ public class SystemClockTests
     [Fact]
     public void TheClockReportsAUtcInstant()
     {
-        var clock = new SystemClock(new HeadOfficeOptions("Europe/London"));
+        var clock = new SystemClock(new TransitionalLocationOptions("Europe/London"));
 
         Assert.Equal(TimeSpan.Zero, clock.UtcNow.Offset);
         Assert.InRange(
@@ -38,17 +38,17 @@ public class SystemClockTests
     [Fact]
     public void AnUnknownTimeZoneFailsAtConstructionNotAtUseTime()
     {
-        Assert.ThrowsAny<Exception>(() => new SystemClock(new HeadOfficeOptions("Mars/Olympus_Mons")));
+        Assert.ThrowsAny<Exception>(() => new SystemClock(new TransitionalLocationOptions("Mars/Olympus_Mons")));
     }
 
-    /// <summary>Verifies a UTC instant renders with the head-office offset in British Summer Time.</summary>
+    /// <summary>Verifies a UTC instant renders with the transitional-location offset in British Summer Time.</summary>
     [Fact]
-    public void InstantAtHeadOfficeConvertsAUtcInstantToLondonLocalTime()
+    public void InstantAtTransitionalLocationConvertsAUtcInstantToLondonLocalTime()
     {
-        var clock = new SystemClock(new HeadOfficeOptions("Europe/London"));
+        var clock = new SystemClock(new TransitionalLocationOptions("Europe/London"));
         var instant = new DateTimeOffset(2026, 9, 15, 8, 30, 0, TimeSpan.Zero);
 
-        var local = clock.InstantAtHeadOffice(instant);
+        var local = clock.InstantAtTransitionalLocation(instant);
 
         Assert.Equal(TimeSpan.FromHours(1), local.Offset);
         Assert.Equal(new TimeOnly(9, 30), TimeOnly.FromDateTime(local.DateTime));
@@ -56,35 +56,35 @@ public class SystemClockTests
 
     /// <summary>Verifies the London local date can run ahead of the UTC date late in the evening.</summary>
     [Fact]
-    public void InstantAtHeadOfficeLocalDateCanDifferFromTheUtcDate()
+    public void InstantAtTransitionalLocationLocalDateCanDifferFromTheUtcDate()
     {
-        var clock = new SystemClock(new HeadOfficeOptions("Europe/London"));
+        var clock = new SystemClock(new TransitionalLocationOptions("Europe/London"));
         // 23:30 UTC on 15 September is already 00:30 on 16 September in British Summer Time.
         var instant = new DateTimeOffset(2026, 9, 15, 23, 30, 0, TimeSpan.Zero);
 
-        var local = clock.InstantAtHeadOffice(instant);
+        var local = clock.InstantAtTransitionalLocation(instant);
 
         Assert.Equal(new DateOnly(2026, 9, 16), DateOnly.FromDateTime(local.DateTime));
     }
 
     /// <summary>Verifies conversion re-expresses an instant rather than shifting it.</summary>
     [Fact]
-    public void InstantAtHeadOfficePreservesTheSameInstant()
+    public void InstantAtTransitionalLocationPreservesTheSameInstant()
     {
-        var clock = new SystemClock(new HeadOfficeOptions("Europe/London"));
+        var clock = new SystemClock(new TransitionalLocationOptions("Europe/London"));
         var instant = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.FromHours(-4));
 
-        Assert.Equal(instant.UtcDateTime, clock.InstantAtHeadOffice(instant).UtcDateTime);
+        Assert.Equal(instant.UtcDateTime, clock.InstantAtTransitionalLocation(instant).UtcDateTime);
     }
 
     /// <summary>Verifies a winter instant carries the zero London offset.</summary>
     [Fact]
-    public void InstantAtHeadOfficeUsesTheZeroOffsetInLondonWinter()
+    public void InstantAtTransitionalLocationUsesTheZeroOffsetInLondonWinter()
     {
-        var clock = new SystemClock(new HeadOfficeOptions("Europe/London"));
+        var clock = new SystemClock(new TransitionalLocationOptions("Europe/London"));
         var instant = new DateTimeOffset(2026, 1, 15, 8, 30, 0, TimeSpan.Zero);
 
-        var local = clock.InstantAtHeadOffice(instant);
+        var local = clock.InstantAtTransitionalLocation(instant);
 
         Assert.Equal(TimeSpan.Zero, local.Offset);
         Assert.Equal(new TimeOnly(8, 30), TimeOnly.FromDateTime(local.DateTime));

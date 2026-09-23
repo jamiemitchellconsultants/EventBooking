@@ -3,7 +3,7 @@
 @using EventBooking.Web.Services
 @inject AuditClient Audits
 @inject MeClient Me
-@inject HeadOfficeTimePresentation TimePresentation
+@inject TransitionalLocationTimePresentation TimePresentation
 
 <PageTitle>Audit trail</PageTitle>
 
@@ -31,7 +31,7 @@
             <div class="field">
                 <label class="field-label" for="audit-actor-type">Actor</label>
                 <select id="audit-actor-type" @bind="_actorType"
-                        title="Who caused the change: a staff member, a candidate's link, or the system.">
+                        title="Who caused the change: a staff member, a attendee's link, or the system.">
                     <option value="">Any actor</option>
                     @foreach (var actorType in ActorTypes)
                     {
@@ -122,24 +122,24 @@
 @code {
     // The web app deliberately does not reference the domain assembly, so the server's enum names
     // are repeated here as plain strings; the API rejects anything it does not recognise.
-    private static readonly string[] ActorTypes = ["Staff", "CandidateToken", "System"];
+    private static readonly string[] ActorTypes = ["Staff", "AttendeeToken", "System"];
 
     private static readonly string[] Actions =
     [
         "ProposalCreated", "ProposalWithdrawn", "AcceptanceRecorded", "AcceptanceWithdrawn",
-        "SlotConfirmed", "SlotCancelled", "CapacityDecremented", "CapacityIncremented",
+        "EventConfirmed", "EventCancelled", "CapacityDecremented", "CapacityIncremented",
         "InviteCreated", "InviteSent", "InviteExpired", "InviteOptionReplaced",
-        "BookingCreated", "BookingCancelled", "CapacityAdjusted", "SlotImported",
+        "BookingCreated", "BookingCancelled", "CapacityAdjusted", "EventImported",
         "StaffAccessChanged", "StaffAccessRemoved", "AppointmentCheckedIn", "AppointmentCompleted",
-        "AppointmentMarkedNoShow", "AppointmentStatusCorrected", "EmployeeGroupAssigned",
-        "EmployeeGroupChanged", "RecoveryInviteCreated", "RecoveryInviteCancelled",
+        "AppointmentMarkedNoShow", "AppointmentStatusCorrected", "AttendeeGroupAssigned",
+        "AttendeeGroupReassigned", "RecoveryInviteCreated", "RecoveryInviteCancelled",
         "RecoveryBookingCreated", "RecoveryBookingConcluded", "StaffRolesSynced",
     ];
 
     private static readonly string[] EntityTypes =
     [
-        "SlotProposal", "ConfirmedSlot", "Invite", "Booking",
-        "StaffAccessProfile", "BookingAppointment", "Candidate",
+        "EventProposal", "Event", "Invite", "Booking",
+        "StaffAccessProfile", "BookingAppointment", "Attendee",
     ];
 
     private const int PageSize = 50;

@@ -3,7 +3,7 @@ using System.Reflection;
 namespace EventBooking.Web.Services;
 
 /// <summary>One role's rendered guide, ready to drop into the Help page.</summary>
-/// <param name="RoleKey">The role this guide covers, or "Candidate" for the anonymous guide.</param>
+/// <param name="RoleKey">The role this guide covers, or "Attendee" for the anonymous guide.</param>
 /// <param name="AnchorId">The in-page section id other guides' cross-links target.</param>
 /// <param name="Title">The guide's display heading.</param>
 /// <param name="Html">The guide's markdown, already rendered to HTML.</param>
@@ -31,15 +31,15 @@ public static class UserGuideCatalog
     private static readonly (string RoleKey, string ResourceName, string Title) AdminGuide =
         ("Admin", "admin-guide.md", "Admin guide");
 
-    private static readonly (string RoleKey, string ResourceName, string Title) CandidateGuideEntry =
-        ("Candidate", "candidate-guide.md", "Candidate guide");
+    private static readonly (string RoleKey, string ResourceName, string Title) AttendeeGuideEntry =
+        ("Attendee", "attendee-guide.md", "Attendee guide");
 
-    // Every signed-in staff member can read every guide, including the candidate guide — a
-    // coordinator fielding a candidate's question, or a manager covering another type, needs the
+    // Every signed-in staff member can read every guide, including the attendee guide — a
+    // coordinator fielding a attendee's question, or a manager covering another type, needs the
     // same reference the other roles see, not just their own. Only a signed-out visitor is
-    // restricted to the candidate guide alone (the <NotAuthorized> branch in Help.razor).
+    // restricted to the attendee guide alone (the <NotAuthorized> branch in Help.razor).
     private static readonly (string RoleKey, string ResourceName, string Title)[] AllGuides =
-        [AdminGuide, .. RoleGuides, CandidateGuideEntry];
+        [AdminGuide, .. RoleGuides, AttendeeGuideEntry];
 
     // GuidesFor unlocks the full catalog for anyone holding at least one of these — an account
     // whose only role isn't one EventBooking recognises still gets no guide, matching Home.razor's
@@ -69,7 +69,7 @@ public static class UserGuideCatalog
     // to avoid producing a dead link.
     private static readonly Dictionary<string, string> AnchorsByResourceName = RoleGuides
         .Append(AdminGuide)
-        .Append(CandidateGuideEntry)
+        .Append(AttendeeGuideEntry)
         .ToDictionary(guide => guide.ResourceName, guide => guide.RoleKey.ToLowerInvariant());
 
     private static readonly Dictionary<string, string> RenderedHtmlByResourceName = new(StringComparer.Ordinal);
@@ -78,14 +78,14 @@ public static class UserGuideCatalog
     /// <summary>
     /// Builds every guide for a caller holding at least one recognised staff role — the full
     /// catalog, not just the guides matching their own roles, since staff routinely need to
-    /// understand what other roles (and candidates) see. A caller with no recognised role gets
+    /// understand what other roles (and attendees) see. A caller with no recognised role gets
     /// none, so Help.razor can show its "not assigned a role yet" message.
     /// </summary>
     public static IReadOnlyList<UserGuide> GuidesFor(IReadOnlyList<string> roles) =>
         roles.Any(RecognisedStaffRoles.Contains) ? AllGuides.Select(BuildGuide).ToList() : [];
 
-    /// <summary>Builds the candidate guide shown to signed-out visitors of the Help page.</summary>
-    public static UserGuide CandidateGuide() => BuildGuide(CandidateGuideEntry);
+    /// <summary>Builds the attendee guide shown to signed-out visitors of the Help page.</summary>
+    public static UserGuide AttendeeGuide() => BuildGuide(AttendeeGuideEntry);
 
     private static UserGuide BuildGuide((string RoleKey, string ResourceName, string Title) guide) =>
         new(guide.RoleKey, AnchorsByResourceName[guide.ResourceName], guide.Title, RenderedHtmlFor(guide.ResourceName));

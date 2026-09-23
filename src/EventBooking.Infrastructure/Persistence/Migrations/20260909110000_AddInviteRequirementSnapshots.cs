@@ -54,24 +54,24 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 ON CONFLICT DO NOTHING;
                 """);
 
-            // Pending invites copy the Candidate's current derived requirements.
+            // Pending invites copy the Attendee's current derived requirements.
             migrationBuilder.Sql(
                 """
                 INSERT INTO invite_requirement (invite_id, appointment_type_id)
-                SELECT invite.id, candidate_requirement.appointment_type_id
+                SELECT invite.id, attendee_requirement.appointment_type_id
                 FROM invite
-                JOIN candidate_requirement ON candidate_requirement.candidate_id = invite.candidate_id
+                JOIN attendee_requirement ON attendee_requirement.attendee_id = invite.attendee_id
                 WHERE invite.status = 1
                 ON CONFLICT DO NOTHING;
                 """);
 
-            // Terminal unbooked invites copy current Candidate requirements for schema shape only.
+            // Terminal unbooked invites copy current Attendee requirements for schema shape only.
             migrationBuilder.Sql(
                 """
                 INSERT INTO invite_requirement (invite_id, appointment_type_id)
-                SELECT invite.id, candidate_requirement.appointment_type_id
+                SELECT invite.id, attendee_requirement.appointment_type_id
                 FROM invite
-                JOIN candidate_requirement ON candidate_requirement.candidate_id = invite.candidate_id
+                JOIN attendee_requirement ON attendee_requirement.attendee_id = invite.attendee_id
                 WHERE invite.status IN (3, 4)
                 ON CONFLICT DO NOTHING;
                 """);

@@ -5,20 +5,20 @@ using EventBooking.Application.Common;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 
 namespace EventBooking.Application.Invites;
 
-/// <summary>Starts one recovery Invite for a candidate with missed appointments.</summary>
+/// <summary>Starts one recovery Invite for a attendee with missed appointments.</summary>
 /// <param name="StaffUserId">The Coordinator starting the recovery.</param>
-/// <param name="CandidateId">The booked candidate whose no-shows are recovered.</param>
-public sealed record StartRecoveryCommand(Guid StaffUserId, Guid CandidateId);
+/// <param name="AttendeeId">The booked attendee whose no-shows are recovered.</param>
+public sealed record StartRecoveryCommand(Guid StaffUserId, Guid AttendeeId);
 
 /// <summary>Reports recovery Invite creation, or the awaiting-availability outcome.</summary>
-/// <param name="InviteId">The new recovery Invite identifier, or empty when no slots exist.</param>
+/// <param name="InviteId">The new recovery Invite identifier, or empty when no events exist.</param>
 /// <param name="AppointmentTypeIds">The recoverable snapshot offered, or awaiting availability.</param>
 /// <param name="EmailSent">Whether the post-commit provider attempt completed successfully.</param>
 public sealed record StartRecoveryResult(
@@ -28,26 +28,26 @@ public sealed record StartRecoveryResult(
 
 /// <summary>
 /// Gathers every currently recoverable no-show type into one recovery Invite under the
-/// Candidate-first lifecycle lock order, revalidating eligibility after the locks because
+/// Attendee-first lifecycle lock order, revalidating eligibility after the locks because
 /// preflight reads are never authoritative.
 /// </summary>
-/// <param name="candidates">The candidates.</param>
+/// <param name="attendees">The attendees.</param>
 /// <param name="access">The access.</param>
 /// <param name="invites">The invites.</param>
 /// <param name="bookings">The bookings.</param>
 /// <param name="appointments">The appointments.</param>
 /// <param name="issuer">The issuer.</param>
-/// <param name="slotFinder">The slot finder.</param>
+/// <param name="eventFinder">The event finder.</param>
 /// <param name="deliveries">The deliveries.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 public sealed class StartRecoveryHandler(
-    ICandidateRepository candidates,
+    IAttendeeRepository attendees,
     IStaffAccessAuthorizer access,
     IInviteRepository invites,
     IBookingRepository bookings,
     IBookingAppointmentRepository appointments,
     InviteIssuer issuer,
-    EligibleSlotFinder slotFinder,
+    EligibleEventFinder eventFinder,
     EmailDeliveryService deliveries,
     IUnitOfWork unitOfWork)
 {
@@ -60,7 +60,7 @@ public sealed class StartRecoveryHandler(
     {
         var authorized = await access.AuthorizeAsync(
             command.StaffUserId,
-            StaffCapability.ManageCandidates,
+            StaffCapability.ManageAttendees,
             null,
             cancellationToken);
         if (authorized.IsFailure)
@@ -68,29 +68,29 @@ public sealed class StartRecoveryHandler(
             return Result<StartRecoveryResult>.Failure(authorized.Error);
         }
 
-        var located = await candidates.GetAsync(command.CandidateId, cancellationToken);
+        var located = await attendees.GetAsync(command.AttendeeId, cancellationToken);
         if (located is null)
         {
-            return Result<StartRecoveryResult>.Failure(Error.NotFound("No such candidate."));
+            return Result<StartRecoveryResult>.Failure(Error.NotFound("No such attendee."));
         }
 
         var preflight = await SelectRecoverableAsync(located, null, cancellationToken);
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        var candidate = await candidates.LockForUpdateAsync(command.CandidateId, cancellationToken);
-        if (candidate is null)
+        var attendee = await attendees.LockForUpdateAsync(command.AttendeeId, cancellationToken);
+        if (attendee is null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Result<StartRecoveryResult>.Failure(Error.NotFound("No such candidate."));
+            return Result<StartRecoveryResult>.Failure(Error.NotFound("No such attendee."));
         }
 
-        var pending = await invites.LockPendingListForCandidateAsync(candidate.Id, cancellationToken);
+        var pending = await invites.LockPendingListForAttendeeAsync(attendee.Id, cancellationToken);
         var pendingRecoveries = pending
             .Where(invite => invite.RecoveryOfBookingId.HasValue)
             .ToList();
 
-        var original = await bookings.LockActiveOriginalForCandidateAsync(candidate.Id, cancellationToken);
+        var original = await bookings.LockActiveOriginalForAttendeeAsync(attendee.Id, cancellationToken);
         if (original is null)
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -103,11 +103,11 @@ public sealed class StartRecoveryHandler(
         {
             await transaction.RollbackAsync(cancellationToken);
             return Result<StartRecoveryResult>.Failure(Error.RecoveryAlreadyPending(
-                "A recovery is already pending for this candidate."));
+                "A recovery is already pending for this attendee."));
         }
 
         var journey = await bookings.ListJourneyAsync(original.Id, cancellationToken);
-        var selected = await SelectRecoverableAsync(candidate, journey, pendingRecoveries, cancellationToken);
+        var selected = await SelectRecoverableAsync(attendee, journey, pendingRecoveries, cancellationToken);
         if (!selected.SequenceEqual(preflight))
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -122,7 +122,7 @@ public sealed class StartRecoveryHandler(
                 "No current requirement has a recoverable missed appointment."));
         }
 
-        var options = await slotFinder.FindAsync(
+        var options = await eventFinder.FindAsync(
             selected,
             Invite.RequiredOptionCount,
             [],
@@ -147,7 +147,7 @@ public sealed class StartRecoveryHandler(
         try
         {
             var issueResult = await issuer.IssueRecoveryAsync(
-                candidate,
+                attendee,
                 original.Id,
                 selected,
                 options,
@@ -177,7 +177,7 @@ public sealed class StartRecoveryHandler(
         {
             await transaction.RollbackAsync(cancellationToken);
             return Result<StartRecoveryResult>.Failure(Error.RecoveryAlreadyPending(
-                "A recovery is already pending for this candidate."));
+                "A recovery is already pending for this attendee."));
         }
         catch
         {
@@ -198,20 +198,20 @@ public sealed class StartRecoveryHandler(
     }
 
     private async Task<IReadOnlyList<Guid>> SelectRecoverableAsync(
-        Candidate candidate,
+        Attendee attendee,
         IReadOnlyList<Booking>? journey,
         CancellationToken cancellationToken) =>
-        await SelectRecoverableAsync(candidate, journey, [], cancellationToken);
+        await SelectRecoverableAsync(attendee, journey, [], cancellationToken);
 
     private async Task<IReadOnlyList<Guid>> SelectRecoverableAsync(
-        Candidate candidate,
+        Attendee attendee,
         IReadOnlyList<Booking>? journey,
         IReadOnlyList<Invite> pendingRecoveries,
         CancellationToken cancellationToken)
     {
         if (journey is null or { Count: 0 })
         {
-            var rootId = await LocateRootBookingIdAsync(candidate.Id, cancellationToken);
+            var rootId = await LocateRootBookingIdAsync(attendee.Id, cancellationToken);
             if (rootId is null)
             {
                 return [];
@@ -233,12 +233,12 @@ public sealed class StartRecoveryHandler(
             .ToList();
 
         return new RecoveryRequirementSelector().Select(
-            candidate.RequiredAppointmentTypeIds, attempts, covered);
+            attendee.RequiredAppointmentTypeIds, attempts, covered);
     }
 
-    private async Task<Guid?> LocateRootBookingIdAsync(Guid candidateId, CancellationToken cancellationToken)
+    private async Task<Guid?> LocateRootBookingIdAsync(Guid attendeeId, CancellationToken cancellationToken)
     {
-        var active = await bookings.GetActiveForCandidateAsync(candidateId, cancellationToken);
+        var active = await bookings.GetActiveForAttendeeAsync(attendeeId, cancellationToken);
         return active is null ? null : active.RecoveryOfBookingId ?? active.Id;
     }
 }

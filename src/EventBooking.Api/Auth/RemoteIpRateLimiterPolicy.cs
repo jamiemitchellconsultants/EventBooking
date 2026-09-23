@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace EventBooking.Api.Auth;
 
-/// <summary>Applies the anonymous candidate-link allowance independently per client address.</summary>
+/// <summary>Applies the anonymous attendee-link allowance independently per client address.</summary>
 public sealed class RemoteIpRateLimiterPolicy : IRateLimiterPolicy<string>
 {
     /// <inheritdoc/>

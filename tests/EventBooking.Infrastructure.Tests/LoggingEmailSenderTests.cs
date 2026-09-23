@@ -1,7 +1,7 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Notifications;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
@@ -71,40 +71,40 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
     {
         public DateTimeOffset UtcNow => now;
 
-        /// <summary>Gets the fixed instant; this clock treats UTC as head-office time.</summary>
-        public DateTimeOffset NowAtHeadOffice => now;
+        /// <summary>Gets the fixed instant; this clock treats UTC as transitional-location time.</summary>
+        public DateTimeOffset NowAtTransitionalLocation => now;
 
-        public DateOnly TodayAtHeadOffice => DateAtHeadOffice(now);
+        public DateOnly TodayAtTransitionalLocation => DateAtTransitionalLocation(now);
 
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) => DateOnly.FromDateTime(instant.UtcDateTime);
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) => DateOnly.FromDateTime(instant.UtcDateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant.ToUniversalTime();
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant.ToUniversalTime();
     }
 
     [Fact]
     public async Task ASuccessfulSendIsLoggedAsSent()
     {
-        var (sender, transport, candidateId) = await Given();
+        var (sender, transport, attendeeId) = await Given();
 
-        var sent = await sender.SendAsync(MessageFor(candidateId), CancellationToken.None);
+        var sent = await sender.SendAsync(MessageFor(attendeeId), CancellationToken.None);
 
         Assert.True(sent);
         Assert.Single(transport.Sent);
 
         await using var context = fixture.NewContext();
         var log = await context.EmailLogs.SingleAsync();
-        Assert.Equal(candidateId, log.CandidateId);
-        Assert.Equal(EmailTemplate.CandidateInvite, log.TemplateName);
+        Assert.Equal(attendeeId, log.AttendeeId);
+        Assert.Equal(EmailTemplate.AttendeeInvite, log.TemplateName);
         Assert.Equal(EmailStatus.Sent, log.Status);
     }
 
     [Fact]
     public async Task AFailedSendReturnsFalseAndIsLoggedAsFailed()
     {
-        var (sender, transport, candidateId) = await Given();
+        var (sender, transport, attendeeId) = await Given();
         transport.Throw = true;
 
-        var sent = await sender.SendAsync(MessageFor(candidateId), CancellationToken.None);
+        var sent = await sender.SendAsync(MessageFor(attendeeId), CancellationToken.None);
 
         Assert.False(sent);
         Assert.Empty(transport.Sent);
@@ -118,9 +118,9 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
     public async Task ThePublishedTimeComesFromTheClock()
     {
         var now = new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
-        var (sender, _, candidateId) = await Given(now);
+        var (sender, _, attendeeId) = await Given(now);
 
-        await sender.SendAsync(MessageFor(candidateId), CancellationToken.None);
+        await sender.SendAsync(MessageFor(attendeeId), CancellationToken.None);
 
         await using var context = fixture.NewContext();
         Assert.Equal(now, (await context.EmailLogs.SingleAsync()).SentAt);
@@ -129,13 +129,13 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
     [Fact]
     public async Task ACancelledTransportPropagatesCancellationWithoutWritingAnEmailLog()
     {
-        var (sender, transport, candidateId) = await Given();
+        var (sender, transport, attendeeId) = await Given();
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         transport.Cancel = true;
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => sender.SendAsync(MessageFor(candidateId), cancellation.Token));
+            () => sender.SendAsync(MessageFor(attendeeId), cancellation.Token));
 
         await using var context = fixture.NewContext();
         Assert.Empty(await context.EmailLogs.ToListAsync());
@@ -144,12 +144,12 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
     [Fact]
     public async Task ACancelledAuditSavePropagatesCancellationWithoutWritingAnEmailLog()
     {
-        var (sender, transport, candidateId) = await Given();
+        var (sender, transport, attendeeId) = await Given();
         using var cancellation = new CancellationTokenSource();
         transport.AfterSend = cancellation.Cancel;
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => sender.SendAsync(MessageFor(candidateId), cancellation.Token));
+            () => sender.SendAsync(MessageFor(attendeeId), cancellation.Token));
 
         await using var context = fixture.NewContext();
         Assert.Empty(await context.EmailLogs.ToListAsync());
@@ -158,7 +158,7 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
     [Fact]
     public async Task AnAuditContextFailureIsWarnedAndDoesNotFailTheSend()
     {
-        var (_, _, candidateId) = await Given();
+        var (_, _, attendeeId) = await Given();
         var logger = new RecordingLogger<LoggingEmailSender>();
         var sender = new LoggingEmailSender(
             new FakeTransport(),
@@ -166,7 +166,7 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
             new FixedClock(DateTimeOffset.UtcNow),
             logger);
 
-        var sent = await sender.SendAsync(MessageFor(candidateId), CancellationToken.None);
+        var sent = await sender.SendAsync(MessageFor(attendeeId), CancellationToken.None);
 
         Assert.True(sent);
         Assert.Contains(LogLevel.Warning, logger.LogLevels);
@@ -175,18 +175,18 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
         Assert.Empty(await context.EmailLogs.ToListAsync());
     }
 
-    private async Task<(LoggingEmailSender Sender, FakeTransport Transport, Guid CandidateId)> Given(
+    private async Task<(LoggingEmailSender Sender, FakeTransport Transport, Guid AttendeeId)> Given(
         DateTimeOffset? now = null)
     {
         await fixture.ResetAsync();
 
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         await using (var write = fixture.NewContext())
         {
-            var pilots = write.EmployeeGroups.Include(g => g.Requirements).Single(g => g.Id == EmployeeGroupIds.Pilots);
-            var candidate = Candidate.Create(
-                candidateId, "Amara Novak", "a.novak@mail.com", pilots);
-            write.Candidates.Add(candidate);
+            var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+            var attendee = Attendee.Create(
+                attendeeId, "Amara Novak", "a.novak@mail.com", pilots);
+            write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
         }
 
@@ -197,11 +197,11 @@ public class LoggingEmailSenderTests(PostgresFixture fixture)
             new FixedClock(now ?? DateTimeOffset.UtcNow),
             NullLogger<LoggingEmailSender>.Instance);
 
-        return (sender, transport, candidateId);
+        return (sender, transport, attendeeId);
     }
 
-    private static EmailMessage MessageFor(Guid candidateId) =>
-        new(candidateId, "a.novak@mail.com", "Amara Novak", EmailTemplate.CandidateInvite,
+    private static EmailMessage MessageFor(Guid attendeeId) =>
+        new(attendeeId, "a.novak@mail.com", "Amara Novak", EmailTemplate.AttendeeInvite,
             "Choose a time", "text", "<html></html>");
 
     private sealed class TestContextFactory(PostgresFixture fixture)

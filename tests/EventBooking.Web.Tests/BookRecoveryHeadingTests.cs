@@ -53,7 +53,7 @@ public class BookRecoveryHeadingTests : BunitContext
         var handler = new StubInviteHandler(invite);
         Services.AddSingleton(
             new BookingClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") }));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         return Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
     }

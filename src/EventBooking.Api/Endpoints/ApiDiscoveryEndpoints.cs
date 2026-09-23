@@ -20,15 +20,15 @@ public static class ApiDiscoveryEndpoints
                 ["swagger"] = Link("getSwaggerUi"),
                 ["health"] = Link("getHealth"),
                 ["me"] = Link("getMyAccess"),
-                ["slotBoard"] = Link("getSlotBoard"),
-                ["slotOperations"] = Link("getSlotOperations"),
-                ["candidates"] = Link("listCandidates"),
-                ["employeeGroups"] = Link("listEmployeeGroups"),
+                ["eventBoard"] = Link("getEventBoard"),
+                ["eventOperations"] = Link("getEventOperations"),
+                ["attendees"] = Link("listAttendees"),
+                ["attendeeGroups"] = Link("listAttendeeGroups"),
                 ["settings"] = Link("getSettings"),
                 ["staffAccess"] = Link("listStaffAccess"),
                 ["dashboards"] = Link("getDashboards"),
                 ["audit"] = Link("searchAudit"),
-                ["appointments"] = Link("listAppointmentSlots"),
+                ["appointments"] = Link("listAppointmentEvents"),
             };
             return Results.Ok(new ApiDiscoveryResponse("EventBooking API", "v1", links));
         }).AllowAnonymous()

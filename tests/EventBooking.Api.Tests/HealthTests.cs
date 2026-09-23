@@ -65,8 +65,8 @@ public class HealthTests(ApiFactory factory)
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:EventBooking"] = "Host=localhost;Database=x;Username=x;Password=x",
-                ["HeadOffice:TimeZoneId"] = "Europe/London",
-                ["HeadOffice:Address"] = "1 Example Street",
+                ["TransitionalLocation:TimeZoneId"] = "Europe/London",
+                ["TransitionalLocation:Address"] = "1 Example Street",
                 ["Tokens:SigningKey"] = "a-signing-key-that-is-long-enough-to-be-safe",
                 ["Email:FromAddress"] = "recruitment@example.com",
                 ["Email:FromName"] = "Recruitment Team",

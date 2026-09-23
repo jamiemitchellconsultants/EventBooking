@@ -24,7 +24,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 nullable: true);
 
             migrationBuilder.AddColumn<Guid>(
-                name: "confirmed_slot_id",
+                name: "event_id",
                 table: "email_log",
                 type: "uuid",
                 nullable: true);
@@ -36,16 +36,16 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 nullable: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_email_log_candidate_id_sent_at",
+                name: "IX_email_log_attendee_id_sent_at",
                 table: "email_log",
-                columns: new[] { "candidate_id", "sent_at" });
+                columns: new[] { "attendee_id", "sent_at" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
-                name: "IX_email_log_candidate_id_sent_at",
+                name: "IX_email_log_attendee_id_sent_at",
                 table: "email_log");
 
             migrationBuilder.DropColumn(
@@ -57,7 +57,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 table: "email_log");
 
             migrationBuilder.DropColumn(
-                name: "confirmed_slot_id",
+                name: "event_id",
                 table: "email_log");
 
             migrationBuilder.DropColumn(

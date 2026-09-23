@@ -7,9 +7,9 @@ namespace EventBooking.Api.Endpoints;
 public static class BookingEndpoints
 {
     /// <summary>Named so Task 58's registration and these routes cannot drift apart.</summary>
-    public const string RateLimiterPolicy = "candidate-links";
+    public const string RateLimiterPolicy = "attendee-links";
 
-    public sealed record ConfirmBookingRequest(Guid ConfirmedSlotId);
+    public sealed record ConfirmBookingRequest(Guid EventId);
 
     public sealed record CancelBookingRequest(bool Rebook);
 
@@ -44,7 +44,7 @@ public static class BookingEndpoints
             ConfirmBookingHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new ConfirmBookingCommand(token, request.ConfirmedSlotId), cancellationToken))
+                new ConfirmBookingCommand(token, request.EventId), cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("confirmBooking")
             .Produces(200)

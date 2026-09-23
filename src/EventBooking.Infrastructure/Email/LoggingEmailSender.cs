@@ -37,9 +37,9 @@ public sealed class LoggingEmailSender(
             status = EmailStatus.Failed;
             logger.LogError(
                 ex,
-                "Sending the {Template} email to candidate {CandidateId} failed.",
+                "Sending the {Template} email to attendee {AttendeeId} failed.",
                 message.Template,
-                message.CandidateId);
+                message.AttendeeId);
         }
 
         if (message.DeliveryId is null)
@@ -62,7 +62,7 @@ public sealed class LoggingEmailSender(
             await using var context = contextFactory.CreateDbContext();
 
             context.EmailLogs.Add(EmailLog.Record(
-                Guid.NewGuid(), message.CandidateId, message.Template, clock.UtcNow, status));
+                Guid.NewGuid(), message.AttendeeId, message.Template, clock.UtcNow, status));
 
             await context.SaveChangesAsync(cancellationToken);
         }

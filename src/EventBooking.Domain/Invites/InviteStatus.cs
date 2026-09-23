@@ -3,7 +3,7 @@ namespace EventBooking.Domain.Invites;
 /// <summary>Where an invite sits in its offer lifecycle.</summary>
 public enum InviteStatus
 {
-    /// <summary>Awaiting a candidate response.</summary>
+    /// <summary>Awaiting a attendee response.</summary>
     Pending = 1,
     /// <summary>Consumed by a booking.</summary>
     Used = 2,

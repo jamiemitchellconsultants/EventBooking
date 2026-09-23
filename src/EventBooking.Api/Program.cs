@@ -17,10 +17,10 @@ var allowedWebOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? [];
 
-var (connectionString, headOffice, tokens, email, portal) =
+var (connectionString, transitionalLocation, tokens, email, portal) =
     EventBookingConfiguration.Read(builder.Configuration);
 
-builder.Services.AddEventBookingInfrastructure(connectionString, headOffice, tokens);
+builder.Services.AddEventBookingInfrastructure(connectionString, transitionalLocation, tokens);
 
 var smtpHost = builder.Configuration["Email:Smtp:Host"]
     ?? throw new InvalidOperationException(
@@ -53,9 +53,9 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    // Anonymous, token-addressed routes: generous for a real candidate, unattractive for a script.
+    // Anonymous, token-addressed routes: generous for a real attendee, unattractive for a script.
     // Partitioned by client address so one client's burst (or script) cannot consume the
-    // allowance of every other candidate. ForwardedHeadersMiddleware (below) restores the real
+    // allowance of every other attendee. ForwardedHeadersMiddleware (below) restores the real
     // client address when the app runs behind a proxy or load balancer.
     options.AddPolicy<string, RemoteIpRateLimiterPolicy>(BookingEndpoints.RateLimiterPolicy);
 });
@@ -86,9 +86,9 @@ app.UseRateLimiter();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous().WithAgentMetadata("getHealth");
 app.MapApiDiscoveryEndpoints();
 
-app.MapSlotEndpoints();
-app.MapCandidateEndpoints();
-app.MapEmployeeGroupEndpoints();
+app.MapEventEndpoints();
+app.MapAttendeeEndpoints();
+app.MapAttendeeGroupEndpoints();
 app.MapAdminEndpoints();
 app.MapStaffAccessEndpoints();
 app.MapMeEndpoints();

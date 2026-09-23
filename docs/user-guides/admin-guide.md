@@ -3,9 +3,9 @@
 [← All user guides](README.md)
 
 As an Admin, you prepare EventBooking for other staff. You set the Appointment Type scope that
-scoped roles need, configure invitation timing, import Confirmed Slots agreed outside the normal
+scoped roles need, configure invitation timing, import Confirmed Events agreed outside the normal
 Manager negotiation, cancel a window that cannot run, and search the operational audit trail. Admin
-access is exclusive: it cannot be combined with another role, and it never exposes candidate,
+access is exclusive: it cannot be combined with another role, and it never exposes attendee,
 invitation, booking, readiness, or recovery data.
 
 ## What you do and do not control
@@ -27,9 +27,9 @@ appointment types. That makes scope assignment the one access task that belongs 
    showing **Awaiting appointment-type assignment**.
 3. On **System settings**, confirm invitation expiry and the invite re-issue limit before
    Coordinators start sending invitations.
-4. If a full slot has already been agreed outside EventBooking, import it on **Confirmed slots**.
-5. Hand candidate and invitation work to a Coordinator; hand negotiated capacity to the Managers.
-6. Use **Audit trail** when someone asks who changed a slot, a proposal, or an access profile.
+4. If a full event has already been agreed outside EventBooking, import it on **Events**.
+5. Hand attendee and invitation work to a Coordinator; hand negotiated capacity to the Managers.
+6. Use **Audit trail** when someone asks who changed a event, a proposal, or an access profile.
 
 ## Home page
 
@@ -38,7 +38,7 @@ no Appointment Type. The page provides four workspace links plus Help:
 
 - **System settings** (`/settings`)
 - **Staff access** (`/staff-access`)
-- **Confirmed slots** (`/confirmed-slots`)
+- **Events** (`/events`)
 - **Audit trail** (`/audit`)
 - **Help** (`/help`) — every role's guide, including this one
 
@@ -47,7 +47,7 @@ no Appointment Type. The page provides four workspace links plus Help:
 The same links also appear as a navigation bar at the top of every Admin page, so you can switch
 workspaces without returning to the home page first.
 
-If candidate, dashboard, slot-proposal, or appointment links are absent, EventBooking is enforcing
+If attendee, dashboard, event-proposal, or appointment links are absent, EventBooking is enforcing
 the Admin data boundary correctly.
 
 ## Staff access screen
@@ -104,11 +104,11 @@ needed. Every successful access change is audited and is searchable on the Audit
 
 ### Access dependencies to establish
 
-- Scope one Manager profile for each of the three Appointment Types before relying on in-system slot
+- Scope one Manager profile for each of the three Appointment Types before relying on in-system event
   negotiation.
 - Scope Appointment staff before the appointment date so they can open the Appointments workspace.
 - Never treat Admin as "all access": Admin intentionally receives less personal data than a
-  Coordinator, and cannot see candidates, invitations, bookings, or candidate audit history.
+  Coordinator, and cannot see attendees, invitations, bookings, or attendee audit history.
 
 ## System settings screen
 
@@ -122,21 +122,21 @@ Use `/settings` to review the fixed Appointment Types and configure invitation t
    Manager profile on Staff access, not here.
 2. Set **Invite expiry window (days)** to the number of days a new invitation remains valid.
 3. Set **Max auto-retry count** to the number of times an unanswered invitation is automatically
-   re-issued before the candidate is marked No response - needs follow-up for a Coordinator to
+   re-issued before the attendee is marked No response - needs follow-up for a Coordinator to
    re-invite manually.
 4. Select **Save changes**.
 5. Wait for **Saved. These changes apply to invites created from now on.** before leaving.
 
 Changes do not reach back and alter invitations already sent.
 
-## Confirmed slots screen
+## Events screen
 
-Use `/confirmed-slots` for a complete window agreed outside EventBooking, and to cancel a confirmed
+Use `/events` for a complete window agreed outside EventBooking, and to cancel a confirmed
 window. Coordinators see the same screen.
 
-![Confirmed slots screen with CSV import control](screenshots/confirmed-slots-import.png)
+![Events screen with CSV import control](screenshots/events-import.png)
 
-### Import already agreed slots
+### Import already agreed events
 
 A direct import skips Manager acceptance and becomes bookable immediately.
 
@@ -148,43 +148,43 @@ A direct import skips Manager acceptance and becomes bookable immediately.
 
 2. Add one four-hour window per row in `yyyy-MM-dd,HH:mm` format, with a positive total headcount
    for Drug & Alcohol Testing (`DAT`), Medical Check-up (`MED`), and Uniform Fitting (`UNI`). Use
-   future dates for bookable capacity; past slots are retained as history and are never offered.
-3. In **Import already agreed slots**, choose the CSV file.
+   future dates for bookable capacity; past events are retained as history and are never offered.
+3. In **Import already agreed events**, choose the CSV file.
 4. Wait for the imported-count confirmation.
 
 The import is all-or-nothing. If the screen says **Nothing was imported**, use every line-numbered
-message to correct the file, then upload the whole file again. Imported slots do not require an
+message to correct the file, then upload the whole file again. Imported events do not require an
 additional save or Manager approval.
 
-### Cancel a confirmed slot
+### Cancel a event
 
-The **Cancel a confirmed slot** card lists every confirmed window with its date, four-hour window,
+The **Cancel a event** card lists every confirmed window with its date, four-hour window,
 remaining-over-total capacity for each type, and the number of active Bookings. Cancel only when the
 whole window cannot run.
 
-![Cancel a confirmed slot card listing each window's date, capacity by type, active bookings, and a Cancel slot button](screenshots/confirmed-slots-cancel.png)
+![Cancel a event card listing each window's date, capacity by type, active bookings, and a Cancel event button](screenshots/events-cancel.png)
 
 1. Warn the Coordinator and the delivery teams first.
-2. Select **Cancel slot** on the row.
-3. If the slot holds active Bookings, the request is refused and the message asks you to confirm.
+2. Select **Cancel event** on the row.
+3. If the event holds active Bookings, the request is refused and the message asks you to confirm.
    Read it, then select **Confirm cancel** only when you intend to proceed.
-4. Tell the Coordinator to monitor the affected candidates and their replacement invitations.
+4. Tell the Coordinator to monitor the affected attendees and their replacement invitations.
 
-Cancellation voids the Bookings on that slot, releases their capacity, and triggers the candidate
-rebooking workflow. A Manager can cancel their own confirmed windows from the Slot proposals screen,
+Cancellation voids the Bookings on that event, releases their capacity, and triggers the attendee
+rebooking workflow. A Manager can cancel their own confirmed windows from the Event proposals screen,
 and a Coordinator can cancel from this screen, so agree who is acting before anyone clicks.
 
 ## Audit trail screen
 
 Use `/audit` to answer "who changed this, and when". As an Admin you see the operational record:
-slot proposals, confirmed slots, and staff access profiles. Candidate, invitation, booking, and
+event proposals, events, and staff access profiles. Attendee, invitation, booking, and
 appointment entries are outside the Admin data boundary and are not returned to you — a Coordinator
 searches those.
 
 1. Set **From** and **To** to bound the period. Both are optional.
-2. Choose an **Actor** to narrow by who caused the change: Staff, CandidateToken, or System.
-3. Choose an **Action** to narrow to one recorded change, such as SlotConfirmed, SlotCancelled,
-   CapacityAdjusted, SlotImported, StaffAccessChanged, or StaffRolesSynced.
+2. Choose an **Actor** to narrow by who caused the change: Staff, AttendeeToken, or System.
+3. Choose an **Action** to narrow to one recorded change, such as EventConfirmed, EventCancelled,
+   CapacityAdjusted, EventImported, StaffAccessChanged, or StaffRolesSynced.
 4. Enter an **Identifier** to match one audited entity id or actor id exactly.
 5. Select **Search**. Results are newest first, showing When, What, Who, and Details.
 6. Select **Load more** to page further back. **Nothing matches these filters** means the search ran
@@ -198,7 +198,7 @@ the change itself happened elsewhere.
 
 - **A colleague is not on Staff access** — they hold no EventBooking role in the identity provider,
   or they have never signed in. Neither is fixable from this screen.
-- **A Manager cannot open Slot proposals** — their profile shows Awaiting appointment-type
+- **A Manager cannot open Event proposals** — their profile shows Awaiting appointment-type
   assignment. Assign the type.
 - **Roles look wrong and there is no way to edit them** — correct. Raise the role change through the
   corporate identity process; it appears here after their next sign-in.
@@ -206,8 +206,8 @@ the change itself happened elsewhere.
   reapply.
 - **CSV is rejected** — check the exact header, `yyyy-MM-dd` date, `HH:mm` start time, positive
   capacities, and every line-numbered error. No rows have been imported.
-- **Cancel slot asks a second time** — active Bookings are affected. Coordinate first; the second
+- **Cancel event asks a second time** — active Bookings are affected. Coordinate first; the second
   click performs the cancellation.
-- **Audit search returns no candidate entries** — expected. The Admin boundary excludes candidate
+- **Audit search returns no attendee entries** — expected. The Admin boundary excludes attendee
   data; ask a Coordinator.
-- **Candidate page is unavailable** — expected. A Coordinator must complete candidate work.
+- **Attendee page is unavailable** — expected. A Coordinator must complete attendee work.

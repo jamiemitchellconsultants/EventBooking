@@ -31,80 +31,80 @@ public sealed class OperationsTools
         return result.ValueOrThrow();
     }
 
-    /// <summary>Returns the audit history of one confirmed slot.</summary>
+    /// <summary>Returns the audit history of one eventItem.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The audit history handler.</param>
-    /// <param name="confirmedSlotId">The confirmed slot identifier.</param>
+    /// <param name="eventId">The event identifier.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The audit rows.</returns>
-    [McpServerTool(Name = "slot_audit_history", Title = "Slot audit history", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Return the audit history of one confirmed slot. Caller must have audit visibility (Admin or Coordinator).")]
-    public async Task<IReadOnlyList<AuditHistoryRow>> GetSlotAuditHistoryAsync(
+    [McpServerTool(Name = "event_audit_history", Title = "Event audit history", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("Return the audit history of one eventItem. Caller must have audit visibility (Admin or Coordinator).")]
+    public async Task<IReadOnlyList<AuditHistoryRow>> GetEventAuditHistoryAsync(
         ICallerAccessor caller,
         GetAuditHistoryHandler handler,
-        [Description("The confirmed slot identifier.")] Guid confirmedSlotId,
+        [Description("The event identifier.")] Guid eventId,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
             new GetAuditHistoryQuery(
-                caller.RequireStaffUserId(), AuditEntityTypes.ConfirmedSlot, confirmedSlotId),
+                caller.RequireStaffUserId(), AuditEntityTypes.Event, eventId),
             cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Returns the audit history of one candidate.</summary>
+    /// <summary>Returns the audit history of one attendee.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The audit history handler.</param>
-    /// <param name="candidateId">The candidate identifier.</param>
+    /// <param name="attendeeId">The attendee identifier.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The audit rows.</returns>
-    [McpServerTool(Name = "candidate_audit_history", Title = "Candidate audit history", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Return the audit history of one candidate. Caller must have audit visibility (Admin or Coordinator).")]
-    public async Task<IReadOnlyList<AuditHistoryRow>> GetCandidateAuditHistoryAsync(
+    [McpServerTool(Name = "attendee_audit_history", Title = "Attendee audit history", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("Return the audit history of one attendee. Caller must have audit visibility (Admin or Coordinator).")]
+    public async Task<IReadOnlyList<AuditHistoryRow>> GetAttendeeAuditHistoryAsync(
         ICallerAccessor caller,
         GetAuditHistoryHandler handler,
-        [Description("The candidate identifier.")] Guid candidateId,
+        [Description("The attendee identifier.")] Guid attendeeId,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new GetAuditHistoryQuery(caller.RequireStaffUserId(), null, candidateId),
+            new GetAuditHistoryQuery(caller.RequireStaffUserId(), null, attendeeId),
             cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Lists the appointment workspace slots for the caller's scope.</summary>
+    /// <summary>Lists the appointment workspace events for the caller's scope.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The workspace handler.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The workspace slot list.</returns>
-    [McpServerTool(Name = "appointment_slots", Title = "Appointment slots", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List current and upcoming active slots with appointment counts for your scope. Caller must be a coordinator, admin, or manager within scope.")]
-    public async Task<AppointmentWorkspaceSlotList> ListAppointmentSlotsAsync(
+    /// <returns>The workspace event list.</returns>
+    [McpServerTool(Name = "appointment_events", Title = "Appointment events", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("List current and upcoming active events with appointment counts for your scope. Caller must be a coordinator, admin, or manager within scope.")]
+    public async Task<AppointmentWorkspaceEventList> ListAppointmentEventsAsync(
         ICallerAccessor caller,
         GetAppointmentWorkspaceHandler handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.ListSlotsAsync(
+        var result = await handler.ListEventsAsync(
             caller.RequireStaffUserId(), cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Returns one appointment workspace slot with its operational rows.</summary>
+    /// <summary>Returns one appointment workspace event with its operational rows.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The workspace handler.</param>
-    /// <param name="confirmedSlotId">The confirmed slot identifier.</param>
+    /// <param name="eventId">The event identifier.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The slot detail.</returns>
-    [McpServerTool(Name = "appointment_slot_detail", Title = "Appointment slot detail", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Return one active slot with its minimum-data appointment rows. Caller must be a coordinator, admin, or manager within scope.")]
-    public async Task<AppointmentSlotDetail> GetAppointmentSlotAsync(
+    /// <returns>The event detail.</returns>
+    [McpServerTool(Name = "appointment_event_detail", Title = "Appointment event detail", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("Return one active event with its minimum-data appointment rows. Caller must be a coordinator, admin, or manager within scope.")]
+    public async Task<AppointmentEventDetail> GetAppointmentEventAsync(
         ICallerAccessor caller,
         GetAppointmentWorkspaceHandler handler,
-        [Description("The confirmed slot identifier.")] Guid confirmedSlotId,
+        [Description("The event identifier.")] Guid eventId,
         CancellationToken cancellationToken)
     {
-        var result = await handler.GetSlotAsync(
-            caller.RequireStaffUserId(), confirmedSlotId, cancellationToken);
+        var result = await handler.GetEventAsync(
+            caller.RequireStaffUserId(), eventId, cancellationToken);
         return result.ValueOrThrow();
     }
 
@@ -158,11 +158,11 @@ public sealed class OperationsTools
         return page.NextCursor is null ? page with { NextCursor = string.Empty } : page;
     }
 
-    /// <summary>Exports one scoped slot roster as CSV text with its download filename.</summary>
+    /// <summary>Exports one scoped event roster as CSV text with its download filename.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The workspace handler.</param>
     /// <param name="formatter">The roster CSV formatter.</param>
-    /// <param name="confirmedSlotId">The confirmed slot identifier.</param>
+    /// <param name="eventId">The event identifier.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The roster CSV text and download filename.</returns>
     [McpServerTool(Name = "export_appointment_roster", Title = "Export appointment roster", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
@@ -171,11 +171,11 @@ public sealed class OperationsTools
         ICallerAccessor caller,
         GetAppointmentWorkspaceHandler handler,
         AppointmentRosterCsvFormatter formatter,
-        [Description("The confirmed slot identifier.")] Guid confirmedSlotId,
+        [Description("The event identifier.")] Guid eventId,
         CancellationToken cancellationToken = default)
     {
-        var result = await handler.GetSlotAsync(
-            caller.RequireStaffUserId(), confirmedSlotId, cancellationToken);
+        var result = await handler.GetEventAsync(
+            caller.RequireStaffUserId(), eventId, cancellationToken);
         return formatter.Format(result.ValueOrThrow());
     }
 

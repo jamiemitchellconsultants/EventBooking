@@ -24,7 +24,7 @@ public sealed class GetAppointmentWorkspaceHandlerTests
         var handler = new GetAppointmentWorkspaceHandler(
             new StaffAccessAuthorizer(profiles), queries, new FakeClock());
 
-        var result = await handler.ListSlotsAsync(staff, CancellationToken.None);
+        var result = await handler.ListEventsAsync(staff, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, queries.ListCallCount);
@@ -45,13 +45,13 @@ public sealed class GetAppointmentWorkspaceHandlerTests
 
         var result = await new GetAppointmentWorkspaceHandler(
             new StaffAccessAuthorizer(profiles), queries, new FakeClock())
-            .GetSlotAsync(staff, Guid.NewGuid(), CancellationToken.None);
+            .GetEventAsync(staff, Guid.NewGuid(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(AppointmentTypeIds.UniformFitting, queries.LastAppointmentTypeId);
     }
 
-    /// <summary>Verifies Admin denial occurs before the candidate-data query is invoked.</summary>
+    /// <summary>Verifies Admin denial occurs before the attendee-data query is invoked.</summary>
     [Fact]
     public async Task AdminIsDeniedBeforeAnyWorkspaceQuery()
     {
@@ -62,7 +62,7 @@ public sealed class GetAppointmentWorkspaceHandlerTests
 
         var result = await new GetAppointmentWorkspaceHandler(
             new StaffAccessAuthorizer(profiles), queries, new FakeClock())
-            .ListSlotsAsync(admin, CancellationToken.None);
+            .ListEventsAsync(admin, CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("forbidden", result.Error.Code);
@@ -70,7 +70,7 @@ public sealed class GetAppointmentWorkspaceHandlerTests
         Assert.Equal(0, queries.DetailCallCount);
     }
 
-    /// <summary>Verifies absent and cross-scope slots share the same not-found application result.</summary>
+    /// <summary>Verifies absent and cross-scope events share the same not-found application result.</summary>
     [Fact]
     public async Task QueryNullBecomesTheStableNotFoundResult()
     {
@@ -82,11 +82,11 @@ public sealed class GetAppointmentWorkspaceHandlerTests
 
         var result = await new GetAppointmentWorkspaceHandler(
             new StaffAccessAuthorizer(profiles), queries, new FakeClock())
-            .GetSlotAsync(staff, Guid.NewGuid(), CancellationToken.None);
+            .GetEventAsync(staff, Guid.NewGuid(), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("not_found", result.Error.Code);
-        Assert.Equal("No such appointment workspace slot.", result.Error.Message);
+        Assert.Equal("No such appointment workspace eventItem.", result.Error.Message);
     }
 
     private sealed class RecordingQueries : IAppointmentWorkspaceQueries
@@ -94,33 +94,33 @@ public sealed class GetAppointmentWorkspaceHandlerTests
         public int ListCallCount { get; private set; }
         public int DetailCallCount { get; private set; }
         public Guid? LastAppointmentTypeId { get; private set; }
-        public AppointmentSlotDetail? ReturnDetail { get; set; } = new()
+        public AppointmentEventDetail? ReturnDetail { get; set; } = new()
         {
             AppointmentTypeName = "Drug & Alcohol Testing",
-            ConfirmedSlotId = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
             Date = new DateOnly(2026, 9, 7),
             StartTime = new TimeOnly(9, 0),
             EndTime = new TimeOnly(13, 0),
             Appointments = [],
         };
 
-        public Task<AppointmentWorkspaceSlotList> ListSlotsAsync(
+        public Task<AppointmentWorkspaceEventList> ListEventsAsync(
             Guid appointmentTypeId,
             DateOnly onOrAfter,
             CancellationToken cancellationToken)
         {
             ListCallCount++;
             LastAppointmentTypeId = appointmentTypeId;
-            return Task.FromResult(new AppointmentWorkspaceSlotList
+            return Task.FromResult(new AppointmentWorkspaceEventList
             {
                 AppointmentTypeName = "Medical Check-up",
-                Slots = [],
+                Events = [],
             });
         }
 
-        public Task<AppointmentSlotDetail?> GetSlotAsync(
+        public Task<AppointmentEventDetail?> GetEventAsync(
             Guid appointmentTypeId,
-            Guid confirmedSlotId,
+            Guid eventId,
             CancellationToken cancellationToken)
         {
             DetailCallCount++;

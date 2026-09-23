@@ -2,7 +2,7 @@ using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Application.Settings;
-using EventBooking.Application.Slots;
+using EventBooking.Application.Events;
 using EventBooking.Domain.Access;
 
 namespace EventBooking.Api.Endpoints;

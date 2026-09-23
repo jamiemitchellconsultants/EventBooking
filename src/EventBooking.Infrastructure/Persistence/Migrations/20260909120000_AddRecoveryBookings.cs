@@ -12,7 +12,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
-                name: "ux_booking_active_candidate",
+                name: "ux_booking_active_attendee",
                 table: "booking");
 
             migrationBuilder.AddColumn<Guid>(
@@ -22,9 +22,9 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 nullable: true);
 
             migrationBuilder.CreateIndex(
-                name: "ux_booking_active_original_candidate",
+                name: "ux_booking_active_original_attendee",
                 table: "booking",
-                column: "candidate_id",
+                column: "attendee_id",
                 unique: true,
                 filter: "status = 1 AND recovery_of_booking_id IS NULL");
 
@@ -57,7 +57,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 table: "booking");
 
             migrationBuilder.DropIndex(
-                name: "ux_booking_active_original_candidate",
+                name: "ux_booking_active_original_attendee",
                 table: "booking");
 
             migrationBuilder.DropIndex(
@@ -73,9 +73,9 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 table: "booking");
 
             migrationBuilder.CreateIndex(
-                name: "ux_booking_active_candidate",
+                name: "ux_booking_active_attendee",
                 table: "booking",
-                column: "candidate_id",
+                column: "attendee_id",
                 unique: true,
                 filter: "status = 1");
         }

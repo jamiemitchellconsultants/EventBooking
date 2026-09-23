@@ -9,26 +9,26 @@ namespace EventBooking.Application.Invites;
 
 /// <summary>Cancels one pending recovery Invite without touching capacity or appointments.</summary>
 /// <param name="StaffUserId">The Coordinator cancelling the recovery Invite.</param>
-/// <param name="CandidateId">The candidate route the Invite must belong to.</param>
+/// <param name="AttendeeId">The attendee route the Invite must belong to.</param>
 /// <param name="InviteId">The pending recovery Invite to cancel.</param>
-public sealed record CancelRecoveryInviteCommand(Guid StaffUserId, Guid CandidateId, Guid InviteId);
+public sealed record CancelRecoveryInviteCommand(Guid StaffUserId, Guid AttendeeId, Guid InviteId);
 
-/// <summary>Cancels one Pending recovery Invite without changing capacity or Candidate status.</summary>
-/// <param name="candidates">The candidates.</param>
+/// <summary>Cancels one Pending recovery Invite without changing capacity or Attendee status.</summary>
+/// <param name="attendees">The attendees.</param>
 /// <param name="access">The access.</param>
 /// <param name="invites">The invites.</param>
 /// <param name="bookings">The bookings.</param>
 /// <param name="audit">The audit.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 public sealed class CancelRecoveryInviteHandler(
-    ICandidateRepository candidates,
+    IAttendeeRepository attendees,
     IStaffAccessAuthorizer access,
     IInviteRepository invites,
     IBookingRepository bookings,
     IAuditLogger audit,
     IUnitOfWork unitOfWork)
 {
-    /// <summary>Cancels one Pending recovery Invite without changing capacity or Candidate status.</summary>
+    /// <summary>Cancels one Pending recovery Invite without changing capacity or Attendee status.</summary>
     /// <param name="command">The command.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     public async Task<Result> HandleAsync(
@@ -37,7 +37,7 @@ public sealed class CancelRecoveryInviteHandler(
     {
         var authorized = await access.AuthorizeAsync(
             command.StaffUserId,
-            StaffCapability.ManageCandidates,
+            StaffCapability.ManageAttendees,
             null,
             cancellationToken);
         if (authorized.IsFailure)
@@ -47,11 +47,11 @@ public sealed class CancelRecoveryInviteHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        var candidate = await candidates.LockForUpdateAsync(command.CandidateId, cancellationToken);
-        if (candidate is null)
+        var attendee = await attendees.LockForUpdateAsync(command.AttendeeId, cancellationToken);
+        if (attendee is null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Result.Failure(Error.NotFound("No such candidate."));
+            return Result.Failure(Error.NotFound("No such attendee."));
         }
 
         var invite = await invites.LockForUpdateAsync(command.InviteId, cancellationToken);
@@ -67,10 +67,10 @@ public sealed class CancelRecoveryInviteHandler(
             return Result.Failure(Error.Conflict("Only a recovery invite can be cancelled."));
         }
 
-        if (invite.CandidateId != command.CandidateId)
+        if (invite.AttendeeId != command.AttendeeId)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Result.Failure(Error.Conflict("This invite does not belong to this candidate."));
+            return Result.Failure(Error.Conflict("This invite does not belong to this attendee."));
         }
 
         var root = await bookings.LockForUpdateAsync(invite.RecoveryOfBookingId.Value, cancellationToken);
@@ -80,10 +80,10 @@ public sealed class CancelRecoveryInviteHandler(
             return Result.Failure(Error.NotFound("The original booking no longer exists."));
         }
 
-        if (root.CandidateId != command.CandidateId)
+        if (root.AttendeeId != command.AttendeeId)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Result.Failure(Error.Conflict("This invite does not belong to this candidate."));
+            return Result.Failure(Error.Conflict("This invite does not belong to this attendee."));
         }
 
         if (invite.Status != InviteStatus.Pending)

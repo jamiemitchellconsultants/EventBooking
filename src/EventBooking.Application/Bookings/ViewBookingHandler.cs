@@ -10,13 +10,13 @@ namespace EventBooking.Application.Bookings;
 /// <param name="StartTime">The start time.</param>
 /// <param name="EndTime">The end time.</param>
 /// <param name="Display">The display.</param>
-/// <param name="CandidateName">The candidate name.</param>
+/// <param name="AttendeeName">The attendee name.</param>
 public sealed record BookingView(
     DateOnly Date,
     TimeOnly StartTime,
     TimeOnly EndTime,
     string Display,
-    string CandidateName);
+    string AttendeeName);
 
 /// <summary>Defines view booking query for the current use case.</summary>
 /// <param name="ManageToken">The manage token.</param>
@@ -24,13 +24,13 @@ public sealed record ViewBookingQuery(string? ManageToken);
 
 /// <summary>Defines view booking handler for the current use case.</summary>
 /// <param name="bookings">The bookings.</param>
-/// <param name="candidates">The candidates.</param>
-/// <param name="slots">The slots.</param>
+/// <param name="attendees">The attendees.</param>
+/// <param name="events">The events.</param>
 /// <param name="tokens">The tokens.</param>
 public sealed class ViewBookingHandler(
     IBookingRepository bookings,
-    ICandidateRepository candidates,
-    IConfirmedSlotRepository slots,
+    IAttendeeRepository attendees,
+    IEventRepository events,
     ITokenService tokens)
 {
     /// <summary>Defines handle async for the current use case.</summary>
@@ -53,19 +53,19 @@ public sealed class ViewBookingHandler(
             return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var slot = await slots.GetAsync(booking.ConfirmedSlotId, cancellationToken);
-        var candidate = await candidates.GetAsync(booking.CandidateId, cancellationToken);
+        var eventItem = await events.GetAsync(booking.EventId, cancellationToken);
+        var attendee = await attendees.GetAsync(booking.AttendeeId, cancellationToken);
 
-        if (slot is null || candidate is null)
+        if (eventItem is null || attendee is null)
         {
             return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
         return Result<BookingView>.Success(new BookingView(
-            slot.Window.Date,
-            slot.Window.StartTime,
-            slot.Window.EndTime,
-            CandidateEmailComposer.FormatWindow(slot.Window),
-            candidate.Name));
+            eventItem.Window.Date,
+            eventItem.Window.StartTime,
+            eventItem.Window.EndTime,
+            AttendeeEmailComposer.FormatWindow(eventItem.Window),
+            attendee.Name));
     }
 }

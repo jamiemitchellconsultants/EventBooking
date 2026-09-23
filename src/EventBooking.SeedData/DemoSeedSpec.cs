@@ -3,14 +3,14 @@ using System.Text.Json;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Common;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.AttendeeGroups;
 
 namespace EventBooking.SeedData;
 
-/// <summary>The deterministic lifecycle state constructed for a demo Candidate.</summary>
-public enum DemoCandidateJourney
+/// <summary>The deterministic lifecycle state constructed for a demo Attendee.</summary>
+public enum DemoAttendeeJourney
 {
-    /// <summary>The Candidate has a group but no Booking.</summary>
+    /// <summary>The Attendee has a group but no Booking.</summary>
     Unbooked = 1,
     /// <summary>Every current requirement has a Completed attempt.</summary>
     Ready = 2,
@@ -22,18 +22,18 @@ public enum DemoCandidateJourney
     RecoveryCompleted = 5,
 }
 
-/// <summary>One deterministic Candidate seed assignment and requested demo journey.</summary>
-/// <param name="Name">The demo Candidate full name.</param>
-/// <param name="Email">The demo Candidate email address.</param>
-/// <param name="EmployeeGroupCode">The canonical Employee Group code.</param>
+/// <summary>One deterministic Attendee seed assignment and requested demo journey.</summary>
+/// <param name="Name">The demo Attendee full name.</param>
+/// <param name="Email">The demo Attendee email address.</param>
+/// <param name="AttendeeGroupCode">The canonical Attendee Group code.</param>
 /// <param name="Journey">The deterministic lifecycle state to construct.</param>
-public sealed record CandidateSpec(
+public sealed record AttendeeSpec(
     string Name,
     string Email,
-    string EmployeeGroupCode,
-    DemoCandidateJourney Journey);
+    string AttendeeGroupCode,
+    DemoAttendeeJourney Journey);
 
-public sealed record AgreedSlotSpec(DateOnly Date, TimeOnly StartTime, int DatHeadcount, int MedHeadcount, int UniHeadcount);
+public sealed record AgreedEventSpec(DateOnly Date, TimeOnly StartTime, int DatHeadcount, int MedHeadcount, int UniHeadcount);
 
 public sealed record OpenProposalSpec(
     DateOnly Date,
@@ -95,7 +95,7 @@ public static class DemoSeedSpec
 
     /// <summary>
     /// Overrides the file anchor for this run (the --reanchor option), or restores file
-    /// behavior with null. Applies to agreed slots, proposals, and journey windows alike.
+    /// behavior with null. Applies to agreed events, proposals, and journey windows alike.
     /// </summary>
     public static void OverrideAnchor(DateOnly? anchor) => AnchorOverride = anchor;
 
@@ -115,9 +115,9 @@ public static class DemoSeedSpec
             .Where(profile => profile.Roles.Contains(Role.Manager))
             .ToDictionary(profile => profile.AppointmentTypeId!.Value, profile => profile.UserId);
 
-    public static IReadOnlyList<AgreedSlotSpec> AgreedSlots() =>
-        Document.Value.AgreedSlots
-            .Select(s => new AgreedSlotSpec(
+    public static IReadOnlyList<AgreedEventSpec> AgreedEvents() =>
+        Document.Value.AgreedEvents
+            .Select(s => new AgreedEventSpec(
                 AnchorDate().AddDays(s.DaysOffset), ParseStartTime(s.StartTime),
                 s.DatHeadcount, s.MedHeadcount, s.UniHeadcount))
             .ToList();
@@ -129,19 +129,19 @@ public static class DemoSeedSpec
                 ManagerId(p.CreatedBy), p.DatHeadcount, p.MedHeadcount, p.UniHeadcount))
             .ToList();
 
-    public static IReadOnlyList<CandidateSpec> Candidates() =>
-        Document.Value.Candidates
-            .Select(c => new CandidateSpec(
-                c.Name, c.Email, GroupCode(c.EmployeeGroup), Journey(c.Journey)))
+    public static IReadOnlyList<AttendeeSpec> Attendees() =>
+        Document.Value.Attendees
+            .Select(c => new AttendeeSpec(
+                c.Name, c.Email, GroupCode(c.AttendeeGroup), Journey(c.Journey)))
             .ToList();
 
     private static string GroupCode(string code) =>
-        EmployeeGroupIds.TryFromCode(code, out var id)
-            ? EmployeeGroupIds.CodeOf(id)
-            : throw new SeedException($"Unknown employee group code '{code}' in demo-seed.json.");
+        AttendeeGroupIds.TryFromCode(code, out var id)
+            ? AttendeeGroupIds.CodeOf(id)
+            : throw new SeedException($"Unknown attendee group code '{code}' in demo-seed.json.");
 
-    private static DemoCandidateJourney Journey(string value) =>
-        Enum.TryParse<DemoCandidateJourney>(value, ignoreCase: true, out var journey)
+    private static DemoAttendeeJourney Journey(string value) =>
+        Enum.TryParse<DemoAttendeeJourney>(value, ignoreCase: true, out var journey)
             && Enum.IsDefined(journey)
             ? journey
             : throw new SeedException(
@@ -242,9 +242,9 @@ public static class DemoSeedSpec
             anchor,
             staff.Select(s => s.Assignment).ToList(),
             staff.ToDictionary(s => s.Username, s => s.Assignment.UserId),
-            document.AgreedSlots,
+            document.AgreedEvents,
             document.OpenProposals,
-            document.Candidates);
+            document.Attendees);
     }
 
     private sealed record StaffRow(string Username, StaffProfileSpec Assignment);
@@ -253,16 +253,16 @@ public static class DemoSeedSpec
         DateOnly Anchor,
         IReadOnlyList<StaffProfileSpec> Staff,
         IReadOnlyDictionary<string, Guid> StaffByUsername,
-        IReadOnlyList<AgreedSlotRow> AgreedSlots,
+        IReadOnlyList<AgreedEventRow> AgreedEvents,
         IReadOnlyList<OpenProposalRow> OpenProposals,
-        IReadOnlyList<CandidateRow> Candidates);
+        IReadOnlyList<AttendeeRow> Attendees);
 
     private sealed record SeedFile(
         string AnchorDate,
         List<StaffRowFile> Staff,
-        List<AgreedSlotRow> AgreedSlots,
+        List<AgreedEventRow> AgreedEvents,
         List<OpenProposalRow> OpenProposals,
-        List<CandidateRow> Candidates);
+        List<AttendeeRow> Attendees);
 
     private sealed record StaffRowFile(
         string Username,
@@ -271,12 +271,12 @@ public static class DemoSeedSpec
         List<string> Roles,
         string? AppointmentType);
 
-    private sealed record AgreedSlotRow(
+    private sealed record AgreedEventRow(
         int DaysOffset, string StartTime, int DatHeadcount, int MedHeadcount, int UniHeadcount);
 
     private sealed record OpenProposalRow(
         int DaysOffset, string StartTime, string CreatedBy,
         int? DatHeadcount, int? MedHeadcount, int? UniHeadcount);
 
-    private sealed record CandidateRow(string Name, string Email, string EmployeeGroup, string Journey);
+    private sealed record AttendeeRow(string Name, string Email, string AttendeeGroup, string Journey);
 }

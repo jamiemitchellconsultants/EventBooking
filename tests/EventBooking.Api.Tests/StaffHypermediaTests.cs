@@ -18,16 +18,16 @@ public sealed class StaffHypermediaTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task SlotCollectionsCarryEntryLinksEvenWhenEmpty()
+    public async Task EventCollectionsCarryEntryLinksEvenWhenEmpty()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager, AppointmentTypeIds.DrugAndAlcoholTesting);
         var client = factory.CreateClient();
-        using var board = JsonDocument.Parse(await client.GetStringAsync("/api/slots/board"));
-        AssertLink(board.RootElement.GetProperty("_links"), "self", "/api/slots/board", "GET", "getSlotBoard");
-        using var workspace = JsonDocument.Parse(await client.GetStringAsync("/api/appointment-workspace/slots"));
+        using var board = JsonDocument.Parse(await client.GetStringAsync("/api/events/board"));
+        AssertLink(board.RootElement.GetProperty("_links"), "self", "/api/events/board", "GET", "getEventBoard");
+        using var workspace = JsonDocument.Parse(await client.GetStringAsync("/api/appointment-workspace/events"));
         AssertLink(workspace.RootElement.GetProperty("_links"), "self",
-            "/api/appointment-workspace/slots", "GET", "listAppointmentSlots");
+            "/api/appointment-workspace/events", "GET", "listAppointmentEvents");
     }
 
     [Fact]

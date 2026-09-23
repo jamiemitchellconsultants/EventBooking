@@ -12,16 +12,16 @@ public sealed class EmailLogConfiguration : IEntityTypeConfiguration<EmailLog>
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.CandidateId).HasColumnName("candidate_id");
+        builder.Property(e => e.AttendeeId).HasColumnName("attendee_id");
         builder.Property(e => e.TemplateName).HasColumnName("template_name").HasConversion<int>();
         builder.Property(e => e.SentAt).HasColumnName("sent_at");
         builder.Property(e => e.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(e => e.InviteId).HasColumnName("invite_id");
         builder.Property(e => e.BookingId).HasColumnName("booking_id");
-        builder.Property(e => e.ConfirmedSlotId).HasColumnName("confirmed_slot_id");
+        builder.Property(e => e.EventId).HasColumnName("event_id");
         builder.Property(e => e.ClaimedAt).HasColumnName("claimed_at");
 
-        builder.HasIndex(e => e.CandidateId);
-        builder.HasIndex(e => new { e.CandidateId, e.SentAt });
+        builder.HasIndex(e => e.AttendeeId);
+        builder.HasIndex(e => new { e.AttendeeId, e.SentAt });
     }
 }

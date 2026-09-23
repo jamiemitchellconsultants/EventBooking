@@ -1,4 +1,4 @@
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 

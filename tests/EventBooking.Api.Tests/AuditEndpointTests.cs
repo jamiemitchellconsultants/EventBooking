@@ -3,8 +3,8 @@ using System.Net.Http.Json;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using Microsoft.EntityFrameworkCore;
 using EventBooking.Infrastructure.Persistence;
@@ -18,15 +18,15 @@ public class AuditEndpointTests(ApiFactory factory)
     private static readonly DateTimeOffset Now = new(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task ACoordinatorGetsASlotsHistoryWithEveryFieldThePanelBindsTo()
+    public async Task ACoordinatorGetsAEventsHistoryWithEveryFieldThePanelBindsTo()
     {
-        var slotId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
 
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             context.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, slotId, AuditAction.SlotConfirmed,
+                Guid.NewGuid(), AuditEntityTypes.Event, eventId, AuditAction.EventConfirmed,
                 ActorType.Staff, "staff-1", Now, "6 headcount total"));
             await context.SaveChangesAsync();
         }
@@ -34,34 +34,34 @@ public class AuditEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
-        var rows = await client.GetFromJsonAsync<List<RowResponse>>($"/api/audit/slot/{slotId}");
+        var rows = await client.GetFromJsonAsync<List<RowResponse>>($"/api/audit/event/{eventId}");
 
         var row = Assert.Single(rows!);
         Assert.Equal(Now, row.Timestamp);
-        Assert.Equal(AuditEntityTypes.ConfirmedSlot, row.EntityType);
-        Assert.Equal(slotId, row.EntityId);
-        Assert.Equal("SlotConfirmed", row.Action);
+        Assert.Equal(AuditEntityTypes.Event, row.EntityType);
+        Assert.Equal(eventId, row.EntityId);
+        Assert.Equal("EventConfirmed", row.Action);
         Assert.Equal("Staff", row.ActorType);
         Assert.Equal("staff-1", row.ActorId);
         Assert.Equal("6 headcount total", row.Details);
     }
 
     [Fact]
-    public async Task ACoordinatorGetsACandidatesHistoryFromItsInvitesAndBookings()
+    public async Task ACoordinatorGetsAAttendeesHistoryFromItsInvitesAndBookings()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var inviteId = Guid.NewGuid();
 
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-            var pilots = context.EmployeeGroups.Include(g => g.Requirements).Single(g => g.Id == EmployeeGroupIds.Pilots);
-            var candidate = Candidate.Create(candidateId, "Amara Novak", "a.novak@mail.com", pilots);
-            context.Candidates.Add(candidate);
+            var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+            var attendee = Attendee.Create(attendeeId, "Amara Novak", "a.novak@mail.com", pilots);
+            context.Attendees.Add(attendee);
             context.Invites.Add(Invite.CreateInitial(
-                inviteId, candidate.Id, "hash", Now.AddDays(4),
+                inviteId, attendee.Id, "hash", Now.AddDays(4),
                 [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
-                candidate.RequiredAppointmentTypeIds, 0));
+                attendee.RequiredAppointmentTypeIds, 0));
             context.AuditLogs.Add(AuditLog.Record(
                 Guid.NewGuid(), AuditEntityTypes.Invite, inviteId, AuditAction.InviteCreated,
                 ActorType.System, null, Now, "retry 0"));
@@ -71,7 +71,7 @@ public class AuditEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
-        var rows = await client.GetFromJsonAsync<List<RowResponse>>($"/api/audit/candidate/{candidateId}");
+        var rows = await client.GetFromJsonAsync<List<RowResponse>>($"/api/audit/attendee/{attendeeId}");
 
         var row = Assert.Single(rows!);
         Assert.Equal("InviteCreated", row.Action);
@@ -87,11 +87,11 @@ public class AuditEndpointTests(ApiFactory factory)
             Role.Manager, AppointmentTypeIds.MedicalCheckUp);
         var client = factory.CreateClient();
 
-        var slotResponse = await client.GetAsync($"/api/audit/slot/{Guid.NewGuid()}");
-        var candidateResponse = await client.GetAsync($"/api/audit/candidate/{Guid.NewGuid()}");
+        var eventResponse = await client.GetAsync($"/api/audit/event/{Guid.NewGuid()}");
+        var attendeeResponse = await client.GetAsync($"/api/audit/attendee/{Guid.NewGuid()}");
 
-        Assert.Equal(HttpStatusCode.Forbidden, slotResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, candidateResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, eventResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, attendeeResponse.StatusCode);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class AuditEndpointTests(ApiFactory factory)
         factory.SignedInAs = null;
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync($"/api/audit/slot/{Guid.NewGuid()}");
+        var response = await client.GetAsync($"/api/audit/event/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -117,10 +117,10 @@ public class AuditEndpointTests(ApiFactory factory)
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             context.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, older, AuditAction.SlotConfirmed,
+                Guid.NewGuid(), AuditEntityTypes.Event, older, AuditAction.EventConfirmed,
                 ActorType.Staff, actorId, Now, null));
             context.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, newer, AuditAction.SlotConfirmed,
+                Guid.NewGuid(), AuditEntityTypes.Event, newer, AuditAction.EventConfirmed,
                 ActorType.Staff, actorId, Now.AddHours(1), null));
             await context.SaveChangesAsync();
         }
@@ -129,7 +129,7 @@ public class AuditEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var page = await client.GetFromJsonAsync<SearchPageResponse>(
-            $"/api/audit/search?action=SlotConfirmed&actorType=Staff&identifier={actorId}&pageSize=10");
+            $"/api/audit/search?action=EventConfirmed&actorType=Staff&identifier={actorId}&pageSize=10");
 
         Assert.NotNull(page);
         Assert.Equal(2, page!.Rows.Count);
@@ -147,10 +147,10 @@ public class AuditEndpointTests(ApiFactory factory)
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             context.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, inRange, AuditAction.SlotConfirmed,
+                Guid.NewGuid(), AuditEntityTypes.Event, inRange, AuditAction.EventConfirmed,
                 ActorType.Staff, actorId, Now, null));
             context.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, Guid.NewGuid(), AuditAction.SlotConfirmed,
+                Guid.NewGuid(), AuditEntityTypes.Event, Guid.NewGuid(), AuditAction.EventConfirmed,
                 ActorType.Staff, actorId, Now.AddDays(-30), null));
             await context.SaveChangesAsync();
         }
@@ -185,14 +185,14 @@ public class AuditEndpointTests(ApiFactory factory)
     [Fact]
     public async Task SearchWithMalformedCursorRestartsFromNewest()
     {
-        var slotId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         var actorId = $"search-actor-{Guid.NewGuid():N}";
 
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             context.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, slotId, AuditAction.SlotConfirmed,
+                Guid.NewGuid(), AuditEntityTypes.Event, eventId, AuditAction.EventConfirmed,
                 ActorType.Staff, actorId, Now, null));
             await context.SaveChangesAsync();
         }
@@ -204,7 +204,7 @@ public class AuditEndpointTests(ApiFactory factory)
             $"/api/audit/search?identifier={actorId}&cursor=not-valid-base64!!");
 
         Assert.NotNull(page);
-        Assert.Contains(page!.Rows, r => r.EntityId == slotId);
+        Assert.Contains(page!.Rows, r => r.EntityId == eventId);
     }
 
     [Fact]
@@ -219,7 +219,7 @@ public class AuditEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task SearchNeverReturnsCandidateRowsToAnAdmin()
+    public async Task SearchNeverReturnsAttendeeRowsToAnAdmin()
     {
         var bookingId = Guid.NewGuid();
         var actorId = $"search-actor-{Guid.NewGuid():N}";

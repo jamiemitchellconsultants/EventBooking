@@ -20,7 +20,7 @@ public sealed class ApiDiscoveryTests(ApiFactory factory)
         AssertLink(links, "openapi", "/openapi/v1.json", "GET", "getOpenApiDocument");
         AssertLink(links, "swagger", "/swagger", "GET", "getSwaggerUi");
         AssertLink(links, "me", "/api/me", "GET", "getMyAccess");
-        AssertLink(links, "candidates", "/api/candidates", "GET", "listCandidates");
+        AssertLink(links, "attendees", "/api/attendees", "GET", "listAttendees");
     }
 
     private static void AssertLink(JsonElement links, string relation, string href, string method, string operationId)

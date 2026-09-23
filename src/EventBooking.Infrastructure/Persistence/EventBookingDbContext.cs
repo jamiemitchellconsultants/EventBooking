@@ -2,12 +2,12 @@ using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence;
@@ -19,16 +19,16 @@ public sealed class EventBookingDbContext(DbContextOptions<EventBookingDbContext
 
     public DbSet<SystemSettings> SystemSettings => Set<SystemSettings>();
 
-    public DbSet<SlotProposal> SlotProposals => Set<SlotProposal>();
+    public DbSet<EventProposal> EventProposals => Set<EventProposal>();
 
-    public DbSet<ConfirmedSlot> ConfirmedSlots => Set<ConfirmedSlot>();
+    public DbSet<Event> Events => Set<Event>();
 
-    public DbSet<SlotCapacity> SlotCapacities => Set<SlotCapacity>();
+    public DbSet<EventCapacity> EventCapacities => Set<EventCapacity>();
 
-    /// <summary>Gets Employee Group reference rows and their required Appointment Type mappings.</summary>
-    public DbSet<EmployeeGroup> EmployeeGroups => Set<EmployeeGroup>();
+    /// <summary>Gets Attendee Group reference rows and their required Appointment Type mappings.</summary>
+    public DbSet<AttendeeGroup> AttendeeGroups => Set<AttendeeGroup>();
 
-    public DbSet<Candidate> Candidates => Set<Candidate>();
+    public DbSet<Attendee> Attendees => Set<Attendee>();
 
     public DbSet<Invite> Invites => Set<Invite>();
 

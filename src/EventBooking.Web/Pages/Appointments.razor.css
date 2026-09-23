@@ -1,4 +1,4 @@
-.slot-window {
+.event-window {
     color: var(--ink-strong);
     font-size: 0.9375rem;
     font-weight: 600;
@@ -14,12 +14,12 @@
     margin: 6px 0 0;
 }
 
-.candidate-name {
+.attendee-name {
     display: block;
     font-weight: 600;
 }
 
-.candidate-email {
+.attendee-email {
     color: var(--sub);
     display: block;
     font-size: 0.75rem;
@@ -75,8 +75,8 @@
 }
 
 @media (max-width: 760px) {
-    .candidate-email,
-    .candidate-name {
+    .attendee-email,
+    .attendee-name {
         text-align: right;
     }
 }

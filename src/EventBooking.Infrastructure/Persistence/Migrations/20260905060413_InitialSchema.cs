@@ -50,8 +50,8 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    candidate_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    confirmed_slot_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    attendee_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    event_id = table.Column<Guid>(type: "uuid", nullable: false),
                     invite_id = table.Column<Guid>(type: "uuid", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
@@ -63,7 +63,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "candidate",
+                name: "attendee",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -73,11 +73,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_candidate", x => x.id);
+                    table.PrimaryKey("PK_attendee", x => x.id);
                 });
 
             migrationBuilder.CreateTable(
-                name: "confirmed_slot",
+                name: "event",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -88,7 +88,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_confirmed_slot", x => x.id);
+                    table.PrimaryKey("PK_event", x => x.id);
                 });
 
             migrationBuilder.CreateTable(
@@ -96,7 +96,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    candidate_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    attendee_id = table.Column<Guid>(type: "uuid", nullable: false),
                     template_name = table.Column<int>(type: "integer", nullable: false),
                     sent_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false)
@@ -111,7 +111,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
-                    candidate_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    attendee_id = table.Column<Guid>(type: "uuid", nullable: false),
                     token_hash = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     expires_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<int>(type: "integer", nullable: false),
@@ -123,7 +123,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "slot_proposal",
+                name: "event_proposal",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -134,7 +134,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_slot_proposal", x => x.id);
+                    table.PrimaryKey("PK_event_proposal", x => x.id);
                 });
 
             migrationBuilder.CreateTable(
@@ -164,40 +164,40 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "candidate_requirement",
+                name: "attendee_requirement",
                 columns: table => new
                 {
-                    candidate_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    attendee_id = table.Column<Guid>(type: "uuid", nullable: false),
                     appointment_type_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_candidate_requirement", x => new { x.candidate_id, x.appointment_type_id });
+                    table.PrimaryKey("PK_attendee_requirement", x => new { x.attendee_id, x.appointment_type_id });
                     table.ForeignKey(
-                        name: "FK_candidate_requirement_candidate_candidate_id",
-                        column: x => x.candidate_id,
-                        principalTable: "candidate",
+                        name: "FK_attendee_requirement_attendee_attendee_id",
+                        column: x => x.attendee_id,
+                        principalTable: "attendee",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
-                name: "slot_capacity",
+                name: "event_capacity",
                 columns: table => new
                 {
-                    confirmed_slot_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    event_id = table.Column<Guid>(type: "uuid", nullable: false),
                     appointment_type_id = table.Column<Guid>(type: "uuid", nullable: false),
                     total_headcount = table.Column<int>(type: "integer", nullable: false),
                     remaining_capacity = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_slot_capacity", x => new { x.confirmed_slot_id, x.appointment_type_id });
-                    table.CheckConstraint("ck_slot_capacity_within_bounds", "remaining_capacity >= 0 AND remaining_capacity <= total_headcount");
+                    table.PrimaryKey("PK_event_capacity", x => new { x.event_id, x.appointment_type_id });
+                    table.CheckConstraint("ck_event_capacity_within_bounds", "remaining_capacity >= 0 AND remaining_capacity <= total_headcount");
                     table.ForeignKey(
-                        name: "FK_slot_capacity_confirmed_slot_confirmed_slot_id",
-                        column: x => x.confirmed_slot_id,
-                        principalTable: "confirmed_slot",
+                        name: "FK_event_capacity_event_event_id",
+                        column: x => x.event_id,
+                        principalTable: "event",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -207,11 +207,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     invite_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    confirmed_slot_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    event_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_invite_option", x => new { x.invite_id, x.confirmed_slot_id });
+                    table.PrimaryKey("PK_invite_option", x => new { x.invite_id, x.event_id });
                     table.ForeignKey(
                         name: "FK_invite_option_invite_invite_id",
                         column: x => x.invite_id,
@@ -233,9 +233,9 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_proposal_acceptance", x => new { x.proposal_id, x.appointment_type_id });
                     table.ForeignKey(
-                        name: "FK_proposal_acceptance_slot_proposal_proposal_id",
+                        name: "FK_proposal_acceptance_event_proposal_proposal_id",
                         column: x => x.proposal_id,
-                        principalTable: "slot_proposal",
+                        principalTable: "event_proposal",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -267,14 +267,14 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 columns: new[] { "entity_type", "entity_id" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_booking_candidate_id_status",
+                name: "IX_booking_attendee_id_status",
                 table: "booking",
-                columns: new[] { "candidate_id", "status" });
+                columns: new[] { "attendee_id", "status" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_booking_confirmed_slot_id_status",
+                name: "IX_booking_event_id_status",
                 table: "booking",
-                columns: new[] { "confirmed_slot_id", "status" });
+                columns: new[] { "event_id", "status" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_booking_manage_token_hash",
@@ -283,36 +283,36 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_candidate_email",
-                table: "candidate",
+                name: "IX_attendee_email",
+                table: "attendee",
                 column: "email",
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_candidate_status",
-                table: "candidate",
+                name: "IX_attendee_status",
+                table: "attendee",
                 column: "status");
 
             migrationBuilder.CreateIndex(
-                name: "IX_confirmed_slot_proposal_id",
-                table: "confirmed_slot",
+                name: "IX_event_proposal_id",
+                table: "event",
                 column: "proposal_id",
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_confirmed_slot_status",
-                table: "confirmed_slot",
+                name: "IX_event_status",
+                table: "event",
                 column: "status");
 
             migrationBuilder.CreateIndex(
-                name: "IX_email_log_candidate_id",
+                name: "IX_email_log_attendee_id",
                 table: "email_log",
-                column: "candidate_id");
+                column: "attendee_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_invite_candidate_id",
+                name: "IX_invite_attendee_id",
                 table: "invite",
-                column: "candidate_id");
+                column: "attendee_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_invite_status_expires_at",
@@ -326,8 +326,8 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_slot_proposal_status",
-                table: "slot_proposal",
+                name: "IX_event_proposal_status",
+                table: "event_proposal",
                 column: "status");
         }
 
@@ -344,7 +344,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 name: "booking");
 
             migrationBuilder.DropTable(
-                name: "candidate_requirement");
+                name: "attendee_requirement");
 
             migrationBuilder.DropTable(
                 name: "email_log");
@@ -356,7 +356,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 name: "proposal_acceptance");
 
             migrationBuilder.DropTable(
-                name: "slot_capacity");
+                name: "event_capacity");
 
             migrationBuilder.DropTable(
                 name: "system_settings");
@@ -365,16 +365,16 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                 name: "user_role_assignment");
 
             migrationBuilder.DropTable(
-                name: "candidate");
+                name: "attendee");
 
             migrationBuilder.DropTable(
                 name: "invite");
 
             migrationBuilder.DropTable(
-                name: "slot_proposal");
+                name: "event_proposal");
 
             migrationBuilder.DropTable(
-                name: "confirmed_slot");
+                name: "event");
         }
     }
 }

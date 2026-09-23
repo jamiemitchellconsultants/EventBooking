@@ -1,14 +1,14 @@
 using EventBooking.Application.Access;
 using EventBooking.Application.Appointments;
-using EventBooking.Application.Candidates;
+using EventBooking.Application.Attendees;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Appointments;
 
@@ -31,14 +31,14 @@ public sealed class RecentPastRecoveryEligibilityTests
             CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        var readiness = new CandidateReadinessCalculator().Calculate(
-            new CandidateReadinessSnapshot(
-                scenario.Candidate.Id,
+        var readiness = new AttendeeReadinessCalculator().Calculate(
+            new AttendeeReadinessSnapshot(
+                scenario.Attendee.Id,
                 Guid.NewGuid(),
                 [AppointmentTypeIds.DrugAndAlcoholTesting],
                 scenario.Booking.Id,
                 [
-                    new CandidateReadinessAttempt(
+                    new AttendeeReadinessAttempt(
                         scenario.Appointment.Id,
                         AppointmentTypeIds.DrugAndAlcoholTesting,
                         scenario.Appointment.Status,
@@ -47,14 +47,14 @@ public sealed class RecentPastRecoveryEligibilityTests
                         outcome.Value.OutcomeAt!.Value),
                 ]));
 
-        Assert.Equal(CandidateReadinessCode.AppointmentsOutstanding, readiness.Code);
+        Assert.Equal(AttendeeReadinessCode.AppointmentsOutstanding, readiness.Code);
         var outstanding = Assert.Single(readiness.OutstandingAppointmentTypes);
         Assert.True(outstanding.IsRecoverable);
     }
 
     /// <summary>Builds a DAT-only group; the scenario needs a mapping, not an identity.</summary>
-    private static EmployeeGroup DatOnly() =>
-        EmployeeGroup.Define(
+    private static AttendeeGroup DatOnly() =>
+        AttendeeGroup.Define(
             Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
 
@@ -64,24 +64,24 @@ public sealed class RecentPastRecoveryEligibilityTests
         var profiles = new InMemoryStaffAccessProfileRepository();
         profiles.Add(StaffAccessProfile.Create(
             staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
-        var candidate = Candidate.Create(
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", "amara@example.com", DatOnly());
         var operations = new TransactionOperationLog();
-        var candidates = new InMemoryCandidateRepository(operations);
-        candidates.Add(candidate);
-        var slot = ConfirmedSlot.CreateImported(
+        var attendees = new InMemoryAttendeeRepository(operations);
+        attendees.Add(attendee);
+        var eventItem = Event.CreateImported(
             Guid.NewGuid(),
-            new SlotWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
-        var slots = new InMemoryConfirmedSlotRepository(operations);
-        slots.Add(slot);
+        var events = new InMemoryEventRepository(operations);
+        events.Add(eventItem);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), candidate.Id, "invite-token", now.AddDays(1),
-            [slot.Id, Guid.NewGuid(), Guid.NewGuid()], candidate.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, slot.Id, "manage-token", now.AddDays(-1));
+            Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
         var bookings = new InMemoryBookingRepository(operations);
         bookings.Add(booking);
         var appointment = BookingAppointment.Create(
@@ -92,19 +92,19 @@ public sealed class RecentPastRecoveryEligibilityTests
             new StaffAccessAuthorizer(profiles),
             appointments,
             bookings,
-            candidates,
+            attendees,
             invites,
-            slots,
+            events,
             new RecoveryBookingOutcomeCoordinator(),
             new RecordingAuditLogger(),
             new FakeUnitOfWork(operations),
             new FakeClock(now));
-        return new Scenario(staff, candidate, booking, appointment, handler);
+        return new Scenario(staff, attendee, booking, appointment, handler);
     }
 
     private sealed record Scenario(
         Guid StaffUserId,
-        Candidate Candidate,
+        Attendee Attendee,
         Booking Booking,
         BookingAppointment Appointment,
         UpdateBookingAppointmentStatusHandler Handler);

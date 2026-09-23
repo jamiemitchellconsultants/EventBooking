@@ -7,7 +7,7 @@ public class StaffAccessAuditVocabularyTests
     [Fact]
     public void StaffAccessActionsAppendWithoutRenumberingExistingActions()
     {
-        Assert.Equal(16, (int)AuditAction.SlotImported);
+        Assert.Equal(16, (int)AuditAction.EventImported);
         Assert.Equal(17, (int)AuditAction.StaffAccessChanged);
         Assert.Equal(18, (int)AuditAction.StaffAccessRemoved);
     }

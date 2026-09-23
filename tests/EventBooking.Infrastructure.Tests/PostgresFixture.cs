@@ -1,5 +1,5 @@
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -64,8 +64,8 @@ public sealed class PostgresFixture : IAsyncLifetime
                 DECLARE statements CURSOR FOR
                     SELECT tablename FROM pg_tables
                     WHERE schemaname = 'public' AND tablename <> '__EFMigrationsHistory'
-                    -- Change-controlled Employee Group rows stay seeded by the migration.
-                    AND tablename NOT IN ('employee_group', 'employee_group_requirement');
+                    -- Change-controlled Attendee Group rows stay seeded by the migration.
+                    AND tablename NOT IN ('attendee_group', 'attendee_group_requirement');
                 BEGIN
                     FOR statement IN statements LOOP
                         EXECUTE 'TRUNCATE TABLE ' || quote_ident(statement.tablename) || ' CASCADE;';
@@ -79,44 +79,44 @@ public sealed class PostgresFixture : IAsyncLifetime
         context.AppointmentTypes.AddRange(
             Domain.AppointmentTypes.AppointmentType.CreateFixedSet());
         context.SystemSettings.Add(Domain.Settings.SystemSettings.CreateDefault());
-        await EnsureEmployeeGroupsSeededAsync(context);
+        await EnsureAttendeeGroupsSeededAsync(context);
         await context.SaveChangesAsync();
     }
 
     /// <summary>
-    /// Repairs change-controlled Employee Group rows after truncation. Truncating
+    /// Repairs change-controlled Attendee Group rows after truncation. Truncating
     /// appointment_type cascades into the mapping table, so migration-seeded mappings are
     /// re-inserted when missing. Production databases rely on the migration alone.
     /// </summary>
-    private static async Task EnsureEmployeeGroupsSeededAsync(EventBookingDbContext context)
+    private static async Task EnsureAttendeeGroupsSeededAsync(EventBookingDbContext context)
     {
         var fixedGroups = new[]
         {
-            EmployeeGroup.Define(
-                EmployeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp, AppointmentTypeIds.UniformFitting]),
-            EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
-            EmployeeGroup.Define(
-                EmployeeGroupIds.GroundOperationsAgent, "GROUND_OPERATIONS_AGENT", "Ground Operations Agent", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.GroundOperationsAgent, "GROUND_OPERATIONS_AGENT", "Ground Operations Agent", true,
                 [AppointmentTypeIds.MedicalCheckUp]),
-            EmployeeGroup.Define(
-                EmployeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
                 [AppointmentTypeIds.MedicalCheckUp]),
-            EmployeeGroup.Define(
-                EmployeeGroupIds.GroundTransportServices, "GROUND_TRANSPORT_SERVICES", "Ground Transport Services", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.GroundTransportServices, "GROUND_TRANSPORT_SERVICES", "Ground Transport Services", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp, AppointmentTypeIds.UniformFitting]),
         };
 
         foreach (var group in fixedGroups)
         {
-            var existing = await context.EmployeeGroups
+            var existing = await context.AttendeeGroups
                 .Include(persisted => persisted.Requirements)
                 .SingleOrDefaultAsync(persisted => persisted.Id == group.Id);
             if (existing is null)
             {
-                context.EmployeeGroups.Add(group);
+                context.AttendeeGroups.Add(group);
                 continue;
             }
 

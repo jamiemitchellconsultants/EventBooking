@@ -1,7 +1,7 @@
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -14,7 +14,7 @@ public class SchemaTests(PostgresFixture fixture)
     private const string ReleaseOneMigration = "20260909120000_AddRecoveryBookings";
 
     [Fact]
-    public async Task CleanDatabaseMigrationsSeedFixedRowsAndAddTheCandidateStatusTimestamp()
+    public async Task CleanDatabaseMigrationsSeedFixedRowsAndAddTheAttendeeStatusTimestamp()
     {
         var databaseName = $"eventbooking_seed_{Guid.NewGuid():N}";
         var connectionString = new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
@@ -71,7 +71,7 @@ public class SchemaTests(PostgresFixture fixture)
                     SELECT data_type
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
-                      AND table_name = 'candidate'
+                      AND table_name = 'attendee'
                       AND column_name = 'status_changed_at';
                     """;
 
@@ -85,7 +85,7 @@ public class SchemaTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task CandidateStatusTimestampMigrationBackfillsExistingCandidatesWithoutLeavingADefault()
+    public async Task AttendeeStatusTimestampMigrationBackfillsExistingAttendeesWithoutLeavingADefault()
     {
         var databaseName = $"eventbooking_status_backfill_{Guid.NewGuid():N}";
         var connectionString = new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
@@ -93,7 +93,7 @@ public class SchemaTests(PostgresFixture fixture)
             Database = databaseName,
             Pooling = false,
         }.ConnectionString;
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
 
         try
         {
@@ -110,13 +110,13 @@ public class SchemaTests(PostgresFixture fixture)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    INSERT INTO candidate (id, name, email, status)
-                    VALUES (@candidate_id, 'Legacy Candidate', 'legacy.candidate@mail.com', @status);
-                    INSERT INTO candidate_requirement (candidate_id, appointment_type_id)
-                    VALUES (@candidate_id, @appointment_type_id);
+                    INSERT INTO attendee (id, name, email, status)
+                    VALUES (@attendee_id, 'Legacy Attendee', 'legacy.attendee@mail.com', @status);
+                    INSERT INTO attendee_requirement (attendee_id, appointment_type_id)
+                    VALUES (@attendee_id, @appointment_type_id);
                     """;
-                command.Parameters.AddWithValue("candidate_id", candidateId);
-                command.Parameters.AddWithValue("status", (int)CandidateStatus.NotYetInvited);
+                command.Parameters.AddWithValue("attendee_id", attendeeId);
+                command.Parameters.AddWithValue("status", (int)AttendeeStatus.NotYetInvited);
                 command.Parameters.AddWithValue(
                     "appointment_type_id", AppointmentTypeIds.DrugAndAlcoholTesting);
                 await command.ExecuteNonQueryAsync();
@@ -133,12 +133,12 @@ public class SchemaTests(PostgresFixture fixture)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    UPDATE candidate SET employee_group_id = @group_id WHERE id = @candidate_id;
-                    INSERT INTO candidate_requirement (candidate_id, appointment_type_id)
-                    VALUES (@candidate_id, @uniform_type_id);
+                    UPDATE attendee SET attendee_group_id = @group_id WHERE id = @attendee_id;
+                    INSERT INTO attendee_requirement (attendee_id, appointment_type_id)
+                    VALUES (@attendee_id, @uniform_type_id);
                     """;
-                command.Parameters.AddWithValue("candidate_id", candidateId);
-                command.Parameters.AddWithValue("group_id", EmployeeGroupIds.Pilots);
+                command.Parameters.AddWithValue("attendee_id", attendeeId);
+                command.Parameters.AddWithValue("group_id", AttendeeGroupIds.Pilots);
                 command.Parameters.AddWithValue(
                     "uniform_type_id", AppointmentTypeIds.UniformFitting);
                 await command.ExecuteNonQueryAsync();
@@ -158,14 +158,14 @@ public class SchemaTests(PostgresFixture fixture)
                 command.CommandText =
                     """
                     SELECT c.status_changed_at, col.column_default
-                    FROM candidate AS c
+                    FROM attendee AS c
                     CROSS JOIN information_schema.columns AS col
-                    WHERE c.id = @candidate_id
+                    WHERE c.id = @attendee_id
                       AND col.table_schema = 'public'
-                      AND col.table_name = 'candidate'
+                      AND col.table_name = 'attendee'
                       AND col.column_name = 'status_changed_at';
                     """;
-                command.Parameters.AddWithValue("candidate_id", candidateId);
+                command.Parameters.AddWithValue("attendee_id", attendeeId);
 
                 await using var reader = await command.ExecuteReaderAsync();
                 Assert.True(await reader.ReadAsync());
@@ -212,20 +212,20 @@ public class SchemaTests(PostgresFixture fixture)
     {
         await fixture.ResetAsync();
 
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
 
         await using (var write = fixture.NewContext())
         {
-            write.SlotProposals.Add(proposal);
+            write.EventProposals.Add(proposal);
             await write.SaveChangesAsync();
         }
 
         await using var read = fixture.NewContext();
-        var loaded = await read.SlotProposals
+        var loaded = await read.EventProposals
             .Include(p => p.Acceptances)
             .SingleAsync(p => p.Id == proposal.Id);
 
@@ -238,29 +238,29 @@ public class SchemaTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task AConfirmedSlotRoundTripsWithItsThreeCapacityRows()
+    public async Task AEventRoundTripsWithItsThreeCapacityRows()
     {
         await fixture.ResetAsync();
 
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
 
         await using (var write = fixture.NewContext())
         {
-            write.SlotProposals.Add(proposal);
-            write.ConfirmedSlots.Add(slot);
+            write.EventProposals.Add(proposal);
+            write.Events.Add(eventItem);
             await write.SaveChangesAsync();
         }
 
         await using var read = fixture.NewContext();
-        var loaded = await read.ConfirmedSlots
+        var loaded = await read.Events
             .Include(s => s.Capacities)
-            .SingleAsync(s => s.Id == slot.Id);
+            .SingleAsync(s => s.Id == eventItem.Id);
 
         Assert.Equal(3, loaded.Capacities.Count);
         Assert.Equal(6, loaded.CapacityFor(AppointmentTypeIds.MedicalCheckUp).RemainingCapacity);
@@ -272,18 +272,18 @@ public class SchemaTests(PostgresFixture fixture)
         await fixture.ResetAsync();
 
         await using var context = fixture.NewContext();
-        var slotId = await CreateSlotWithoutCapacitiesAsync(context);
+        var eventId = await CreateEventWithoutCapacitiesAsync(context);
 
         var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
             await context.Database.ExecuteSqlRawAsync(
                 """
-                INSERT INTO slot_capacity
-                    (confirmed_slot_id, appointment_type_id, total_headcount, remaining_capacity)
+                INSERT INTO event_capacity
+                    (event_id, appointment_type_id, total_headcount, remaining_capacity)
                 VALUES ({0}, {1}, 5, -1);
                 """,
-                [slotId, AppointmentTypeIds.DrugAndAlcoholTesting]));
+                [eventId, AppointmentTypeIds.DrugAndAlcoholTesting]));
 
-        Assert.Contains("ck_slot_capacity_within_bounds", ex.ToString());
+        Assert.Contains("ck_event_capacity_within_bounds", ex.ToString());
     }
 
     [Fact]
@@ -292,38 +292,38 @@ public class SchemaTests(PostgresFixture fixture)
         await fixture.ResetAsync();
 
         await using var context = fixture.NewContext();
-        var slotId = await CreateSlotWithoutCapacitiesAsync(context);
+        var eventId = await CreateEventWithoutCapacitiesAsync(context);
 
         var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
             await context.Database.ExecuteSqlRawAsync(
                 """
-                INSERT INTO slot_capacity
-                    (confirmed_slot_id, appointment_type_id, total_headcount, remaining_capacity)
+                INSERT INTO event_capacity
+                    (event_id, appointment_type_id, total_headcount, remaining_capacity)
                 VALUES ({0}, {1}, 5, 6);
                 """,
-                [slotId, AppointmentTypeIds.DrugAndAlcoholTesting]));
+                [eventId, AppointmentTypeIds.DrugAndAlcoholTesting]));
 
-        Assert.Contains("ck_slot_capacity_within_bounds", ex.ToString());
+        Assert.Contains("ck_event_capacity_within_bounds", ex.ToString());
     }
 
-    private static async Task<Guid> CreateSlotWithoutCapacitiesAsync(EventBookingDbContext context)
+    private static async Task<Guid> CreateEventWithoutCapacitiesAsync(EventBookingDbContext context)
     {
-        var proposal = SlotProposal.Create(
+        var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new SlotWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 1);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 1);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 1);
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
 
-        context.SlotProposals.Add(proposal);
-        context.ConfirmedSlots.Add(slot);
+        context.EventProposals.Add(proposal);
+        context.Events.Add(eventItem);
         await context.SaveChangesAsync();
         await context.Database.ExecuteSqlInterpolatedAsync(
-            $"DELETE FROM slot_capacity WHERE confirmed_slot_id = {slot.Id}");
+            $"DELETE FROM event_capacity WHERE event_id = {eventItem.Id}");
 
-        return slot.Id;
+        return eventItem.Id;
     }
 
     private static EventBookingDbContext NewContext(string connectionString) =>

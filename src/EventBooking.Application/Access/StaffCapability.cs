@@ -8,21 +8,21 @@ public enum StaffCapability
     /// <summary>Defines contract for the current use case.</summary>
     ManageStaffAccess,
     /// <summary>Defines contract for the current use case.</summary>
-    ImportConfirmedSlots,
+    ImportEvents,
     /// <summary>Defines contract for the current use case.</summary>
-    ManageCandidates,
+    ManageAttendees,
     /// <summary>Defines contract for the current use case.</summary>
-    ViewCandidateDashboards,
+    ViewAttendeeDashboards,
     /// <summary>Defines contract for the current use case.</summary>
-    ViewCandidateAudit,
+    ViewAttendeeAudit,
     /// <summary>Defines contract for the current use case.</summary>
-    ViewSlotAudit,
+    ViewEventAudit,
     /// <summary>Defines contract for the current use case.</summary>
-    ManageSlotNegotiation,
+    ManageEventNegotiation,
     /// <summary>Defines contract for the current use case.</summary>
-    ViewSlotOperations,
+    ViewEventOperations,
     /// <summary>Defines contract for the current use case.</summary>
-    CancelConfirmedSlot,
+    CancelEvent,
     /// <summary>Defines contract for the current use case.</summary>
     ConductAppointments,
 }

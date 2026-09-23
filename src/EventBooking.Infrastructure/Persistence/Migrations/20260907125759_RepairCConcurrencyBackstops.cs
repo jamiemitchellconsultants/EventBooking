@@ -11,27 +11,27 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
-                name: "IX_invite_candidate_id",
+                name: "IX_invite_attendee_id",
                 table: "invite");
 
             migrationBuilder.CreateIndex(
-                name: "ux_slot_proposal_open_window",
-                table: "slot_proposal",
+                name: "ux_event_proposal_open_window",
+                table: "event_proposal",
                 columns: new[] { "date", "start_time" },
                 unique: true,
                 filter: "status = 1");
 
             migrationBuilder.CreateIndex(
-                name: "ux_invite_pending_candidate",
+                name: "ux_invite_pending_attendee",
                 table: "invite",
-                column: "candidate_id",
+                column: "attendee_id",
                 unique: true,
                 filter: "status = 1");
 
             migrationBuilder.CreateIndex(
-                name: "ux_booking_active_candidate",
+                name: "ux_booking_active_attendee",
                 table: "booking",
-                column: "candidate_id",
+                column: "attendee_id",
                 unique: true,
                 filter: "status = 1");
         }
@@ -40,21 +40,21 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(
-                name: "ux_slot_proposal_open_window",
-                table: "slot_proposal");
+                name: "ux_event_proposal_open_window",
+                table: "event_proposal");
 
             migrationBuilder.DropIndex(
-                name: "ux_invite_pending_candidate",
+                name: "ux_invite_pending_attendee",
                 table: "invite");
 
             migrationBuilder.DropIndex(
-                name: "ux_booking_active_candidate",
+                name: "ux_booking_active_attendee",
                 table: "booking");
 
             migrationBuilder.CreateIndex(
-                name: "IX_invite_candidate_id",
+                name: "IX_invite_attendee_id",
                 table: "invite",
-                column: "candidate_id");
+                column: "attendee_id");
         }
     }
 }

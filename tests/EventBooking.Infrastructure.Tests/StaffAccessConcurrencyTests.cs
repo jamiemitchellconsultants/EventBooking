@@ -246,12 +246,12 @@ public class StaffAccessConcurrencyTests(PostgresFixture fixture)
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow => new(2026, 9, 6, 12, 0, 0, TimeSpan.Zero);
-        /// <summary>Gets the fixed instant; this clock treats UTC as head-office time.</summary>
-        public DateTimeOffset NowAtHeadOffice => UtcNow;
-        public DateOnly TodayAtHeadOffice => new(2026, 9, 6);
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) =>
+        /// <summary>Gets the fixed instant; this clock treats UTC as transitional-location time.</summary>
+        public DateTimeOffset NowAtTransitionalLocation => UtcNow;
+        public DateOnly TodayAtTransitionalLocation => new(2026, 9, 6);
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) =>
             DateOnly.FromDateTime(instant.UtcDateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant.ToUniversalTime();
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant.ToUniversalTime();
     }
 }

@@ -11,18 +11,18 @@ public class StaffAccessAuthorizerTests
 
     [Theory]
     [InlineData(Role.Admin, StaffCapability.ManageSettings, true)]
-    [InlineData(Role.Admin, StaffCapability.ManageCandidates, false)]
-    [InlineData(Role.Admin, StaffCapability.ViewCandidateDashboards, false)]
-    [InlineData(Role.Admin, StaffCapability.ImportConfirmedSlots, true)]
-    [InlineData(Role.Coordinator, StaffCapability.ManageCandidates, true)]
-    [InlineData(Role.Coordinator, StaffCapability.ImportConfirmedSlots, true)]
+    [InlineData(Role.Admin, StaffCapability.ManageAttendees, false)]
+    [InlineData(Role.Admin, StaffCapability.ViewAttendeeDashboards, false)]
+    [InlineData(Role.Admin, StaffCapability.ImportEvents, true)]
+    [InlineData(Role.Coordinator, StaffCapability.ManageAttendees, true)]
+    [InlineData(Role.Coordinator, StaffCapability.ImportEvents, true)]
     [InlineData(Role.Coordinator, StaffCapability.ManageSettings, false)]
-    [InlineData(Role.Manager, StaffCapability.ManageSlotNegotiation, true)]
+    [InlineData(Role.Manager, StaffCapability.ManageEventNegotiation, true)]
     [InlineData(Role.Manager, StaffCapability.ConductAppointments, true)]
     [InlineData(Role.AppointmentStaff, StaffCapability.ConductAppointments, true)]
-    [InlineData(Role.AppointmentStaff, StaffCapability.CancelConfirmedSlot, false)]
-    [InlineData(Role.Admin, StaffCapability.ViewSlotOperations, true)]
-    [InlineData(Role.Coordinator, StaffCapability.ViewSlotOperations, true)]
+    [InlineData(Role.AppointmentStaff, StaffCapability.CancelEvent, false)]
+    [InlineData(Role.Admin, StaffCapability.ViewEventOperations, true)]
+    [InlineData(Role.Coordinator, StaffCapability.ViewEventOperations, true)]
     public async Task SingleRoleCapabilitiesMatchTheMatrix(
         Role role,
         StaffCapability capability,
@@ -44,15 +44,15 @@ public class StaffAccessAuthorizerTests
             [Role.Coordinator, Role.Manager],
             AppointmentTypeIds.MedicalCheckUp));
 
-        var candidate = await Authorizer().AuthorizeAsync(
-            staffUserId, StaffCapability.ManageCandidates, null, CancellationToken.None);
+        var attendee = await Authorizer().AuthorizeAsync(
+            staffUserId, StaffCapability.ManageAttendees, null, CancellationToken.None);
         var manager = await Authorizer().AuthorizeAsync(
             staffUserId,
-            StaffCapability.ManageSlotNegotiation,
+            StaffCapability.ManageEventNegotiation,
             AppointmentTypeIds.MedicalCheckUp,
             CancellationToken.None);
 
-        Assert.True(candidate.IsSuccess);
+        Assert.True(attendee.IsSuccess);
         Assert.True(manager.IsSuccess);
         Assert.Equal(AppointmentTypeIds.MedicalCheckUp, manager.Value.AppointmentTypeId);
     }
@@ -64,7 +64,7 @@ public class StaffAccessAuthorizerTests
 
         var result = await Authorizer().AuthorizeAsync(
             manager,
-            StaffCapability.ManageSlotNegotiation,
+            StaffCapability.ManageEventNegotiation,
             AppointmentTypeIds.UniformFitting,
             CancellationToken.None);
 
@@ -76,7 +76,7 @@ public class StaffAccessAuthorizerTests
     public async Task AnUnassignedIdentityIsDenied()
     {
         var result = await Authorizer().AuthorizeAsync(
-            Guid.NewGuid(), StaffCapability.ViewSlotOperations, null, CancellationToken.None);
+            Guid.NewGuid(), StaffCapability.ViewEventOperations, null, CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("forbidden", result.Error.Code);
@@ -85,14 +85,14 @@ public class StaffAccessAuthorizerTests
     [Theory]
     [InlineData(StaffCapability.ManageSettings)]
     [InlineData(StaffCapability.ManageStaffAccess)]
-    [InlineData(StaffCapability.ImportConfirmedSlots)]
-    [InlineData(StaffCapability.ManageCandidates)]
-    [InlineData(StaffCapability.ViewCandidateDashboards)]
-    [InlineData(StaffCapability.ViewCandidateAudit)]
-    [InlineData(StaffCapability.ViewSlotAudit)]
-    [InlineData(StaffCapability.ManageSlotNegotiation)]
-    [InlineData(StaffCapability.ViewSlotOperations)]
-    [InlineData(StaffCapability.CancelConfirmedSlot)]
+    [InlineData(StaffCapability.ImportEvents)]
+    [InlineData(StaffCapability.ManageAttendees)]
+    [InlineData(StaffCapability.ViewAttendeeDashboards)]
+    [InlineData(StaffCapability.ViewAttendeeAudit)]
+    [InlineData(StaffCapability.ViewEventAudit)]
+    [InlineData(StaffCapability.ManageEventNegotiation)]
+    [InlineData(StaffCapability.ViewEventOperations)]
+    [InlineData(StaffCapability.CancelEvent)]
     [InlineData(StaffCapability.ConductAppointments)]
     public async Task AScopedCapabilityIsDeniedWhenScopeIsNull(StaffCapability capability)
     {
@@ -118,7 +118,7 @@ public class StaffAccessAuthorizerTests
 
         var result = await authorizer.AuthorizeAsync(
             profile.StaffUserId,
-            StaffCapability.ManageCandidates,
+            StaffCapability.ManageAttendees,
             requiredAppointmentTypeId: null,
             CancellationToken.None);
 

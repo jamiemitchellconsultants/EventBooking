@@ -12,7 +12,7 @@ public interface IInviteRepository
 
     /// <summary>
     /// Takes a row-level write lock on the invite identified by its identifier and loads its
-    /// offered slots. Candidate deletion and expiry processing use it after the candidate lock.
+    /// offered events. Attendee deletion and expiry processing use it after the attendee lock.
     /// </summary>
     /// <param name="id">The id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -26,41 +26,41 @@ public interface IInviteRepository
     /// <summary>
     /// Takes a row-level write lock on the invite identified by its token hash and returns it.
     /// Must be called inside the booking-confirmation transaction before checking whether the
-    /// invite remains usable or offers the selected slot.
+    /// invite remains usable or offers the selected eventItem.
     /// </summary>
     /// <param name="tokenHash">The token hash.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<Invite?> LockByTokenHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Takes a row-level write lock on the candidate's current pending invite and loads its
-    /// offered slots. Callers hold the candidate lifecycle lock before calling this method.
+    /// Takes a row-level write lock on the attendee's current pending invite and loads its
+    /// offered events. Callers hold the attendee lifecycle lock before calling this method.
     /// </summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Invite?> LockPendingForCandidateAsync(Guid candidateId, CancellationToken cancellationToken);
+    Task<Invite?> LockPendingForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken);
 
-    /// <summary>Provides get pending for candidate async within this contract.</summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <summary>Provides get pending for attendee async within this contract.</summary>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Invite?> GetPendingForCandidateAsync(Guid candidateId, CancellationToken cancellationToken);
+    Task<Invite?> GetPendingForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken);
 
-    /// <summary>Locks the Candidate's pending initial Invite after the Candidate lifecycle lock.</summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <summary>Locks the Attendee's pending initial Invite after the Attendee lifecycle lock.</summary>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<Invite?> LockPendingInitialForCandidateAsync(
-        Guid candidateId,
+    Task<Invite?> LockPendingInitialForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Takes row-level write locks on every pending Invite for the candidate, ordered by ID, and
-    /// loads their offered slots. Callers hold the candidate lifecycle lock before calling this
+    /// Takes row-level write locks on every pending Invite for the attendee, ordered by ID, and
+    /// loads their offered events. Callers hold the attendee lifecycle lock before calling this
     /// method; recovery issuance reads the set authoritatively exactly once.
     /// </summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<IReadOnlyList<Invite>> LockPendingListForCandidateAsync(
-        Guid candidateId,
+    Task<IReadOnlyList<Invite>> LockPendingListForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken);
 
     /// <summary>Pending invites whose expiry has passed — the input to the sweep in Task 37.</summary>

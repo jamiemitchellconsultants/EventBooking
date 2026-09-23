@@ -11,16 +11,16 @@ public class AuditLogTests
     [Fact]
     public void AnEntryRecordsWhoDidWhatToWhatAndWhen()
     {
-        var slotId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         var actor = Guid.NewGuid().ToString();
 
         var entry = AuditLog.Record(
-            Guid.NewGuid(), AuditEntityTypes.ConfirmedSlot, slotId, AuditAction.SlotCancelled,
+            Guid.NewGuid(), AuditEntityTypes.Event, eventId, AuditAction.EventCancelled,
             ActorType.Staff, actor, Now, "6 bookings voided");
 
-        Assert.Equal("ConfirmedSlot", entry.EntityType);
-        Assert.Equal(slotId, entry.EntityId);
-        Assert.Equal(AuditAction.SlotCancelled, entry.Action);
+        Assert.Equal("Event", entry.EntityType);
+        Assert.Equal(eventId, entry.EntityId);
+        Assert.Equal(AuditAction.EventCancelled, entry.Action);
         Assert.Equal(ActorType.Staff, entry.ActorType);
         Assert.Equal(actor, entry.ActorId);
         Assert.Equal(Now, entry.Timestamp);
@@ -61,13 +61,13 @@ public class AuditLogTests
     [Fact]
     public void AnEmailLogEntryRecordsTheSendAttempt()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
 
         var entry = EmailLog.Record(
-            Guid.NewGuid(), candidateId, EmailTemplate.CandidateInvite, Now, EmailStatus.Failed);
+            Guid.NewGuid(), attendeeId, EmailTemplate.AttendeeInvite, Now, EmailStatus.Failed);
 
-        Assert.Equal(candidateId, entry.CandidateId);
-        Assert.Equal(EmailTemplate.CandidateInvite, entry.TemplateName);
+        Assert.Equal(attendeeId, entry.AttendeeId);
+        Assert.Equal(EmailTemplate.AttendeeInvite, entry.TemplateName);
         Assert.Equal(Now, entry.SentAt);
         Assert.Equal(EmailStatus.Failed, entry.Status);
     }

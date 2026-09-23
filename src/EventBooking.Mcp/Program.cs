@@ -8,10 +8,10 @@ using EventBooking.Mcp.Tools;
 var builder = WebApplication.CreateBuilder(args);
 
 
-var (connectionString, headOffice, tokens, email, portal) =
+var (connectionString, transitionalLocation, tokens, email, portal) =
     EventBookingConfiguration.Read(builder.Configuration);
 
-builder.Services.AddEventBookingInfrastructure(connectionString, headOffice, tokens);
+builder.Services.AddEventBookingInfrastructure(connectionString, transitionalLocation, tokens);
 
 var smtpHost = builder.Configuration["Email:Smtp:Host"]
     ?? throw new InvalidOperationException(
@@ -29,8 +29,8 @@ builder.Services.AddEventBookingAuthentication(builder.Configuration);
 builder.Services
     .AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
-    .WithTools<SlotTools>()
-    .WithTools<CandidateTools>()
+    .WithTools<EventTools>()
+    .WithTools<AttendeeTools>()
     .WithTools<AdminTools>()
     .WithTools<OperationsTools>();
 

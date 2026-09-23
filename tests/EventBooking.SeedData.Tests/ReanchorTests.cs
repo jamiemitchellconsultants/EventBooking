@@ -37,7 +37,7 @@ public sealed class ReanchorTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddEventBookingPersistence(_database.GetConnectionString());
         services.AddEventBookingApplication(
-            new CandidatePortalOptions(
+            new AttendeePortalOptions(
                 "http://localhost:5002", "1 Example Street, London", "recruitment@example.com"));
         services.AddSingleton<IClock>(new FixedClock(_today));
         services.AddScoped<IAuditLogger, EfAuditLogger>();
@@ -85,10 +85,10 @@ public sealed class ReanchorTests : IAsyncLifetime
 
             Assert.Equal(6, summary.IdentitiesEnsured);
             Assert.Equal(6, summary.ProfilesEnsured);
-            Assert.Equal(3, summary.AgreedSlotsImported);
+            Assert.Equal(3, summary.AgreedEventsImported);
             Assert.Equal(5, summary.ProposalsEnsured);
-            Assert.Equal(100, summary.CandidatesCreated);
-            Assert.Equal(100, await database.Candidates.CountAsync());
+            Assert.Equal(100, summary.AttendeesCreated);
+            Assert.Equal(100, await database.Attendees.CountAsync());
         }
         finally
         {
@@ -98,7 +98,7 @@ public sealed class ReanchorTests : IAsyncLifetime
 
     private sealed class FixedClock(DateOnly today) : IClock
     {
-        private static readonly TimeZoneInfo HeadOfficeTimeZone =
+        private static readonly TimeZoneInfo TransitionalLocationTimeZone =
             TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
 
         /// <inheritdoc/>
@@ -106,16 +106,16 @@ public sealed class ReanchorTests : IAsyncLifetime
             new(today.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero);
 
         /// <inheritdoc/>
-        public DateTimeOffset NowAtHeadOffice => TimeZoneInfo.ConvertTime(UtcNow, HeadOfficeTimeZone);
+        public DateTimeOffset NowAtTransitionalLocation => TimeZoneInfo.ConvertTime(UtcNow, TransitionalLocationTimeZone);
 
         /// <inheritdoc/>
-        public DateOnly TodayAtHeadOffice => DateAtHeadOffice(UtcNow);
+        public DateOnly TodayAtTransitionalLocation => DateAtTransitionalLocation(UtcNow);
 
         /// <inheritdoc/>
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) =>
-            DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, HeadOfficeTimeZone).DateTime);
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) =>
+            DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, TransitionalLocationTimeZone).DateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) =>
-            TimeZoneInfo.ConvertTime(instant, HeadOfficeTimeZone);
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) =>
+            TimeZoneInfo.ConvertTime(instant, TransitionalLocationTimeZone);
     }
 }

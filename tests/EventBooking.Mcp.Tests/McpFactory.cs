@@ -21,7 +21,7 @@ namespace EventBooking.Mcp.Tests;
 /// token validation replaced by a test scheme so a test can say who is calling by
 /// setting <see cref="SignedInAs"/>.
 /// </summary>
-public sealed class McpFactory : WebApplicationFactory<SlotTools>, IAsyncLifetime
+public sealed class McpFactory : WebApplicationFactory<EventTools>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .Build();

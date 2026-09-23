@@ -1,9 +1,9 @@
 @page "/manage/{Token}"
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
 @using EventBooking.Web.Services
-@layout EventBooking.Web.Layout.CandidateLayout
+@layout EventBooking.Web.Layout.AttendeeLayout
 @inject BookingClient Booking
-@inject CandidatePageOptions PageOptions
+@inject AttendeePageOptions PageOptions
 
 <PageTitle>Manage your booking</PageTitle>
 

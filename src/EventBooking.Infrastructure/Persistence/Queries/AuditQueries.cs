@@ -30,19 +30,19 @@ public sealed class AuditQueries(EventBookingDbContext context) : IAuditQueries
             .ToListAsync(cancellationToken);
 
     /// <summary>
-    /// Every entry recorded against the candidate record itself and against their invites, bookings,
+    /// Every entry recorded against the attendee record itself and against their invites, bookings,
     /// and booking appointments, newest first.
     /// </summary>
-    public async Task<IReadOnlyList<AuditHistoryRow>> ForCandidateAsync(
-        Guid candidateId,
+    public async Task<IReadOnlyList<AuditHistoryRow>> ForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken)
     {
         var inviteIds = context.Invites
-            .Where(i => i.CandidateId == candidateId)
+            .Where(i => i.AttendeeId == attendeeId)
             .Select(i => i.Id);
 
         var bookingIds = context.Bookings
-            .Where(b => b.CandidateId == candidateId)
+            .Where(b => b.AttendeeId == attendeeId)
             .Select(b => b.Id);
 
         var bookingAppointmentIds = context.BookingAppointments
@@ -51,7 +51,7 @@ public sealed class AuditQueries(EventBookingDbContext context) : IAuditQueries
 
         return await context.AuditLogs
             .AsNoTracking()
-            .Where(a => (a.EntityType == AuditEntityTypes.Candidate && a.EntityId == candidateId)
+            .Where(a => (a.EntityType == AuditEntityTypes.Attendee && a.EntityId == attendeeId)
                 || inviteIds.Contains(a.EntityId)
                 || bookingIds.Contains(a.EntityId)
                 || bookingAppointmentIds.Contains(a.EntityId))

@@ -3,7 +3,7 @@
 @using EventBooking.Web.Services
 @inject AppointmentsClient AppointmentsApi
 @inject Microsoft.JSInterop.IJSRuntime JS
-@inject HeadOfficePageClock PageClock
+@inject TransitionalLocationPageClock PageClock
 
 <PageTitle>Appointments</PageTitle>
 
@@ -11,37 +11,37 @@
     <div class="page-header">
         <div>
             <span class="eyebrow">Appointment workspace</span>
-            <h1>@(_slotList?.AppointmentTypeName is not null ? $"{_slotList.AppointmentTypeName} appointments" : "Appointments")</h1>
-            <p>Check candidates in and record appointment outcomes for your appointment type.</p>
+            <h1>@(_eventList?.AppointmentTypeName is not null ? $"{_eventList.AppointmentTypeName} appointments" : "Appointments")</h1>
+            <p>Check attendees in and record appointment outcomes for your appointment type.</p>
         </div>
-        @if (_slotList is not null && _slotList.Slots.Count > 0)
+        @if (_eventList is not null && _eventList.Events.Count > 0)
         {
             <div class="field">
-                <label for="slot-selector">
-                    Slot
+                <label for="event-selector">
+                    Event
                     <span class="tip tip-end" tabindex="0" role="note"
                           aria-label="Recently past, current, and upcoming confirmed windows for your appointment type are listed."
                           data-tip="Recently past, current, and upcoming confirmed windows for your appointment type are listed."></span>
                 </label>
-                <select id="slot-selector" name="confirmed-slot" value="@_selectedSlotId" @onchange="OnSlotChanged">
-                    @if (RecentPastSlots(_slotList).Count > 0)
+                <select id="event-selector" name="event" value="@_selectedEventId" @onchange="OnEventChanged">
+                    @if (RecentPastEvents(_eventList).Count > 0)
                     {
                         <optgroup label="Recent past">
-                            @foreach (var slot in RecentPastSlots(_slotList))
+                            @foreach (var eventItem in RecentPastEvents(_eventList))
                             {
-                                <option value="@slot.ConfirmedSlotId">
-                                    @slot.Date.ToString("yyyy-MM-dd") @slot.StartTime.ToString("HH\\:mm")-@slot.EndTime.ToString("HH\\:mm")
+                                <option value="@eventItem.EventId">
+                                    @eventItem.Date.ToString("yyyy-MM-dd") @eventItem.StartTime.ToString("HH\\:mm")-@eventItem.EndTime.ToString("HH\\:mm")
                                 </option>
                             }
                         </optgroup>
                     }
-                    @if (CurrentAndUpcomingSlots(_slotList).Count > 0)
+                    @if (CurrentAndUpcomingEvents(_eventList).Count > 0)
                     {
                         <optgroup label="Current and upcoming">
-                            @foreach (var slot in CurrentAndUpcomingSlots(_slotList))
+                            @foreach (var eventItem in CurrentAndUpcomingEvents(_eventList))
                             {
-                                <option value="@slot.ConfirmedSlotId">
-                                    @slot.Date.ToString("yyyy-MM-dd") @slot.StartTime.ToString("HH\\:mm")-@slot.EndTime.ToString("HH\\:mm")
+                                <option value="@eventItem.EventId">
+                                    @eventItem.Date.ToString("yyyy-MM-dd") @eventItem.StartTime.ToString("HH\\:mm")-@eventItem.EndTime.ToString("HH\\:mm")
                                 </option>
                             }
                         </optgroup>
@@ -61,20 +61,20 @@
         <p class="banner notice" aria-live="polite">@_announcement</p>
     }
 
-    @if (_loadingSlots && _slotList is null)
+    @if (_loadingEvents && _eventList is null)
     {
         <div class="card loading-block" role="status">
             <span class="loading-line loading-line-medium"></span>
             <span class="loading-line"></span>
-            <span class="visually-hidden">Loading appointment slots…</span>
+            <span class="visually-hidden">Loading appointment events…</span>
         </div>
     }
-    else if (_slotList is not null && _slotList.Slots.Count == 0)
+    else if (_eventList is not null && _eventList.Events.Count == 0)
     {
         <div class="card">
             <div class="empty-state">
-                <strong>No current or upcoming appointment slots.</strong>
-                <p>Slots appear here once every appointment type has accepted a proposed window.</p>
+                <strong>No current or upcoming appointment events.</strong>
+                <p>Events appear here once every appointment type has accepted a proposed window.</p>
             </div>
         </div>
     }
@@ -88,9 +88,9 @@
     }
     else if (_detail is not null)
     {
-        <section class="card" aria-label="Selected slot">
+        <section class="card" aria-label="Selected event">
             <div class="card-heading">
-                <h2 class="slot-window">
+                <h2 class="event-window">
                     @(_detail.Date.ToString("dddd, dd MMM yyyy"))
                     · @(_detail.StartTime.ToString("HH\\:mm"))-@(_detail.EndTime.ToString("HH\\:mm"))
                 </h2>
@@ -102,7 +102,7 @@
                 </ul>
                 <button class="button" data-testid="download-roster" type="button"
                         @onclick="DownloadRosterAsync" disabled="@_downloadingRoster"
-                        title="Downloads this slot's roster as a CSV file to work from offline.">
+                        title="Downloads this event's roster as a CSV file to work from offline.">
                     @(_downloadingRoster ? "Preparing…" : "Download roster")
                 </button>
             </div>
@@ -111,7 +111,7 @@
             {
                 <div class="empty-state">
                     <strong>Nobody to see in this window.</strong>
-                    <p>No candidates require this appointment in the selected slot.</p>
+                    <p>No attendees require this appointment in the selected eventItem.</p>
                 </div>
             }
             else
@@ -120,10 +120,10 @@
                     <table>
                         <thead>
                             <tr>
-                                <th scope="col">Candidate</th>
+                                <th scope="col">Attendee</th>
                                 <th scope="col" title="Expected, checked in, completed, or no-show.">Status</th>
-                                <th scope="col" title="When check-in was recorded, at head office local time.">Check-in recorded</th>
-                                <th scope="col" title="When completion or no-show was recorded, at head office local time.">Outcome recorded</th>
+                                <th scope="col" title="When check-in was recorded, at transitional location local time.">Check-in recorded</th>
+                                <th scope="col" title="When completion or no-show was recorded, at transitional location local time.">Outcome recorded</th>
                                 <th scope="col" class="actions-column"><span class="muted">Actions</span></th>
                             </tr>
                         </thead>
@@ -132,9 +132,9 @@
                             {
                                 var busy = _busyRows.Contains(row.BookingAppointmentId);
                                 <tr>
-                                    <td data-label="Candidate">
-                                        <span class="candidate-name">@row.CandidateName</span>
-                                        <span class="candidate-email">@row.CandidateEmail</span>
+                                    <td data-label="Attendee">
+                                        <span class="attendee-name">@row.AttendeeName</span>
+                                        <span class="attendee-email">@row.AttendeeEmail</span>
                                     </td>
                                     <td data-label="Status"><span class="status-@row.Status.ToLowerInvariant()">@row.Status</span></td>
                                     <td data-label="Check-in recorded">@(row.CheckedInAt?.ToString("yyyy-MM-dd HH:mm zzz") ?? "—")</td>
@@ -155,11 +155,11 @@
                                         {
                                             @if (!IsToday(_detail))
                                             {
-                                                <p class="row-hint">Check-in opens on the confirmed-slot date.</p>
+                                                <p class="row-hint">Check-in opens on the event date.</p>
                                             }
                                             else if (!WindowHasEnded(_detail))
                                             {
-                                                <p class="row-hint">No-show is available after the slot window ends.</p>
+                                                <p class="row-hint">No-show is available after the event window ends.</p>
                                             }
                                         }
                                     </td>
@@ -177,7 +177,7 @@
         <div class="dialog-overlay" @onclick="CancelPending">
             <div role="alertdialog" aria-labelledby="confirm-heading" aria-describedby="confirm-description" @onclick:stopPropagation="true">
                 <h2 id="confirm-heading">@_pending.Label</h2>
-                <p id="confirm-description">@_pending.Label for @_pending.CandidateName. This change is recorded immediately.</p>
+                <p id="confirm-description">@_pending.Label for @_pending.AttendeeName. This change is recorded immediately.</p>
                 <span class="row-actions">
                     <button class="button button-primary" data-confirm="yes" @onclick="ConfirmPendingAsync"
                             title="Records the change and writes it to the appointment history.">Confirm</button>
@@ -189,45 +189,45 @@
 </div>
 
 @code {
-    private AppointmentWorkspaceSlotListDto? _slotList;
-    private AppointmentSlotDetailDto? _detail;
-    private Guid? _selectedSlotId;
+    private AppointmentWorkspaceEventListDto? _eventList;
+    private AppointmentEventDetailDto? _detail;
+    private Guid? _selectedEventId;
     private readonly HashSet<Guid> _busyRows = [];
     private PendingAction? _pending;
     private int _detailRequestVersion;
-    private bool _loadingSlots;
+    private bool _loadingEvents;
     private bool _loadingDetail;
     private bool _downloadingRoster;
     private string? _error;
     private string? _announcement;
 
     private sealed record PendingAction(
-        Guid BookingAppointmentId, string CandidateName, string TargetStatus, string Label);
+        Guid BookingAppointmentId, string AttendeeName, string TargetStatus, string Label);
 
     private sealed record RowAction(
         string Action, string Label, string TargetStatus, bool Enabled, bool RequiresConfirmation, string Tip);
 
     private AppointmentStatusCountsDto? _detailCounts =>
-        _slotList?.Slots.FirstOrDefault(slot => slot.ConfirmedSlotId == _selectedSlotId)?.Counts;
+        _eventList?.Events.FirstOrDefault(eventItem => eventItem.EventId == _selectedEventId)?.Counts;
 
     protected override async Task OnInitializedAsync()
     {
-        _loadingSlots = true;
+        _loadingEvents = true;
         try
         {
-            var outcome = await AppointmentsApi.ListSlotsAsync(CancellationToken.None);
+            var outcome = await AppointmentsApi.ListEventsAsync(CancellationToken.None);
             if (!outcome.IsSuccess || outcome.Value is null)
             {
                 _error = outcome.ErrorMessage;
                 return;
             }
 
-            _slotList = outcome.Value;
-            var first = CurrentAndUpcomingSlots(_slotList).FirstOrDefault()
-                ?? RecentPastSlots(_slotList).LastOrDefault();
+            _eventList = outcome.Value;
+            var first = CurrentAndUpcomingEvents(_eventList).FirstOrDefault()
+                ?? RecentPastEvents(_eventList).LastOrDefault();
             if (first is not null)
             {
-                await LoadDetailAsync(first.ConfirmedSlotId);
+                await LoadDetailAsync(first.EventId);
             }
         }
         catch (Exception)
@@ -236,7 +236,7 @@
         }
         finally
         {
-            _loadingSlots = false;
+            _loadingEvents = false;
         }
     }
 
@@ -244,7 +244,7 @@
     // to the API route would not carry the caller's bearer token.
     private async Task DownloadRosterAsync()
     {
-        if (_selectedSlotId is null || _downloadingRoster)
+        if (_selectedEventId is null || _downloadingRoster)
         {
             return;
         }
@@ -254,7 +254,7 @@
         try
         {
             var outcome = await AppointmentsApi.GetRosterAsync(
-                _selectedSlotId.Value, CancellationToken.None);
+                _selectedEventId.Value, CancellationToken.None);
             if (outcome is not { IsSuccess: true, Value: not null })
             {
                 _error = outcome.ErrorMessage ?? "Something went wrong. Please try again.";
@@ -275,26 +275,26 @@
         }
     }
 
-    private async Task OnSlotChanged(ChangeEventArgs args)
+    private async Task OnEventChanged(ChangeEventArgs args)
     {
-        if (Guid.TryParse(args.Value?.ToString(), out var slotId) && slotId != _selectedSlotId)
+        if (Guid.TryParse(args.Value?.ToString(), out var eventId) && eventId != _selectedEventId)
         {
-            await LoadDetailAsync(slotId);
+            await LoadDetailAsync(eventId);
         }
     }
 
-    private async Task<bool> LoadDetailAsync(Guid slotId)
+    private async Task<bool> LoadDetailAsync(Guid eventId)
     {
         var requestVersion = ++_detailRequestVersion;
         _loadingDetail = true;
-        _selectedSlotId = slotId;
+        _selectedEventId = eventId;
         _detail = null;
         _pending = null;
         _error = null;
         _announcement = null;
         try
         {
-            var outcome = await AppointmentsApi.GetSlotAsync(slotId, CancellationToken.None);
+            var outcome = await AppointmentsApi.GetEventAsync(eventId, CancellationToken.None);
             if (requestVersion != _detailRequestVersion)
             {
                 return false;
@@ -328,23 +328,23 @@
         }
     }
 
-    private bool IsToday(AppointmentSlotDetailDto detail) =>
-        detail.Date == DateOnly.FromDateTime(PageClock.NowAtHeadOffice.DateTime);
+    private bool IsToday(AppointmentEventDetailDto detail) =>
+        detail.Date == DateOnly.FromDateTime(PageClock.NowAtTransitionalLocation.DateTime);
 
-    private DateOnly TodayAtHeadOffice() =>
-        DateOnly.FromDateTime(PageClock.NowAtHeadOffice.DateTime);
+    private DateOnly TodayAtTransitionalLocation() =>
+        DateOnly.FromDateTime(PageClock.NowAtTransitionalLocation.DateTime);
 
-    private IReadOnlyList<AppointmentSlotSummaryDto> RecentPastSlots(
-        AppointmentWorkspaceSlotListDto slotList) =>
-        slotList.Slots.Where(slot => slot.Date < TodayAtHeadOffice()).ToList();
+    private IReadOnlyList<AppointmentEventSummaryDto> RecentPastEvents(
+        AppointmentWorkspaceEventListDto eventList) =>
+        eventList.Events.Where(eventItem => eventItem.Date < TodayAtTransitionalLocation()).ToList();
 
-    private IReadOnlyList<AppointmentSlotSummaryDto> CurrentAndUpcomingSlots(
-        AppointmentWorkspaceSlotListDto slotList) =>
-        slotList.Slots.Where(slot => slot.Date >= TodayAtHeadOffice()).ToList();
+    private IReadOnlyList<AppointmentEventSummaryDto> CurrentAndUpcomingEvents(
+        AppointmentWorkspaceEventListDto eventList) =>
+        eventList.Events.Where(eventItem => eventItem.Date >= TodayAtTransitionalLocation()).ToList();
 
-    private bool WindowHasEnded(AppointmentSlotDetailDto detail)
+    private bool WindowHasEnded(AppointmentEventDetailDto detail)
     {
-        var now = PageClock.NowAtHeadOffice;
+        var now = PageClock.NowAtTransitionalLocation;
         var end = new DateTimeOffset(detail.Date.ToDateTime(detail.EndTime), now.Offset);
         return now >= end;
     }
@@ -356,26 +356,26 @@
             "Expected" when _detail is not null => new RowAction[]
             {
                 new("check-in", "Check in", "CheckedIn", IsToday(_detail), false,
-                    "Marks the candidate as arrived. Only available on the slot date."),
+                    "Marks the attendee as arrived. Only available on the event date."),
                 new("no-show", "No-show", "NoShow", WindowHasEnded(_detail), true,
-                    "Records that the candidate never arrived. Only available once the window has ended."),
+                    "Records that the attendee never arrived. Only available once the window has ended."),
             },
             "CheckedIn" => new RowAction[]
             {
                 new("complete", "Complete", "Completed", true, false,
                     "Records the appointment as delivered."),
                 new("correct-expected", "Correct to expected", "Expected", true, true,
-                    "Undoes the check-in if it was recorded against the wrong candidate."),
+                    "Undoes the check-in if it was recorded against the wrong attendee."),
             },
             "Completed" => new RowAction[]
             {
                 new("correct-checked-in", "Correct to checked in", "CheckedIn", true, true,
-                    "Undoes the completion and puts the candidate back to checked in."),
+                    "Undoes the completion and puts the attendee back to checked in."),
             },
             "NoShow" => new RowAction[]
             {
                 new("correct-expected", "Correct to expected", "Expected", true, true,
-                    "Clears the no-show so the candidate is expected again."),
+                    "Clears the no-show so the attendee is expected again."),
             },
             _ => [],
         };
@@ -386,11 +386,11 @@
     {
         if (requiresConfirmation)
         {
-            _pending = new PendingAction(row.BookingAppointmentId, row.CandidateName, targetStatus, label);
+            _pending = new PendingAction(row.BookingAppointmentId, row.AttendeeName, targetStatus, label);
             return Task.CompletedTask;
         }
 
-        return UpdateAsync(row.BookingAppointmentId, row.CandidateName, targetStatus);
+        return UpdateAsync(row.BookingAppointmentId, row.AttendeeName, targetStatus);
     }
 
     private void CancelPending() => _pending = null;
@@ -404,10 +404,10 @@
 
         var pending = _pending;
         _pending = null;
-        await UpdateAsync(pending.BookingAppointmentId, pending.CandidateName, pending.TargetStatus);
+        await UpdateAsync(pending.BookingAppointmentId, pending.AttendeeName, pending.TargetStatus);
     }
 
-    private async Task UpdateAsync(Guid bookingAppointmentId, string candidateName, string targetStatus)
+    private async Task UpdateAsync(Guid bookingAppointmentId, string attendeeName, string targetStatus)
     {
         var sourceDetail = _detail;
         if (sourceDetail is null || !_busyRows.Add(bookingAppointmentId))
@@ -415,7 +415,7 @@
             return;
         }
 
-        var sourceSlotId = sourceDetail.ConfirmedSlotId;
+        var sourceEventId = sourceDetail.EventId;
         var sourceRequestVersion = _detailRequestVersion;
         var row = sourceDetail.Appointments.FirstOrDefault(
             item => item.BookingAppointmentId == bookingAppointmentId);
@@ -429,14 +429,14 @@
         {
             var outcome = await AppointmentsApi.UpdateStatusAsync(
                 bookingAppointmentId, targetStatus, row.Version, CancellationToken.None);
-            var appliesToCurrentDetail = IsCurrentDetail(sourceSlotId, sourceRequestVersion);
+            var appliesToCurrentDetail = IsCurrentDetail(sourceEventId, sourceRequestVersion);
             if (outcome.IsSuccess && outcome.Value is not null)
             {
-                ApplyUpdate(sourceSlotId, row, outcome.Value, appliesToCurrentDetail);
+                ApplyUpdate(sourceEventId, row, outcome.Value, appliesToCurrentDetail);
                 if (appliesToCurrentDetail)
                 {
                     _error = null;
-                    _announcement = AnnouncementFor(targetStatus, candidateName);
+                    _announcement = AnnouncementFor(targetStatus, attendeeName);
                 }
 
                 return;
@@ -449,7 +449,7 @@
 
             if (outcome.ErrorCode == AppointmentsClient.VersionConflictErrorCode)
             {
-                if (await LoadDetailAsync(sourceSlotId))
+                if (await LoadDetailAsync(sourceEventId))
                 {
                     _error = "Another staff member changed this appointment. The row has been refreshed; review it before trying again.";
                 }
@@ -461,7 +461,7 @@
         }
         catch (Exception)
         {
-            if (IsCurrentDetail(sourceSlotId, sourceRequestVersion))
+            if (IsCurrentDetail(sourceEventId, sourceRequestVersion))
             {
                 _error = "Something went wrong. Please try again.";
             }
@@ -472,18 +472,18 @@
         }
     }
 
-    private bool IsCurrentDetail(Guid slotId, int requestVersion) =>
+    private bool IsCurrentDetail(Guid eventId, int requestVersion) =>
         requestVersion == _detailRequestVersion
-        && _selectedSlotId == slotId
-        && _detail?.ConfirmedSlotId == slotId;
+        && _selectedEventId == eventId
+        && _detail?.EventId == eventId;
 
     private void ApplyUpdate(
-        Guid sourceSlotId,
+        Guid sourceEventId,
         BookingAppointmentRowDto row,
         BookingAppointmentUpdateDto update,
         bool applyToCurrentDetail)
     {
-        if (_slotList is null)
+        if (_eventList is null)
         {
             return;
         }
@@ -507,12 +507,12 @@
             };
         }
 
-        _slotList = _slotList with
+        _eventList = _eventList with
         {
-            Slots = _slotList.Slots
-                .Select(slot => slot.ConfirmedSlotId == sourceSlotId
-                    ? slot with { Counts = MoveCount(slot.Counts, oldStatus, update.Status) }
-                    : slot)
+            Events = _eventList.Events
+                .Select(eventItem => eventItem.EventId == sourceEventId
+                    ? eventItem with { Counts = MoveCount(eventItem.Counts, oldStatus, update.Status) }
+                    : eventItem)
                 .ToList(),
         };
     }
@@ -546,12 +546,12 @@
         };
     }
 
-    private static string AnnouncementFor(string targetStatus, string candidateName) =>
+    private static string AnnouncementFor(string targetStatus, string attendeeName) =>
         targetStatus switch
         {
-            "CheckedIn" => $"Check-in recorded for {candidateName}.",
-            "Completed" => $"Completion recorded for {candidateName}.",
-            "NoShow" => $"No-show recorded for {candidateName}.",
-            _ => $"Correction recorded for {candidateName}.",
+            "CheckedIn" => $"Check-in recorded for {attendeeName}.",
+            "Completed" => $"Completion recorded for {attendeeName}.",
+            "NoShow" => $"No-show recorded for {attendeeName}.",
+            _ => $"Correction recorded for {attendeeName}.",
         };
 }

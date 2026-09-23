@@ -41,7 +41,7 @@ public class ResultTests
     [Fact]
     public void ReadingTheValueOfAFailureThrows()
     {
-        var result = Result<Guid>.Failure(Error.NotFound("No such candidate."));
+        var result = Result<Guid>.Failure(Error.NotFound("No such attendee."));
 
         var ex = Assert.Throws<InvalidOperationException>(() => result.Value);
         Assert.Equal("A failed result has no value.", ex.Message);

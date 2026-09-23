@@ -1,5 +1,5 @@
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -25,82 +25,82 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
         return new CapacityAdjustmentConcurrencyHarness(fixture);
     }
 
-    public async Task<Guid> GivenSlotAsync(int totalHeadcount)
+    public async Task<Guid> GivenEventAsync(int totalHeadcount)
     {
-        var proposal = SlotProposal.Create(
+        var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new SlotWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0)),
+            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0)),
             Guid.NewGuid());
         proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), totalHeadcount);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 20);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 20);
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
 
         await using var context = _fixture.NewContext();
-        context.SlotProposals.Add(proposal);
-        context.ConfirmedSlots.Add(slot);
+        context.EventProposals.Add(proposal);
+        context.Events.Add(eventItem);
         await context.SaveChangesAsync();
-        return slot.Id;
+        return eventItem.Id;
     }
 
     public async Task<HeldCapacityChange> HoldAdjustmentAsync(
-        Guid slotId,
+        Guid eventId,
         int totalHeadcount)
     {
         var context = _fixture.NewContext();
         var transaction = await context.Database.BeginTransactionAsync();
-        var capacity = await LockAsync(context, slotId);
+        var capacity = await LockAsync(context, eventId);
         capacity.AdjustTotalHeadcount(totalHeadcount);
         await context.SaveChangesAsync();
         return new HeldCapacityChange(context, transaction);
     }
 
-    public async Task<HeldCapacityChange> HoldBookingAsync(Guid slotId)
+    public async Task<HeldCapacityChange> HoldBookingAsync(Guid eventId)
     {
         var context = _fixture.NewContext();
         var transaction = await context.Database.BeginTransactionAsync();
-        var capacity = await LockAsync(context, slotId);
+        var capacity = await LockAsync(context, eventId);
         capacity.Decrement();
         await context.SaveChangesAsync();
         return new HeldCapacityChange(context, transaction);
     }
 
-    public async Task BookAsync(Guid slotId)
+    public async Task BookAsync(Guid eventId)
     {
         await using var context = _fixture.NewContext();
         await using var transaction = await context.Database.BeginTransactionAsync();
-        var capacity = await LockAsync(context, slotId);
+        var capacity = await LockAsync(context, eventId);
         capacity.Decrement();
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }
 
-    public async Task AdjustAsync(Guid slotId, int totalHeadcount)
+    public async Task AdjustAsync(Guid eventId, int totalHeadcount)
     {
         await using var context = _fixture.NewContext();
         await using var transaction = await context.Database.BeginTransactionAsync();
-        var capacity = await LockAsync(context, slotId);
+        var capacity = await LockAsync(context, eventId);
         capacity.AdjustTotalHeadcount(totalHeadcount);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }
 
-    public async Task<CapacitySnapshot> ReadAsync(Guid slotId)
+    public async Task<CapacitySnapshot> ReadAsync(Guid eventId)
     {
         await using var context = _fixture.NewContext();
-        var capacity = await context.SlotCapacities.SingleAsync(
-            item => item.ConfirmedSlotId == slotId
+        var capacity = await context.EventCapacities.SingleAsync(
+            item => item.EventId == eventId
                 && item.AppointmentTypeId == AppointmentTypeIds.DrugAndAlcoholTesting);
         return new CapacitySnapshot(capacity.TotalHeadcount, capacity.RemainingCapacity);
     }
 
-    private static async Task<SlotCapacity> LockAsync(
+    private static async Task<EventCapacity> LockAsync(
         EventBookingDbContext context,
-        Guid slotId)
+        Guid eventId)
     {
-        var rows = await new SlotCapacityRepository(context).LockForUpdateAsync(
-            slotId,
+        var rows = await new EventCapacityRepository(context).LockForUpdateAsync(
+            eventId,
             [AppointmentTypeIds.DrugAndAlcoholTesting],
             CancellationToken.None);
         return Assert.Single(rows);

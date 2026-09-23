@@ -11,20 +11,20 @@ public sealed class RecoveryBookingTests
     [Fact]
     public void RecoveryLifecyclePreservesOriginalRoot()
     {
-        var candidateId = Guid.NewGuid();
-        var slotId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         var initialInvite = Invite.CreateInitial(
-            Guid.NewGuid(), candidateId, "initial", DateTimeOffset.UtcNow.AddDays(1),
-            [slotId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+            Guid.NewGuid(), attendeeId, "initial", DateTimeOffset.UtcNow.AddDays(1),
+            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
         var original = Booking.Create(
-            Guid.NewGuid(), initialInvite, slotId, "manage-original", DateTimeOffset.UtcNow);
-        var recoverySlot = Guid.NewGuid();
+            Guid.NewGuid(), initialInvite, eventId, "manage-original", DateTimeOffset.UtcNow);
+        var recoveryEvent = Guid.NewGuid();
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), candidateId, original.Id, "recovery", DateTimeOffset.UtcNow.AddDays(2),
-            [recoverySlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            Guid.NewGuid(), attendeeId, original.Id, "recovery", DateTimeOffset.UtcNow.AddDays(2),
+            [recoveryEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
 
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, original, recoverySlot,
+            Guid.NewGuid(), recoveryInvite, original, recoveryEvent,
             "manage-recovery", DateTimeOffset.UtcNow.AddHours(1));
         recovery.Conclude();
         recovery.Reopen();
@@ -39,24 +39,24 @@ public sealed class RecoveryBookingTests
     [Fact]
     public void RecoveryChainIsRejected()
     {
-        var candidateId = Guid.NewGuid();
-        var rootSlot = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
+        var rootEvent = Guid.NewGuid();
         var initial = Invite.CreateInitial(
-            Guid.NewGuid(), candidateId, "initial", DateTimeOffset.UtcNow.AddDays(1),
-            [rootSlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
-        var root = Booking.Create(Guid.NewGuid(), initial, rootSlot, "root", DateTimeOffset.UtcNow);
-        var firstSlot = Guid.NewGuid();
+            Guid.NewGuid(), attendeeId, "initial", DateTimeOffset.UtcNow.AddDays(1),
+            [rootEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+        var root = Booking.Create(Guid.NewGuid(), initial, rootEvent, "root", DateTimeOffset.UtcNow);
+        var firstEvent = Guid.NewGuid();
         var firstInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), candidateId, root.Id, "first", DateTimeOffset.UtcNow.AddDays(1),
-            [firstSlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            Guid.NewGuid(), attendeeId, root.Id, "first", DateTimeOffset.UtcNow.AddDays(1),
+            [firstEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
         var first = Booking.CreateRecovery(
-            Guid.NewGuid(), firstInvite, root, firstSlot, "first-manage", DateTimeOffset.UtcNow);
-        var secondSlot = Guid.NewGuid();
+            Guid.NewGuid(), firstInvite, root, firstEvent, "first-manage", DateTimeOffset.UtcNow);
+        var secondEvent = Guid.NewGuid();
         var secondInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), candidateId, root.Id, "second", DateTimeOffset.UtcNow.AddDays(1),
-            [secondSlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            Guid.NewGuid(), attendeeId, root.Id, "second", DateTimeOffset.UtcNow.AddDays(1),
+            [secondEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
 
         Assert.Throws<EventBooking.Domain.Common.DomainException>(() => Booking.CreateRecovery(
-            Guid.NewGuid(), secondInvite, first, secondSlot, "second-manage", DateTimeOffset.UtcNow));
+            Guid.NewGuid(), secondInvite, first, secondEvent, "second-manage", DateTimeOffset.UtcNow));
     }
 }

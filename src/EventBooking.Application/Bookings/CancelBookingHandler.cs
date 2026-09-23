@@ -5,7 +5,7 @@ using EventBooking.Application.Notifications;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Common;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Bookings;
 
@@ -25,11 +25,11 @@ public sealed record CancelBookingOutcome(
     string? DeliveryStatus = null,
     Guid? DeliveryId = null);
 
-/// <summary>Cancels or rebooks under the candidate lifecycle lock before releasing slot capacity.</summary>
+/// <summary>Cancels or rebooks under the attendee lifecycle lock before releasing event capacity.</summary>
 /// <param name="deliveries">Stages and dispatches replacement invites after commit.</param>
 /// <param name="bookings">The bookings.</param>
-/// <param name="slots">The slots.</param>
-/// <param name="candidates">The candidates.</param>
+/// <param name="events">The events.</param>
+/// <param name="attendees">The attendees.</param>
 /// <param name="invites">The invites.</param>
 /// <param name="bookingCanceller">The booking canceller.</param>
 /// <param name="issuer">The issuer.</param>
@@ -38,8 +38,8 @@ public sealed record CancelBookingOutcome(
 /// <param name="unitOfWork">The unit of work.</param>
 public sealed class CancelBookingHandler(
     IBookingRepository bookings,
-    IConfirmedSlotRepository slots,
-    ICandidateRepository candidates,
+    IEventRepository events,
+    IAttendeeRepository attendees,
     IInviteRepository invites,
     BookingCanceller bookingCanceller,
     InviteIssuer issuer,
@@ -61,13 +61,13 @@ public sealed class CancelBookingHandler(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var confirmedSlotId = await bookings.GetConfirmedSlotIdByManageTokenHashAsync(
+        var eventId = await bookings.GetEventIdByManageTokenHashAsync(
             tokens.Hash(command.ManageToken),
             cancellationToken);
-        var candidateId = await bookings.GetCandidateIdByManageTokenHashAsync(
+        var attendeeId = await bookings.GetAttendeeIdByManageTokenHashAsync(
             tokens.Hash(command.ManageToken),
             cancellationToken);
-        if (confirmedSlotId is null || candidateId is null)
+        if (eventId is null || attendeeId is null)
         {
             return Result<CancelBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
@@ -75,14 +75,14 @@ public sealed class CancelBookingHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        var candidate = await candidates.LockForUpdateAsync(candidateId.Value, cancellationToken);
-        if (candidate is null)
+        var attendee = await attendees.LockForUpdateAsync(attendeeId.Value, cancellationToken);
+        if (attendee is null)
         {
             return Result<CancelBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var pending = await invites.LockPendingListForCandidateAsync(candidate.Id, cancellationToken);
+        var pending = await invites.LockPendingListForAttendeeAsync(attendee.Id, cancellationToken);
 
         var booking = await bookings.LockByManageTokenHashForUpdateAsync(
             tokens.Hash(command.ManageToken), cancellationToken);
@@ -93,7 +93,7 @@ public sealed class CancelBookingHandler(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        if (booking.CandidateId != candidate.Id)
+        if (booking.AttendeeId != attendee.Id)
         {
             return Result<CancelBookingOutcome>.Failure(
                 Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
@@ -105,30 +105,30 @@ public sealed class CancelBookingHandler(
             activeRecovery = await bookings.LockActiveRecoveryAsync(booking.Id, cancellationToken);
         }
 
-        var slotIds = new List<Guid> { confirmedSlotId.Value };
-        if (activeRecovery is not null && activeRecovery.ConfirmedSlotId != confirmedSlotId.Value)
+        var eventIds = new List<Guid> { eventId.Value };
+        if (activeRecovery is not null && activeRecovery.EventId != eventId.Value)
         {
-            slotIds.Add(activeRecovery.ConfirmedSlotId);
+            eventIds.Add(activeRecovery.EventId);
         }
 
-        slotIds.Sort();
-        var lockedSlots = new Dictionary<Guid, ConfirmedSlot>();
-        foreach (var slotId in slotIds)
+        eventIds.Sort();
+        var lockedEvents = new Dictionary<Guid, Event>();
+        foreach (var lockedEventId in eventIds)
         {
-            var locked = await slots.LockForUpdateAsync(slotId, cancellationToken);
+            var locked = await events.LockForUpdateAsync(lockedEventId, cancellationToken);
             if (locked is null)
             {
                 return Result<CancelBookingOutcome>.Failure(
                     Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
             }
 
-            lockedSlots[slotId] = locked;
+            lockedEvents[lockedEventId] = locked;
         }
 
-        var slot = lockedSlots[confirmedSlotId.Value];
+        var eventItem = lockedEvents[eventId.Value];
 
-        // A booking can no longer be cancelled once its slot date has started.
-        if (lockedSlots.Values.Any(locked => locked.Window.Date < clock.TodayAtHeadOffice))
+        // A booking can no longer be cancelled once its event date has started.
+        if (lockedEvents.Values.Any(locked => locked.Window.Date < clock.TodayAtTransitionalLocation))
         {
             await transaction.RollbackAsync(cancellationToken);
             return Result<CancelBookingOutcome>.Failure(Error.Conflict(
@@ -144,8 +144,8 @@ public sealed class CancelBookingHandler(
             {
                 var releasedRecovery = await bookingCanceller.CancelLockedAsync(
                     booking,
-                    slot,
-                    ActorType.CandidateToken,
+                    eventItem,
+                    ActorType.AttendeeToken,
                     booking.Id.ToString(),
                     cancellationToken);
                 if (releasedRecovery.IsFailure)
@@ -165,8 +165,8 @@ public sealed class CancelBookingHandler(
                 {
                     var releasedActiveRecovery = await bookingCanceller.CancelLockedAsync(
                         activeRecovery,
-                        lockedSlots[activeRecovery.ConfirmedSlotId],
-                        ActorType.CandidateToken,
+                        lockedEvents[activeRecovery.EventId],
+                        ActorType.AttendeeToken,
                         booking.Id.ToString(),
                         cancellationToken);
                     if (releasedActiveRecovery.IsFailure)
@@ -178,8 +178,8 @@ public sealed class CancelBookingHandler(
 
                 var released = await bookingCanceller.CancelLockedAsync(
                     booking,
-                    slot,
-                    ActorType.CandidateToken,
+                    eventItem,
+                    ActorType.AttendeeToken,
                     booking.Id.ToString(),
                     cancellationToken);
                 if (released.IsFailure)
@@ -188,14 +188,14 @@ public sealed class CancelBookingHandler(
                     return Result<CancelBookingOutcome>.Failure(released.Error);
                 }
 
-                candidate.ResetToNotYetInvited();
+                attendee.ResetToNotYetInvited();
 
                 if (command.Rebook)
                 {
                     var issueResult = await issuer.IssueInitialAsync(
-                        candidate,
+                        attendee,
                         0,
-                        ActorType.CandidateToken,
+                        ActorType.AttendeeToken,
                         booking.Id.ToString(),
                         isReinvite: false,
                         cancellationToken);

@@ -77,14 +77,14 @@ public class DashboardsClientTests
         Assert.Equal("/api/dashboards", handler.Request.RequestUri!.AbsolutePath);
         Assert.Empty(outcome.Value!.AwaitingAvailability);
         Assert.Empty(outcome.Value.NoResponse);
-        Assert.Empty(outcome.Value.Slots);
+        Assert.Empty(outcome.Value.Events);
     }
 
     [Fact]
     public async Task TheDashboardResponseIsDisposedAfterItsBodyIsRead()
     {
         var (client, handler) = Given();
-        var content = new TrackingContent("""{"awaitingAvailability":[],"noResponse":[],"slots":[]}""");
+        var content = new TrackingContent("""{"awaitingAvailability":[],"noResponse":[],"events":[]}""");
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         var response = new TrackingResponseMessage(HttpStatusCode.OK, content) { Content = content };
         handler.Response = response;
@@ -98,7 +98,7 @@ public class DashboardsClientTests
     private static HttpResponseMessage JsonResponse() => new(HttpStatusCode.OK)
     {
         Content = new StringContent(
-            """{"awaitingAvailability":[],"noResponse":[],"slots":[]}""",
+            """{"awaitingAvailability":[],"noResponse":[],"events":[]}""",
             Encoding.UTF8,
             "application/json"),
     };

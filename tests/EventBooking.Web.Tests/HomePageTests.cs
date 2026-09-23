@@ -30,14 +30,14 @@ public class HomePageTests : BunitContext
     }
 
     [Fact]
-    public void SignedOutVisitorsCanReachTheCandidateGuide()
+    public void SignedOutVisitorsCanReachTheAttendeeGuide()
     {
         this.AddAuthorization().SetNotAuthorized();
 
         var cut = RenderHome(meOutcome: null);
 
         var link = cut.Find("a[href='/help']");
-        Assert.Equal("Read the candidate guide", link.TextContent.Trim());
+        Assert.Equal("Read the attendee guide", link.TextContent.Trim());
     }
 
     private IRenderedComponent<CascadingAuthenticationState> RenderHome(ApiOutcome<MeDto>? meOutcome)

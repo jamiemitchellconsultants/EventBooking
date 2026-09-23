@@ -49,8 +49,8 @@ public class MainLayoutTests : BunitContext
         var cut = RenderTopbar();
 
         cut.WaitForAssertion(() => Assert.Contains("staff-nav", cut.Markup));
-        Assert.Contains("href=\"/slots\"", cut.Markup);
-        Assert.DoesNotContain("href=\"/candidates\"", cut.Markup);
+        Assert.Contains("href=\"/events/negotiate\"", cut.Markup);
+        Assert.DoesNotContain("href=\"/attendees\"", cut.Markup);
     }
 
     [Fact]

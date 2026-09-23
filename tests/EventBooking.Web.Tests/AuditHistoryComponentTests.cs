@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace EventBooking.Web.Tests;
 
 /// <summary>
-/// The Task 70 audit panel is loaded lazily on first expand so a table of many slots does not fire
+/// The Task 70 audit panel is loaded lazily on first expand so a table of many events does not fire
 /// one request per row. This proves the lazy load actually happens, and only once.
 /// </summary>
 public class AuditHistoryComponentTests : BunitContext
@@ -41,7 +41,7 @@ public class AuditHistoryComponentTests : BunitContext
         var rows = new List<AuditRowDto>
         {
             new(new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero),
-                "ConfirmedSlot", Guid.NewGuid(), "SlotConfirmed", "Staff", "staff-1", "6 headcount"),
+                "Event", Guid.NewGuid(), "EventConfirmed", "Staff", "staff-1", "6 headcount"),
         };
         var handler = new CountingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -49,10 +49,10 @@ public class AuditHistoryComponentTests : BunitContext
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
         Services.AddSingleton(new AuditClient(http));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
         var cut = Render<AuditHistory>(parameters => parameters
-            .Add(p => p.SlotId, Guid.NewGuid()));
+            .Add(p => p.EventId, Guid.NewGuid()));
 
         Assert.Equal(0, handler.RequestCount);
 

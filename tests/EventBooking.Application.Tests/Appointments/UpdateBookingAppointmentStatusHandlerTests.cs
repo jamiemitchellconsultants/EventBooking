@@ -5,10 +5,10 @@ using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Appointments;
 
@@ -36,12 +36,12 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
     }
 
     /// <summary>
-    /// Verifies mutation shares the candidate-first lifecycle lock order used by every
-    /// journey transition: Candidate, pending Invites, original Booking, addressed Booking,
-    /// Confirmed Slot, then ordered Booking Appointments.
+    /// Verifies mutation shares the attendee-first lifecycle lock order used by every
+    /// journey transition: Attendee, pending Invites, original Booking, addressed Booking,
+    /// Confirmed Event, then ordered Booking Appointments.
     /// </summary>
     [Fact]
-    public async Task LocksCandidateLifecycleBeforeSlotAndAppointments()
+    public async Task LocksAttendeeLifecycleBeforeEventAndAppointments()
     {
         var scenario = GivenScenario(new DateTimeOffset(2026, 9, 7, 9, 5, 0, TimeSpan.Zero));
 
@@ -53,11 +53,11 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         Assert.Equal(
             [
                 "transaction-begun",
-                "candidate-locked",
+                "attendee-locked",
                 "pending-invites-locked",
                 "booking-locked",
                 "booking-locked",
-                "slot-guard-locked",
+                "event-guard-locked",
                 "appointments-locked",
             ],
             scenario.Operations.Events.TakeLast(7));
@@ -118,9 +118,9 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         Assert.Empty(scenario.Audit.Entries);
     }
 
-    /// <summary>Verifies check-in is rejected outside the confirmed-slot head-office date.</summary>
+    /// <summary>Verifies check-in is rejected outside the event transitional-location date.</summary>
     [Fact]
-    public async Task CheckInOnAnotherHeadOfficeDateIsRejected()
+    public async Task CheckInOnAnotherTransitionalLocationDateIsRejected()
     {
         var scenario = GivenScenario(new DateTimeOffset(2026, 9, 8, 9, 5, 0, TimeSpan.Zero));
 
@@ -149,12 +149,12 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         Assert.Empty(scenario.Audit.Entries);
     }
 
-    /// <summary>Verifies a cancelled slot blocks an otherwise valid transition.</summary>
+    /// <summary>Verifies a cancelled event blocks an otherwise valid transition.</summary>
     [Fact]
-    public async Task CancelledSlotRejectsTheUpdate()
+    public async Task CancelledEventRejectsTheUpdate()
     {
         var scenario = GivenScenario(new DateTimeOffset(2026, 9, 7, 9, 5, 0, TimeSpan.Zero));
-        scenario.Slot.Cancel();
+        scenario.Event.Cancel();
 
         var result = await scenario.Handler.HandleAsync(
             Command(scenario, BookingAppointmentStatus.CheckedIn, 1),
@@ -267,9 +267,9 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             BookingAppointmentStatus.NoShow, scenario.StaffUserId,
             new DateTimeOffset(2026, 9, 7, 9, 5, 0, TimeSpan.Zero), false, true);
         scenario.Invites.Add(Invite.CreateRecovery(
-            Guid.NewGuid(), scenario.Candidate.Id, scenario.Booking.Id, "pending-recovery",
+            Guid.NewGuid(), scenario.Attendee.Id, scenario.Booking.Id, "pending-recovery",
             new DateTimeOffset(2026, 9, 9, 9, 0, 0, TimeSpan.Zero),
-            [scenario.Slot.Id, Guid.NewGuid(), Guid.NewGuid()],
+            [scenario.Event.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]));
 
         var result = await scenario.Handler.HandleAsync(
@@ -372,13 +372,13 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         DateTimeOffset recoveryCreatedAt)
     {
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), scenario.Candidate.Id, scenario.Booking.Id, $"recovery-{Guid.NewGuid():N}",
+            Guid.NewGuid(), scenario.Attendee.Id, scenario.Booking.Id, $"recovery-{Guid.NewGuid():N}",
             recoveryCreatedAt.AddDays(2),
-            [scenario.Slot.Id, Guid.NewGuid(), Guid.NewGuid()],
+            [scenario.Event.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         scenario.Invites.Add(recoveryInvite);
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, scenario.Booking, scenario.Slot.Id,
+            Guid.NewGuid(), recoveryInvite, scenario.Booking, scenario.Event.Id,
             $"manage-{Guid.NewGuid():N}", recoveryCreatedAt);
         scenario.Bookings.Add(recovery);
         recoveryInvite.MarkUsed();
@@ -390,8 +390,8 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
     }
 
     /// <summary>Builds a DAT-only group; the scenario needs a mapping, not an identity.</summary>
-    private static EmployeeGroup DatOnly() =>
-        EmployeeGroup.Define(
+    private static AttendeeGroup DatOnly() =>
+        AttendeeGroup.Define(
             Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
 
@@ -401,24 +401,24 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         var profiles = new InMemoryStaffAccessProfileRepository();
         profiles.Add(StaffAccessProfile.Create(
             staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
-        var candidate = Candidate.Create(
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", "amara@example.com", DatOnly());
         var operations = new TransactionOperationLog();
-        var candidates = new InMemoryCandidateRepository(operations);
-        candidates.Add(candidate);
-        var slot = ConfirmedSlot.CreateImported(
+        var attendees = new InMemoryAttendeeRepository(operations);
+        attendees.Add(attendee);
+        var eventItem = Event.CreateImported(
             Guid.NewGuid(),
-            new SlotWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
-        var slots = new InMemoryConfirmedSlotRepository(operations);
-        slots.Add(slot);
+        var events = new InMemoryEventRepository(operations);
+        events.Add(eventItem);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), candidate.Id, "invite-token", now.AddDays(1),
-            [slot.Id, Guid.NewGuid(), Guid.NewGuid()], candidate.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, slot.Id, "manage-token", now.AddDays(-1));
+            Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
         var bookings = new InMemoryBookingRepository(operations);
         bookings.Add(booking);
         var appointment = BookingAppointment.Create(
@@ -432,27 +432,27 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             new StaffAccessAuthorizer(profiles),
             appointments,
             bookings,
-            candidates,
+            attendees,
             invites,
-            slots,
+            events,
             new RecoveryBookingOutcomeCoordinator(),
             audit,
             unitOfWork,
             clock);
         return new Scenario(
-            staff, profiles, candidate, slot, appointment, booking,
-            candidates, invites, bookings, appointments,
+            staff, profiles, attendee, eventItem, appointment, booking,
+            attendees, invites, bookings, appointments,
             audit, unitOfWork, operations, handler);
     }
 
     private sealed record Scenario(
         Guid StaffUserId,
         InMemoryStaffAccessProfileRepository Profiles,
-        Candidate Candidate,
-        ConfirmedSlot Slot,
+        Attendee Attendee,
+        Event Event,
         BookingAppointment Appointment,
         Booking Booking,
-        InMemoryCandidateRepository Candidates,
+        InMemoryAttendeeRepository Attendees,
         InMemoryInviteRepository Invites,
         InMemoryBookingRepository Bookings,
         InMemoryBookingAppointmentRepository Appointments,

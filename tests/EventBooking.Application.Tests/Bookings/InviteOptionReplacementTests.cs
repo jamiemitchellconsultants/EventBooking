@@ -3,10 +3,10 @@ using EventBooking.Application.Invites;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Bookings;
 
@@ -14,85 +14,85 @@ namespace EventBooking.Application.Tests.Bookings;
 public class InviteOptionReplacementTests
 {
     private readonly InMemoryInviteRepository _invites = new();
-    private readonly InMemoryCandidateRepository _candidates = new();
-    private readonly InMemoryConfirmedSlotRepository _slots = new();
+    private readonly InMemoryAttendeeRepository _attendees = new();
+    private readonly InMemoryEventRepository _events = new();
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly FakeTokenService _tokens = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
-    private readonly Candidate _candidate;
+    private readonly Attendee _attendee;
     private readonly Invite _invite;
     private readonly string _token;
 
     private ViewInviteHandler Handler => new(
-        _invites, _candidates, _slots, new EligibleSlotFinder(_slots, _clock),
+        _invites, _attendees, _events, new EligibleEventFinder(_events, _clock),
         _audit, _unitOfWork, _tokens, _clock);
 
     public InviteOptionReplacementTests()
     {
-        _candidate = Candidate.Create(
+        _attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
-            EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
-        _candidates.Add(_candidate);
+        _attendees.Add(_attendee);
 
-        var slotIds = new[] { AddSlot(10, 9), AddSlot(11, 13), AddSlot(13, 9) };
+        var eventIds = new[] { AddEvent(10, 9), AddEvent(11, 13), AddEvent(13, 9) };
 
         var inviteId = Guid.NewGuid();
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _candidate.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), slotIds,
+            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), eventIds,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
         _invites.Add(_invite);
-        _candidate.MarkInvited();
+        _attendee.MarkInvited();
     }
 
-    /// <summary>A cancelled option is replaced so the candidate still sees three live options.</summary>
+    /// <summary>A cancelled option is replaced so the attendee still sees three live options.</summary>
     [Fact]
     public async Task View_ReplacesCancelledOption_ToRestoreThreeOptions()
     {
-        _slots.Items[1].Cancel();
-        var spareId = AddSlot(14, 9);
+        _events.Items[1].Cancel();
+        var spareId = AddEvent(14, 9);
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(3, result.Value.Options.Count);
-        Assert.Contains(spareId, result.Value.Options.Select(o => o.ConfirmedSlotId));
+        Assert.Contains(spareId, result.Value.Options.Select(o => o.EventId));
         Assert.DoesNotContain(
-            _slots.Items[1].Id, result.Value.Options.Select(o => o.ConfirmedSlotId));
-        Assert.Contains(spareId, _invite.OfferedSlotIds);
+            _events.Items[1].Id, result.Value.Options.Select(o => o.EventId));
+        Assert.Contains(spareId, _invite.OfferedEventIds);
         Assert.True(_audit.Contains(AuditAction.InviteOptionReplaced));
     }
 
-    /// <summary>With no replacement available the candidate is flagged for coordinator follow-up.</summary>
+    /// <summary>With no replacement available the attendee is flagged for coordinator follow-up.</summary>
     [Fact]
-    public async Task View_WithNoReplacementAvailable_FlagsCandidateForFollowUp()
+    public async Task View_WithNoReplacementAvailable_FlagsAttendeeForFollowUp()
     {
-        _slots.Items[1].Cancel();
-        _slots.Items[2].Cancel();
+        _events.Items[1].Cancel();
+        _events.Items[2].Cancel();
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value.Options);
-        Assert.Equal(CandidateStatus.NoResponseNeedsFollowUp, _candidate.Status);
+        Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, _attendee.Status);
         Assert.True(_audit.Contains(AuditAction.InviteOptionReplaced));
     }
 
-    private Guid AddSlot(int day, int hour)
+    private Guid AddEvent(int day, int hour)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
-        _slots.Add(slot);
-        return slot.Id;
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
+        _events.Add(eventItem);
+        return eventItem.Id;
     }
 }

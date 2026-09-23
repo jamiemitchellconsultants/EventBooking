@@ -3,9 +3,9 @@ using EventBooking.Application.Notifications;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Invites;
 
@@ -13,13 +13,13 @@ public class TriggerInviteHandlerTests
 {
     private static readonly Guid Coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
     private static readonly Guid Manager = Guid.Parse("c0000001-0000-0000-0000-000000000001");
-    private static readonly CandidatePortalOptions Portal = new(
+    private static readonly AttendeePortalOptions Portal = new(
         "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
 
-    private readonly InMemoryCandidateRepository _candidates = new();
+    private readonly InMemoryAttendeeRepository _attendees = new();
     private readonly InMemoryInviteRepository _invites = new();
-    private readonly InMemoryEmployeeGroupRepository _groups = new();
-    private readonly InMemoryConfirmedSlotRepository _slots = new();
+    private readonly InMemoryAttendeeGroupRepository _groups = new();
+    private readonly InMemoryEventRepository _events = new();
     private readonly InMemorySystemSettingsRepository _settings = new();
     private readonly InMemoryStaffAccessProfileRepository _roles = new();
     private readonly RecordingEmailSender _email = new();
@@ -27,13 +27,13 @@ public class TriggerInviteHandlerTests
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
-    private readonly Candidate _candidate;
+    private readonly Attendee _attendee;
 
     private TriggerInviteHandler Handler => new(
-        _candidates,
+        _attendees,
         _roles,
         new InviteIssuer(
-            _invites, _groups, new EligibleSlotFinder(_slots, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
             new FakeTokenService(), EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
@@ -45,22 +45,22 @@ public class TriggerInviteHandlerTests
         _roles.Add(StaffAccessProfile.Create(
             Manager, Role.Manager, AppointmentTypeIds.DrugAndAlcoholTesting));
 
-        var pilots = EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        var pilots = AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _candidate = Candidate.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
-        _candidates.Add(_candidate);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendees.Add(_attendee);
     }
 
     /// <summary>Verifies invite issuance persists the business change and delivery result once each.</summary>
     [Fact]
     public async Task ACoordinatorCanTriggerAnInvite()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         var result = await Handler.HandleAsync(
-            new TriggerInviteCommand(Coordinator, _candidate.Id), CancellationToken.None);
+            new TriggerInviteCommand(Coordinator, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value.Invited);
@@ -72,10 +72,10 @@ public class TriggerInviteHandlerTests
     [Fact]
     public async Task TheSystemCanTriggerWithoutAStaffIdentity()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         var result = await Handler.HandleAsync(
-            new TriggerInviteCommand(null, _candidate.Id), CancellationToken.None);
+            new TriggerInviteCommand(null, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value.Invited);
@@ -84,10 +84,10 @@ public class TriggerInviteHandlerTests
     [Fact]
     public async Task AManagerCannotTriggerAnInvite()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         var result = await Handler.HandleAsync(
-            new TriggerInviteCommand(Manager, _candidate.Id), CancellationToken.None);
+            new TriggerInviteCommand(Manager, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("forbidden", result.Error.Code);
@@ -95,49 +95,49 @@ public class TriggerInviteHandlerTests
     }
 
     [Fact]
-    public async Task WithoutEnoughSlotsTheCandidateIsFlaggedAndStillSaved()
+    public async Task WithoutEnoughEventsTheAttendeeIsFlaggedAndStillSaved()
     {
         var result = await Handler.HandleAsync(
-            new TriggerInviteCommand(Coordinator, _candidate.Id), CancellationToken.None);
+            new TriggerInviteCommand(Coordinator, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.Invited);
-        Assert.Equal(CandidateStatus.AwaitingAvailability, _candidate.Status);
+        Assert.Equal(AttendeeStatus.AwaitingAvailability, _attendee.Status);
         Assert.Equal(1, _unitOfWork.SaveCount);
     }
 
     [Fact]
-    public async Task ReInvitingACandidateWhoNeverRespondedResetsTheRetryCount()
+    public async Task ReInvitingAAttendeeWhoNeverRespondedResetsTheRetryCount()
     {
-        AddThreeSlots();
-        _candidate.MarkInvited();
-        _candidate.MarkNoResponse();
+        AddThreeEvents();
+        _attendee.MarkInvited();
+        _attendee.MarkNoResponse();
 
         var result = await Handler.HandleAsync(
-            new TriggerInviteCommand(Coordinator, _candidate.Id), CancellationToken.None);
+            new TriggerInviteCommand(Coordinator, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.Value.Invited);
         Assert.Equal(0, _invites.Items.Single().RetryCount);
-        Assert.Equal(CandidateStatus.Invited, _candidate.Status);
+        Assert.Equal(AttendeeStatus.Invited, _attendee.Status);
     }
 
     [Fact]
-    public async Task ABookedCandidateCannotBeReInvited()
+    public async Task ABookedAttendeeCannotBeReInvited()
     {
-        AddThreeSlots();
-        _candidate.MarkInvited();
-        _candidate.MarkBooked();
+        AddThreeEvents();
+        _attendee.MarkInvited();
+        _attendee.MarkBooked();
 
         var result = await Handler.HandleAsync(
-            new TriggerInviteCommand(Coordinator, _candidate.Id), CancellationToken.None);
+            new TriggerInviteCommand(Coordinator, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("conflict", result.Error.Code);
-        Assert.Equal("This candidate is already booked.", result.Error.Message);
+        Assert.Equal("This attendee is already booked.", result.Error.Message);
     }
 
     [Fact]
-    public async Task AnUnknownCandidateIsNotFound()
+    public async Task AnUnknownAttendeeIsNotFound()
     {
         var result = await Handler.HandleAsync(
             new TriggerInviteCommand(Coordinator, Guid.NewGuid()), CancellationToken.None);
@@ -146,18 +146,18 @@ public class TriggerInviteHandlerTests
         Assert.Equal("not_found", result.Error.Code);
     }
 
-    private void AddThreeSlots()
+    private void AddThreeEvents()
     {
         foreach (var day in new[] { 10, 12, 14 })
         {
-            var proposal = SlotProposal.Create(
-                Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
+            var proposal = EventProposal.Create(
+                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-            _slots.Add(ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal));
+            _events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
         }
     }
 }

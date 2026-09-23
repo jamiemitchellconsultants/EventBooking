@@ -1,12 +1,12 @@
 using EventBooking.Application.Access;
 using EventBooking.Application.Appointments;
 using EventBooking.Application.Bookings;
-using EventBooking.Application.Candidates;
+using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Settings;
-using EventBooking.Application.Slots;
+using EventBooking.Application.Events;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Application;
@@ -19,39 +19,39 @@ public static class ApplicationServiceCollectionExtensions
     /// <param name="portal">The portal.</param>
     public static IServiceCollection AddEventBookingApplication(
         this IServiceCollection services,
-        CandidatePortalOptions portal)
+        AttendeePortalOptions portal)
     {
         services.AddSingleton(portal);
 
         // Shared services.
-        services.AddScoped<EligibleSlotFinder>();
+        services.AddScoped<EligibleEventFinder>();
         services.AddScoped<EmailDeliveryService>();
         services.AddScoped<InviteIssuer>();
         services.AddScoped<BookingCanceller>();
         services.AddScoped<IStaffAccessAuthorizer, StaffAccessAuthorizer>();
         services.AddScoped<StaffAccessHandler>();
 
-        // Slot negotiation.
-        services.AddScoped<ProposeSlotHandler>();
+        // Event negotiation.
+        services.AddScoped<ProposeEventHandler>();
         services.AddScoped<AcceptProposalHandler>();
-        services.AddScoped<ImportConfirmedSlotsHandler>();
+        services.AddScoped<ImportEventsHandler>();
         services.AddScoped<WithdrawAcceptanceHandler>();
         services.AddScoped<WithdrawProposalHandler>();
-        services.AddScoped<GetManagerSlotBoardHandler>();
-        services.AddScoped<CancelConfirmedSlotHandler>();
-        services.AddScoped<AdjustConfirmedSlotCapacityHandler>();
+        services.AddScoped<GetManagerEventBoardHandler>();
+        services.AddScoped<CancelEventHandler>();
+        services.AddScoped<AdjustEventCapacityHandler>();
 
-        // Candidates.
-        services.AddScoped<ImportCandidatesHandler>();
-        services.AddScoped<SaveCandidateHandler>();
-        services.AddScoped<DeleteCandidateHandler>();
-        services.AddScoped<ListCandidatesHandler>();
-        services.AddScoped<ListEmployeeGroupsHandler>();
-        services.AddScoped<CandidateReadinessCalculator>();
-        services.AddScoped<GetCandidateReadinessHandler>();
-        services.AddScoped<GetCandidateBookingsHandler>();
+        // Attendees.
+        services.AddScoped<ImportAttendeesHandler>();
+        services.AddScoped<SaveAttendeeHandler>();
+        services.AddScoped<DeleteAttendeeHandler>();
+        services.AddScoped<ListAttendeesHandler>();
+        services.AddScoped<ListAttendeeGroupsHandler>();
+        services.AddScoped<AttendeeReadinessCalculator>();
+        services.AddScoped<GetAttendeeReadinessHandler>();
+        services.AddScoped<GetAttendeeBookingsHandler>();
         services.AddScoped<GetDashboardsHandler>();
-        services.AddScoped<GetSlotOperationsHandler>();
+        services.AddScoped<GetEventOperationsHandler>();
         services.AddScoped<GetAuditHistoryHandler>();
         services.AddScoped<GetAuditSearchHandler>();
 
@@ -76,7 +76,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ViewBookingHandler>();
         services.AddScoped<ConfirmBookingHandler>();
         services.AddScoped<CancelBookingHandler>();
-        services.AddScoped<CancelCandidateBookingHandler>();
+        services.AddScoped<CancelAttendeeBookingHandler>();
 
         return services;
     }

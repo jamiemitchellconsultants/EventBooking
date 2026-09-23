@@ -7,29 +7,29 @@ using EventBooking.Infrastructure.Tokens;
 
 namespace EventBooking.SeedData;
 
-/// <summary>Validated demo SMTP settings and the API-compatible candidate link configuration.</summary>
+/// <summary>Validated demo SMTP settings and the API-compatible attendee link configuration.</summary>
 public sealed class DemoEmailOptions
 {
-    private DemoEmailOptions(CandidatePortalOptions portal, TokenOptions tokens,
-        EmailOptions sender, SmtpOptions smtp, HeadOfficeOptions headOffice)
+    private DemoEmailOptions(AttendeePortalOptions portal, TokenOptions tokens,
+        EmailOptions sender, SmtpOptions smtp, TransitionalLocationOptions transitionalLocation)
     {
         Portal = portal;
         Tokens = tokens;
         Sender = sender;
         Smtp = smtp;
-        HeadOffice = headOffice;
+        TransitionalLocation = transitionalLocation;
     }
 
-    /// <summary>Gets the public candidate portal URL, office address and coordinator contact.</summary>
-    public CandidatePortalOptions Portal { get; }
-    /// <summary>Gets the signing key that must match the API validating candidate tokens.</summary>
+    /// <summary>Gets the public attendee portal URL, office address and coordinator contact.</summary>
+    public AttendeePortalOptions Portal { get; }
+    /// <summary>Gets the signing key that must match the API validating attendee tokens.</summary>
     public TokenOptions Tokens { get; }
     /// <summary>Gets the sender identity used for demo messages over SMTP.</summary>
     public EmailOptions Sender { get; }
     /// <summary>Gets the Mailpit SMTP host and port reachable from this process.</summary>
     public SmtpOptions Smtp { get; }
-    /// <summary>Gets the timezone used to determine future head-office dates.</summary>
-    public HeadOfficeOptions HeadOffice { get; }
+    /// <summary>Gets the timezone used to determine future transitional-location dates.</summary>
+    public TransitionalLocationOptions TransitionalLocation { get; }
 
     /// <summary>Reads environment-style settings, with local defaults and explicit non-local keys.</summary>
     /// <param name="readSetting">Returns a setting value, or null when the key is absent.</param>
@@ -65,27 +65,27 @@ public sealed class DemoEmailOptions
             || !string.Equals(mailbox.Address, address, StringComparison.Ordinal))
             throw Invalid("Email__FromAddress");
         var name = Read("Email__FromName", "Recruitment Team");
-        var timezone = Read("HeadOffice__TimeZoneId", "Europe/London");
+        var timezone = Read("TransitionalLocation__TimeZoneId", "Europe/London");
         try
         {
             TimeZoneInfo.FindSystemTimeZoneById(timezone);
         }
         catch (TimeZoneNotFoundException)
         {
-            throw Invalid("HeadOffice__TimeZoneId");
+            throw Invalid("TransitionalLocation__TimeZoneId");
         }
         catch (InvalidTimeZoneException)
         {
-            throw Invalid("HeadOffice__TimeZoneId");
+            throw Invalid("TransitionalLocation__TimeZoneId");
         }
         return new DemoEmailOptions(
-            new CandidatePortalOptions(uri.AbsoluteUri.TrimEnd('/'),
-                Read("HeadOffice__Address", "1 Example Street, London"),
+            new AttendeePortalOptions(uri.AbsoluteUri.TrimEnd('/'),
+                Read("TransitionalLocation__Address", "1 Example Street, London"),
                 Read("Portal__CoordinatorContact", "recruitment@example.com")),
             new TokenOptions(signingKey),
             new EmailOptions(address, name, EmailProvider.Smtp),
             new SmtpOptions(smtpHost, port),
-            new HeadOfficeOptions(timezone));
+            new TransitionalLocationOptions(timezone));
     }
 
     private static SeedException Invalid(string key) =>

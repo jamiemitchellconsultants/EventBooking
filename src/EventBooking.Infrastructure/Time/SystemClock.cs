@@ -4,27 +4,27 @@ namespace EventBooking.Infrastructure.Time;
 
 public sealed class SystemClock : IClock
 {
-    private readonly TimeZoneInfo _headOffice;
+    private readonly TimeZoneInfo _transitionalLocation;
 
-    public SystemClock(HeadOfficeOptions options)
+    public SystemClock(TransitionalLocationOptions options)
     {
         // Resolved once, at startup: a bad configuration value should stop the host coming up
         // rather than fail the first time somebody reads the date.
-        _headOffice = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZoneId);
+        _transitionalLocation = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZoneId);
     }
 
     public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
 
     /// <inheritdoc/>
-    public DateTimeOffset NowAtHeadOffice => TimeZoneInfo.ConvertTime(UtcNow, _headOffice);
+    public DateTimeOffset NowAtTransitionalLocation => TimeZoneInfo.ConvertTime(UtcNow, _transitionalLocation);
 
-    public DateOnly TodayAtHeadOffice => DateOnly.FromDateTime(NowAtHeadOffice.DateTime);
+    public DateOnly TodayAtTransitionalLocation => DateOnly.FromDateTime(NowAtTransitionalLocation.DateTime);
 
-    public DateOnly DateAtHeadOffice(DateTimeOffset instant) => LocalDateOf(instant, _headOffice);
+    public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) => LocalDateOf(instant, _transitionalLocation);
 
     /// <inheritdoc/>
-    public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) =>
-        TimeZoneInfo.ConvertTime(instant, _headOffice);
+    public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) =>
+        TimeZoneInfo.ConvertTime(instant, _transitionalLocation);
 
     public static DateOnly LocalDateOf(DateTimeOffset instant, TimeZoneInfo zone) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);

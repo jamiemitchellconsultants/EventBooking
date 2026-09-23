@@ -9,7 +9,7 @@ namespace EventBooking.Infrastructure.Tests;
 [Collection("postgres")]
 public class StaffAccessMigrationTests(PostgresFixture fixture)
 {
-    private const string LegacyMigration = "20260905192057_MakeConfirmedSlotProposalIdNullable";
+    private const string LegacyMigration = "20260905192057_MakeEventProposalIdNullable";
 
     [Fact]
     public async Task LegacyRowsBecomeVersionOneProfilesAndLegacyStateIsRemoved()

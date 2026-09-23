@@ -67,8 +67,8 @@
                     <p>Guidance for booking and managing your appointment.</p>
                 </div>
             </div>
-            <section class="card guide-section" id="@CandidateGuide.AnchorId" aria-label="@CandidateGuide.Title">
-                @((MarkupString)CandidateGuide.Html)
+            <section class="card guide-section" id="@AttendeeGuide.AnchorId" aria-label="@AttendeeGuide.Title">
+                @((MarkupString)AttendeeGuide.Html)
             </section>
         </section>
     </NotAuthorized>
@@ -80,7 +80,7 @@
     [CascadingParameter]
     private ApiOutcome<MeDto>? MeOutcome { get; set; }
 
-    private static readonly UserGuide CandidateGuide = UserGuideCatalog.CandidateGuide();
+    private static readonly UserGuide AttendeeGuide = UserGuideCatalog.AttendeeGuide();
 
     private bool Loading => MeOutcome is null;
     private string? Error => MeOutcome is { IsSuccess: false } ? MeOutcome.ErrorMessage : null;

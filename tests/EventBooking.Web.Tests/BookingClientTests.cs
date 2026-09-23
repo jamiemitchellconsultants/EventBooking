@@ -116,21 +116,21 @@ public class BookingClientTests
     }
 
     [Fact]
-    public async Task ConfirmingPostsTheChosenSlot()
+    public async Task ConfirmingPostsTheChosenEvent()
     {
         var (client, handler) = Given();
-        var slotId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = JsonContent.Create(new ConfirmedBookingDto(
                 Guid.NewGuid(), new DateOnly(2026, 9, 11), new TimeOnly(13, 0), new TimeOnly(17, 0), "manage-token")),
         };
 
-        var outcome = await client.ConfirmAsync("tok", slotId, CancellationToken.None);
+        var outcome = await client.ConfirmAsync("tok", eventId, CancellationToken.None);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/booking/tok/confirm", handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Contains(slotId.ToString(), handler.Bodies[0]);
+        Assert.Contains(eventId.ToString(), handler.Bodies[0]);
         Assert.Equal("manage-token", outcome.Value!.ManageToken);
     }
 
@@ -166,7 +166,7 @@ public class BookingClientTests
         var outcome = await client.GetBookingAsync("mtok", CancellationToken.None);
 
         Assert.Equal("/api/booking/manage/mtok", handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Equal("Amara Novak", outcome.Value!.CandidateName);
+        Assert.Equal("Amara Novak", outcome.Value!.AttendeeName);
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class BookingClientTests
     }
 
     [Fact]
-    public async Task CancellingWithoutAvailableSlotsReportsThatNoInviteWasSent()
+    public async Task CancellingWithoutAvailableEventsReportsThatNoInviteWasSent()
     {
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
@@ -202,18 +202,18 @@ public class BookingClientTests
     }
 
     [Fact]
-    public async Task EveryResponseIsDisposedAfterEachCandidateOperation()
+    public async Task EveryResponseIsDisposedAfterEachAttendeeOperation()
     {
         var (client, handler) = Given();
         var inviteResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
-            new TrackingContent("""{"inviteId":"00000000-0000-0000-0000-000000000001","candidateName":"Amara Novak","appointmentTypeNames":["Uniform Fitting"],"options":[]}"""));
+            new TrackingContent("""{"inviteId":"00000000-0000-0000-0000-000000000001","attendeeName":"Amara Novak","appointmentTypeNames":["Uniform Fitting"],"options":[]}"""));
         var confirmedResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
             new TrackingContent("""{"bookingId":"00000000-0000-0000-0000-000000000002","date":"2026-09-11","startTime":"13:00:00","endTime":"17:00:00","manageToken":"manage-token"}"""));
         var bookingResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
-            new TrackingContent("""{"date":"2026-09-11","startTime":"13:00:00","endTime":"17:00:00","display":"Friday 11 Sep 2026","candidateName":"Amara Novak"}"""));
+            new TrackingContent("""{"date":"2026-09-11","startTime":"13:00:00","endTime":"17:00:00","display":"Friday 11 Sep 2026","attendeeName":"Amara Novak"}"""));
         var cancelResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
             new TrackingContent("""{"reinvited":false}"""));

@@ -1,9 +1,9 @@
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Fakes;
 
@@ -16,37 +16,37 @@ public class FakesSelfTests
 
         clock.Advance(TimeSpan.FromDays(5));
 
-        Assert.Equal(new DateOnly(2026, 9, 8), clock.TodayAtHeadOffice);
+        Assert.Equal(new DateOnly(2026, 9, 8), clock.TodayAtTransitionalLocation);
     }
 
     [Fact]
-    public async Task TheCandidateRepositoryFiltersByStatus()
+    public async Task TheAttendeeRepositoryFiltersByStatus()
     {
-        var repository = new InMemoryCandidateRepository();
-        var uniformOnly = EmployeeGroup.Define(
+        var repository = new InMemoryAttendeeRepository();
+        var uniformOnly = AttendeeGroup.Define(
             Guid.NewGuid(), "UNI_ONLY", "UNI only", true, [AppointmentTypeIds.UniformFitting]);
-        var invited = Candidate.Create(
+        var invited = Attendee.Create(
             Guid.NewGuid(), "B. Chen", "b.chen@mail.com", uniformOnly);
         invited.MarkInvited();
         repository.Add(invited);
-        repository.Add(Candidate.Create(
+        repository.Add(Attendee.Create(
             Guid.NewGuid(), "A. Novak", "a.novak@mail.com", uniformOnly));
 
-        var result = await repository.ListAsync(CandidateStatus.Invited, CancellationToken.None);
+        var result = await repository.ListAsync(AttendeeStatus.Invited, CancellationToken.None);
 
         Assert.Single(result);
         Assert.Equal("b.chen@mail.com", result[0].Email);
     }
 
     [Fact]
-    public async Task TheSlotRepositoryHidesCancelledAndPastSlots()
+    public async Task TheEventRepositoryHidesCancelledAndPastEvents()
     {
-        var repository = new InMemoryConfirmedSlotRepository();
-        repository.Add(SlotFor(new DateOnly(2026, 9, 1)));
-        var cancelled = SlotFor(new DateOnly(2026, 9, 20));
+        var repository = new InMemoryEventRepository();
+        repository.Add(EventFor(new DateOnly(2026, 9, 1)));
+        var cancelled = EventFor(new DateOnly(2026, 9, 20));
         cancelled.Cancel();
         repository.Add(cancelled);
-        repository.Add(SlotFor(new DateOnly(2026, 9, 21)));
+        repository.Add(EventFor(new DateOnly(2026, 9, 21)));
 
         var result = await repository.ListActiveAsync(new DateOnly(2026, 9, 3), CancellationToken.None);
 
@@ -57,13 +57,13 @@ public class FakesSelfTests
     [Fact]
     public async Task TheCapacityRepositoryReturnsRowsInAppointmentTypeOrder()
     {
-        var slots = new InMemoryConfirmedSlotRepository();
-        var slot = SlotFor(new DateOnly(2026, 9, 21));
-        slots.Add(slot);
-        var capacities = new InMemorySlotCapacityRepository(slots);
+        var events = new InMemoryEventRepository();
+        var eventItem = EventFor(new DateOnly(2026, 9, 21));
+        events.Add(eventItem);
+        var capacities = new InMemoryEventCapacityRepository(events);
 
         var locked = await capacities
-            .LockForUpdateAsync(slot.Id, AppointmentTypeIds.All, CancellationToken.None);
+            .LockForUpdateAsync(eventItem.Id, AppointmentTypeIds.All, CancellationToken.None);
 
         Assert.Equal(3, locked.Count);
         Assert.Equal(
@@ -93,20 +93,20 @@ public class FakesSelfTests
 
         logger.Record(
             AuditEntityTypes.Booking, Guid.NewGuid(), AuditAction.BookingCreated,
-            ActorType.CandidateToken, "invite-1", "chose option 2");
+            ActorType.AttendeeToken, "invite-1", "chose option 2");
 
         Assert.True(logger.Contains(AuditAction.BookingCreated));
         Assert.Equal("chose option 2", logger.Entries.Single().Details);
     }
 
-    private static ConfirmedSlot SlotFor(DateOnly date)
+    private static Event EventFor(DateOnly date)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-        return ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
+        return Event.CreateFrom(Guid.NewGuid(), proposal);
     }
 }

@@ -20,7 +20,7 @@ public static class OpenApiConfiguration
                 {
                     Title = "EventBooking API",
                     Version = "v1",
-                    Description = "EventBooking staff API and anonymous Candidate booking links.",
+                    Description = "EventBooking staff API and anonymous Attendee booking links.",
                 };
                 document.Components ??= new OpenApiComponents();
                 document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();

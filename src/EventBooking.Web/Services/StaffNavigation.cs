@@ -21,7 +21,7 @@ public static class StaffNavigation
             [
                 new("/settings", "System settings", "Configure invitation timing"),
                 new("/staff-access", "Staff access", "Set appointment-type scope"),
-                new("/confirmed-slots", "Confirmed slots", "Import already agreed slots"),
+                new("/events/operations", "Events", "Import already agreed events"),
                 new("/audit", "Audit trail", "Search what changed"),
             ];
         }
@@ -29,7 +29,7 @@ public static class StaffNavigation
         var links = new List<StaffLink>();
         if (roles.Contains("Manager"))
         {
-            links.Add(new("/slots", "Slot proposals", "Negotiate and confirm shared windows"));
+            links.Add(new("/events/negotiate", "Event proposals", "Negotiate and confirm shared windows"));
         }
 
         if (roles.Contains("Manager") || roles.Contains("AppointmentStaff"))
@@ -37,14 +37,14 @@ public static class StaffNavigation
             links.Add(new(
                 "/appointments",
                 "Appointments",
-                "Check candidates in and record appointment outcomes"));
+                "Check attendees in and record appointment outcomes"));
         }
 
         if (roles.Contains("Coordinator"))
         {
-            links.Add(new("/candidates", "Candidates", "Invite and track candidates"));
+            links.Add(new("/attendees", "Attendees", "Invite and track attendees"));
             links.Add(new("/dashboards", "Dashboards", "Waiting lists and follow-ups"));
-            links.Add(new("/confirmed-slots", "Confirmed slots", "Import already agreed slots"));
+            links.Add(new("/events/operations", "Events", "Import already agreed events"));
             links.Add(new("/audit", "Audit trail", "Search what changed"));
         }
 

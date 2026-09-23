@@ -6,26 +6,26 @@ using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Bookings;
 
-/// <summary>Verifies booking confirmation behavior and its candidate lifecycle lock order.</summary>
+/// <summary>Verifies booking confirmation behavior and its attendee lifecycle lock order.</summary>
 public class ConfirmBookingHandlerTests
 {
-    private static readonly CandidatePortalOptions Portal = new(
+    private static readonly AttendeePortalOptions Portal = new(
         "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
 
     private static readonly Guid StaffUserId = Guid.Parse("c0000009-0000-0000-0000-000000000009");
 
     private readonly TransactionOperationLog _operations = new();
     private readonly InMemoryInviteRepository _invites;
-    private readonly InMemoryCandidateRepository _candidates;
-    private readonly InMemoryConfirmedSlotRepository _slots;
+    private readonly InMemoryAttendeeRepository _attendees;
+    private readonly InMemoryEventRepository _events;
     private readonly InMemoryBookingRepository _bookings;
     private readonly InMemoryBookingAppointmentRepository _appointments;
     private readonly RecordingEmailSender _email = new();
@@ -34,20 +34,20 @@ public class ConfirmBookingHandlerTests
     private readonly FakeUnitOfWork _unitOfWork;
     private readonly FakeTokenService _tokens = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
-    private readonly Candidate _candidate;
+    private readonly Attendee _attendee;
     private readonly Invite _invite;
     private readonly string _token;
-    private readonly ConfirmedSlot _chosen;
+    private readonly Event _chosen;
 
     private ConfirmBookingHandler Handler
     {
         get
         {
-            var capacities = new InMemorySlotCapacityRepository(_slots, _operations);
+            var capacities = new InMemoryEventCapacityRepository(_events, _operations);
             return new ConfirmBookingHandler(
-                _invites, _candidates, _slots, _bookings,
+                _invites, _attendees, _events, _bookings,
                 _appointments, capacities,
-                new EligibleSlotFinder(_slots, _clock), _tokens,
+                new EligibleEventFinder(_events, _clock), _tokens,
                 EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock), _audit,
                 _unitOfWork, _clock, Portal);
         }
@@ -56,35 +56,35 @@ public class ConfirmBookingHandlerTests
     public ConfirmBookingHandlerTests()
     {
         _invites = new InMemoryInviteRepository(_operations);
-        _candidates = new InMemoryCandidateRepository(_operations);
+        _attendees = new InMemoryAttendeeRepository(_operations);
         _bookings = new InMemoryBookingRepository(_operations);
-        _slots = new InMemoryConfirmedSlotRepository(_operations);
+        _events = new InMemoryEventRepository(_operations);
         _appointments = new InMemoryBookingAppointmentRepository(_bookings, _operations);
         _unitOfWork = new FakeUnitOfWork(_operations);
 
-        var pilots = EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        var pilots = AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
-        _candidate = Candidate.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
-        _candidates.Add(_candidate);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendees.Add(_attendee);
 
-        _chosen = AddSlot(10, 9);
-        var others = new[] { AddSlot(11, 13).Id, AddSlot(13, 9).Id };
+        _chosen = AddEvent(10, 9);
+        var others = new[] { AddEvent(11, 13).Id, AddEvent(13, 9).Id };
 
         var inviteId = Guid.NewGuid();
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _candidate.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
+            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
             [_chosen.Id, others[0], others[1]],
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
         _invites.Add(_invite);
-        _candidate.MarkInvited();
+        _attendee.MarkInvited();
     }
 
-    private Task<Result<ConfirmBookingOutcome>> Confirm(Guid? slotId = null) =>
+    private Task<Result<ConfirmBookingOutcome>> Confirm(Guid? eventId = null) =>
         Handler.HandleAsync(
-            new ConfirmBookingCommand(_token, slotId ?? _chosen.Id), CancellationToken.None);
+            new ConfirmBookingCommand(_token, eventId ?? _chosen.Id), CancellationToken.None);
 
     [Fact]
     public async Task ConfirmingCreatesABookingAndConsumesTheInvite()
@@ -98,22 +98,22 @@ public class ConfirmBookingHandlerTests
 
         var booking = Assert.Single(_bookings.Items);
         Assert.Equal(result.Value.BookingId, booking.Id);
-        Assert.Equal(_candidate.Id, booking.CandidateId);
-        Assert.Equal(_chosen.Id, booking.ConfirmedSlotId);
+        Assert.Equal(_attendee.Id, booking.AttendeeId);
+        Assert.Equal(_chosen.Id, booking.EventId);
         Assert.Equal(_invite.Id, booking.InviteId);
         Assert.Equal(BookingStatus.Active, booking.Status);
 
         Assert.Equal(InviteStatus.Used, _invite.Status);
-        Assert.Equal(CandidateStatus.Booked, _candidate.Status);
+        Assert.Equal(AttendeeStatus.Booked, _attendee.Status);
     }
 
     [Fact]
-    public async Task ConfirmingReturnsTheConfiguredHeadOfficeAddress()
+    public async Task ConfirmingReturnsTheConfiguredTransitionalLocationAddress()
     {
         var result = await Confirm();
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(Portal.HeadOfficeAddress, result.Value.HeadOfficeAddress);
+        Assert.Equal(Portal.TransitionalLocationAddress, result.Value.TransitionalLocationAddress);
     }
 
     [Fact]
@@ -137,16 +137,16 @@ public class ConfirmBookingHandlerTests
     }
 
     /// <summary>
-    /// The candidate lifecycle lock precedes invite, active-booking, slot, and capacity locks so
-    /// disjoint tokens cannot make two bookings for the same candidate.
+    /// The attendee lifecycle lock precedes invite, active-booking, eventItem, and capacity locks so
+    /// disjoint tokens cannot make two bookings for the same attendee.
     /// </summary>
     [Fact]
-    public async Task ConfirmationUsesTheCandidateLifecycleLockOrder()
+    public async Task ConfirmationUsesTheAttendeeLifecycleLockOrder()
     {
         await Confirm();
 
         Assert.Equal(
-            ["transaction-begun", "candidate-locked", "invite-locked", "active-booking-locked", "slot-guard-locked", "capacity-locked"],
+            ["transaction-begun", "attendee-locked", "invite-locked", "active-booking-locked", "event-guard-locked", "capacity-locked"],
             _operations.Events.Take(6).ToList());
     }
 
@@ -182,7 +182,7 @@ public class ConfirmBookingHandlerTests
             2, _audit.Entries.Count(e => e.Action == AuditAction.CapacityDecremented));
         Assert.All(
             _audit.Entries,
-            e => Assert.Equal(ActorType.CandidateToken, e.ActorType));
+            e => Assert.Equal(ActorType.AttendeeToken, e.ActorType));
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public class ConfirmBookingHandlerTests
     [Fact]
     public async Task ChoosingAnOptionTheInviteNeverOfferedIsRejected()
     {
-        var other = AddSlot(20, 9);
+        var other = AddEvent(20, 9);
 
         var result = await Confirm(other.Id);
 
@@ -214,7 +214,7 @@ public class ConfirmBookingHandlerTests
     [Fact]
     public async Task AnExhaustedOptionIsDroppedAndReplaced()
     {
-        // Fill the chosen slot's drug and alcohol capacity between offer and click.
+        // Fill the chosen event's drug and alcohol capacity between offer and click.
         var capacity = _chosen.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting);
         var remainingCapacity = capacity.RemainingCapacity;
         for (var i = 0; i < remainingCapacity; i++)
@@ -222,7 +222,7 @@ public class ConfirmBookingHandlerTests
             capacity.Decrement();
         }
 
-        var replacement = AddSlot(15, 9);
+        var replacement = AddEvent(15, 9);
 
         var result = await Confirm();
 
@@ -241,11 +241,11 @@ public class ConfirmBookingHandlerTests
     }
 
     /// <summary>
-    /// With no replacement available the option is dropped and the candidate is flagged for
+    /// With no replacement available the option is dropped and the attendee is flagged for
     /// coordinator follow-up rather than left with a silently shrinking choice (Issue #242).
     /// </summary>
     [Fact]
-    public async Task WithNoReplacementAvailableTheCandidateIsFlaggedForFollowUp()
+    public async Task WithNoReplacementAvailableTheAttendeeIsFlaggedForFollowUp()
     {
         var capacity = _chosen.CapacityFor(AppointmentTypeIds.UniformFitting);
         var remainingCapacity = capacity.RemainingCapacity;
@@ -259,12 +259,12 @@ public class ConfirmBookingHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal(2, _invite.Options.Count);
         Assert.False(_invite.Offers(_chosen.Id));
-        Assert.Equal(CandidateStatus.NoResponseNeedsFollowUp, _candidate.Status);
+        Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, _attendee.Status);
         Assert.True(_audit.Contains(AuditAction.InviteOptionReplaced));
     }
 
     [Fact]
-    public async Task ChoosingASlotThatWasCancelledIsTreatedTheSameWay()
+    public async Task ChoosingAEventThatWasCancelledIsTreatedTheSameWay()
     {
         _chosen.Cancel();
 
@@ -277,9 +277,9 @@ public class ConfirmBookingHandlerTests
 
     /// <summary>Ensures a stale option cannot consume capacity and is replaced when possible.</summary>
     [Fact]
-    public async Task ChoosingAnOptionOnTheHeadOfficeDateDropsItAndAddsAFutureReplacement()
+    public async Task ChoosingAnOptionOnTheTransitionalLocationDateDropsItAndAddsAFutureReplacement()
     {
-        var stale = AddSlot(3, 9);
+        var stale = AddEvent(3, 9);
         _invite.RemoveOption(_chosen.Id);
         _invite.AddOption(stale.Id);
 
@@ -325,8 +325,8 @@ public class ConfirmBookingHandlerTests
     [Fact]
     public async Task ADriftedSnapshotIsSupersededWithoutDisclosure()
     {
-        _candidate.AssignEmployeeGroup(EmployeeGroup.Define(
-            EmployeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
+        _attendee.AssignAttendeeGroup(AttendeeGroup.Define(
+            AttendeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
             [AppointmentTypeIds.MedicalCheckUp]));
 
         var result = await Confirm();
@@ -352,7 +352,7 @@ public class ConfirmBookingHandlerTests
         Assert.False(booking.IsOriginal);
         Assert.Equal(BookingStatus.Active, booking.Status);
         Assert.Equal(BookingStatus.Active, original.Status);
-        Assert.Equal(CandidateStatus.Booked, _candidate.Status);
+        Assert.Equal(AttendeeStatus.Booked, _attendee.Status);
         Assert.Equal(InviteStatus.Used, recovery.Status);
 
         var appointment = Assert.Single(_appointments.Items, a => a.BookingId == booking.Id);
@@ -405,11 +405,11 @@ public class ConfirmBookingHandlerTests
     }
 
     /// <summary>
-    /// Recovery confirmation locks Candidate, Invite, original Booking, active recovery,
-    /// slot, then capacities — the global lifecycle order with the journey locks included.
+    /// Recovery confirmation locks Attendee, Invite, original Booking, active recovery,
+    /// eventItem, then capacities — the global lifecycle order with the journey locks included.
     /// </summary>
     [Fact]
-    public async Task RecoveryConfirmationUsesTheCandidateLifecycleLockOrder()
+    public async Task RecoveryConfirmationUsesTheAttendeeLifecycleLockOrder()
     {
         var (_, _, token) = BookWithRecoverableNoShow();
 
@@ -419,11 +419,11 @@ public class ConfirmBookingHandlerTests
         Assert.Equal(
             [
                 "transaction-begun",
-                "candidate-locked",
+                "attendee-locked",
                 "invite-locked",
                 "original-booking-locked",
                 "active-recovery-locked",
-                "slot-guard-locked",
+                "event-guard-locked",
                 "capacity-locked",
             ],
             _operations.Events.Take(7).ToList());
@@ -436,9 +436,9 @@ public class ConfirmBookingHandlerTests
         var original = Booking.Create(originalId, _invite, _chosen.Id, manage.TokenHash, _clock.UtcNow);
         _bookings.Add(original);
         _invite.MarkUsed();
-        _candidate.MarkBooked();
+        _attendee.MarkBooked();
 
-        foreach (var typeId in _candidate.RequiredAppointmentTypeIds)
+        foreach (var typeId in _attendee.RequiredAppointmentTypeIds)
         {
             _chosen.CapacityFor(typeId).Decrement();
         }
@@ -457,25 +457,25 @@ public class ConfirmBookingHandlerTests
         var recoveryId = Guid.NewGuid();
         var issued = _tokens.Issue(recoveryId);
         var recovery = Invite.CreateRecovery(
-            recoveryId, _candidate.Id, original.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
-            [_chosen.Id, AddSlot(15, 9).Id, AddSlot(17, 9).Id],
+            recoveryId, _attendee.Id, original.Id, issued.TokenHash, _clock.UtcNow.AddDays(4),
+            [_chosen.Id, AddEvent(15, 9).Id, AddEvent(17, 9).Id],
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         _invites.Add(recovery);
 
         return (original, recovery, issued.Token);
     }
 
-    private ConfirmedSlot AddSlot(int day, int hour)
+    private Event AddEvent(int day, int hour)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
-        _slots.Add(slot);
-        return slot;
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
+        _events.Add(eventItem);
+        return eventItem;
     }
 }

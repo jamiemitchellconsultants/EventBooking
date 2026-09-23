@@ -17,12 +17,12 @@ public class GetDashboardsHandlerTests
         public Task<IReadOnlyList<NoResponseRow>> NoResponseAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<NoResponseRow>>([]);
 
-        public Task<IReadOnlyList<SlotOverviewRow>> SlotsOverviewAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<SlotOverviewRow>>([]);
+        public Task<IReadOnlyList<EventOverviewRow>> EventsOverviewAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<EventOverviewRow>>([]);
 
-        public Task<IReadOnlyList<CandidateEmailStatusRow>> LatestEmailStatusAsync(
+        public Task<IReadOnlyList<AttendeeEmailStatusRow>> LatestEmailStatusAsync(
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<CandidateEmailStatusRow>>([]);
+            Task.FromResult<IReadOnlyList<AttendeeEmailStatusRow>>([]);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class GetDashboardsHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value.AwaitingAvailability);
         Assert.Empty(result.Value.NoResponse);
-        Assert.Empty(result.Value.Slots);
+        Assert.Empty(result.Value.Events);
     }
 
     [Fact]

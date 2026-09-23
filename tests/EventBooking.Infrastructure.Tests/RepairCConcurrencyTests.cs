@@ -1,18 +1,18 @@
 using EventBooking.Application;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
-using EventBooking.Application.Candidates;
+using EventBooking.Application.Attendees;
 using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
-using EventBooking.Application.Slots;
+using EventBooking.Application.Events;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
@@ -26,7 +26,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace EventBooking.Infrastructure.Tests;
 
 /// <summary>
-/// Exercises the proposal and candidate lifecycle races against PostgreSQL. Each operation gets
+/// Exercises the proposal and attendee lifecycle races against PostgreSQL. Each operation gets
 /// an independent dependency-injection scope and therefore an independent DbContext connection.
 /// </summary>
 [Collection("postgres")]
@@ -36,11 +36,11 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
     private static readonly DateOnly FixedToday = DateOnly.FromDateTime(FixedNow.DateTime);
 
     /// <summary>
-    /// Two final acceptances of one open proposal create one confirmed slot and preserve all three
+    /// Two final acceptances of one open proposal create one event and preserve all three
     /// acceptance-derived capacity rows.
     /// </summary>
     [Fact]
-    public async Task FinalProposalAcceptancesProduceOneConfirmedSlot()
+    public async Task FinalProposalAcceptancesProduceOneEvent()
     {
         await using var harness = await RepairCHarness.CreateAsync(fixture);
         var proposal = await harness.GivenOpenProposalWithOneAcceptanceAsync();
@@ -50,9 +50,9 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             harness.AcceptAsync(harness.UniformManagerId, proposal.Id, 8));
 
         Assert.All(results, result => Assert.True(result.IsSuccess));
-        Assert.Equal(SlotProposalStatus.Confirmed, await harness.ProposalStatusAsync(proposal.Id));
+        Assert.Equal(EventProposalStatus.Confirmed, await harness.ProposalStatusAsync(proposal.Id));
         Assert.Equal(3, await harness.AcceptanceCountAsync(proposal.Id));
-        Assert.Equal(1, await harness.ConfirmedSlotCountAsync(proposal.Id));
+        Assert.Equal(1, await harness.EventCountAsync(proposal.Id));
         Assert.Equal(new[] { 6, 8, 10 }, await harness.CapacitiesForProposalAsync(proposal.Id));
     }
 
@@ -66,9 +66,9 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         await using var harness = await RepairCHarness.CreateAsync(fixture);
         var date = FixedToday.AddDays(30);
 
-        Assert.True(await harness.HasIndexAsync("ux_slot_proposal_open_window"));
-        Assert.True(await harness.HasIndexAsync("ux_invite_pending_candidate"));
-        Assert.True(await harness.HasIndexAsync("ux_booking_active_original_candidate"));
+        Assert.True(await harness.HasIndexAsync("ux_event_proposal_open_window"));
+        Assert.True(await harness.HasIndexAsync("ux_invite_pending_attendee"));
+        Assert.True(await harness.HasIndexAsync("ux_booking_active_original_attendee"));
         Assert.True(await harness.HasIndexAsync("ux_booking_active_recovery"));
 
         var results = await Task.WhenAll(
@@ -82,24 +82,24 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
     }
 
     /// <summary>
-    /// Simultaneous manual triggers for a candidate result in one pending invite, not two offers.
+    /// Simultaneous manual triggers for a attendee result in one pending invite, not two offers.
     /// </summary>
     [Fact]
     public async Task ManualInviteTriggersProduceOnePendingInvite()
     {
         await using var harness = await RepairCHarness.CreateAsync(fixture);
-        var candidateId = await harness.GivenCandidateWithThreeEligibleSlotsAsync();
+        var attendeeId = await harness.GivenAttendeeWithThreeEligibleEventsAsync();
 
         await Task.WhenAll(
-            harness.TriggerAsync(harness.CoordinatorId, candidateId),
-            harness.TriggerAsync(harness.CoordinatorId, candidateId));
+            harness.TriggerAsync(harness.CoordinatorId, attendeeId),
+            harness.TriggerAsync(harness.CoordinatorId, attendeeId));
 
-        Assert.Equal(1, await harness.PendingInviteCountAsync(candidateId));
+        Assert.Equal(1, await harness.PendingInviteCountAsync(attendeeId));
     }
 
     /// <summary>
-    /// Legacy duplicate pending tokens offering disjoint slots cannot create two active bookings
-    /// or consume capacity twice once the candidate lifecycle is serialized.
+    /// Legacy duplicate pending tokens offering disjoint events cannot create two active bookings
+    /// or consume capacity twice once the attendee lifecycle is serialized.
     /// </summary>
     [Fact]
     public async Task DisjointInviteTokensProduceOneActiveBooking()
@@ -110,17 +110,17 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         try
         {
             var results = await Task.WhenAll(
-                harness.ConfirmAsync(scenario.FirstToken, scenario.FirstSlotId),
-                harness.ConfirmAsync(scenario.SecondToken, scenario.SecondSlotId))
+                harness.ConfirmAsync(scenario.FirstToken, scenario.FirstEventId),
+                harness.ConfirmAsync(scenario.SecondToken, scenario.SecondEventId))
                 .WaitAsync(TimeSpan.FromSeconds(30));
 
             Assert.Equal(1, results.Count(result => result.IsSuccess));
-            Assert.Equal(1, await harness.ActiveBookingCountForCandidateAsync(scenario.CandidateId));
+            Assert.Equal(1, await harness.ActiveBookingCountForAttendeeAsync(scenario.AttendeeId));
             Assert.Equal(1, await harness.RemainingCapacityAsync(
-                scenario.FirstSlotId,
+                scenario.FirstEventId,
                 AppointmentTypeIds.DrugAndAlcoholTesting)
                 + await harness.RemainingCapacityAsync(
-                    scenario.SecondSlotId,
+                    scenario.SecondEventId,
                     AppointmentTypeIds.DrugAndAlcoholTesting));
         }
         finally
@@ -130,54 +130,54 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
     }
 
     /// <summary>
-    /// Candidate deletion and token confirmation cannot leave a deleted candidate's booking or
+    /// Attendee deletion and token confirmation cannot leave a deleted attendee's booking or
     /// its consumed capacity behind after their overlapping lifecycle transitions settle.
     /// </summary>
     [Fact]
-    public async Task CandidateDeletionAndConfirmationLeaveNoOrphanBookingOrCapacity()
+    public async Task AttendeeDeletionAndConfirmationLeaveNoOrphanBookingOrCapacity()
     {
         await using var harness = await RepairCHarness.CreateAsync(fixture);
         var scenario = await harness.GivenSingleInviteAsync();
 
         await Task.WhenAll(
-            harness.DeleteAsync(harness.CoordinatorId, scenario.CandidateId),
-            harness.ConfirmAsync(scenario.FirstToken, scenario.FirstSlotId))
+            harness.DeleteAsync(harness.CoordinatorId, scenario.AttendeeId),
+            harness.ConfirmAsync(scenario.FirstToken, scenario.FirstEventId))
             .WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.Equal(0, await harness.ActiveBookingCountForCandidateAsync(scenario.CandidateId));
+        Assert.Equal(0, await harness.ActiveBookingCountForAttendeeAsync(scenario.AttendeeId));
         Assert.Equal(1, await harness.RemainingCapacityAsync(
-            scenario.FirstSlotId,
+            scenario.FirstEventId,
                 AppointmentTypeIds.DrugAndAlcoholTesting));
     }
 
     /// <summary>
-    /// Slot cancellation waits behind candidate deletion at the candidate lifecycle root, then
+    /// Event cancellation waits behind attendee deletion at the attendee lifecycle root, then
     /// completes without a PostgreSQL deadlock or provider exception after deletion commits.
     /// </summary>
     [Fact]
-    public async Task SlotCancellationAndCandidateDeletionCompleteWithoutDeadlock()
+    public async Task EventCancellationAndAttendeeDeletionCompleteWithoutDeadlock()
     {
-        var gate = new CandidateLifecycleRaceGate();
+        var gate = new AttendeeLifecycleRaceGate();
         await using var harness = await RepairCHarness.CreateAsync(fixture, gate);
-        var scenario = await harness.GivenBookedCandidateAsync();
+        var scenario = await harness.GivenBookedAttendeeAsync();
 
-        var deletion = harness.DeleteAsync(harness.CoordinatorId, scenario.CandidateId);
+        var deletion = harness.DeleteAsync(harness.CoordinatorId, scenario.AttendeeId);
         await gate.WaitUntilFirstCapacityLockAsync();
 
-        var cancellation = harness.CancelSlotAsync(harness.CoordinatorId, scenario.SlotId);
-        await gate.WaitUntilSecondCandidateLockAsync();
+        var cancellation = harness.CancelEventAsync(harness.CoordinatorId, scenario.EventId);
+        await gate.WaitUntilSecondAttendeeLockAsync();
         gate.ReleaseFirstCapacityLock();
 
         await Task.WhenAll((Task)deletion, cancellation).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.True((await deletion).IsSuccess);
         Assert.True((await cancellation).IsSuccess);
-        Assert.Equal(0, await harness.ActiveBookingCountForCandidateAsync(scenario.CandidateId));
-        Assert.Equal(0, await harness.CandidateCountAsync(scenario.CandidateId));
+        Assert.Equal(0, await harness.ActiveBookingCountForAttendeeAsync(scenario.AttendeeId));
+        Assert.Equal(0, await harness.AttendeeCountAsync(scenario.AttendeeId));
         Assert.Equal(1, await harness.RemainingCapacityAsync(
-            scenario.SlotId,
+            scenario.EventId,
             AppointmentTypeIds.DrugAndAlcoholTesting));
-        Assert.Equal(ConfirmedSlotStatus.Cancelled, await harness.ConfirmedSlotStatusAsync(scenario.SlotId));
+        Assert.Equal(EventStatus.Cancelled, await harness.EventStatusAsync(scenario.EventId));
     }
 
     /// <summary>
@@ -187,7 +187,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
     {
         private readonly PostgresFixture _fixture;
         private readonly ServiceProvider _services;
-        private int _nextSlotOffset;
+        private int _nextEventOffset;
 
         private RepairCHarness(PostgresFixture fixture, ServiceProvider services)
         {
@@ -195,7 +195,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             _services = services;
         }
 
-        /// <summary>Identifies the coordinator that issues and deletes test candidates.</summary>
+        /// <summary>Identifies the coordinator that issues and deletes test attendees.</summary>
         public Guid CoordinatorId { get; } = Guid.Parse("c0000009-0000-0000-0000-000000000009");
 
         /// <summary>Identifies the drug-and-alcohol manager used to create proposals.</summary>
@@ -218,7 +218,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         /// <summary>Creates a reset service provider with the production application wiring.</summary>
         public static async Task<RepairCHarness> CreateAsync(
             PostgresFixture fixture,
-            CandidateLifecycleRaceGate? raceGate = null)
+            AttendeeLifecycleRaceGate? raceGate = null)
         {
             await fixture.ResetAsync();
 
@@ -226,24 +226,24 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             services.AddLogging();
             services.AddEventBookingInfrastructure(
                 fixture.ConnectionString,
-                new HeadOfficeOptions("Europe/London"),
+                new TransitionalLocationOptions("Europe/London"),
                 new TokenOptions("a-repair-c-concurrency-signing-key-long-enough"));
             services.AddEventBookingApplication(
-                new CandidatePortalOptions("https://booking.example.com", "HQ", "recruitment@example.com"));
+                new AttendeePortalOptions("https://booking.example.com", "HQ", "recruitment@example.com"));
             services.AddScoped<IEmailTransport, SilentTransport>();
             services.RemoveAll<IClock>();
             services.AddSingleton<IClock>(new FixedClock(FixedNow, FixedToday));
 
             if (raceGate is not null)
             {
-                services.RemoveAll<ICandidateRepository>();
-                services.AddScoped<ICandidateRepository>(serviceProvider =>
-                    new ObservingCandidateRepository(
+                services.RemoveAll<IAttendeeRepository>();
+                services.AddScoped<IAttendeeRepository>(serviceProvider =>
+                    new ObservingAttendeeRepository(
                         serviceProvider.GetRequiredService<EventBookingDbContext>(),
                         raceGate));
-                services.RemoveAll<ISlotCapacityRepository>();
-                services.AddScoped<ISlotCapacityRepository>(serviceProvider =>
-                    new GatedSlotCapacityRepository(
+                services.RemoveAll<IEventCapacityRepository>();
+                services.AddScoped<IEventCapacityRepository>(serviceProvider =>
+                    new GatedEventCapacityRepository(
                         serviceProvider.GetRequiredService<EventBookingDbContext>(),
                         raceGate));
             }
@@ -266,35 +266,35 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         }
 
         /// <summary>Seeds one proposal with the drug-and-alcohol acceptance already recorded.</summary>
-        public async Task<SlotProposal> GivenOpenProposalWithOneAcceptanceAsync()
+        public async Task<EventProposal> GivenOpenProposalWithOneAcceptanceAsync()
         {
-            var proposal = SlotProposal.Create(
+            var proposal = EventProposal.Create(
                 Guid.NewGuid(),
-                new SlotWindow(FixedToday.AddDays(30), new TimeOnly(9, 0)),
+                new EventWindow(FixedToday.AddDays(30), new TimeOnly(9, 0)),
                 DrugAndAlcoholManagerId);
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManagerId, 10);
             await using var context = _fixture.NewContext();
-            context.SlotProposals.Add(proposal);
+            context.EventProposals.Add(proposal);
             await context.SaveChangesAsync();
             return proposal;
         }
 
-        /// <summary>Creates a candidate and three active slots that meet their required types.</summary>
-        public async Task<Guid> GivenCandidateWithThreeEligibleSlotsAsync()
+        /// <summary>Creates a attendee and three active events that meet their required types.</summary>
+        public async Task<Guid> GivenAttendeeWithThreeEligibleEventsAsync()
         {
-            var candidate = Candidate.Create(
-                Guid.NewGuid(), "Concurrent Candidate", $"{Guid.NewGuid():N}@mail.com",
-                EmployeeGroup.Define(
-                    EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            var attendee = Attendee.Create(
+                Guid.NewGuid(), "Concurrent Attendee", $"{Guid.NewGuid():N}@mail.com",
+                AttendeeGroup.Define(
+                    AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                     [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
             await using var context = _fixture.NewContext();
-            context.Candidates.Add(candidate);
-            context.ConfirmedSlots.AddRange(
-                CreateSlot(),
-                CreateSlot(),
-                CreateSlot());
+            context.Attendees.Add(attendee);
+            context.Events.AddRange(
+                CreateEvent(),
+                CreateEvent(),
+                CreateEvent());
             await context.SaveChangesAsync();
-            return candidate.Id;
+            return attendee.Id;
         }
 
         /// <summary>Seeds two pending token rows for legacy-data confirmation coverage.</summary>
@@ -309,54 +309,54 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         public Task<LifecycleScenario> GivenSingleInviteAsync() =>
             GivenInviteScenarioAsync(includeSecondInvite: false);
 
-        /// <summary>Seeds one active booking whose candidate deletion will release the held capacity.</summary>
-        public async Task<SlotCancellationScenario> GivenBookedCandidateAsync()
+        /// <summary>Seeds one active booking whose attendee deletion will release the held capacity.</summary>
+        public async Task<EventCancellationScenario> GivenBookedAttendeeAsync()
         {
-            var bookedSlot = CreateSlot();
-            var fallbackOne = CreateSlot();
-            var fallbackTwo = CreateSlot();
-            var pilots = EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            var bookedEvent = CreateEvent();
+            var fallbackOne = CreateEvent();
+            var fallbackTwo = CreateEvent();
+            var pilots = AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
-            var candidate = Candidate.Create(
+            var attendee = Attendee.Create(
                 Guid.NewGuid(),
-                "Concurrent Candidate",
+                "Concurrent Attendee",
                 $"{Guid.NewGuid():N}@mail.com",
                 pilots);
-            candidate.MarkInvited();
+            attendee.MarkInvited();
             var tokens = _services.GetRequiredService<ITokenService>();
             var inviteId = Guid.NewGuid();
             var inviteToken = tokens.Issue(inviteId);
             var invite = Invite.CreateInitial(
                 inviteId,
-                candidate.Id,
+                attendee.Id,
                 inviteToken.TokenHash,
                 FixedNow.AddDays(4),
-                [bookedSlot.Id, fallbackOne.Id, fallbackTwo.Id],
-                candidate.RequiredAppointmentTypeIds,
+                [bookedEvent.Id, fallbackOne.Id, fallbackTwo.Id],
+                attendee.RequiredAppointmentTypeIds,
                 0);
             var bookingId = Guid.NewGuid();
             var manageToken = tokens.Issue(bookingId);
             var booking = Booking.Create(
                 bookingId,
                 invite,
-                bookedSlot.Id,
+                bookedEvent.Id,
                 manageToken.TokenHash,
                 FixedNow);
-            bookedSlot.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
+            bookedEvent.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             invite.MarkUsed();
-            candidate.MarkBooked();
+            attendee.MarkBooked();
 
             await using var context = _fixture.NewContext();
-            context.Candidates.Add(candidate);
-            context.ConfirmedSlots.AddRange(bookedSlot, fallbackOne, fallbackTwo);
+            context.Attendees.Add(attendee);
+            context.Events.AddRange(bookedEvent, fallbackOne, fallbackTwo);
             context.Invites.Add(invite);
             context.Bookings.Add(booking);
             context.BookingAppointments.Add(BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting));
             await context.SaveChangesAsync();
 
-            return new SlotCancellationScenario(candidate.Id, bookedSlot.Id);
+            return new EventCancellationScenario(attendee.Id, bookedEvent.Id);
         }
 
         /// <summary>Runs the real proposal acceptance handler in an isolated scope.</summary>
@@ -371,47 +371,47 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         public async Task<Result<Guid>> ProposeAsync(Guid managerId, DateOnly date, TimeOnly startTime)
         {
             await using var scope = _services.CreateAsyncScope();
-            return await scope.ServiceProvider.GetRequiredService<ProposeSlotHandler>().HandleAsync(
-                new ProposeSlotCommand(managerId, date, startTime), CancellationToken.None);
+            return await scope.ServiceProvider.GetRequiredService<ProposeEventHandler>().HandleAsync(
+                new ProposeEventCommand(managerId, date, startTime), CancellationToken.None);
         }
 
         /// <summary>Runs the real coordinator invite trigger in an isolated scope.</summary>
-        public async Task<Result<InviteIssueResult>> TriggerAsync(Guid coordinatorId, Guid candidateId)
+        public async Task<Result<InviteIssueResult>> TriggerAsync(Guid coordinatorId, Guid attendeeId)
         {
             await using var scope = _services.CreateAsyncScope();
             return await scope.ServiceProvider.GetRequiredService<TriggerInviteHandler>().HandleAsync(
-                new TriggerInviteCommand(coordinatorId, candidateId), CancellationToken.None);
+                new TriggerInviteCommand(coordinatorId, attendeeId), CancellationToken.None);
         }
 
-        /// <summary>Runs the real candidate-token booking confirmation in an isolated scope.</summary>
-        public async Task<Result<ConfirmBookingOutcome>> ConfirmAsync(string token, Guid slotId)
+        /// <summary>Runs the real attendee-token booking confirmation in an isolated scope.</summary>
+        public async Task<Result<ConfirmBookingOutcome>> ConfirmAsync(string token, Guid eventId)
         {
             await using var scope = _services.CreateAsyncScope();
             return await scope.ServiceProvider.GetRequiredService<ConfirmBookingHandler>().HandleAsync(
-                new ConfirmBookingCommand(token, slotId), CancellationToken.None);
+                new ConfirmBookingCommand(token, eventId), CancellationToken.None);
         }
 
-        /// <summary>Runs the real confirmed candidate deletion in an isolated scope.</summary>
-        public async Task<Result> DeleteAsync(Guid coordinatorId, Guid candidateId)
+        /// <summary>Runs the real confirmed attendee deletion in an isolated scope.</summary>
+        public async Task<Result> DeleteAsync(Guid coordinatorId, Guid attendeeId)
         {
             await using var scope = _services.CreateAsyncScope();
-            return await scope.ServiceProvider.GetRequiredService<DeleteCandidateHandler>().HandleAsync(
-                new DeleteCandidateCommand(coordinatorId, candidateId, true), CancellationToken.None);
+            return await scope.ServiceProvider.GetRequiredService<DeleteAttendeeHandler>().HandleAsync(
+                new DeleteAttendeeCommand(coordinatorId, attendeeId, true), CancellationToken.None);
         }
 
-        /// <summary>Runs the real confirmed-slot cancellation handler in an isolated scope.</summary>
-        public async Task<Result<CancelSlotOutcome>> CancelSlotAsync(Guid coordinatorId, Guid slotId)
+        /// <summary>Runs the real event cancellation handler in an isolated scope.</summary>
+        public async Task<Result<CancelEventOutcome>> CancelEventAsync(Guid coordinatorId, Guid eventId)
         {
             await using var scope = _services.CreateAsyncScope();
-            return await scope.ServiceProvider.GetRequiredService<CancelConfirmedSlotHandler>().HandleAsync(
-                new CancelConfirmedSlotCommand(coordinatorId, slotId, true), CancellationToken.None);
+            return await scope.ServiceProvider.GetRequiredService<CancelEventHandler>().HandleAsync(
+                new CancelEventCommand(coordinatorId, eventId, true), CancellationToken.None);
         }
 
         /// <summary>Reads the durable proposal status after concurrent acceptances settle.</summary>
-        public async Task<SlotProposalStatus> ProposalStatusAsync(Guid proposalId)
+        public async Task<EventProposalStatus> ProposalStatusAsync(Guid proposalId)
         {
             await using var context = _fixture.NewContext();
-            return await context.SlotProposals.Where(proposal => proposal.Id == proposalId)
+            return await context.EventProposals.Where(proposal => proposal.Id == proposalId)
                 .Select(proposal => proposal.Status).SingleAsync();
         }
 
@@ -419,70 +419,70 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         public async Task<int> AcceptanceCountAsync(Guid proposalId)
         {
             await using var context = _fixture.NewContext();
-            return await context.SlotProposals.Where(proposal => proposal.Id == proposalId)
+            return await context.EventProposals.Where(proposal => proposal.Id == proposalId)
                 .SelectMany(proposal => proposal.Acceptances).CountAsync();
         }
 
-        /// <summary>Counts confirmed slots derived from one proposal.</summary>
-        public async Task<int> ConfirmedSlotCountAsync(Guid proposalId)
+        /// <summary>Counts events derived from one proposal.</summary>
+        public async Task<int> EventCountAsync(Guid proposalId)
         {
             await using var context = _fixture.NewContext();
-            return await context.ConfirmedSlots.CountAsync(slot => slot.ProposalId == proposalId);
+            return await context.Events.CountAsync(eventItem => eventItem.ProposalId == proposalId);
         }
 
-        /// <summary>Reads the ordered capacity totals for a proposal's one derived slot.</summary>
+        /// <summary>Reads the ordered capacity totals for a proposal's one derived eventItem.</summary>
         public async Task<int[]> CapacitiesForProposalAsync(Guid proposalId)
         {
             await using var context = _fixture.NewContext();
-            return await context.ConfirmedSlots.Where(slot => slot.ProposalId == proposalId)
-                .SelectMany(slot => slot.Capacities).OrderBy(capacity => capacity.TotalHeadcount)
+            return await context.Events.Where(eventItem => eventItem.ProposalId == proposalId)
+                .SelectMany(eventItem => eventItem.Capacities).OrderBy(capacity => capacity.TotalHeadcount)
                 .Select(capacity => capacity.TotalHeadcount).ToArrayAsync();
         }
 
-        /// <summary>Counts open proposals for one candidate-facing window.</summary>
+        /// <summary>Counts open proposals for one attendee-facing window.</summary>
         public async Task<int> OpenProposalCountAsync(DateOnly date, TimeOnly startTime)
         {
             await using var context = _fixture.NewContext();
-            return await context.SlotProposals.CountAsync(proposal => proposal.Status == SlotProposalStatus.Open
+            return await context.EventProposals.CountAsync(proposal => proposal.Status == EventProposalStatus.Open
                 && proposal.Window.Date == date && proposal.Window.StartTime == startTime);
         }
 
-        /// <summary>Counts the candidate's durable pending invite rows.</summary>
-        public async Task<int> PendingInviteCountAsync(Guid candidateId)
+        /// <summary>Counts the attendee's durable pending invite rows.</summary>
+        public async Task<int> PendingInviteCountAsync(Guid attendeeId)
         {
             await using var context = _fixture.NewContext();
-            return await context.Invites.CountAsync(invite => invite.CandidateId == candidateId
+            return await context.Invites.CountAsync(invite => invite.AttendeeId == attendeeId
                 && invite.Status == InviteStatus.Pending);
         }
 
-        /// <summary>Counts active bookings held by the candidate after racing token use.</summary>
-        public async Task<int> ActiveBookingCountForCandidateAsync(Guid candidateId)
+        /// <summary>Counts active bookings held by the attendee after racing token use.</summary>
+        public async Task<int> ActiveBookingCountForAttendeeAsync(Guid attendeeId)
         {
             await using var context = _fixture.NewContext();
-            return await context.Bookings.CountAsync(booking => booking.CandidateId == candidateId
+            return await context.Bookings.CountAsync(booking => booking.AttendeeId == attendeeId
                 && booking.Status == BookingStatus.Active);
         }
 
-        /// <summary>Counts durable candidate rows after a lifecycle race settles.</summary>
-        public async Task<int> CandidateCountAsync(Guid candidateId)
+        /// <summary>Counts durable attendee rows after a lifecycle race settles.</summary>
+        public async Task<int> AttendeeCountAsync(Guid attendeeId)
         {
             await using var context = _fixture.NewContext();
-            return await context.Candidates.CountAsync(candidate => candidate.Id == candidateId);
+            return await context.Attendees.CountAsync(attendee => attendee.Id == attendeeId);
         }
 
-        /// <summary>Reads the durable status of a confirmed slot after a lifecycle race settles.</summary>
-        public async Task<ConfirmedSlotStatus> ConfirmedSlotStatusAsync(Guid slotId)
+        /// <summary>Reads the durable status of a event after a lifecycle race settles.</summary>
+        public async Task<EventStatus> EventStatusAsync(Guid eventId)
         {
             await using var context = _fixture.NewContext();
-            return await context.ConfirmedSlots.Where(slot => slot.Id == slotId)
-                .Select(slot => slot.Status).SingleAsync();
+            return await context.Events.Where(eventItem => eventItem.Id == eventId)
+                .Select(eventItem => eventItem.Status).SingleAsync();
         }
 
-        /// <summary>Reads the remaining capacity for one appointment type on one slot.</summary>
-        public async Task<int> RemainingCapacityAsync(Guid slotId, Guid appointmentTypeId)
+        /// <summary>Reads the remaining capacity for one appointment type on one eventItem.</summary>
+        public async Task<int> RemainingCapacityAsync(Guid eventId, Guid appointmentTypeId)
         {
             await using var context = _fixture.NewContext();
-            return await context.SlotCapacities.Where(capacity => capacity.ConfirmedSlotId == slotId
+            return await context.EventCapacities.Where(capacity => capacity.EventId == eventId
                 && capacity.AppointmentTypeId == appointmentTypeId)
                 .Select(capacity => capacity.RemainingCapacity).SingleAsync();
         }
@@ -502,26 +502,26 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
 
         private async Task<LifecycleScenario> GivenInviteScenarioAsync(bool includeSecondInvite)
         {
-            var firstSlot = CreateSlot();
-            var secondSlot = CreateSlot();
-            var fallbackOne = CreateSlot();
-            var fallbackTwo = CreateSlot();
-            var pilots = EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            var firstEvent = CreateEvent();
+            var secondEvent = CreateEvent();
+            var fallbackOne = CreateEvent();
+            var fallbackTwo = CreateEvent();
+            var pilots = AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
-            var candidate = Candidate.Create(
-                Guid.NewGuid(), "Concurrent Candidate", $"{Guid.NewGuid():N}@mail.com", pilots);
-            candidate.MarkInvited();
+            var attendee = Attendee.Create(
+                Guid.NewGuid(), "Concurrent Attendee", $"{Guid.NewGuid():N}@mail.com", pilots);
+            attendee.MarkInvited();
             var tokens = _services.GetRequiredService<ITokenService>();
             var firstInviteId = Guid.NewGuid();
             var firstToken = tokens.Issue(firstInviteId);
-            var firstInvite = Invite.CreateInitial(firstInviteId, candidate.Id, firstToken.TokenHash,
-                FixedNow.AddDays(4), [firstSlot.Id, fallbackOne.Id, fallbackTwo.Id],
-                candidate.RequiredAppointmentTypeIds, 0);
+            var firstInvite = Invite.CreateInitial(firstInviteId, attendee.Id, firstToken.TokenHash,
+                FixedNow.AddDays(4), [firstEvent.Id, fallbackOne.Id, fallbackTwo.Id],
+                attendee.RequiredAppointmentTypeIds, 0);
 
             await using var context = _fixture.NewContext();
-            context.Candidates.Add(candidate);
-            context.ConfirmedSlots.AddRange(firstSlot, secondSlot, fallbackOne, fallbackTwo);
+            context.Attendees.Add(attendee);
+            context.Events.AddRange(firstEvent, secondEvent, fallbackOne, fallbackTwo);
             context.Invites.Add(firstInvite);
 
             var secondToken = string.Empty;
@@ -530,19 +530,19 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 var secondInviteId = Guid.NewGuid();
                 var issued = tokens.Issue(secondInviteId);
                 secondToken = issued.Token;
-                context.Invites.Add(Invite.CreateInitial(secondInviteId, candidate.Id, issued.TokenHash,
-                    FixedNow.AddDays(4), [secondSlot.Id, fallbackOne.Id, fallbackTwo.Id],
-                    candidate.RequiredAppointmentTypeIds, 0));
+                context.Invites.Add(Invite.CreateInitial(secondInviteId, attendee.Id, issued.TokenHash,
+                    FixedNow.AddDays(4), [secondEvent.Id, fallbackOne.Id, fallbackTwo.Id],
+                    attendee.RequiredAppointmentTypeIds, 0));
             }
 
             await context.SaveChangesAsync();
-            return new LifecycleScenario(candidate.Id, firstToken.Token, secondToken, firstSlot.Id, secondSlot.Id);
+            return new LifecycleScenario(attendee.Id, firstToken.Token, secondToken, firstEvent.Id, secondEvent.Id);
         }
 
         private async Task DropPendingInviteIndexAsync()
         {
             await using var context = _fixture.NewContext();
-            await context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ux_invite_pending_candidate;");
+            await context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ux_invite_pending_attendee;");
         }
 
         /// <summary>Restores the migration backstop after deliberately seeding legacy duplicate data.</summary>
@@ -550,12 +550,12 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         {
             await using var context = _fixture.NewContext();
             await context.Database.ExecuteSqlRawAsync(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_invite_pending_candidate ON invite (candidate_id) WHERE status = 1;");
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_invite_pending_attendee ON invite (attendee_id) WHERE status = 1;");
         }
 
-        private ConfirmedSlot CreateSlot() => ConfirmedSlot.CreateImported(
+        private Event CreateEvent() => Event.CreateImported(
             Guid.NewGuid(),
-            new SlotWindow(FixedToday.AddDays(30 + Interlocked.Increment(ref _nextSlotOffset)), new TimeOnly(9, 0)),
+            new EventWindow(FixedToday.AddDays(30 + Interlocked.Increment(ref _nextEventOffset)), new TimeOnly(9, 0)),
             new Dictionary<Guid, int>
             {
                 [AppointmentTypeIds.DrugAndAlcoholTesting] = 1,
@@ -568,98 +568,98 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             /// <summary>Gets the deterministic instant supplied to this test clock.</summary>
             public DateTimeOffset UtcNow => utcNow;
 
-            /// <summary>Gets the deterministic head-office instant supplied to this test clock.</summary>
-            public DateTimeOffset NowAtHeadOffice => utcNow;
+            /// <summary>Gets the deterministic transitional-location instant supplied to this test clock.</summary>
+            public DateTimeOffset NowAtTransitionalLocation => utcNow;
 
-            /// <summary>Gets the deterministic head-office date supplied to this test clock.</summary>
-            public DateOnly TodayAtHeadOffice => today;
+            /// <summary>Gets the deterministic transitional-location date supplied to this test clock.</summary>
+            public DateOnly TodayAtTransitionalLocation => today;
 
-            /// <summary>Returns the deterministic head-office date for every instant.</summary>
-            public DateOnly DateAtHeadOffice(DateTimeOffset instant) => today;
+            /// <summary>Returns the deterministic transitional-location date for every instant.</summary>
+            public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) => today;
 
-            public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant;
+            public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant;
         }
 
-        private sealed class ObservingCandidateRepository(
+        private sealed class ObservingAttendeeRepository(
             EventBookingDbContext context,
-            CandidateLifecycleRaceGate gate) : ICandidateRepository
+            AttendeeLifecycleRaceGate gate) : IAttendeeRepository
         {
-            private readonly CandidateRepository _inner = new(context);
+            private readonly AttendeeRepository _inner = new(context);
 
             /// <inheritdoc />
-            public Task<Candidate?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+            public Task<Attendee?> GetAsync(Guid id, CancellationToken cancellationToken) =>
                 _inner.GetAsync(id, cancellationToken);
 
             /// <inheritdoc />
-            public async Task<Candidate?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
+            public async Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
             {
-                gate.RecordCandidateLockAttempt();
+                gate.RecordAttendeeLockAttempt();
                 return await _inner.LockForUpdateAsync(id, cancellationToken);
             }
 
             /// <inheritdoc />
-            public Task<Candidate?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
+            public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
                 _inner.GetByEmailAsync(email, cancellationToken);
 
             /// <inheritdoc />
-            public Task<IReadOnlyList<Candidate>> ListAsync(
-                CandidateStatus? status,
+            public Task<IReadOnlyList<Attendee>> ListAsync(
+                AttendeeStatus? status,
                 CancellationToken cancellationToken) =>
                 _inner.ListAsync(status, cancellationToken);
 
             /// <inheritdoc />
-            public void Add(Candidate candidate) => _inner.Add(candidate);
+            public void Add(Attendee attendee) => _inner.Add(attendee);
 
             /// <inheritdoc />
-            public void Remove(Candidate candidate) => _inner.Remove(candidate);
+            public void Remove(Attendee attendee) => _inner.Remove(attendee);
         }
 
-        private sealed class GatedSlotCapacityRepository(
+        private sealed class GatedEventCapacityRepository(
             EventBookingDbContext context,
-            CandidateLifecycleRaceGate gate) : ISlotCapacityRepository
+            AttendeeLifecycleRaceGate gate) : IEventCapacityRepository
         {
-            private readonly SlotCapacityRepository _inner = new(context);
+            private readonly EventCapacityRepository _inner = new(context);
 
             /// <inheritdoc />
-            public async Task<IReadOnlyList<SlotCapacity>> LockForUpdateAsync(
-                Guid confirmedSlotId,
+            public async Task<IReadOnlyList<EventCapacity>> LockForUpdateAsync(
+                Guid eventId,
                 IReadOnlyCollection<Guid> appointmentTypeIds,
                 CancellationToken cancellationToken)
             {
                 await gate.WaitBeforeFirstCapacityLockAsync();
                 return await _inner.LockForUpdateAsync(
-                    confirmedSlotId,
+                    eventId,
                     appointmentTypeIds,
                     cancellationToken);
             }
         }
     }
 
-    /// <summary>Captures the candidate, tokens, and disjoint slots used by one lifecycle race.</summary>
+    /// <summary>Captures the attendee, tokens, and disjoint events used by one lifecycle race.</summary>
     private sealed record LifecycleScenario(
-        Guid CandidateId,
+        Guid AttendeeId,
         string FirstToken,
         string SecondToken,
-        Guid FirstSlotId,
-        Guid SecondSlotId);
+        Guid FirstEventId,
+        Guid SecondEventId);
 
-    /// <summary>Captures the candidate and slot whose locked rows drive the deadlock regression.</summary>
-    private sealed record SlotCancellationScenario(Guid CandidateId, Guid SlotId);
+    /// <summary>Captures the attendee and event whose locked rows drive the deadlock regression.</summary>
+    private sealed record EventCancellationScenario(Guid AttendeeId, Guid EventId);
 
-    private sealed class CandidateLifecycleRaceGate
+    private sealed class AttendeeLifecycleRaceGate
     {
         private readonly TaskCompletionSource _firstCapacityLock = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _releaseFirstCapacityLock = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _secondCandidateLock = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _candidateLockAttempts;
+        private readonly TaskCompletionSource _secondAttendeeLock = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _attendeeLockAttempts;
         private int _capacityLockAttempts;
 
-        /// <summary>Signals when cancellation has attempted its candidate lifecycle lock.</summary>
-        public void RecordCandidateLockAttempt()
+        /// <summary>Signals when cancellation has attempted its attendee lifecycle lock.</summary>
+        public void RecordAttendeeLockAttempt()
         {
-            if (Interlocked.Increment(ref _candidateLockAttempts) == 2)
+            if (Interlocked.Increment(ref _attendeeLockAttempts) == 2)
             {
-                _secondCandidateLock.TrySetResult();
+                _secondAttendeeLock.TrySetResult();
             }
         }
 
@@ -677,10 +677,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         public Task WaitUntilFirstCapacityLockAsync() =>
             _firstCapacityLock.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-        /// <summary>Waits until cancellation has attempted to lock the candidate.</summary>
-        public Task WaitUntilSecondCandidateLockAsync() => _secondCandidateLock.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        /// <summary>Waits until cancellation has attempted to lock the attendee.</summary>
+        public Task WaitUntilSecondAttendeeLockAsync() => _secondAttendeeLock.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        /// <summary>Allows deletion to finish its capacity update and release candidate locks.</summary>
+        /// <summary>Allows deletion to finish its capacity update and release attendee locks.</summary>
         public void ReleaseFirstCapacityLock() => _releaseFirstCapacityLock.TrySetResult();
     }
 }

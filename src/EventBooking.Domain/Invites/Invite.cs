@@ -3,10 +3,10 @@ using EventBooking.Domain.Common;
 
 namespace EventBooking.Domain.Invites;
 
-/// <summary>An offer of slot options carrying an immutable requirement snapshot.</summary>
+/// <summary>An offer of event options carrying an immutable requirement snapshot.</summary>
 public sealed class Invite
 {
-    /// <summary>Gets the number of slot options every invite offers.</summary>
+    /// <summary>Gets the number of event options every invite offers.</summary>
     public const int RequiredOptionCount = 3;
 
     private readonly List<InviteOption> _options = [];
@@ -21,8 +21,8 @@ public sealed class Invite
     /// <summary>Gets the invite identifier.</summary>
     public Guid Id { get; private set; }
 
-    /// <summary>Gets the invited candidate identifier.</summary>
-    public Guid CandidateId { get; private set; }
+    /// <summary>Gets the invited attendee identifier.</summary>
+    public Guid AttendeeId { get; private set; }
 
     /// <summary>Gets the original Booking recovered by this Invite, or null for an initial Invite.</summary>
     public Guid? RecoveryOfBookingId { get; private set; }
@@ -39,11 +39,11 @@ public sealed class Invite
     /// <summary>Gets how many retries preceded this invite.</summary>
     public int RetryCount { get; private set; }
 
-    /// <summary>Gets the offered slot options.</summary>
+    /// <summary>Gets the offered event options.</summary>
     public IReadOnlyList<InviteOption> Options => _options;
 
-    /// <summary>Gets the offered slot identifiers.</summary>
-    public IReadOnlyList<Guid> OfferedSlotIds => _options.Select(o => o.ConfirmedSlotId).ToList();
+    /// <summary>Gets the offered event identifiers.</summary>
+    public IReadOnlyList<Guid> OfferedEventIds => _options.Select(o => o.EventId).ToList();
 
     /// <summary>Gets the immutable requirement snapshot used by every downstream operation.</summary>
     public IReadOnlyList<InviteRequirement> Requirements => _requirements;
@@ -62,43 +62,43 @@ public sealed class Invite
 
     /// <summary>Creates an initial invite snapshotting every current derived requirement.</summary>
     /// <param name="id">The id.</param>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="tokenHash">The token hash.</param>
     /// <param name="expiresAt">The expires at.</param>
-    /// <param name="confirmedSlotIds">The confirmed slot ids.</param>
+    /// <param name="eventIds">The event ids.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
     /// <param name="retryCount">The retry count.</param>
     public static Invite CreateInitial(
         Guid id,
-        Guid candidateId,
+        Guid attendeeId,
         string? tokenHash,
         DateTimeOffset expiresAt,
-        IEnumerable<Guid> confirmedSlotIds,
+        IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
         int retryCount) =>
-        Create(id, candidateId, null, tokenHash, expiresAt, confirmedSlotIds, appointmentTypeIds, retryCount);
+        Create(id, attendeeId, null, tokenHash, expiresAt, eventIds, appointmentTypeIds, retryCount);
 
     /// <summary>Creates a recovery invite snapshotting only recoverable no-show types.</summary>
     /// <param name="id">The id.</param>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="recoveryOfBookingId">The recovery of booking id.</param>
     /// <param name="tokenHash">The token hash.</param>
     /// <param name="expiresAt">The expires at.</param>
-    /// <param name="confirmedSlotIds">The confirmed slot ids.</param>
+    /// <param name="eventIds">The event ids.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
     public static Invite CreateRecovery(
         Guid id,
-        Guid candidateId,
+        Guid attendeeId,
         Guid recoveryOfBookingId,
         string? tokenHash,
         DateTimeOffset expiresAt,
-        IEnumerable<Guid> confirmedSlotIds,
+        IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds)
     {
         Guard.Against(recoveryOfBookingId == Guid.Empty, "recoveryOfBookingId must not be empty.");
         return Create(
-            id, candidateId, recoveryOfBookingId, tokenHash, expiresAt,
-            confirmedSlotIds, appointmentTypeIds, 0);
+            id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt,
+            eventIds, appointmentTypeIds, 0);
     }
 
     /// <summary>Determines whether the invite can still be used at the supplied instant.</summary>
@@ -106,34 +106,34 @@ public sealed class Invite
     public bool IsUsableAt(DateTimeOffset now) =>
         Status == InviteStatus.Pending && now < ExpiresAt;
 
-    /// <summary>Determines whether the invite offers the supplied slot.</summary>
-    /// <param name="confirmedSlotId">The confirmed slot id.</param>
-    public bool Offers(Guid confirmedSlotId) =>
-        _options.Any(o => o.ConfirmedSlotId == confirmedSlotId);
+    /// <summary>Determines whether the invite offers the supplied eventItem.</summary>
+    /// <param name="eventId">The event id.</param>
+    public bool Offers(Guid eventId) =>
+        _options.Any(o => o.EventId == eventId);
 
-    /// <summary>Removes one offered slot from a pending invite.</summary>
-    /// <param name="confirmedSlotId">The confirmed slot id.</param>
-    public void RemoveOption(Guid confirmedSlotId)
+    /// <summary>Removes one offered event from a pending invite.</summary>
+    /// <param name="eventId">The event id.</param>
+    public void RemoveOption(Guid eventId)
     {
         EnsurePending("Only a pending invite's options can change.");
 
-        var option = _options.SingleOrDefault(o => o.ConfirmedSlotId == confirmedSlotId);
-        Guard.Against(option is null, "This invite does not offer that slot.");
+        var option = _options.SingleOrDefault(o => o.EventId == eventId);
+        Guard.Against(option is null, "This invite does not offer that eventItem.");
 
         _options.Remove(option!);
     }
 
-    /// <summary>Adds one offered slot to a pending invite.</summary>
-    /// <param name="confirmedSlotId">The confirmed slot id.</param>
-    public void AddOption(Guid confirmedSlotId)
+    /// <summary>Adds one offered event to a pending invite.</summary>
+    /// <param name="eventId">The event id.</param>
+    public void AddOption(Guid eventId)
     {
         EnsurePending("Only a pending invite's options can change.");
         Guard.Against(
             _options.Count >= RequiredOptionCount,
-            $"An invite cannot offer more than {RequiredOptionCount} slot options.");
-        Guard.Against(Offers(confirmedSlotId), "An invite cannot offer the same slot twice.");
+            $"An invite cannot offer more than {RequiredOptionCount} event options.");
+        Guard.Against(Offers(eventId), "An invite cannot offer the same event twice.");
 
-        _options.Add(InviteOption.For(Id, confirmedSlotId));
+        _options.Add(InviteOption.For(Id, eventId));
     }
 
     /// <summary>Moves a pending invite to used.</summary>
@@ -155,15 +155,15 @@ public sealed class Invite
 
     private static Invite Create(
         Guid id,
-        Guid candidateId,
+        Guid attendeeId,
         Guid? recoveryOfBookingId,
         string? tokenHash,
         DateTimeOffset expiresAt,
-        IEnumerable<Guid> confirmedSlotIds,
+        IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
         int retryCount)
     {
-        var invite = CreateCore(id, candidateId, recoveryOfBookingId, tokenHash, expiresAt, confirmedSlotIds, retryCount);
+        var invite = CreateCore(id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt, eventIds, retryCount);
 
         var snapshot = appointmentTypeIds.ToList();
         Guard.Against(snapshot.Count == 0, "An invite must snapshot at least one appointment type.");
@@ -187,28 +187,28 @@ public sealed class Invite
 
     private static Invite CreateCore(
         Guid id,
-        Guid candidateId,
+        Guid attendeeId,
         Guid? recoveryOfBookingId,
         string? tokenHash,
         DateTimeOffset expiresAt,
-        IEnumerable<Guid> confirmedSlotIds,
+        IEnumerable<Guid> eventIds,
         int retryCount)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
-        Guard.Against(candidateId == Guid.Empty, "candidateId must not be empty.");
+        Guard.Against(attendeeId == Guid.Empty, "attendeeId must not be empty.");
 
-        var slotIds = confirmedSlotIds.ToList();
+        var offeredEventIds = eventIds.ToList();
         Guard.Against(
-            slotIds.Count != RequiredOptionCount,
-            $"An invite must offer exactly {RequiredOptionCount} slot options.");
+            offeredEventIds.Count != RequiredOptionCount,
+            $"An invite must offer exactly {RequiredOptionCount} event options.");
         Guard.Against(
-            slotIds.Distinct().Count() != slotIds.Count,
-            "An invite cannot offer the same slot twice.");
+            offeredEventIds.Distinct().Count() != offeredEventIds.Count,
+            "An invite cannot offer the same event twice.");
 
         var invite = new Invite
         {
             Id = id,
-            CandidateId = candidateId,
+            AttendeeId = attendeeId,
             RecoveryOfBookingId = recoveryOfBookingId,
             TokenHash = Guard.NotBlank(tokenHash, "tokenHash"),
             ExpiresAt = expiresAt,
@@ -216,9 +216,9 @@ public sealed class Invite
             RetryCount = Guard.NotNegative(retryCount, "retryCount"),
         };
 
-        foreach (var slotId in slotIds)
+        foreach (var eventId in eventIds)
         {
-            invite._options.Add(InviteOption.For(id, slotId));
+            invite._options.Add(InviteOption.For(id, eventId));
         }
 
         return invite;

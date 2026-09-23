@@ -10,7 +10,7 @@ public sealed class RecoveryConfirmationValidator
 {
     /// <summary>Revalidates a Pending recovery Invite snapshot against locked journey state.</summary>
     /// <param name="invite">The Pending recovery Invite being confirmed.</param>
-    /// <param name="currentRequirementTypeIds">The candidate's current derived requirement set.</param>
+    /// <param name="currentRequirementTypeIds">The attendee's current derived requirement set.</param>
     /// <param name="attempts">Non-cancelled attempts across the journey, in any order.</param>
     /// <param name="typesAlreadyCoveredByAnotherRecovery">Types another recovery already covers.</param>
     /// <returns>The revalidated snapshot, or a stale-snapshot failure.</returns>

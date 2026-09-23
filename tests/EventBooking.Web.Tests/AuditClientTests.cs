@@ -40,14 +40,14 @@ public class AuditClientTests
         handler.Response = JsonResponse("""{"rows":[],"nextCursor":null}""");
 
         var outcome = await client.SearchAsync(
-            new AuditSearchFilterDto(null, null, null, "SlotConfirmed", null, null, null, 50),
+            new AuditSearchFilterDto(null, null, null, "EventConfirmed", null, null, null, 50),
             CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
         Assert.NotNull(outcome.Value);
         Assert.Null(outcome.Value!.NextCursor);
         Assert.Equal("/api/audit/search", handler.Request!.RequestUri!.AbsolutePath);
-        Assert.Contains("action=SlotConfirmed", handler.Request.RequestUri.Query);
+        Assert.Contains("action=EventConfirmed", handler.Request.RequestUri.Query);
         Assert.Contains("pageSize=50", handler.Request.RequestUri.Query);
     }
 
@@ -91,7 +91,7 @@ public class AuditClientTests
         var to = new DateTimeOffset(2026, 9, 30, 0, 0, 0, TimeSpan.Zero);
 
         await client.SearchAsync(
-            new AuditSearchFilterDto(from, to, "Staff", null, "abc", "ConfirmedSlot", null, 25),
+            new AuditSearchFilterDto(from, to, "Staff", null, "abc", "Event", null, 25),
             CancellationToken.None);
 
         var query = Uri.UnescapeDataString(handler.Request!.RequestUri!.Query);
@@ -99,7 +99,7 @@ public class AuditClientTests
         Assert.Contains(to.ToString("O"), query);
         Assert.Contains("actorType=Staff", query);
         Assert.Contains("identifier=abc", query);
-        Assert.Contains("entityType=ConfirmedSlot", query);
+        Assert.Contains("entityType=Event", query);
     }
 
     [Fact]
@@ -108,8 +108,8 @@ public class AuditClientTests
         var (client, handler) = Given();
         handler.Response = JsonResponse(
             """
-            {"rows":[{"timestamp":"2026-09-03T12:00:00+00:00","entityType":"ConfirmedSlot",
-            "entityId":"11111111-1111-1111-1111-111111111111","action":"SlotConfirmed",
+            {"rows":[{"timestamp":"2026-09-03T12:00:00+00:00","entityType":"Event",
+            "entityId":"11111111-1111-1111-1111-111111111111","action":"EventConfirmed",
             "actorType":"Staff","actorId":"staff-1","details":"6 headcount"}],"nextCursor":"next"}
             """);
 
@@ -119,7 +119,7 @@ public class AuditClientTests
 
         Assert.True(outcome.IsSuccess);
         var row = Assert.Single(outcome.Value!.Rows);
-        Assert.Equal("SlotConfirmed", row.Action);
+        Assert.Equal("EventConfirmed", row.Action);
         Assert.Equal("6 headcount", row.Details);
         Assert.Equal("next", outcome.Value.NextCursor);
     }

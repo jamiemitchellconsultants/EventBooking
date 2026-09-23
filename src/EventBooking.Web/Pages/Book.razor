@@ -1,9 +1,9 @@
 @page "/book/{Token}"
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
 @using EventBooking.Web.Services
-@layout EventBooking.Web.Layout.CandidateLayout
+@layout EventBooking.Web.Layout.AttendeeLayout
 @inject BookingClient Booking
-@inject CandidatePageOptions PageOptions
+@inject AttendeePageOptions PageOptions
 
 <PageTitle>Choose a time</PageTitle>
 
@@ -33,9 +33,9 @@
                 <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your booking is confirmed. We could not confirm email delivery; use your management link below.</p>
             }
             <p class="booking-page__confirmed-window">@_confirmed.Date.ToString("dddd, dd MMM yyyy") · @_confirmed.StartTime.ToString("HH\\:mm") – @_confirmed.EndTime.ToString("HH\\:mm")</p>
-            @if (!string.IsNullOrWhiteSpace(_confirmed.HeadOfficeAddress))
+            @if (!string.IsNullOrWhiteSpace(_confirmed.TransitionalLocationAddress))
             {
-                <p class="booking-page__note">Head office: @_confirmed.HeadOfficeAddress</p>
+                <p class="booking-page__note">Head office: @_confirmed.TransitionalLocationAddress</p>
             }
             <p class="booking-page__note">Need to change or cancel? <a href="@ManageUrl">Use your booking management link.</a></p>
         </div>
@@ -60,7 +60,7 @@
     {
         <div class="booking-page__intro">
             <h1>@BookHeading(_invite)</h1>
-            <p class="booking-page__lead">Hi <strong>@_invite.CandidateName</strong> — pick a time for your <strong>@string.Join(" and ", _invite.AppointmentTypeNames)</strong> appointment.</p>
+            <p class="booking-page__lead">Hi <strong>@_invite.AttendeeName</strong> — pick a time for your <strong>@string.Join(" and ", _invite.AppointmentTypeNames)</strong> appointment.</p>
         </div>
 
         @if (_error is not null)
@@ -88,9 +88,9 @@
                     {
                         <label class="booking-page__option">
                             <input type="radio"
-                                   name="slot"
-                                   checked="@(_chosen == option.ConfirmedSlotId)"
-                                   @onchange="() => _chosen = option.ConfirmedSlotId" />
+                                   name="event"
+                                   checked="@(_chosen == option.EventId)"
+                                   @onchange="() => _chosen = option.EventId" />
                             <span class="booking-page__option-copy">
                                 <span class="booking-page__option-date">@option.Date.ToString("dddd, dd MMM yyyy")</span>
                                 <span class="booking-page__option-time">@option.StartTime.ToString("HH\\:mm") – @option.EndTime.ToString("HH\\:mm")</span>

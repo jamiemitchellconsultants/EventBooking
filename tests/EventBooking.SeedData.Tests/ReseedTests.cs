@@ -32,7 +32,7 @@ public sealed class ReseedTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddEventBookingPersistence(_database.GetConnectionString());
         services.AddEventBookingApplication(
-            new CandidatePortalOptions(
+            new AttendeePortalOptions(
                 "http://localhost:5002", "1 Example Street, London", "recruitment@example.com"));
         services.AddSingleton<IClock>(new FixedClock(DemoSeedSpec.AnchorDate()));
         services.AddScoped<IAuditLogger, EfAuditLogger>();
@@ -65,7 +65,7 @@ public sealed class ReseedTests : IAsyncLifetime
 
         await seeder.RunAsync(CancellationToken.None);
 
-        database.Candidates.RemoveRange(database.Candidates);
+        database.Attendees.RemoveRange(database.Attendees);
         database.StaffAccessProfiles.Remove(await database.StaffAccessProfiles.FirstAsync());
         await database.SaveChangesAsync();
 
@@ -73,9 +73,9 @@ public sealed class ReseedTests : IAsyncLifetime
 
         Assert.Equal(6, summary.IdentitiesEnsured);
         Assert.Equal(6, summary.ProfilesEnsured);
-        Assert.Equal(3, summary.AgreedSlotsImported);
+        Assert.Equal(3, summary.AgreedEventsImported);
         Assert.Equal(5, summary.ProposalsEnsured);
-        Assert.Equal(100, summary.CandidatesCreated);
+        Assert.Equal(100, summary.AttendeesCreated);
         Assert.Equal(6, await database.StaffAccessProfiles.CountAsync());
         var expectedProfiles = DemoSeedSpec.Staff().ToDictionary(value => value.UserId);
         var actualProfiles = await database.StaffAccessProfiles
@@ -93,18 +93,18 @@ public sealed class ReseedTests : IAsyncLifetime
             Assert.Equal(pair.Value.AppointmentTypeId, actual.AppointmentTypeId);
         });
         Assert.Equal(6, await database.StaffIdentities.CountAsync());
-        Assert.Equal(9, await database.ConfirmedSlots.CountAsync());
-        Assert.Equal(5, await database.SlotProposals.CountAsync());
-        Assert.Equal(100, await database.Candidates.CountAsync());
+        Assert.Equal(9, await database.Events.CountAsync());
+        Assert.Equal(5, await database.EventProposals.CountAsync());
+        Assert.Equal(100, await database.Attendees.CountAsync());
         Assert.Equal(3, await database.AppointmentTypes.CountAsync());
         Assert.Equal(1, await database.SystemSettings.CountAsync());
-        Assert.Equal(5, await database.EmployeeGroups.CountAsync());
+        Assert.Equal(5, await database.AttendeeGroups.CountAsync());
         Assert.Equal(
             10,
-            await database.EmployeeGroups.SelectMany(group => group.Requirements).CountAsync());
+            await database.AttendeeGroups.SelectMany(group => group.Requirements).CountAsync());
         Assert.Equal(
             200,
-            await database.Candidates.SelectMany(candidate => candidate.Requirements).CountAsync());
+            await database.Attendees.SelectMany(attendee => attendee.Requirements).CountAsync());
         Assert.Equal(90, await database.Invites.CountAsync());
         Assert.Equal(90, await database.Bookings.CountAsync());
         Assert.Equal(170, await database.BookingAppointments.CountAsync());
@@ -126,7 +126,7 @@ public sealed class ReseedTests : IAsyncLifetime
 
     private sealed class FixedClock(DateOnly today) : IClock
     {
-        private static readonly TimeZoneInfo HeadOfficeTimeZone =
+        private static readonly TimeZoneInfo TransitionalLocationTimeZone =
             TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
 
         /// <inheritdoc/>
@@ -134,16 +134,16 @@ public sealed class ReseedTests : IAsyncLifetime
             new(today.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero);
 
         /// <inheritdoc/>
-        public DateTimeOffset NowAtHeadOffice => TimeZoneInfo.ConvertTime(UtcNow, HeadOfficeTimeZone);
+        public DateTimeOffset NowAtTransitionalLocation => TimeZoneInfo.ConvertTime(UtcNow, TransitionalLocationTimeZone);
 
         /// <inheritdoc/>
-        public DateOnly TodayAtHeadOffice => DateAtHeadOffice(UtcNow);
+        public DateOnly TodayAtTransitionalLocation => DateAtTransitionalLocation(UtcNow);
 
         /// <inheritdoc/>
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) =>
-            DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, HeadOfficeTimeZone).DateTime);
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) =>
+            DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, TransitionalLocationTimeZone).DateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) =>
-            TimeZoneInfo.ConvertTime(instant, HeadOfficeTimeZone);
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) =>
+            TimeZoneInfo.ConvertTime(instant, TransitionalLocationTimeZone);
     }
 }

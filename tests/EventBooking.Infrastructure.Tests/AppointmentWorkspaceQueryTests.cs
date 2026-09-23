@@ -1,10 +1,10 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
@@ -15,31 +15,31 @@ namespace EventBooking.Infrastructure.Tests;
 [Collection("postgres")]
 public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
 {
-    /// <summary>Verifies slot counts retain recent-past rows and exclude older, cancelled, inactive-booking, and other-type rows.</summary>
+    /// <summary>Verifies event counts retain recent-past rows and exclude older, cancelled, inactive-booking, and other-type rows.</summary>
     [Fact]
-    public async Task SlotListContainsOnlyRetainedActiveScopedAppointments()
+    public async Task EventListContainsOnlyRetainedActiveScopedAppointments()
     {
         await fixture.ResetAsync();
         await using (var write = fixture.NewContext())
         {
-            var current = AddSlot(write, new DateOnly(2026, 9, 7), cancelled: false);
-            var future = AddSlot(write, new DateOnly(2026, 9, 8), cancelled: false);
-            var recentPast = AddSlot(write, new DateOnly(2026, 9, 6), cancelled: false);
-            var tooOld = AddSlot(write, new DateOnly(2026, 8, 30), cancelled: false);
-            var cancelled = AddSlot(write, new DateOnly(2026, 9, 9), cancelled: true);
+            var current = AddEvent(write, new DateOnly(2026, 9, 7), cancelled: false);
+            var future = AddEvent(write, new DateOnly(2026, 9, 8), cancelled: false);
+            var recentPast = AddEvent(write, new DateOnly(2026, 9, 6), cancelled: false);
+            var tooOld = AddEvent(write, new DateOnly(2026, 8, 30), cancelled: false);
+            var cancelled = AddEvent(write, new DateOnly(2026, 9, 9), cancelled: true);
             AddBooking(write, current, "Alex Morgan", "alex@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.CheckedIn, false);
             AddBooking(write, current, "Priya Shah", "priya@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
             AddBooking(write, current, "Other Type", "other@example.com",
                 AppointmentTypeIds.MedicalCheckUp, BookingAppointmentStatus.Expected, false);
-            AddBooking(write, future, "Future Candidate", "future@example.com",
+            AddBooking(write, future, "Future Attendee", "future@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
-            AddBooking(write, recentPast, "Past Candidate", "past@example.com",
+            AddBooking(write, recentPast, "Past Attendee", "past@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
             AddBooking(write, tooOld, "Too Old", "old@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
-            AddBooking(write, cancelled, "Cancelled Slot", "slot@example.com",
+            AddBooking(write, cancelled, "Cancelled Event", "event@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
             AddBooking(write, current, "Cancelled Booking", "booking@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, true);
@@ -47,131 +47,131 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        var result = await new AppointmentWorkspaceQueries(read, new TestClock()).ListSlotsAsync(
+        var result = await new AppointmentWorkspaceQueries(read, new TestClock()).ListEventsAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
             new DateOnly(2026, 9, 7),
             CancellationToken.None);
 
         Assert.Equal("Drug & Alcohol Testing", result.AppointmentTypeName);
-        Assert.Equal(3, result.Slots.Count);
-        Assert.Equal(new DateOnly(2026, 9, 6), result.Slots[0].Date);
-        Assert.Equal(new DateOnly(2026, 9, 7), result.Slots[1].Date);
-        Assert.Equal(1, result.Slots[1].Counts.Expected);
-        Assert.Equal(1, result.Slots[1].Counts.CheckedIn);
-        Assert.Equal(0, result.Slots[1].Counts.Completed);
-        Assert.Equal(0, result.Slots[1].Counts.NoShow);
-        Assert.Equal(new DateOnly(2026, 9, 8), result.Slots[2].Date);
+        Assert.Equal(3, result.Events.Count);
+        Assert.Equal(new DateOnly(2026, 9, 6), result.Events[0].Date);
+        Assert.Equal(new DateOnly(2026, 9, 7), result.Events[1].Date);
+        Assert.Equal(1, result.Events[1].Counts.Expected);
+        Assert.Equal(1, result.Events[1].Counts.CheckedIn);
+        Assert.Equal(0, result.Events[1].Counts.Completed);
+        Assert.Equal(0, result.Events[1].Counts.NoShow);
+        Assert.Equal(new DateOnly(2026, 9, 8), result.Events[2].Date);
     }
 
-    /// <summary>Verifies slot detail returns only same-type active rows ordered for staff use.</summary>
+    /// <summary>Verifies event detail returns only same-type active rows ordered for staff use.</summary>
     [Fact]
-    public async Task SelectedSlotReturnsOnlyMinimumScopedCandidateRows()
+    public async Task SelectedEventReturnsOnlyMinimumScopedAttendeeRows()
     {
         await fixture.ResetAsync();
-        Guid slotId;
+        Guid eventId;
         await using (var write = fixture.NewContext())
         {
-            var slot = AddSlot(write, new DateOnly(2026, 9, 7), cancelled: false);
-            slotId = slot.Id;
-            AddBooking(write, slot, "Zara Young", "zara@example.com",
+            var eventItem = AddEvent(write, new DateOnly(2026, 9, 7), cancelled: false);
+            eventId = eventItem.Id;
+            AddBooking(write, eventItem, "Zara Young", "zara@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Completed, false);
-            AddBooking(write, slot, "Alex Morgan", "alex@example.com",
+            AddBooking(write, eventItem, "Alex Morgan", "alex@example.com",
                 AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
-            AddBooking(write, slot, "Medical Candidate", "medical@example.com",
+            AddBooking(write, eventItem, "Medical Attendee", "medical@example.com",
                 AppointmentTypeIds.MedicalCheckUp, BookingAppointmentStatus.Expected, false);
             await write.SaveChangesAsync();
         }
 
         await using var read = fixture.NewContext();
-        var detail = await new AppointmentWorkspaceQueries(read, new TestClock()).GetSlotAsync(
+        var detail = await new AppointmentWorkspaceQueries(read, new TestClock()).GetEventAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
-            slotId,
+            eventId,
             CancellationToken.None);
 
         Assert.NotNull(detail);
         Assert.Equal("Drug & Alcohol Testing", detail!.AppointmentTypeName);
-        Assert.Equal(slotId, detail.ConfirmedSlotId);
+        Assert.Equal(eventId, detail.EventId);
         Assert.Collection(
             detail.Appointments,
             row =>
             {
-                Assert.Equal("Alex Morgan", row.CandidateName);
-                Assert.Equal("alex@example.com", row.CandidateEmail);
+                Assert.Equal("Alex Morgan", row.AttendeeName);
+                Assert.Equal("alex@example.com", row.AttendeeEmail);
                 Assert.Equal(BookingAppointmentStatus.Expected, row.Status);
             },
             row =>
             {
-                Assert.Equal("Zara Young", row.CandidateName);
+                Assert.Equal("Zara Young", row.AttendeeName);
                 Assert.Equal(BookingAppointmentStatus.Completed, row.Status);
                 Assert.NotNull(row.CheckedInAt);
                 Assert.NotNull(row.OutcomeAt);
             });
     }
 
-    /// <summary>Verifies a slot that has no row in trusted scope is indistinguishable from missing.</summary>
+    /// <summary>Verifies a event that has no row in trusted scope is indistinguishable from missing.</summary>
     [Fact]
-    public async Task SelectedSlotOutsideTrustedScopeIsNotFound()
+    public async Task SelectedEventOutsideTrustedScopeIsNotFound()
     {
         await fixture.ResetAsync();
-        Guid slotId;
+        Guid eventId;
         await using (var write = fixture.NewContext())
         {
-            var slot = AddSlot(write, new DateOnly(2026, 9, 7), cancelled: false);
-            slotId = slot.Id;
-            AddBooking(write, slot, "Medical Candidate", "medical@example.com",
+            var eventItem = AddEvent(write, new DateOnly(2026, 9, 7), cancelled: false);
+            eventId = eventItem.Id;
+            AddBooking(write, eventItem, "Medical Attendee", "medical@example.com",
                 AppointmentTypeIds.MedicalCheckUp, BookingAppointmentStatus.Expected, false);
             await write.SaveChangesAsync();
         }
 
         await using var read = fixture.NewContext();
-        Assert.Null(await new AppointmentWorkspaceQueries(read, new TestClock()).GetSlotAsync(
+        Assert.Null(await new AppointmentWorkspaceQueries(read, new TestClock()).GetEventAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
-            slotId,
+            eventId,
             CancellationToken.None));
     }
 
-    private static ConfirmedSlot AddSlot(
+    private static Event AddEvent(
         EventBookingDbContext context,
         DateOnly date,
         bool cancelled)
     {
-        var slot = ConfirmedSlot.CreateImported(
+        var eventItem = Event.CreateImported(
             Guid.NewGuid(),
-            new SlotWindow(date, new TimeOnly(9, 0)),
+            new EventWindow(date, new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 20));
         if (cancelled)
         {
-            slot.Cancel();
+            eventItem.Cancel();
         }
 
-        context.ConfirmedSlots.Add(slot);
-        return slot;
+        context.Events.Add(eventItem);
+        return eventItem;
     }
 
     private static void AddBooking(
         EventBookingDbContext context,
-        ConfirmedSlot slot,
+        Event eventItem,
         string name,
         string email,
         Guid appointmentTypeId,
         BookingAppointmentStatus status,
         bool cancelled)
     {
-        var group = EmployeeGroup.Define(
+        var group = AttendeeGroup.Define(
             Guid.NewGuid(), $"WORKSPACE_{Guid.NewGuid():N}".ToUpperInvariant(), "Workspace", true,
             [appointmentTypeId]);
-        context.EmployeeGroups.Add(group);
-        var candidate = Candidate.Create(Guid.NewGuid(), name, email, group);
+        context.AttendeeGroups.Add(group);
+        var attendee = Attendee.Create(Guid.NewGuid(), name, email, group);
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
-            candidate.Id,
-            $"invite-{candidate.Id}",
+            attendee.Id,
+            $"invite-{attendee.Id}",
             DateTimeOffset.UtcNow.AddDays(1),
-            [slot.Id, Guid.NewGuid(), Guid.NewGuid()],
-            candidate.RequiredAppointmentTypeIds,
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, slot.Id, $"manage-{candidate.Id}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventItem.Id, $"manage-{attendee.Id}", DateTimeOffset.UtcNow);
         if (cancelled)
         {
             booking.Cancel();
@@ -197,27 +197,27 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
                 BookingAppointmentStatus.NoShow, staff, checkIn.AddHours(4), false, true);
         }
 
-        context.Candidates.Add(candidate);
+        context.Attendees.Add(attendee);
         context.Bookings.Add(booking);
         context.BookingAppointments.Add(appointment);
     }
 
-    /// <summary>A fixed clock pinning head-office today to 2026-09-07 for workspace tests.</summary>
+    /// <summary>A fixed clock pinning transitional-location today to 2026-09-07 for workspace tests.</summary>
     private sealed class TestClock : IClock
     {
         /// <inheritdoc/>
         public DateTimeOffset UtcNow => new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
         /// <inheritdoc/>
-        public DateTimeOffset NowAtHeadOffice => UtcNow;
+        public DateTimeOffset NowAtTransitionalLocation => UtcNow;
 
         /// <inheritdoc/>
-        public DateOnly TodayAtHeadOffice => new(2026, 9, 7);
+        public DateOnly TodayAtTransitionalLocation => new(2026, 9, 7);
 
         /// <inheritdoc/>
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) => new(2026, 9, 7);
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) => new(2026, 9, 7);
 
         /// <inheritdoc/>
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant;
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant;
     }
 }

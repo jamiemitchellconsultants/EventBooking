@@ -1,16 +1,16 @@
 using System.Security.Cryptography;
 using System.Text;
 using EventBooking.Application.Abstractions;
-using EventBooking.Application.Candidates;
-using EventBooking.Application.Slots;
+using EventBooking.Application.Attendees;
+using EventBooking.Application.Events;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Settings;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,17 +19,17 @@ namespace EventBooking.SeedData;
 /// <summary>Counts the deterministic rows created by one idempotent seed operation.</summary>
 /// <param name="IdentitiesEnsured">The number of missing identity mirror rows inserted.</param>
 /// <param name="ProfilesEnsured">The number of missing staff access profiles inserted.</param>
-/// <param name="AgreedSlotsImported">The number of agreed appointment slots imported.</param>
-/// <param name="ProposalsEnsured">The number of missing slot proposals inserted.</param>
+/// <param name="AgreedEventsImported">The number of agreed appointment events imported.</param>
+/// <param name="ProposalsEnsured">The number of missing event proposals inserted.</param>
 /// <param name="AcceptancesApplied">The number of proposal acceptances applied.</param>
-/// <param name="CandidatesCreated">The number of candidates created.</param>
+/// <param name="AttendeesCreated">The number of attendees created.</param>
 public sealed record SeedSummary(
     int IdentitiesEnsured,
     int ProfilesEnsured,
-    int AgreedSlotsImported,
+    int AgreedEventsImported,
     int ProposalsEnsured,
     int AcceptancesApplied,
-    int CandidatesCreated)
+    int AttendeesCreated)
 {
     /// <summary>Gets the number of missing identity mirror rows inserted.</summary>
     public int IdentitiesEnsured { get; init; } = IdentitiesEnsured;
@@ -37,17 +37,17 @@ public sealed record SeedSummary(
     /// <summary>Gets the number of missing staff access profiles inserted.</summary>
     public int ProfilesEnsured { get; init; } = ProfilesEnsured;
 
-    /// <summary>Gets the number of agreed appointment slots imported.</summary>
-    public int AgreedSlotsImported { get; init; } = AgreedSlotsImported;
+    /// <summary>Gets the number of agreed appointment events imported.</summary>
+    public int AgreedEventsImported { get; init; } = AgreedEventsImported;
 
-    /// <summary>Gets the number of missing slot proposals inserted.</summary>
+    /// <summary>Gets the number of missing event proposals inserted.</summary>
     public int ProposalsEnsured { get; init; } = ProposalsEnsured;
 
     /// <summary>Gets the number of proposal acceptances applied.</summary>
     public int AcceptancesApplied { get; init; } = AcceptancesApplied;
 
-    /// <summary>Gets the number of candidates created.</summary>
-    public int CandidatesCreated { get; init; } = CandidatesCreated;
+    /// <summary>Gets the number of attendees created.</summary>
+    public int AttendeesCreated { get; init; } = AttendeesCreated;
 }
 
 public sealed class SeedException(string message) : Exception(message);
@@ -55,35 +55,35 @@ public sealed class SeedException(string message) : Exception(message);
 /// <summary>
 /// Applies <see cref="DemoSeedSpec"/> through the application handlers so every domain rule
 /// is enforced exactly as if staff had entered the data by hand. Re-runnable: existing rows
-/// are matched by natural key (role id, slot window, candidate email) and skipped, which is
+/// are matched by natural key (role id, event window, attendee email) and skipped, which is
 /// also how filled-in headcount placeholders get applied on a later run.
 /// Reseeding instead wipes every domain table first, restoring the fixed reference rows,
 /// so a database mutated by a demo comes back to exactly the seed state.
 /// </summary>
 /// <param name="profiles">Provides persistence for application access profiles.</param>
 /// <param name="identities">Provides persistence for the identity mirror.</param>
-/// <param name="confirmedSlots">Provides persistence for confirmed appointment slots.</param>
-/// <param name="proposals">Provides persistence for slot proposals.</param>
-/// <param name="candidates">Provides persistence for candidates.</param>
-/// <param name="groups">Resolves demo requirement sets to their Employee Group.</param>
-/// <param name="importSlots">Imports agreed appointment slots from the canonical workbook.</param>
-/// <param name="proposeSlot">Creates proposed appointment slots.</param>
-/// <param name="acceptProposal">Accepts proposed appointment slots.</param>
-/// <param name="saveCandidate">Creates candidates through the application workflow.</param>
+/// <param name="events">Provides persistence for confirmed appointment events.</param>
+/// <param name="proposals">Provides persistence for event proposals.</param>
+/// <param name="attendees">Provides persistence for attendees.</param>
+/// <param name="groups">Resolves demo requirement sets to their Attendee Group.</param>
+/// <param name="importEvents">Imports agreed appointment events from the canonical workbook.</param>
+/// <param name="proposeEvent">Creates proposed appointment events.</param>
+/// <param name="acceptProposal">Accepts proposed appointment events.</param>
+/// <param name="saveAttendee">Creates attendees through the application workflow.</param>
 /// <param name="unitOfWork">Commits tracked seed changes.</param>
 /// <param name="clock">Supplies the observation time for identity mirror rows.</param>
 /// <param name="database">Provides destructive reseed access to the application database.</param>
 public sealed class DemoSeeder(
     IStaffAccessProfileRepository profiles,
     IStaffIdentityRepository identities,
-    IConfirmedSlotRepository confirmedSlots,
-    ISlotProposalRepository proposals,
-    ICandidateRepository candidates,
-    IEmployeeGroupRepository groups,
-    ImportConfirmedSlotsHandler importSlots,
-    ProposeSlotHandler proposeSlot,
+    IEventRepository events,
+    IEventProposalRepository proposals,
+    IAttendeeRepository attendees,
+    IAttendeeGroupRepository groups,
+    ImportEventsHandler importEvents,
+    ProposeEventHandler proposeEvent,
     AcceptProposalHandler acceptProposal,
-    SaveCandidateHandler saveCandidate,
+    SaveAttendeeHandler saveAttendee,
     IUnitOfWork unitOfWork,
     IClock clock,
     EventBookingDbContext database)
@@ -108,21 +108,21 @@ public sealed class DemoSeeder(
     {
         Report(
             $"Starting seed: {Staff().Count} staff, " +
-            $"{DemoSeedSpec.AgreedSlots().Count} agreed slots, " +
+            $"{DemoSeedSpec.AgreedEvents().Count} agreed events, " +
             $"{DemoSeedSpec.OpenProposals().Count} proposals, " +
-            $"{DemoSeedSpec.Candidates().Count} candidates " +
+            $"{DemoSeedSpec.Attendees().Count} attendees " +
             $"(anchor {DemoSeedSpec.AnchorDate():yyyy-MM-dd}" +
             $"{(DemoSeedSpec.AnchorOverridden ? ", reanchored" : "")}, " +
-            $"today {clock.TodayAtHeadOffice:yyyy-MM-dd}).");
+            $"today {clock.TodayAtTransitionalLocation:yyyy-MM-dd}).");
         var identitiesEnsured = await EnsureIdentitiesAsync(cancellationToken);
         var profilesEnsured = await EnsureProfilesAsync(cancellationToken);
-        var agreedImported = await SeedAgreedSlotsAsync(cancellationToken);
+        var agreedImported = await SeedAgreedEventsAsync(cancellationToken);
         var (proposalsEnsured, acceptancesApplied) = await SeedProposalsAsync(cancellationToken);
-        var candidatesCreated = await SeedCandidatesAsync(cancellationToken);
+        var attendeesCreated = await SeedAttendeesAsync(cancellationToken);
         Report(
             $"Seed run finished: {identitiesEnsured} identities, {profilesEnsured} profiles, " +
-            $"{agreedImported} agreed slots, {proposalsEnsured} proposals, " +
-            $"{acceptancesApplied} acceptances, {candidatesCreated} candidates.");
+            $"{agreedImported} agreed events, {proposalsEnsured} proposals, " +
+            $"{acceptancesApplied} acceptances, {attendeesCreated} attendees.");
 
         return new SeedSummary(
             identitiesEnsured,
@@ -130,7 +130,7 @@ public sealed class DemoSeeder(
             agreedImported,
             proposalsEnsured,
             acceptancesApplied,
-            candidatesCreated);
+            attendeesCreated);
     }
 
     public async Task<SeedSummary> ReseedAsync(CancellationToken cancellationToken)
@@ -162,32 +162,32 @@ public sealed class DemoSeeder(
 
         database.AppointmentTypes.AddRange(AppointmentType.CreateFixedSet());
         database.SystemSettings.Add(SystemSettings.CreateDefault());
-        database.EmployeeGroups.AddRange(FixedEmployeeGroups());
+        database.AttendeeGroups.AddRange(FixedAttendeeGroups());
         await database.SaveChangesAsync(cancellationToken);
         Report("Wipe complete; reference rows restored.");
     }
 
     /// <summary>
     /// The five change-controlled groups, matching the reference migration exactly. Task 17
-    /// replaces demo candidate assignment with explicit groups and journeys.
+    /// replaces demo attendee assignment with explicit groups and journeys.
     /// </summary>
-    private static IReadOnlyList<EmployeeGroup> FixedEmployeeGroups() =>
+    private static IReadOnlyList<AttendeeGroup> FixedAttendeeGroups() =>
     [
-        EmployeeGroup.Define(
-            EmployeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
+        AttendeeGroup.Define(
+            AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
                 AppointmentTypeIds.UniformFitting]),
-        EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
-        EmployeeGroup.Define(
-            EmployeeGroupIds.GroundOperationsAgent, "GROUND_OPERATIONS_AGENT",
+        AttendeeGroup.Define(
+            AttendeeGroupIds.GroundOperationsAgent, "GROUND_OPERATIONS_AGENT",
             "Ground Operations Agent", true, [AppointmentTypeIds.MedicalCheckUp]),
-        EmployeeGroup.Define(
-            EmployeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
+        AttendeeGroup.Define(
+            AttendeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
             [AppointmentTypeIds.MedicalCheckUp]),
-        EmployeeGroup.Define(
-            EmployeeGroupIds.GroundTransportServices, "GROUND_TRANSPORT_SERVICES",
+        AttendeeGroup.Define(
+            AttendeeGroupIds.GroundTransportServices, "GROUND_TRANSPORT_SERVICES",
             "Ground Transport Services", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
                 AppointmentTypeIds.UniformFitting]),
@@ -238,25 +238,25 @@ public sealed class DemoSeeder(
         return added;
     }
 
-    private async Task<int> SeedAgreedSlotsAsync(CancellationToken cancellationToken)
+    private async Task<int> SeedAgreedEventsAsync(CancellationToken cancellationToken)
     {
-        var existing = (await confirmedSlots.ListAllAsync(cancellationToken))
+        var existing = (await events.ListAllAsync(cancellationToken))
             .Select(s => (s.Window.Date, s.Window.StartTime))
             .ToHashSet();
 
-        var missing = DemoSeedSpec.AgreedSlots()
+        var missing = DemoSeedSpec.AgreedEvents()
             .Where(s => !existing.Contains((s.Date, s.StartTime)))
             .ToList();
 
         if (missing.Count == 0)
         {
-            Report("Agreed slots: none missing.");
+            Report("Agreed events: none missing.");
             return 0;
         }
 
-        foreach (var slot in missing)
+        foreach (var eventItem in missing)
         {
-            Report($"Agreed slot missing, will import: {slot.Date:yyyy-MM-dd} {slot.StartTime:HH\\:mm}.");
+            Report($"Agreed event missing, will import: {eventItem.Date:yyyy-MM-dd} {eventItem.StartTime:HH\\:mm}.");
         }
 
         var csv = "date,startTime,DAT,MED,UNI\n" + string.Join(
@@ -264,22 +264,22 @@ public sealed class DemoSeeder(
             missing.Select(s =>
                 $"{s.Date:yyyy-MM-dd},{s.StartTime:HH\\:mm},{s.DatHeadcount},{s.MedHeadcount},{s.UniHeadcount}"));
 
-        var outcome = await importSlots.HandleAsync(
-            // Agreed slots are deliberately historical (negative day offsets), so the
+        var outcome = await importEvents.HandleAsync(
+            // Agreed events are deliberately historical (negative day offsets), so the
             // user-facing future-date rule is lifted for this import only.
-            new ImportConfirmedSlotsCommand(AdminUserId(), csv, AllowPastDates: true), cancellationToken);
+            new ImportEventsCommand(AdminUserId(), csv, AllowPastDates: true), cancellationToken);
         if (outcome.IsFailure)
         {
-            throw new SeedException($"Agreed slot import failed: {outcome.Error}.");
+            throw new SeedException($"Agreed event import failed: {outcome.Error}.");
         }
 
         if (!outcome.Value.Accepted)
         {
             var errors = string.Join("; ", outcome.Value.Errors.Select(e => $"line {e.LineNumber}: {e.Message}"));
-            throw new SeedException($"Agreed slot import rejected: {errors}.");
+            throw new SeedException($"Agreed event import rejected: {errors}.");
         }
 
-        Report($"Agreed slots: imported {outcome.Value.ImportedCount}.");
+        Report($"Agreed events: imported {outcome.Value.ImportedCount}.");
         return outcome.Value.ImportedCount;
     }
 
@@ -303,7 +303,7 @@ public sealed class DemoSeeder(
             }
             else
             {
-                var confirmedWindows = (await confirmedSlots.ListAllAsync(cancellationToken))
+                var confirmedWindows = (await events.ListAllAsync(cancellationToken))
                     .Select(s => (s.Window.Date, s.Window.StartTime))
                     .ToHashSet();
                 if (confirmedWindows.Contains((spec.Date, spec.StartTime)))
@@ -312,9 +312,9 @@ public sealed class DemoSeeder(
                     continue;
                 }
 
-                Report($"Proposing slot: {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm} (today is {clock.TodayAtHeadOffice:yyyy-MM-dd}).");
-                var proposed = await proposeSlot.HandleAsync(
-                    new ProposeSlotCommand(spec.CreatedByManagerUserId, spec.Date, spec.StartTime),
+                Report($"Proposing event: {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm} (today is {clock.TodayAtTransitionalLocation:yyyy-MM-dd}).");
+                var proposed = await proposeEvent.HandleAsync(
+                    new ProposeEventCommand(spec.CreatedByManagerUserId, spec.Date, spec.StartTime),
                     cancellationToken);
                 if (proposed.IsFailure)
                 {
@@ -324,7 +324,7 @@ public sealed class DemoSeeder(
 
                 proposalId = proposed.Value;
                 ensured++;
-                Report($"Proposed slot: {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm}.");
+                Report($"Proposed event: {spec.Date:yyyy-MM-dd} {spec.StartTime:HH\\:mm}.");
             }
 
             var headcounts = new Dictionary<Guid, int?>();
@@ -363,10 +363,10 @@ public sealed class DemoSeeder(
         return (ensured, acceptances);
     }
 
-    /// <summary>Gets the stable journey-slot identifier for a deterministic demo window.</summary>
-    private static Guid JourneySlotId(string name) => Guid.Parse($"d0000000-0000-0000-0000-{name}");
+    /// <summary>Gets the stable journey-event identifier for a deterministic demo window.</summary>
+    private static Guid JourneyEventId(string name) => Guid.Parse($"d0000000-0000-0000-0000-{name}");
 
-    private async Task EnsureJourneySlotsAsync(CancellationToken cancellationToken)
+    private async Task EnsureJourneyEventsAsync(CancellationToken cancellationToken)
     {
         var anchor = DemoSeedSpec.AnchorDate();
         var windows = new (string Suffix, DateOnly Date, TimeOnly Start)[]
@@ -382,97 +382,97 @@ public sealed class DemoSeeder(
         var added = 0;
         foreach (var (suffix, date, start) in windows)
         {
-            var id = JourneySlotId(suffix);
-            if (await confirmedSlots.GetAsync(id, cancellationToken) is not null)
+            var id = JourneyEventId(suffix);
+            if (await events.GetAsync(id, cancellationToken) is not null)
             {
                 continue;
             }
 
-            database.ConfirmedSlots.Add(ConfirmedSlot.CreateImported(
+            database.Events.Add(Event.CreateImported(
                 id,
-                new SlotWindow(date, start),
+                new EventWindow(date, start),
                 AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20)));
             added++;
-            Report($"Journey slot created: {date:yyyy-MM-dd} {start:HH\\:mm}.");
+            Report($"Journey event created: {date:yyyy-MM-dd} {start:HH\\:mm}.");
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        Report($"Journey slots: {added} created, {windows.Length - added} already present.");
+        Report($"Journey events: {added} created, {windows.Length - added} already present.");
     }
 
-    /// <summary>Derives one stable identifier from a candidate email and a seed role name.</summary>
+    /// <summary>Derives one stable identifier from a attendee email and a seed role name.</summary>
     private static Guid SeedId(string email, string role) =>
         new(MD5.HashData(Encoding.UTF8.GetBytes($"{email}:{role}")));
 
-    private async Task<int> SeedCandidatesAsync(CancellationToken cancellationToken)
+    private async Task<int> SeedAttendeesAsync(CancellationToken cancellationToken)
     {
-        await EnsureJourneySlotsAsync(cancellationToken);
+        await EnsureJourneyEventsAsync(cancellationToken);
 
         var created = 0;
         var skipped = 0;
         var position = 0;
-        foreach (var spec in DemoSeedSpec.Candidates())
+        foreach (var spec in DemoSeedSpec.Attendees())
         {
-            if (await candidates.GetByEmailAsync(spec.Email, cancellationToken) is not null)
+            if (await attendees.GetByEmailAsync(spec.Email, cancellationToken) is not null)
             {
                 skipped++;
                 position++;
                 continue;
             }
 
-            var group = await groups.GetByCodeAsync(spec.EmployeeGroupCode, cancellationToken)
+            var group = await groups.GetByCodeAsync(spec.AttendeeGroupCode, cancellationToken)
                 ?? throw new SeedException(
-                    $"Employee group '{spec.EmployeeGroupCode}' for {spec.Email} is not seeded.");
+                    $"Employee group '{spec.AttendeeGroupCode}' for {spec.Email} is not seeded.");
 
-            var result = await saveCandidate.CreateAsync(
-                new CreateCandidateCommand(
+            var result = await saveAttendee.CreateAsync(
+                new CreateAttendeeCommand(
                     CoordinatorUserId(), spec.Name, spec.Email, group.Id),
                 cancellationToken);
             if (result.IsFailure)
             {
-                throw new SeedException($"Creating candidate {spec.Email} failed: {result.Error}.");
+                throw new SeedException($"Creating attendee {spec.Email} failed: {result.Error}.");
             }
 
-            var candidate = await candidates.GetAsync(result.Value, cancellationToken)
-                ?? throw new SeedException($"Seeded candidate {spec.Email} is missing.");
-            await BuildJourneyAsync(candidate, group, spec.Journey, position, cancellationToken);
-            Report($"Candidate created: {spec.Email} ({spec.EmployeeGroupCode}, {spec.Journey}).");
+            var attendee = await attendees.GetAsync(result.Value, cancellationToken)
+                ?? throw new SeedException($"Seeded attendee {spec.Email} is missing.");
+            await BuildJourneyAsync(attendee, group, spec.Journey, position, cancellationToken);
+            Report($"Attendee created: {spec.Email} ({spec.AttendeeGroupCode}, {spec.Journey}).");
 
             created++;
             position++;
         }
 
-        Report($"Candidates: {created} created, {skipped} already present.");
+        Report($"Attendees: {created} created, {skipped} already present.");
         return created;
     }
 
     /// <summary>Constructs the requested deterministic lifecycle journey through domain factories.</summary>
     private async Task BuildJourneyAsync(
-        Candidate candidate,
-        EmployeeGroup group,
-        DemoCandidateJourney journey,
+        Attendee attendee,
+        AttendeeGroup group,
+        DemoAttendeeJourney journey,
         int position,
         CancellationToken cancellationToken)
     {
         var types = group.RequiredAppointmentTypeIds.Order().ToList();
         var coordinator = CoordinatorUserId();
         var now = clock.UtcNow;
-        var today = clock.TodayAtHeadOffice;
+        var today = clock.TodayAtTransitionalLocation;
 
         switch (journey)
         {
-            case DemoCandidateJourney.Unbooked:
+            case DemoAttendeeJourney.Unbooked:
                 return;
-            case DemoCandidateJourney.Ready:
+            case DemoAttendeeJourney.Ready:
                 {
-                    var slotDate = SlotDate(JourneySlotId("000000000001"));
+                    var eventDate = EventDate(JourneyEventId("000000000001"));
                     var appointments = await SeedBookingAsync(
-                        candidate, types, JourneySlotId("000000000001"), "initial", now, cancellationToken);
+                        attendee, types, JourneyEventId("000000000001"), "initial", now, cancellationToken);
                     foreach (var appointment in appointments)
                     {
                         appointment.TransitionTo(
                             BookingAppointmentStatus.CheckedIn, coordinator, now,
-                            checkInAllowed: slotDate == today, noShowAllowed: false);
+                            checkInAllowed: eventDate == today, noShowAllowed: false);
                         appointment.TransitionTo(
                             BookingAppointmentStatus.Completed, coordinator, now,
                             checkInAllowed: true, noShowAllowed: false);
@@ -481,75 +481,75 @@ public sealed class DemoSeeder(
                     break;
                 }
 
-            case DemoCandidateJourney.Outstanding:
+            case DemoAttendeeJourney.Outstanding:
                 {
                     if (position % 2 == 0)
                     {
                         var appointments = await SeedBookingAsync(
-                            candidate, types, JourneySlotId("000000000003"), "initial", now, cancellationToken);
+                            attendee, types, JourneyEventId("000000000003"), "initial", now, cancellationToken);
                         appointments[0].TransitionTo(
                             BookingAppointmentStatus.CheckedIn, coordinator, now,
-                            checkInAllowed: SlotDate(JourneySlotId("000000000003")) == today,
+                            checkInAllowed: EventDate(JourneyEventId("000000000003")) == today,
                             noShowAllowed: false);
                     }
                     else
                     {
                         await SeedBookingAsync(
-                            candidate, types, JourneySlotId("000000000002"), "initial", now, cancellationToken);
+                            attendee, types, JourneyEventId("000000000002"), "initial", now, cancellationToken);
                     }
 
                     break;
                 }
 
-            case DemoCandidateJourney.NoShow:
+            case DemoAttendeeJourney.NoShow:
                 {
                     var appointments = await SeedBookingAsync(
-                        candidate, types, JourneySlotId("000000000004"), "initial", now, cancellationToken);
+                        attendee, types, JourneyEventId("000000000004"), "initial", now, cancellationToken);
                     appointments[0].TransitionTo(
                         BookingAppointmentStatus.NoShow, coordinator, now,
                         checkInAllowed: false,
-                        noShowAllowed: SlotDate(JourneySlotId("000000000004")) < today);
+                        noShowAllowed: EventDate(JourneyEventId("000000000004")) < today);
                     break;
                 }
 
-            case DemoCandidateJourney.RecoveryCompleted:
+            case DemoAttendeeJourney.RecoveryCompleted:
                 {
                     var original = await SeedBookingAsync(
-                        candidate, types, JourneySlotId("000000000005"), "initial", now, cancellationToken);
+                        attendee, types, JourneyEventId("000000000005"), "initial", now, cancellationToken);
                     var originalBooking = database.Bookings.Single(b =>
-                        b.CandidateId == candidate.Id && b.RecoveryOfBookingId == null);
+                        b.AttendeeId == attendee.Id && b.RecoveryOfBookingId == null);
                     original[0].TransitionTo(
                         BookingAppointmentStatus.NoShow, coordinator, now,
                         checkInAllowed: false,
-                        noShowAllowed: SlotDate(JourneySlotId("000000000005")) < today);
+                        noShowAllowed: EventDate(JourneyEventId("000000000005")) < today);
 
-                    var recoverySlotId = JourneySlotId("000000000006");
+                    var recoveryEventId = JourneyEventId("000000000006");
                     var recoveryInvite = Invite.CreateRecovery(
-                        SeedId(candidate.Email, "recovery:invite"),
-                        candidate.Id,
+                        SeedId(attendee.Email, "recovery:invite"),
+                        attendee.Id,
                         originalBooking.Id,
                         $"seed-recovery-{position}",
                         now.AddDays(7),
-                        [recoverySlotId, SeedId(candidate.Email, "recovery:spare1"),
-                        SeedId(candidate.Email, "recovery:spare2")],
+                        [recoveryEventId, SeedId(attendee.Email, "recovery:spare1"),
+                        SeedId(attendee.Email, "recovery:spare2")],
                         [types[0]]);
                     database.Invites.Add(recoveryInvite);
                     var recovery = Booking.CreateRecovery(
-                        SeedId(candidate.Email, "recovery:booking"),
+                        SeedId(attendee.Email, "recovery:booking"),
                         recoveryInvite,
                         originalBooking,
-                        recoverySlotId,
+                        recoveryEventId,
                         $"seed-recovery-manage-{position}",
                         now.AddMinutes(5));
                     recoveryInvite.MarkUsed();
                     database.Bookings.Add(recovery);
                     var recoveryAppointment = BookingAppointment.Create(
-                        SeedId(candidate.Email, "recovery:appointment"),
+                        SeedId(attendee.Email, "recovery:appointment"),
                         recovery.Id,
                         types[0]);
                     recoveryAppointment.TransitionTo(
                         BookingAppointmentStatus.CheckedIn, coordinator, now,
-                        checkInAllowed: SlotDate(recoverySlotId) == today, noShowAllowed: false);
+                        checkInAllowed: EventDate(recoveryEventId) == today, noShowAllowed: false);
                     recoveryAppointment.TransitionTo(
                         BookingAppointmentStatus.Completed, coordinator, now,
                         checkInAllowed: true, noShowAllowed: false);
@@ -564,40 +564,40 @@ public sealed class DemoSeeder(
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    private DateOnly SlotDate(Guid slotId) =>
-        database.ConfirmedSlots.Single(slot => slot.Id == slotId).Window.Date;
+    private DateOnly EventDate(Guid eventId) =>
+        database.Events.Single(eventItem => eventItem.Id == eventId).Window.Date;
 
     /// <summary>Seeds one used initial invite, booking, and appointment row per required type.</summary>
     /// <returns>The created appointments in requirement order.</returns>
     private async Task<IReadOnlyList<BookingAppointment>> SeedBookingAsync(
-        Candidate candidate,
+        Attendee attendee,
         IReadOnlyList<Guid> types,
-        Guid slotId,
+        Guid eventId,
         string tag,
         DateTimeOffset createdAt,
         CancellationToken cancellationToken)
     {
         var invite = Invite.CreateInitial(
-            SeedId(candidate.Email, $"{tag}:invite"),
-            candidate.Id,
-            $"seed-{tag}-{candidate.Email}",
+            SeedId(attendee.Email, $"{tag}:invite"),
+            attendee.Id,
+            $"seed-{tag}-{attendee.Email}",
             createdAt.AddDays(7),
-            [slotId, SeedId(candidate.Email, $"{tag}:spare1"), SeedId(candidate.Email, $"{tag}:spare2")],
+            [eventId, SeedId(attendee.Email, $"{tag}:spare1"), SeedId(attendee.Email, $"{tag}:spare2")],
             types,
             0);
         database.Invites.Add(invite);
         var booking = Booking.Create(
-            SeedId(candidate.Email, $"{tag}:booking"),
+            SeedId(attendee.Email, $"{tag}:booking"),
             invite,
-            slotId,
-            $"seed-{tag}-manage-{candidate.Email}",
+            eventId,
+            $"seed-{tag}-manage-{attendee.Email}",
             createdAt);
         invite.MarkUsed();
         database.Bookings.Add(booking);
 
         var appointments = types
             .Select(typeId => BookingAppointment.Create(
-                SeedId(candidate.Email, $"{tag}:appointment:{typeId}"),
+                SeedId(attendee.Email, $"{tag}:appointment:{typeId}"),
                 booking.Id,
                 typeId))
             .ToList();

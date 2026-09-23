@@ -13,19 +13,19 @@ public sealed class RecoveryBookingOutcomeCoordinatorTests
     public void TerminalRecoveryAppointmentsConcludeRecoveryOnly()
     {
         var staff = Guid.NewGuid();
-        var originalSlot = Guid.NewGuid();
+        var originalEvent = Guid.NewGuid();
         var initial = Invite.CreateInitial(
             Guid.NewGuid(), Guid.NewGuid(), "initial", DateTimeOffset.UtcNow.AddDays(1),
-            [originalSlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+            [originalEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
         var original = Booking.Create(
-            Guid.NewGuid(), initial, originalSlot, "original", DateTimeOffset.UtcNow);
-        var recoverySlot = Guid.NewGuid();
+            Guid.NewGuid(), initial, originalEvent, "original", DateTimeOffset.UtcNow);
+        var recoveryEvent = Guid.NewGuid();
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), original.CandidateId, original.Id, "recovery",
+            Guid.NewGuid(), original.AttendeeId, original.Id, "recovery",
             DateTimeOffset.UtcNow.AddDays(2),
-            [recoverySlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            [recoveryEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, original, recoverySlot, "manage", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), recoveryInvite, original, recoveryEvent, "manage", DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), recovery.Id, AppointmentTypeIds.MedicalCheckUp);
         appointment.TransitionTo(
@@ -44,18 +44,18 @@ public sealed class RecoveryBookingOutcomeCoordinatorTests
     [Fact]
     public void LaterRecoveryPreventsReopen()
     {
-        var originalSlot = Guid.NewGuid();
+        var originalEvent = Guid.NewGuid();
         var initial = Invite.CreateInitial(
             Guid.NewGuid(), Guid.NewGuid(), "initial", DateTimeOffset.UtcNow.AddDays(1),
-            [originalSlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
-        var original = Booking.Create(Guid.NewGuid(), initial, originalSlot, "root", DateTimeOffset.UtcNow);
-        var recoverySlot = Guid.NewGuid();
+            [originalEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+        var original = Booking.Create(Guid.NewGuid(), initial, originalEvent, "root", DateTimeOffset.UtcNow);
+        var recoveryEvent = Guid.NewGuid();
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), original.CandidateId, original.Id, "recovery",
+            Guid.NewGuid(), original.AttendeeId, original.Id, "recovery",
             DateTimeOffset.UtcNow.AddDays(1),
-            [recoverySlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            [recoveryEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, original, recoverySlot, "manage", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), recoveryInvite, original, recoveryEvent, "manage", DateTimeOffset.UtcNow);
         recovery.Conclude();
         var expected = BookingAppointment.Create(
             Guid.NewGuid(), recovery.Id, AppointmentTypeIds.MedicalCheckUp);

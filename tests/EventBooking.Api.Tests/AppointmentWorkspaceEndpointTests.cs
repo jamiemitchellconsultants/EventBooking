@@ -5,10 +5,10 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,7 +34,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     /// <summary>Verifies the role union while keeping one trusted appointment-type scope.</summary>
     [Theory]
     [MemberData(nameof(ReadMatrix))]
-    public async Task RoleMatrixProtectsTheSlotList(Role[] roles, HttpStatusCode expected)
+    public async Task RoleMatrixProtectsTheEventList(Role[] roles, HttpStatusCode expected)
     {
         Guid? scope = roles.Any(role => role is Role.Manager or Role.AppointmentStaff)
             ? AppointmentTypeIds.DrugAndAlcoholTesting
@@ -42,7 +42,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(roles, scope);
 
         using var response = await factory.CreateClient()
-            .GetAsync("/api/appointment-workspace/slots");
+            .GetAsync("/api/appointment-workspace/events");
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -53,10 +53,10 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     {
         factory.SignedInAs = null;
         using var anonymous = await factory.CreateClient()
-            .GetAsync("/api/appointment-workspace/slots");
+            .GetAsync("/api/appointment-workspace/events");
         factory.SignedInAs = Guid.NewGuid();
         using var unassigned = await factory.CreateClient()
-            .GetAsync("/api/appointment-workspace/slots");
+            .GetAsync("/api/appointment-workspace/events");
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, unassigned.StatusCode);
@@ -72,23 +72,23 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var list = JsonDocument.Parse(await client.GetStringAsync(
-            "/api/appointment-workspace/slots"));
-        AssertKeys(list.RootElement, "appointmentTypeName", "slots", "_links");
-        var slot = Assert.Single(
-            list.RootElement.GetProperty("slots").EnumerateArray(),
-            item => item.GetProperty("confirmedSlotId").GetString() == data.SlotId.ToString());
-        AssertKeys(slot, "confirmedSlotId", "date", "startTime", "endTime", "counts", "_links");
-        AssertKeys(slot.GetProperty("counts"), "expected", "checkedIn", "completed", "noShow");
+            "/api/appointment-workspace/events"));
+        AssertKeys(list.RootElement, "appointmentTypeName", "events", "_links");
+        var eventItem = Assert.Single(
+            list.RootElement.GetProperty("events").EnumerateArray(),
+            item => item.GetProperty("eventId").GetString() == data.EventId.ToString());
+        AssertKeys(eventItem, "eventId", "date", "startTime", "endTime", "counts", "_links");
+        AssertKeys(eventItem.GetProperty("counts"), "expected", "checkedIn", "completed", "noShow");
 
         using var detail = JsonDocument.Parse(await client.GetStringAsync(
-            $"/api/appointment-workspace/slots/{data.SlotId}"));
+            $"/api/appointment-workspace/events/{data.EventId}"));
         AssertKeys(detail.RootElement,
-            "appointmentTypeName", "confirmedSlotId", "date", "startTime", "endTime", "appointments", "_links");
+            "appointmentTypeName", "eventId", "date", "startTime", "endTime", "appointments", "_links");
         var row = Assert.Single(detail.RootElement.GetProperty("appointments").EnumerateArray());
-        AssertKeys(row, "bookingAppointmentId", "candidateName", "candidateEmail",
+        AssertKeys(row, "bookingAppointmentId", "attendeeName", "attendeeEmail",
             "status", "checkedInAt", "outcomeAt", "version", "_links");
         Assert.Equal("Expected", row.GetProperty("status").GetString());
-        Assert.DoesNotContain("candidateId", detail.RootElement.GetRawText());
+        Assert.DoesNotContain("attendeeId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("bookingId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("requirement", detail.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
@@ -157,9 +157,9 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             crossProblem.RootElement.GetProperty("detail").GetString());
     }
 
-    /// <summary>Seeds one active slot, candidate, booking, and scoped appointment row.</summary>
+    /// <summary>Seeds one active eventItem, attendee, booking, and scoped appointment row.</summary>
 
-    /// <summary>Verifies the roster route is protected by the same role matrix as the slot list.</summary>
+    /// <summary>Verifies the roster route is protected by the same role matrix as the event list.</summary>
     [Theory]
     [MemberData(nameof(ReadMatrix))]
     public async Task RoleMatrixProtectsTheRoster(Role[] roles, HttpStatusCode expected)
@@ -171,7 +171,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(roles, scope);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{data.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -185,7 +185,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{data.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
 
         response.EnsureSuccessStatusCode();
         Assert.Equal("text/csv", response.Content.Headers.ContentType!.MediaType);
@@ -200,7 +200,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         var body = await response.Content.ReadAsStringAsync();
         var lines = body.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(
-            "Candidate Name,Candidate Email,Appointment Type,Status,Checked In At,Outcome At",
+            "Attendee Name,Attendee Email,Appointment Type,Status,Checked In At,Outcome At",
             lines[0]);
         Assert.Equal(2, lines.Length);
         Assert.StartsWith("Alex Morgan,", lines[1], StringComparison.Ordinal);
@@ -217,14 +217,14 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{data.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain(data.AppointmentId.ToString(), body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Version", body, StringComparison.Ordinal);
     }
 
-    /// <summary>Verifies a caller scoped to another appointment type cannot learn the slot exists.</summary>
+    /// <summary>Verifies a caller scoped to another appointment type cannot learn the event exists.</summary>
     [Fact]
     public async Task RosterCrossTypeRequestReturnsNotFound()
     {
@@ -233,39 +233,39 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.UniformFitting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{data.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    /// <summary>Verifies an unknown slot is refused the same way the JSON detail route refuses it.</summary>
+    /// <summary>Verifies an unknown eventItem is refused the same way the JSON detail route refuses it.</summary>
     [Fact]
-    public async Task RosterMissingSlotReturnsNotFound()
+    public async Task RosterMissingEventReturnsNotFound()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{Guid.NewGuid()}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{Guid.NewGuid()}/roster");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    /// <summary>Verifies an anonymous caller is challenged before any candidate data is read.</summary>
+    /// <summary>Verifies an anonymous caller is challenged before any attendee data is read.</summary>
     [Fact]
     public async Task RosterAnonymousCallerIsUnauthorized()
     {
         factory.SignedInAs = null;
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{Guid.NewGuid()}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{Guid.NewGuid()}/roster");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    /// <summary>Verifies a free-text candidate name with a comma and a quote survives the CSV.</summary>
+    /// <summary>Verifies a free-text attendee name with a comma and a quote survives the CSV.</summary>
     [Fact]
-    public async Task RosterEscapesCommaAndQuoteInCandidateName()
+    public async Task RosterEscapesCommaAndQuoteInAttendeeName()
     {
         var data = await GivenWorkspaceAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting, "Okafor, Ada \"Bisi\"");
@@ -273,7 +273,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{data.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
 
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync();
@@ -292,9 +292,9 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var allowed = await client
-            .GetAsync($"/api/appointment-workspace/slots/{inScope.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{inScope.EventId}/roster");
         using var refused = await client
-            .GetAsync($"/api/appointment-workspace/slots/{outOfScope.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{outOfScope.EventId}/roster");
 
         allowed.EnsureSuccessStatusCode();
         Assert.Equal("text/csv", allowed.Content.Headers.ContentType!.MediaType);
@@ -309,38 +309,38 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         factory.SignedInAs = Guid.NewGuid();
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/slots/{data.SlotId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    private async Task<(Guid SlotId, Guid AppointmentId)> GivenWorkspaceAsync(
+    private async Task<(Guid EventId, Guid AppointmentId)> GivenWorkspaceAsync(
         Guid appointmentTypeId,
-        string candidateName = "Alex Morgan")
+        string attendeeName = "Alex Morgan")
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtHeadOffice;
-        var slot = ConfirmedSlot.CreateImported(
-            Guid.NewGuid(), new SlotWindow(today, new TimeOnly(9, 0)),
+        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var eventItem = Event.CreateImported(
+            Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp
-            ? EmployeeGroupIds.GroundOperationsAgent
-            : EmployeeGroupIds.Pilots;
-        var group = context.EmployeeGroups.Include(g => g.Requirements).Single(g => g.Id == groupId);
-        var candidate = Candidate.Create(
-            Guid.NewGuid(), candidateName, $"alex-{Guid.NewGuid():N}@example.com", group);
+            ? AttendeeGroupIds.GroundOperationsAgent
+            : AttendeeGroupIds.Pilots;
+        var group = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == groupId);
+        var attendee = Attendee.Create(
+            Guid.NewGuid(), attendeeName, $"alex-{Guid.NewGuid():N}@example.com", group);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), candidate.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [slot.Id, Guid.NewGuid(), Guid.NewGuid()],
-            candidate.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1), [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds, 0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, slot.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventItem.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, appointmentTypeId);
-        context.AddRange(slot, candidate, booking, appointment);
+        context.AddRange(eventItem, attendee, booking, appointment);
         await context.SaveChangesAsync();
-        return (slot.Id, appointment.Id);
+        return (eventItem.Id, appointment.Id);
     }
 
     /// <summary>Asserts a JSON object carries exactly the approved property names.</summary>

@@ -2,7 +2,7 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using EventBooking.Web.Services
 @inject DashboardsClient DashboardsApi
-@inject CandidatesClient CandidatesApi
+@inject AttendeesClient AttendeesApi
 
 <PageTitle>Dashboards</PageTitle>
 
@@ -11,7 +11,7 @@
         <div>
             <span class="eyebrow">Coordination</span>
             <h1 id="dashboards-heading">Dashboards</h1>
-            <p>Read-only views of current availability, follow-ups, and slots.</p>
+            <p>Read-only views of current availability, follow-ups, and events.</p>
         </div>
     </div>
 
@@ -61,11 +61,11 @@
                         @onclick="() => SelectTab(Tab.NoResponse)" disabled="@_busy">
                     No response <span class="tab-count">(@_data.NoResponse.Count)</span>
                 </button>
-                <button @ref="_slotsTabRef" id="slots-tab" class="@TabClass(Tab.Slots)" role="tab"
-                        aria-selected="@AriaSelected(Tab.Slots)" aria-controls="dashboard-panel"
-                        tabindex="@TabIndexFor(Tab.Slots)"
-                        @onclick="() => SelectTab(Tab.Slots)" disabled="@_busy">
-                    Slots <span class="tab-count">(@_data.Slots.Count)</span>
+                <button @ref="_eventsTabRef" id="events-tab" class="@TabClass(Tab.Events)" role="tab"
+                        aria-selected="@AriaSelected(Tab.Events)" aria-controls="dashboard-panel"
+                        tabindex="@TabIndexFor(Tab.Events)"
+                        @onclick="() => SelectTab(Tab.Events)" disabled="@_busy">
+                    Events <span class="tab-count">(@_data.Events.Count)</span>
                 </button>
                 @{
                     var failedCount = _data.EmailStatuses.Count(e => e.Status == "Failed");
@@ -89,7 +89,7 @@
                 {
                     <div class="empty-state">
                         <strong>Nobody is waiting</strong>
-                        <p>Every candidate either has an invitation or is ready for follow-up.</p>
+                        <p>Every attendee either has an invitation or is ready for follow-up.</p>
                     </div>
                 }
                 else
@@ -97,13 +97,13 @@
                     <div class="table-wrap">
                         <table>
                             <thead>
-                                <tr><th scope="col">Candidate</th><th scope="col" title="The appointment types this candidate's employee group requires.">Required types</th><th scope="col" title="When the candidate first became available to invite.">Waiting since</th><th scope="col" title="Every recorded change for this candidate, with who made it.">History</th></tr>
+                                <tr><th scope="col">Attendee</th><th scope="col" title="The appointment types this attendee's attendee group requires.">Required types</th><th scope="col" title="When the attendee first became available to invite.">Waiting since</th><th scope="col" title="Every recorded change for this attendee, with who made it.">History</th></tr>
                             </thead>
                             <tbody>
                                 @foreach (var row in _data.AwaitingAvailability)
                                 {
-                                    <tr @key="row.CandidateId">
-                                        <td data-label="Candidate"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
+                                    <tr @key="row.AttendeeId">
+                                        <td data-label="Attendee"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
                                         <td data-label="Required types">
                                             <div class="chip-row">
                                                 @foreach (var requiredCode in row.RequiredCodes)
@@ -113,7 +113,7 @@
                                             </div>
                                         </td>
                                         <td data-label="Waiting since">@row.WaitingSince.ToString("dd MMM yyyy") · @row.DaysWaiting day@(row.DaysWaiting == 1 ? string.Empty : "s")</td>
-                                        <td data-label="History"><AuditHistory CandidateId="@row.CandidateId" /></td>
+                                        <td data-label="History"><AuditHistory AttendeeId="@row.AttendeeId" /></td>
                                     </tr>
                                 }
                             </tbody>
@@ -127,7 +127,7 @@
                 {
                     <div class="empty-state">
                         <strong>Nobody is stuck</strong>
-                        <p>Every invited candidate has responded or is still within the follow-up window.</p>
+                        <p>Every invited attendee has responded or is still within the follow-up window.</p>
                     </div>
                 }
                 else
@@ -135,13 +135,13 @@
                     <div class="table-wrap">
                         <table>
                             <thead>
-                                <tr><th scope="col">Candidate</th><th scope="col" title="The appointment types this candidate's employee group requires.">Required types</th><th scope="col" title="When the invitation stopped being chased.">Gave up on</th><th scope="col" title="Every recorded change for this candidate, with who made it.">History</th><th scope="col" class="actions-column"><span class="visually-hidden">Actions</span></th></tr>
+                                <tr><th scope="col">Attendee</th><th scope="col" title="The appointment types this attendee's attendee group requires.">Required types</th><th scope="col" title="When the invitation stopped being chased.">Gave up on</th><th scope="col" title="Every recorded change for this attendee, with who made it.">History</th><th scope="col" class="actions-column"><span class="visually-hidden">Actions</span></th></tr>
                             </thead>
                             <tbody>
                                 @foreach (var row in _data.NoResponse)
                                 {
-                                    <tr @key="row.CandidateId">
-                                        <td data-label="Candidate"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
+                                    <tr @key="row.AttendeeId">
+                                        <td data-label="Attendee"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
                                         <td data-label="Required types">
                                             <div class="chip-row">
                                                 @foreach (var requiredCode in row.RequiredCodes)
@@ -151,9 +151,9 @@
                                             </div>
                                         </td>
                                         <td data-label="Gave up on">@row.GaveUpOn.ToString("dd MMM yyyy")</td>
-                                        <td data-label="History"><AuditHistory CandidateId="@row.CandidateId" /></td>
+                                        <td data-label="History"><AuditHistory AttendeeId="@row.AttendeeId" /></td>
                                         <td data-label="Actions">
-                                            <button class="button button-primary button-small" @onclick="() => ReinviteAsync(row.CandidateId)" disabled="@_busy"
+                                            <button class="button button-primary button-small" @onclick="() => ReinviteAsync(row.AttendeeId)" disabled="@_busy"
                                                     title="Sends a fresh single-use booking link and restarts the follow-up window.">
                                                 @(_busy ? "Re-inviting…" : "Re-invite now")
                                             </button>
@@ -165,10 +165,10 @@
                     </div>
                 }
             }
-            else if (_data.Slots.Count == 0)
+            else if (_data.Events.Count == 0)
             {
                 <div class="empty-state">
-                    <strong>No confirmed slots</strong>
+                    <strong>No events</strong>
                     <p>Confirmed appointment windows will appear here once all appointment types have accepted them.</p>
                 </div>
             }
@@ -177,24 +177,24 @@
                 <div class="table-wrap">
                     <table>
                         <thead>
-                            <tr><th scope="col">Date</th><th scope="col">Window</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Candidates currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this slot, with who made it.">History</th></tr>
+                            <tr><th scope="col">Date</th><th scope="col">Window</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Attendees currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this eventItem, with who made it.">History</th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var slot in _data.Slots)
+                            @foreach (var eventItem in _data.Events)
                             {
-                                <tr @key="slot.ConfirmedSlotId">
-                                    <td data-label="Date">@slot.Date.ToString("dd MMM yyyy")</td>
-                                    <td data-label="Window">@FormatWindow(slot.StartTime, slot.EndTime)</td>
+                                <tr @key="eventItem.EventId">
+                                    <td data-label="Date">@eventItem.Date.ToString("dd MMM yyyy")</td>
+                                    <td data-label="Window">@FormatWindow(eventItem.StartTime, eventItem.EndTime)</td>
                                     <td data-label="Capacity by type">
                                         <div class="chip-row">
-                                            @foreach (var capacity in slot.Capacities)
+                                            @foreach (var capacity in eventItem.Capacities)
                                             {
                                                 <span class="chip">@capacity.Code @capacity.RemainingCapacity/@capacity.TotalHeadcount</span>
                                             }
                                         </div>
                                     </td>
-                                    <td data-label="Active bookings">@slot.ActiveBookings</td>
-                                    <td data-label="History"><AuditHistory SlotId="@slot.ConfirmedSlotId" /></td>
+                                    <td data-label="Active bookings">@eventItem.ActiveBookings</td>
+                                    <td data-label="History"><AuditHistory EventId="@eventItem.EventId" /></td>
                                 </tr>
                             }
                         </tbody>
@@ -208,9 +208,9 @@
 @code {
     private const string UnexpectedError = "Something went wrong. Please try again.";
 
-    private enum Tab { Awaiting, NoResponse, Slots }
+    private enum Tab { Awaiting, NoResponse, Events }
 
-    private static readonly Tab[] TabOrder = [Tab.Awaiting, Tab.NoResponse, Tab.Slots];
+    private static readonly Tab[] TabOrder = [Tab.Awaiting, Tab.NoResponse, Tab.Events];
 
     private DashboardsDto? _data;
     private Tab _tab = Tab.Awaiting;
@@ -220,13 +220,13 @@
 
     private ElementReference _awaitingTabRef;
     private ElementReference _noResponseTabRef;
-    private ElementReference _slotsTabRef;
+    private ElementReference _eventsTabRef;
 
     private string ActiveTabId => _tab switch
     {
         Tab.Awaiting => "awaiting-tab",
         Tab.NoResponse => "no-response-tab",
-        _ => "slots-tab",
+        _ => "events-tab",
     };
 
     protected override Task OnInitializedAsync() => ReloadAsync();
@@ -239,7 +239,7 @@
     {
         Tab.Awaiting => _awaitingTabRef,
         Tab.NoResponse => _noResponseTabRef,
-        _ => _slotsTabRef,
+        _ => _eventsTabRef,
     };
 
     private int TabIndexFor(Tab tab) => _tab == tab ? 0 : -1;
@@ -297,7 +297,7 @@
         }
     }
 
-    private async Task ReinviteAsync(Guid candidateId)
+    private async Task ReinviteAsync(Guid attendeeId)
     {
         if (_busy)
         {
@@ -308,7 +308,7 @@
 
         try
         {
-            var outcome = await CandidatesApi.TriggerInviteAsync(candidateId, CancellationToken.None);
+            var outcome = await AttendeesApi.TriggerInviteAsync(attendeeId, CancellationToken.None);
             if (!outcome.IsSuccess)
             {
                 _error = outcome.ErrorMessage ?? UnexpectedError;

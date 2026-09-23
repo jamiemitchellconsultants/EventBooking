@@ -2,10 +2,10 @@ using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Bookings;
 
@@ -14,49 +14,49 @@ public class ViewInviteHandlerTests
     private const string InvalidLink = "This booking link is no longer valid.";
 
     private readonly InMemoryInviteRepository _invites = new();
-    private readonly InMemoryCandidateRepository _candidates = new();
-    private readonly InMemoryConfirmedSlotRepository _slots = new();
+    private readonly InMemoryAttendeeRepository _attendees = new();
+    private readonly InMemoryEventRepository _events = new();
     private readonly FakeTokenService _tokens = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
-    private readonly Candidate _candidate;
+    private readonly Attendee _attendee;
     private readonly Invite _invite;
     private readonly string _token;
 
     private ViewInviteHandler Handler => new(
-        _invites, _candidates, _slots, new EligibleSlotFinder(_slots, _clock),
+        _invites, _attendees, _events, new EligibleEventFinder(_events, _clock),
         _audit, _unitOfWork, _tokens, _clock);
 
     public ViewInviteHandlerTests()
     {
-        _candidate = Candidate.Create(
+        _attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", "a.novak@mail.com",
-            EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
-        _candidates.Add(_candidate);
+        _attendees.Add(_attendee);
 
-        var slotIds = new[] { AddSlot(10, 9), AddSlot(11, 13), AddSlot(13, 9) };
+        var eventIds = new[] { AddEvent(10, 9), AddEvent(11, 13), AddEvent(13, 9) };
 
         var inviteId = Guid.NewGuid();
         var issued = _tokens.Issue(inviteId);
         _token = issued.Token;
         _invite = Invite.CreateInitial(
-            inviteId, _candidate.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), slotIds,
+            inviteId, _attendee.Id, issued.TokenHash, _clock.UtcNow.AddDays(4), eventIds,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0);
         _invites.Add(_invite);
-        _candidate.MarkInvited();
+        _attendee.MarkInvited();
     }
 
     [Fact]
-    public async Task AValidTokenReturnsTheCandidateTheirTypesAndThreeOptions()
+    public async Task AValidTokenReturnsTheAttendeeTheirTypesAndThreeOptions()
     {
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(_invite.Id, result.Value.InviteId);
-        Assert.Equal("Amara Novak", result.Value.CandidateName);
+        Assert.Equal("Amara Novak", result.Value.AttendeeName);
         Assert.Equal(
             new[] { "Drug & Alcohol Testing", "Uniform Fitting" },
             result.Value.AppointmentTypeNames);
@@ -128,9 +128,9 @@ public class ViewInviteHandlerTests
     }
 
     [Fact]
-    public async Task AnOptionWhoseSlotHasBeenCancelledIsNotShown()
+    public async Task AnOptionWhoseEventHasBeenCancelledIsNotShown()
     {
-        _slots.Items[1].Cancel();
+        _events.Items[1].Cancel();
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
@@ -139,16 +139,16 @@ public class ViewInviteHandlerTests
             new DateOnly(2026, 9, 11), result.Value.Options.Select(o => o.Date));
     }
 
-    /// <summary>Ensures options on the head-office date or earlier are not projected.</summary>
+    /// <summary>Ensures options on the transitional-location date or earlier are not projected.</summary>
     [Fact]
     public async Task OptionsOnTodayAndEarlierAreNotShown()
     {
-        _invite.RemoveOption(_slots.Items[0].Id);
-        _invite.RemoveOption(_slots.Items[1].Id);
-        _slots.Items[0].Cancel();
-        _slots.Items[1].Cancel();
-        _invite.AddOption(AddSlot(3, 9));
-        _invite.AddOption(AddSlot(2, 13));
+        _invite.RemoveOption(_events.Items[0].Id);
+        _invite.RemoveOption(_events.Items[1].Id);
+        _events.Items[0].Cancel();
+        _events.Items[1].Cancel();
+        _invite.AddOption(AddEvent(3, 9));
+        _invite.AddOption(AddEvent(2, 13));
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
@@ -156,17 +156,17 @@ public class ViewInviteHandlerTests
         Assert.Equal(new[] { new DateOnly(2026, 9, 13) }, result.Value.Options.Select(o => o.Date));
     }
 
-    private Guid AddSlot(int day, int hour)
+    private Guid AddEvent(int day, int hour)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
-        _slots.Add(slot);
-        return slot.Id;
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
+        _events.Add(eventItem);
+        return eventItem.Id;
     }
 }

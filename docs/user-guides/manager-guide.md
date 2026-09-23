@@ -8,11 +8,11 @@ your type's capacity, and can use the scoped Appointments workspace to deliver t
 
 ## Your workflow
 
-1. On **Slot proposals**, review open proposals and create any new windows your team can support.
+1. On **Event proposals**, review open proposals and create any new windows your team can support.
 2. Accept each workable proposal with your team's headcount. All three Managers must accept before
    the window becomes bookable.
-3. On confirmed slots, keep your total capacity accurate and never reduce it below active demand.
-4. Before and during the window, use **Appointments** to monitor Expected candidates and record your
+3. On events, keep your total capacity accurate and never reduce it below active demand.
+4. Before and during the window, use **Appointments** to monitor Expected attendees and record your
    type's outcomes if you are part of delivery.
 5. Tell Coordinators promptly about shortages or cancellations because their invitations depend on
    the capacity you control.
@@ -22,16 +22,16 @@ your type's capacity, and can use the scoped Appointments workspace to deliver t
 After signing in, check that the access summary shows **Manager** and the correct Appointment Type.
 The home page provides:
 
-- **Slot proposals** (`/slots`)
+- **Event proposals** (`/events`)
 - **Appointments** (`/appointments`)
-- **Help** (`/help`) — every role's guide, including the candidate guide
+- **Help** (`/help`) — every role's guide, including the attendee guide
 
-![Manager home page showing Slot proposals and Appointments links](screenshots/manager-home.png)
+![Manager home page showing Event proposals and Appointments links](screenshots/manager-home.png)
 
 The same links also appear as a navigation bar at the top of every page, so you can move between
-Slot proposals and Appointments without returning to the home page first.
+Event proposals and Appointments without returning to the home page first.
 
-A combined Coordinator profile also shows Candidates, Dashboards, Confirmed slots, and Audit trail.
+A combined Coordinator profile also shows Attendees, Dashboards, Events, and Audit trail.
 Manager data remains scoped: you never see another Manager's headcount or another Appointment Type's
 appointment rows.
 
@@ -39,18 +39,18 @@ appointment rows.
 
 Your **role** comes from the company identity provider. Your **Appointment Type** is set inside
 EventBooking by an Admin. If the access summary shows Manager with no type — or the wrong type —
-Slot proposals and Appointments will not work for you. Ask an Admin to set the scope on their Staff
+Event proposals and Appointments will not work for you. Ask an Admin to set the scope on their Staff
 access screen. Do not act in the wrong workspace in the meantime.
 
-## Slot proposals screen
+## Event proposals screen
 
-Use `/slots` to propose windows, accept or withdraw, adjust capacity, and cancel Confirmed Slots.
+Use `/events` to propose windows, accept or withdraw, adjust capacity, and cancel Confirmed Events.
 
-![Slot proposals screen showing open proposals and each type's acceptance chips](screenshots/slot-proposals.png)
+![Event proposals screen showing open proposals and each type's acceptance chips](screenshots/event-proposals.png)
 
-### Propose a new slot
+### Propose a new event
 
-1. In **Propose a new slot**, choose a future **Date**.
+1. In **Propose a new event**, choose a future **Date**.
 2. Choose the **Start time**. Every window lasts exactly four hours.
 3. Select **Submit proposal**.
 4. Find the new row under **Open proposals** and, when ready, enter your own headcount and accept it.
@@ -69,7 +69,7 @@ Each row shows Date, Window, Accepted by, My headcount, and Actions.
 
 After your acceptance, the action reads **Update acceptance**. You can replace your own headcount
 while the proposal remains open. When the third Manager accepts, EventBooking creates the Confirmed
-Slot immediately; Coordinators can then invite candidates against it.
+Event immediately; Coordinators can then invite attendees against it.
 
 ### Withdraw before confirmation
 
@@ -77,39 +77,39 @@ Slot immediately; Coordinators can then invite candidates against it.
 - If you created the proposal, select **Withdraw proposal** to withdraw the entire proposal.
 
 Neither action is available after confirmation. A confirmed window must be managed as a Confirmed
-Slot.
+Event.
 
 ### Adjust confirmed capacity
 
-Under **Confirmed slots (this type)**, each row shows your total and remaining capacity only.
+Under **Events (this type)**, each row shows your total and remaining capacity only.
 
 1. Enter the replacement total in **My total**.
 2. Confirm **Remaining** still makes operational sense.
 3. Select **Adjust headcount**.
 
 The new total must be positive and cannot be lower than the number of active Bookings requiring your
-type. If a candidate books at the same time, the save may be rejected to prevent overbooking.
+type. If a attendee books at the same time, the save may be rejected to prevent overbooking.
 Reload the board and enter a total that covers the updated demand.
 
-Employee Groups determine which types each candidate needs. You do not need to know the group to
+Attendee Groups determine which types each attendee needs. You do not need to know the group to
 manage capacity: EventBooking reserves only the capacity required by each invitation or recovery
 snapshot.
 
-### Cancel a Confirmed Slot
+### Cancel a Confirmed Event
 
 Cancel only when the whole four-hour window cannot run.
 
 1. Warn Coordinator and delivery colleagues first.
-2. Select **Cancel slot**.
+2. Select **Cancel event**.
 3. If active Bookings are affected, read the warning and select **Confirm cancel** only when you
    intend to proceed.
-4. Tell the Coordinator to monitor candidates and replacement invitation delivery.
+4. Tell the Coordinator to monitor attendees and replacement invitation delivery.
 
-Cancellation voids Bookings on the slot, releases their capacity, and triggers the appropriate
-candidate rebooking workflow. Cancelling a recovery slot preserves the original journey and
+Cancellation voids Bookings on the event, releases their capacity, and triggers the appropriate
+attendee rebooking workflow. Cancelling a recovery event preserves the original journey and
 already Completed appointments.
 
-Admins and Coordinators can cancel the same window from their own Confirmed slots screen, so agree
+Admins and Coordinators can cancel the same window from their own Events screen, so agree
 who is acting before anyone clicks.
 
 ## Appointments screen
@@ -130,8 +130,8 @@ complete screen workflow, screenshots, and correction rules.
 - **Another Manager's headcount is missing** — expected. You can see who accepted, not their number.
 - **Capacity change was rejected** — the total is invalid, below active demand, or demand changed
   concurrently. Reload and recalculate.
-- **Candidates are awaiting availability** — propose more future windows or accept open proposals.
-  An invitation needs three suitable Confirmed Slots across every required type.
+- **Attendees are awaiting availability** — propose more future windows or accept open proposals.
+  An invitation needs three suitable Confirmed Events across every required type.
 - **Cancel requires a second confirmation** — active Bookings are affected. Coordinate first; the
   second click performs the cancellation.
 - **A window disappeared from your board** — an Admin or Coordinator may have cancelled it. Ask the

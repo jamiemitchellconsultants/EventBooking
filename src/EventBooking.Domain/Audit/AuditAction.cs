@@ -11,10 +11,10 @@ public enum AuditAction
     AcceptanceRecorded = 3,
     /// <summary>Defines acceptance withdrawn for the current use case.</summary>
     AcceptanceWithdrawn = 4,
-    /// <summary>Defines slot confirmed for the current use case.</summary>
-    SlotConfirmed = 5,
-    /// <summary>Defines slot cancelled for the current use case.</summary>
-    SlotCancelled = 6,
+    /// <summary>Defines event confirmed for the current use case.</summary>
+    EventConfirmed = 5,
+    /// <summary>Defines event cancelled for the current use case.</summary>
+    EventCancelled = 6,
     /// <summary>Defines capacity decremented for the current use case.</summary>
     CapacityDecremented = 7,
     /// <summary>Defines capacity incremented for the current use case.</summary>
@@ -33,8 +33,8 @@ public enum AuditAction
     BookingCancelled = 14,
     /// <summary>Defines capacity adjusted for the current use case.</summary>
     CapacityAdjusted = 15,
-    /// <summary>Defines slot imported for the current use case.</summary>
-    SlotImported = 16,
+    /// <summary>Defines event imported for the current use case.</summary>
+    EventImported = 16,
     /// <summary>Defines staff access changed for the current use case.</summary>
     StaffAccessChanged = 17,
     /// <summary>Defines staff access removed for the current use case.</summary>
@@ -47,10 +47,10 @@ public enum AuditAction
     AppointmentMarkedNoShow = 21,
     /// <summary>Records one approved reverse appointment transition.</summary>
     AppointmentStatusCorrected = 22,
-    /// <summary>Records the initial Employee Group assignment of a Candidate.</summary>
-    EmployeeGroupAssigned = 23,
-    /// <summary>Records a Candidate Employee Group change and its derived requirements.</summary>
-    EmployeeGroupChanged = 24,
+    /// <summary>Records the initial Attendee Group assignment of a Attendee.</summary>
+    AttendeeGroupAssigned = 23,
+    /// <summary>Records a Attendee Attendee Group change and its derived requirements.</summary>
+    AttendeeGroupReassigned = 24,
     /// <summary>Records a Coordinator issuing a recovery Invite for missed appointments.</summary>
     RecoveryInviteCreated = 25,
     /// <summary>Records a Coordinator cancelling a pending recovery Invite.</summary>
@@ -61,6 +61,6 @@ public enum AuditAction
     RecoveryBookingConcluded = 28,
     /// <summary>Records an identity-provider-driven role change applied by the claims sync.</summary>
     StaffRolesSynced = 29,
-    /// <summary>Records a Coordinator deleting a Candidate and cascading onto their active bookings.</summary>
-    CandidateDeleted = 30,
+    /// <summary>Records a Coordinator deleting a Attendee and cascading onto their active bookings.</summary>
+    AttendeeDeleted = 30,
 }

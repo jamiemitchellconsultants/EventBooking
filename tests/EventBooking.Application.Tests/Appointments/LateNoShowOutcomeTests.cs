@@ -5,19 +5,19 @@ using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Appointments;
 
-/// <summary>Verifies late outcomes on past slots follow the existing timing and correction rules.</summary>
+/// <summary>Verifies late outcomes on past events follow the existing timing and correction rules.</summary>
 public sealed class LateNoShowOutcomeTests
 {
-    /// <summary>Verifies Expected to NoShow succeeds the day after the slot date with version and audit.</summary>
+    /// <summary>Verifies Expected to NoShow succeeds the day after the event date with version and audit.</summary>
     [Fact]
-    public async Task NoShowDayAfterSlotDateSucceeds()
+    public async Task NoShowDayAfterEventDateSucceeds()
     {
         var scenario = GivenScenario(new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero));
 
@@ -34,9 +34,9 @@ public sealed class LateNoShowOutcomeTests
         Assert.Equal(AuditAction.AppointmentMarkedNoShow, entry.Action);
     }
 
-    /// <summary>Verifies check-in is rejected once the slot date has passed.</summary>
+    /// <summary>Verifies check-in is rejected once the event date has passed.</summary>
     [Fact]
-    public async Task CheckInAfterSlotDateIsRejected()
+    public async Task CheckInAfterEventDateIsRejected()
     {
         var scenario = GivenScenario(new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero));
 
@@ -82,8 +82,8 @@ public sealed class LateNoShowOutcomeTests
     };
 
     /// <summary>Builds a DAT-only group; the scenario needs a mapping, not an identity.</summary>
-    private static EmployeeGroup DatOnly() =>
-        EmployeeGroup.Define(
+    private static AttendeeGroup DatOnly() =>
+        AttendeeGroup.Define(
             Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
 
@@ -93,24 +93,24 @@ public sealed class LateNoShowOutcomeTests
         var profiles = new InMemoryStaffAccessProfileRepository();
         profiles.Add(StaffAccessProfile.Create(
             staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
-        var candidate = Candidate.Create(
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", "amara@example.com", DatOnly());
         var operations = new TransactionOperationLog();
-        var candidates = new InMemoryCandidateRepository(operations);
-        candidates.Add(candidate);
-        var slot = ConfirmedSlot.CreateImported(
+        var attendees = new InMemoryAttendeeRepository(operations);
+        attendees.Add(attendee);
+        var eventItem = Event.CreateImported(
             Guid.NewGuid(),
-            new SlotWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
-        var slots = new InMemoryConfirmedSlotRepository(operations);
-        slots.Add(slot);
+        var events = new InMemoryEventRepository(operations);
+        events.Add(eventItem);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), candidate.Id, "invite-token", now.AddDays(1),
-            [slot.Id, Guid.NewGuid(), Guid.NewGuid()], candidate.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
+            [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, slot.Id, "manage-token", now.AddDays(-1));
+            Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
         var bookings = new InMemoryBookingRepository(operations);
         bookings.Add(booking);
         var appointment = BookingAppointment.Create(
@@ -124,21 +124,21 @@ public sealed class LateNoShowOutcomeTests
             new StaffAccessAuthorizer(profiles),
             appointments,
             bookings,
-            candidates,
+            attendees,
             invites,
-            slots,
+            events,
             new RecoveryBookingOutcomeCoordinator(),
             audit,
             unitOfWork,
             clock);
         return new Scenario(
-            staff, candidate, slot, appointment, booking, audit, operations, handler);
+            staff, attendee, eventItem, appointment, booking, audit, operations, handler);
     }
 
     private sealed record Scenario(
         Guid StaffUserId,
-        Candidate Candidate,
-        ConfirmedSlot Slot,
+        Attendee Attendee,
+        Event Event,
         BookingAppointment Appointment,
         Booking Booking,
         RecordingAuditLogger Audit,

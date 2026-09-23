@@ -17,7 +17,7 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var created = await client.PostAsJsonAsync(
-            "/api/slots/proposals",
+            "/api/event-proposals",
             new
             {
                 Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60),
@@ -27,16 +27,16 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
         var proposalId = await created.Content.ReadFromJsonAsync<Guid>();
 
         var accepted = await client.PostAsJsonAsync(
-            $"/api/slots/proposals/{proposalId}/acceptance",
+            $"/api/event-proposals/{proposalId}/acceptance",
             new { Headcount = 10 });
         var revised = await client.PostAsJsonAsync(
-            $"/api/slots/proposals/{proposalId}/acceptance",
+            $"/api/event-proposals/{proposalId}/acceptance",
             new { Headcount = 12 });
 
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
         Assert.Equal(HttpStatusCode.OK, revised.StatusCode);
 
-        var board = await client.GetFromJsonAsync<BoardResponse>("/api/slots/board");
+        var board = await client.GetFromJsonAsync<BoardResponse>("/api/events/board");
         var proposal = Assert.Single(
             board!.OpenProposals,
             item => item.ProposalId == proposalId);

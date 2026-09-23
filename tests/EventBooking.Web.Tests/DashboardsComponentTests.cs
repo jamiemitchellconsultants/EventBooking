@@ -46,9 +46,9 @@ public class DashboardsComponentTests : BunitContext
         var handler = new RoutedHandler();
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
         Services.AddSingleton(new DashboardsClient(http));
-        Services.AddSingleton(new CandidatesClient(http));
+        Services.AddSingleton(new AttendeesClient(http));
         Services.AddSingleton(new AuditClient(http));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
         return handler;
     }
 
@@ -64,22 +64,22 @@ public class DashboardsComponentTests : BunitContext
         Content = JsonContent.Create(new { title = "boom" }, options: CamelCase),
     };
 
-    private static DashboardsDto DashboardWithOneStuckCandidate(Guid candidateId) => new(
+    private static DashboardsDto DashboardWithOneStuckAttendee(Guid attendeeId) => new(
         AwaitingAvailability: [],
         NoResponse:
         [
             new NoResponseRowDto(
-                candidateId, "D. Stuck", "d.stuck@mail.com", ["DAT"], DateOnly.FromDateTime(DateTime.UtcNow)),
+                attendeeId, "D. Stuck", "d.stuck@mail.com", ["DAT"], DateOnly.FromDateTime(DateTime.UtcNow)),
         ],
-        Slots: [],
+        Events: [],
         EmailStatuses: []);
 
     [Fact]
     public async Task ASuccessfulReinviteStaysVisibleEvenWhenTheFollowingRefreshFails()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var handler = GivenClients();
-        handler.Enqueue(_ => DashboardJson(DashboardWithOneStuckCandidate(candidateId)));
+        handler.Enqueue(_ => DashboardJson(DashboardWithOneStuckAttendee(attendeeId)));
         handler.Enqueue(_ => NoContent());
         handler.Enqueue(_ => ServerError());
 
@@ -100,7 +100,7 @@ public class DashboardsComponentTests : BunitContext
     }
 
     private static DashboardsDto EmptyDashboard() =>
-        new(AwaitingAvailability: [], NoResponse: [], Slots: [], EmailStatuses: []);
+        new(AwaitingAvailability: [], NoResponse: [], Events: [], EmailStatuses: []);
 
     [Fact]
     public void ArrowKeysMoveTheSelectedTabAndWrapAtTheEnds()
@@ -128,7 +128,7 @@ public class DashboardsComponentTests : BunitContext
         // Wraps past the first tab to the last one.
         cut.Find("[role=tablist]").KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
         cut.WaitForAssertion(() =>
-            Assert.Equal("true", cut.Find("#slots-tab").GetAttribute("aria-selected")));
+            Assert.Equal("true", cut.Find("#events-tab").GetAttribute("aria-selected")));
 
         cut.Find("[role=tablist]").KeyDown(new KeyboardEventArgs { Key = "Home" });
         cut.WaitForAssertion(() =>
@@ -136,26 +136,26 @@ public class DashboardsComponentTests : BunitContext
 
         cut.Find("[role=tablist]").KeyDown(new KeyboardEventArgs { Key = "End" });
         cut.WaitForAssertion(() =>
-            Assert.Equal("true", cut.Find("#slots-tab").GetAttribute("aria-selected")));
+            Assert.Equal("true", cut.Find("#events-tab").GetAttribute("aria-selected")));
     }
 
-    private static DashboardsDto DashboardWithOneAwaitingCandidate(Guid candidateId) => new(
+    private static DashboardsDto DashboardWithOneAwaitingAttendee(Guid attendeeId) => new(
         AwaitingAvailability:
         [
             new AwaitingRowDto(
-                candidateId, "A. Waiting", "a.waiting@mail.com", ["DAT"],
+                attendeeId, "A. Waiting", "a.waiting@mail.com", ["DAT"],
                 DateOnly.FromDateTime(DateTime.UtcNow), 3),
         ],
         NoResponse: [],
-        Slots: [],
+        Events: [],
         EmailStatuses: []);
 
-    /// <summary>Verifies the awaiting-availability tab offers each candidate's history.</summary>
+    /// <summary>Verifies the awaiting-availability tab offers each attendee's history.</summary>
     [Fact]
     public void AwaitingTabRendersHistoryPanelPerRow()
     {
         var handler = GivenClients();
-        handler.Enqueue(_ => DashboardJson(DashboardWithOneAwaitingCandidate(Guid.NewGuid())));
+        handler.Enqueue(_ => DashboardJson(DashboardWithOneAwaitingAttendee(Guid.NewGuid())));
 
         var cut = Render<Dashboards>();
 
@@ -163,12 +163,12 @@ public class DashboardsComponentTests : BunitContext
         Assert.Single(cut.FindAll("details.audit-history"));
     }
 
-    /// <summary>Verifies the no-response tab offers each candidate's history.</summary>
+    /// <summary>Verifies the no-response tab offers each attendee's history.</summary>
     [Fact]
     public async Task NoResponseTabRendersHistoryPanelPerRow()
     {
         var handler = GivenClients();
-        handler.Enqueue(_ => DashboardJson(DashboardWithOneStuckCandidate(Guid.NewGuid())));
+        handler.Enqueue(_ => DashboardJson(DashboardWithOneStuckAttendee(Guid.NewGuid())));
 
         var cut = Render<Dashboards>();
         cut.WaitForAssertion(() => Assert.Contains("No response", cut.Markup));

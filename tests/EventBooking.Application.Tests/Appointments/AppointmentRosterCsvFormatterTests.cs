@@ -8,7 +8,7 @@ namespace EventBooking.Application.Tests.Appointments;
 public sealed class AppointmentRosterCsvFormatterTests
 {
     private const string Header =
-        "Candidate Name,Candidate Email,Appointment Type,Status,Checked In At,Outcome At";
+        "Attendee Name,Attendee Email,Appointment Type,Status,Checked In At,Outcome At";
 
     private static AppointmentRosterCsvFormatter Formatter() => new(new FakeClock());
 
@@ -18,7 +18,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatEmitsExactHeaderAndColumnOrder()
     {
-        var result = Formatter().Format(SlotWithRows());
+        var result = Formatter().Format(EventWithRows());
 
         Assert.Equal(Header, LinesOf(result.CsvText)[0]);
     }
@@ -26,7 +26,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatPreservesRowOrderAndRepeatsAppointmentType()
     {
-        var result = Formatter().Format(SlotWithRows());
+        var result = Formatter().Format(EventWithRows());
 
         var lines = LinesOf(result.CsvText);
         Assert.Equal(3, lines.Length);
@@ -37,9 +37,9 @@ public sealed class AppointmentRosterCsvFormatterTests
     }
 
     [Fact]
-    public void FormatEmptySlotYieldsHeaderOnly()
+    public void FormatEmptyEventYieldsHeaderOnly()
     {
-        var result = Formatter().Format(SlotWith([]));
+        var result = Formatter().Format(EventWith([]));
 
         Assert.Equal(Header + "\n", result.CsvText);
     }
@@ -47,18 +47,18 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatNullTimestampsRenderAsEmpty()
     {
-        var result = Formatter().Format(SlotWith([Row("Amina Yusuf", BookingAppointmentStatus.Expected)]));
+        var result = Formatter().Format(EventWith([Row("Amina Yusuf", BookingAppointmentStatus.Expected)]));
 
         var dataLine = LinesOf(result.CsvText)[1];
         Assert.EndsWith(",,", dataLine, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void FormatNonNullTimestampsRenderAsHeadOfficeIso8601()
+    public void FormatNonNullTimestampsRenderAsTransitionalLocationIso8601()
     {
         var checkedInAt = new DateTimeOffset(2026, 9, 15, 9, 35, 0, TimeSpan.Zero);
         var outcomeAt = new DateTimeOffset(2026, 9, 15, 10, 5, 0, TimeSpan.Zero);
-        var result = Formatter().Format(SlotWith(
+        var result = Formatter().Format(EventWith(
         [
             Row("Amina Yusuf", BookingAppointmentStatus.Completed, checkedInAt, outcomeAt),
         ]));
@@ -71,7 +71,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatUsesTheStatusEnumNameNotADisplayLabel()
     {
-        var result = Formatter().Format(SlotWith(
+        var result = Formatter().Format(EventWith(
         [
             Row("Amina Yusuf", BookingAppointmentStatus.CheckedIn),
             Row("Bruno Costa", BookingAppointmentStatus.NoShow),
@@ -85,7 +85,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatNameWithCommaAndQuoteIsRfc4180Escaped()
     {
-        var result = Formatter().Format(SlotWith(
+        var result = Formatter().Format(EventWith(
         [
             Row("Okafor, Ada \"Bisi\"", BookingAppointmentStatus.Expected),
         ]));
@@ -96,7 +96,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatNeverEmitsTheCommandTargetOrConcurrencyToken()
     {
-        var detail = SlotWithRows();
+        var detail = EventWithRows();
 
         var result = Formatter().Format(detail);
 
@@ -112,7 +112,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatBuildsSlugifiedFilename()
     {
-        var result = Formatter().Format(SlotWithRows());
+        var result = Formatter().Format(EventWithRows());
 
         Assert.Equal("roster-drug-&-alcohol-testing-2026-09-15-0930.csv", result.FileName);
     }
@@ -126,7 +126,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     [InlineData("\rreturn")]
     public void FormatNeutralisesFormulaTriggersWithASingleQuote(string name)
     {
-        var result = Formatter().Format(SlotWith(
+        var result = Formatter().Format(EventWith(
         [
             Row(name, BookingAppointmentStatus.Expected),
         ]));
@@ -138,39 +138,39 @@ public sealed class AppointmentRosterCsvFormatterTests
     [Fact]
     public void FormatFilenameKeepsAMidnightStartTimeFourDigits()
     {
-        var result = Formatter().Format(SlotWith([], startTime: new TimeOnly(0, 5)));
+        var result = Formatter().Format(EventWith([], startTime: new TimeOnly(0, 5)));
 
         Assert.Equal("roster-drug-&-alcohol-testing-2026-09-15-0005.csv", result.FileName);
     }
 
     private static BookingAppointmentRow Row(
-        string candidateName,
+        string attendeeName,
         BookingAppointmentStatus status,
         DateTimeOffset? checkedInAt = null,
         DateTimeOffset? outcomeAt = null) => new()
     {
         BookingAppointmentId = Guid.NewGuid(),
-        CandidateName = candidateName,
-        CandidateEmail = $"{candidateName.Split(' ')[0].ToLowerInvariant()}@mail.com",
+        AttendeeName = attendeeName,
+        AttendeeEmail = $"{attendeeName.Split(' ')[0].ToLowerInvariant()}@mail.com",
         Status = status,
         CheckedInAt = checkedInAt,
         OutcomeAt = outcomeAt,
         Version = 1,
     };
 
-    private static AppointmentSlotDetail SlotWith(
+    private static AppointmentEventDetail EventWith(
         IReadOnlyList<BookingAppointmentRow> rows,
         TimeOnly? startTime = null) => new()
     {
         AppointmentTypeName = "Drug & Alcohol Testing",
-        ConfirmedSlotId = Guid.NewGuid(),
+        EventId = Guid.NewGuid(),
         Date = new DateOnly(2026, 9, 15),
         StartTime = startTime ?? new TimeOnly(9, 30),
         EndTime = (startTime ?? new TimeOnly(9, 30)).AddHours(4),
         Appointments = rows,
     };
 
-    private static AppointmentSlotDetail SlotWithRows() => SlotWith(
+    private static AppointmentEventDetail EventWithRows() => EventWith(
     [
         Row("Amina Yusuf", BookingAppointmentStatus.Expected),
         Row("Bruno Costa", BookingAppointmentStatus.CheckedIn,

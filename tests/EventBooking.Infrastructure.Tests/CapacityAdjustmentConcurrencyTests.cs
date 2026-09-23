@@ -8,16 +8,16 @@ public class CapacityAdjustmentConcurrencyTests(PostgresFixture fixture)
     {
         await using var harness =
             await CapacityAdjustmentConcurrencyHarness.CreateAsync(fixture);
-        var slotId = await harness.GivenSlotAsync(totalHeadcount: 1);
-        await using var held = await harness.HoldAdjustmentAsync(slotId, totalHeadcount: 2);
+        var eventId = await harness.GivenEventAsync(totalHeadcount: 1);
+        await using var held = await harness.HoldAdjustmentAsync(eventId, totalHeadcount: 2);
 
-        var booking = harness.BookAsync(slotId);
+        var booking = harness.BookAsync(eventId);
         await AssertStillWaiting(booking);
 
         await held.CommitAsync();
         await booking.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var capacity = await harness.ReadAsync(slotId);
+        var capacity = await harness.ReadAsync(eventId);
         Assert.Equal(2, capacity.TotalHeadcount);
         Assert.Equal(1, capacity.RemainingCapacity);
         Assert.InRange(capacity.RemainingCapacity, 0, capacity.TotalHeadcount);
@@ -28,16 +28,16 @@ public class CapacityAdjustmentConcurrencyTests(PostgresFixture fixture)
     {
         await using var harness =
             await CapacityAdjustmentConcurrencyHarness.CreateAsync(fixture);
-        var slotId = await harness.GivenSlotAsync(totalHeadcount: 2);
-        await using var held = await harness.HoldBookingAsync(slotId);
+        var eventId = await harness.GivenEventAsync(totalHeadcount: 2);
+        await using var held = await harness.HoldBookingAsync(eventId);
 
-        var adjustment = harness.AdjustAsync(slotId, totalHeadcount: 1);
+        var adjustment = harness.AdjustAsync(eventId, totalHeadcount: 1);
         await AssertStillWaiting(adjustment);
 
         await held.CommitAsync();
         await adjustment.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var capacity = await harness.ReadAsync(slotId);
+        var capacity = await harness.ReadAsync(eventId);
         Assert.Equal(1, capacity.TotalHeadcount);
         Assert.Equal(0, capacity.RemainingCapacity);
         Assert.InRange(capacity.RemainingCapacity, 0, capacity.TotalHeadcount);

@@ -1,7 +1,7 @@
 namespace EventBooking.Web.Services;
 
 public sealed record AwaitingRowDto(
-    Guid CandidateId,
+    Guid AttendeeId,
     string Name,
     string Email,
     IReadOnlyList<string> RequiredCodes,
@@ -9,30 +9,30 @@ public sealed record AwaitingRowDto(
     int DaysWaiting);
 
 public sealed record NoResponseRowDto(
-    Guid CandidateId,
+    Guid AttendeeId,
     string Name,
     string Email,
     IReadOnlyList<string> RequiredCodes,
     DateOnly GaveUpOn);
 
-public sealed record SlotCapacityRowDto(string Code, int TotalHeadcount, int RemainingCapacity);
+public sealed record EventCapacityRowDto(string Code, int TotalHeadcount, int RemainingCapacity);
 
-public sealed record SlotRowDto(
-    Guid ConfirmedSlotId,
+public sealed record EventRowDto(
+    Guid EventId,
     DateOnly Date,
     TimeOnly StartTime,
     TimeOnly EndTime,
-    IReadOnlyList<SlotCapacityRowDto> Capacities,
+    IReadOnlyList<EventCapacityRowDto> Capacities,
     int ActiveBookings);
 
-/// <summary>The latest candidate delivery status projected for staff pages.</summary>
-/// <param name="CandidateId">The candidate whose delivery is shown.</param>
+/// <summary>The latest attendee delivery status projected for staff pages.</summary>
+/// <param name="AttendeeId">The attendee whose delivery is shown.</param>
 /// <param name="TemplateDisplay">Human-readable template name.</param>
 /// <param name="SentAt">The latest attempt or pending timestamp.</param>
 /// <param name="Status">The durable delivery status.</param>
 /// <param name="CanRetry">Whether current server-side state permits a retry.</param>
-public sealed record CandidateEmailStatusDto(
-    Guid CandidateId,
+public sealed record AttendeeEmailStatusDto(
+    Guid AttendeeId,
     string TemplateDisplay,
     DateTimeOffset SentAt,
     string Status,
@@ -41,8 +41,8 @@ public sealed record CandidateEmailStatusDto(
 public sealed record DashboardsDto(
     IReadOnlyList<AwaitingRowDto> AwaitingAvailability,
     IReadOnlyList<NoResponseRowDto> NoResponse,
-    IReadOnlyList<SlotRowDto> Slots,
-    IReadOnlyList<CandidateEmailStatusDto> EmailStatuses);
+    IReadOnlyList<EventRowDto> Events,
+    IReadOnlyList<AttendeeEmailStatusDto> EmailStatuses);
 
 public sealed class DashboardsClient(HttpClient http)
 {

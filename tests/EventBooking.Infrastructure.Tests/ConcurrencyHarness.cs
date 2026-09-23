@@ -5,10 +5,10 @@ using EventBooking.Application.Common;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
@@ -34,8 +34,8 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
     private readonly PostgresFixture _fixture;
     private readonly ServiceProvider _services;
-    private IReadOnlyList<Guid> _fallbackSlotIds = [];
-    private int _nextSlotOffset;
+    private IReadOnlyList<Guid> _fallbackEventIds = [];
+    private int _nextEventOffset;
 
     private ConcurrencyHarness(PostgresFixture fixture, ServiceProvider services)
     {
@@ -51,10 +51,10 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
     }
 
     /// <summary>
-    /// The two genuine high-capacity options offered beside every slot under contention. They are
+    /// The two genuine high-capacity options offered beside every event under contention. They are
     /// deliberately kept alive so a losing invite remains valid while the proof runs.
     /// </summary>
-    public IReadOnlyList<Guid> FallbackSlotIds => _fallbackSlotIds;
+    public IReadOnlyList<Guid> FallbackEventIds => _fallbackEventIds;
 
     public static async Task<ConcurrencyHarness> CreateAsync(PostgresFixture fixture)
     {
@@ -65,11 +65,11 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
         services.AddEventBookingInfrastructure(
             fixture.ConnectionString,
-            new HeadOfficeOptions("Europe/London"),
+            new TransitionalLocationOptions("Europe/London"),
             new TokenOptions("a-concurrency-test-signing-key-long-enough"));
 
         services.AddEventBookingApplication(
-            new CandidatePortalOptions("https://booking.example.com", "HQ", "recruitment@example.com"));
+            new AttendeePortalOptions("https://booking.example.com", "HQ", "recruitment@example.com"));
 
         // Nothing registers IEmailTransport above any more — AddEventBookingInfrastructure no
         // longer does that itself, and this harness never calls AddAwsEmailTransport or
@@ -77,91 +77,91 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
         services.AddScoped<IEmailTransport, SilentTransport>();
 
         var harness = new ConcurrencyHarness(fixture, services.BuildServiceProvider());
-        harness._fallbackSlotIds =
+        harness._fallbackEventIds =
         [
-            await harness.GivenSlotAsync(drugAndAlcohol: 100, medical: 100, uniform: 100),
-            await harness.GivenSlotAsync(drugAndAlcohol: 100, medical: 100, uniform: 100),
+            await harness.GivenEventAsync(drugAndAlcohol: 100, medical: 100, uniform: 100),
+            await harness.GivenEventAsync(drugAndAlcohol: 100, medical: 100, uniform: 100),
         ];
 
         return harness;
     }
 
-    public async Task<Guid> GivenSlotAsync(int drugAndAlcohol, int medical, int uniform)
+    public async Task<Guid> GivenEventAsync(int drugAndAlcohol, int medical, int uniform)
     {
-        var proposal = SlotProposal.Create(
+        var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new SlotWindow(
-                DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30 + Interlocked.Increment(ref _nextSlotOffset)),
+            new EventWindow(
+                DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30 + Interlocked.Increment(ref _nextEventOffset)),
                 new TimeOnly(9, 0)),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), drugAndAlcohol);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), medical);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), uniform);
 
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
 
         await using var context = _fixture.NewContext();
-        context.SlotProposals.Add(proposal);
-        context.ConfirmedSlots.Add(slot);
+        context.EventProposals.Add(proposal);
+        context.Events.Add(eventItem);
         await context.SaveChangesAsync();
 
-        return slot.Id;
+        return eventItem.Id;
     }
 
     /// <summary>Opens an independent scope with its own connection for one racer.</summary>
     public IServiceScope CreateScope() => _services.CreateScope();
 
-    public async Task<string> GivenInvitedCandidateAsync(Guid slotId, params Guid[] requiredTypeIds)
+    public async Task<string> GivenInvitedAttendeeAsync(Guid eventId, params Guid[] requiredTypeIds)
     {
         var tokens = _services.GetRequiredService<ITokenService>();
 
-        var group = EmployeeGroup.Define(
+        var group = AttendeeGroup.Define(
             Guid.NewGuid(), $"HARNESS_{Guid.NewGuid():N}".ToUpperInvariant(), "Harness", true,
             requiredTypeIds);
-        var candidate = Candidate.Create(
-            Guid.NewGuid(), "Concurrent Candidate", $"{Guid.NewGuid():N}@mail.com", group);
-        candidate.MarkInvited();
+        var attendee = Attendee.Create(
+            Guid.NewGuid(), "Concurrent Attendee", $"{Guid.NewGuid():N}@mail.com", group);
+        attendee.MarkInvited();
 
         var inviteId = Guid.NewGuid();
         var issued = tokens.Issue(inviteId);
 
-        // Every invite is real: the fallback slots remain valid options if the contested one fills.
+        // Every invite is real: the fallback events remain valid options if the contested one fills.
         var invite = Invite.CreateInitial(
             inviteId,
-            candidate.Id,
+            attendee.Id,
             issued.TokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
-            [slotId, .. _fallbackSlotIds],
+            [eventId, .. _fallbackEventIds],
             requiredTypeIds,
             0);
 
         await using var context = _fixture.NewContext();
-        context.EmployeeGroups.Add(group);
-        context.Candidates.Add(candidate);
+        context.AttendeeGroups.Add(group);
+        context.Attendees.Add(attendee);
         context.Invites.Add(invite);
         await context.SaveChangesAsync();
 
         return issued.Token;
     }
 
-    public async Task<Result<ConfirmBookingOutcome>> ConfirmAsync(string token, Guid slotId)
+    public async Task<Result<ConfirmBookingOutcome>> ConfirmAsync(string token, Guid eventId)
     {
         // A scope per attempt: separate context, separate connection, separate transaction.
         await using var scope = _services.CreateAsyncScope();
         var handler = scope.ServiceProvider.GetRequiredService<ConfirmBookingHandler>();
 
         return await handler.HandleAsync(
-            new ConfirmBookingCommand(token, slotId), CancellationToken.None);
+            new ConfirmBookingCommand(token, eventId), CancellationToken.None);
     }
 
     /// <summary>
     /// Starts every confirmation only after a real external transaction has acquired the target
-    /// slot's row lock. Every production handler consequently waits on PostgreSQL before the
+    /// event's row lock. Every production handler consequently waits on PostgreSQL before the
     /// guard commits, proving that the work overlaps rather than being merely scheduled together.
     /// </summary>
     public async Task<ConfirmationBatch> ConfirmBatchAsync(
         IReadOnlyCollection<string> tokens,
-        Guid slotId)
+        Guid eventId)
     {
         var tokenList = tokens.ToArray();
         if (tokenList.Length == 0)
@@ -171,11 +171,11 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
         await using var guardContext = _fixture.NewContext();
         await using var guardTransaction = await guardContext.Database.BeginTransactionAsync();
-        var lockedSlot = await new ConfirmedSlotRepository(guardContext)
-            .LockForUpdateAsync(slotId, CancellationToken.None);
-        if (lockedSlot is null)
+        var lockedEvent = await new EventRepository(guardContext)
+            .LockForUpdateAsync(eventId, CancellationToken.None);
+        if (lockedEvent is null)
         {
-            throw new InvalidOperationException("The batch target slot does not exist.");
+            throw new InvalidOperationException("The batch target event does not exist.");
         }
 
         var startGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -183,7 +183,7 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             .Select(_ => new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously))
             .ToArray();
         var attempts = tokenList
-            .Select((token, index) => ConfirmAfterGateAsync(token, slotId, startGate.Task, readiness[index]))
+            .Select((token, index) => ConfirmAfterGateAsync(token, eventId, startGate.Task, readiness[index]))
             .ToArray();
 
         var guardCommitted = false;
@@ -222,9 +222,9 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
     /// <summary>
     /// Reloads a pending invite by its raw token and verifies that all three option IDs identify
-    /// active slots with spare capacity for the candidate's required appointment types.
+    /// active events with spare capacity for the attendee's required appointment types.
     /// </summary>
-    public async Task<IReadOnlyList<Guid>> LiveOptionSlotIdsAsync(string token)
+    public async Task<IReadOnlyList<Guid>> LiveOptionEventIdsAsync(string token)
     {
         var tokenHash = _services.GetRequiredService<ITokenService>().Hash(token);
 
@@ -237,50 +237,50 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             throw new InvalidOperationException("Only a pending invite can retain live options.");
         }
 
-        var optionIds = invite.OfferedSlotIds;
+        var optionIds = invite.OfferedEventIds;
         if (optionIds.Count != Invite.RequiredOptionCount || optionIds.Distinct().Count() != optionIds.Count)
         {
             throw new InvalidOperationException("A live invite must retain three distinct options.");
         }
 
-        var candidate = await context.Candidates
+        var attendee = await context.Attendees
             .Include(c => c.Requirements)
-            .SingleAsync(c => c.Id == invite.CandidateId);
-        var slots = await context.ConfirmedSlots
+            .SingleAsync(c => c.Id == invite.AttendeeId);
+        var events = await context.Events
             .Include(s => s.Capacities)
             .Where(s => optionIds.Contains(s.Id))
             .ToListAsync();
 
-        if (slots.Count != optionIds.Count
-            || slots.Any(slot => slot.Status != ConfirmedSlotStatus.Active)
-            || slots.Any(slot => !slot.HasSpareCapacityForAll(candidate.RequiredAppointmentTypeIds)))
+        if (events.Count != optionIds.Count
+            || events.Any(eventItem => eventItem.Status != EventStatus.Active)
+            || events.Any(eventItem => !eventItem.HasSpareCapacityForAll(attendee.RequiredAppointmentTypeIds)))
         {
-            throw new InvalidOperationException("Every invite option must be a live eligible slot.");
+            throw new InvalidOperationException("Every invite option must be a live eligible eventItem.");
         }
 
         return optionIds;
     }
 
-    public async Task<int> RemainingCapacityAsync(Guid slotId, Guid appointmentTypeId)
+    public async Task<int> RemainingCapacityAsync(Guid eventId, Guid appointmentTypeId)
     {
         await using var context = _fixture.NewContext();
-        var slot = await context.ConfirmedSlots
+        var eventItem = await context.Events
             .Include(s => s.Capacities)
-            .SingleAsync(s => s.Id == slotId);
+            .SingleAsync(s => s.Id == eventId);
 
-        return slot.CapacityFor(appointmentTypeId).RemainingCapacity;
+        return eventItem.CapacityFor(appointmentTypeId).RemainingCapacity;
     }
 
-    public async Task<int> ActiveBookingCountAsync(Guid slotId)
+    public async Task<int> ActiveBookingCountAsync(Guid eventId)
     {
         await using var context = _fixture.NewContext();
         return await context.Bookings.CountAsync(
-            b => b.ConfirmedSlotId == slotId && b.Status == BookingStatus.Active);
+            b => b.EventId == eventId && b.Status == BookingStatus.Active);
     }
 
     private async Task<Result<ConfirmBookingOutcome>> ConfirmAfterGateAsync(
         string token,
-        Guid slotId,
+        Guid eventId,
         Task startGate,
         TaskCompletionSource<int> ready)
     {
@@ -295,7 +295,7 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
             var handler = scope.ServiceProvider.GetRequiredService<ConfirmBookingHandler>();
             return await handler.HandleAsync(
-                new ConfirmBookingCommand(token, slotId), CancellationToken.None);
+                new ConfirmBookingCommand(token, eventId), CancellationToken.None);
         }
         catch (Exception exception)
         {

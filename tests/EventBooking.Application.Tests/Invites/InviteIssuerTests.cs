@@ -3,22 +3,22 @@ using EventBooking.Application.Notifications;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Invites;
 
 public class InviteIssuerTests
 {
-    private static readonly CandidatePortalOptions Portal = new(
+    private static readonly AttendeePortalOptions Portal = new(
         "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
 
     private readonly InMemoryInviteRepository _invites = new();
-    private readonly InMemoryEmployeeGroupRepository _groups = new();
-    private readonly InMemoryConfirmedSlotRepository _slots = new();
+    private readonly InMemoryAttendeeGroupRepository _groups = new();
+    private readonly InMemoryEventRepository _events = new();
     private readonly InMemorySystemSettingsRepository _settings = new();
     private readonly FakeTokenService _tokens = new();
     private readonly RecordingEmailSender _email = new();
@@ -26,21 +26,21 @@ public class InviteIssuerTests
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
-    private readonly Candidate _candidate;
+    private readonly Attendee _attendee;
 
     public InviteIssuerTests()
     {
-        var pilots = EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        var pilots = AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _candidate = Candidate.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
     }
 
     private InviteIssuer Issuer => new(
         _invites,
         _groups,
-        new EligibleSlotFinder(_slots, _clock),
+        new EligibleEventFinder(_events, _clock),
         _settings,
         _tokens,
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
@@ -51,7 +51,7 @@ public class InviteIssuerTests
     private async Task<InviteIssueResult> Issue(int retryCount = 0, bool isReinvite = false)
     {
         var outcome = await Issuer.IssueInitialAsync(
-            _candidate, retryCount, ActorType.System, null, isReinvite, CancellationToken.None);
+            _attendee, retryCount, ActorType.System, null, isReinvite, CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
         var result = outcome.Value;
@@ -71,11 +71,11 @@ public class InviteIssuerTests
     }
 
     [Fact]
-    public async Task ThreeEligibleSlotsProduceAnInviteWithThreeOptions()
+    public async Task ThreeEligibleEventsProduceAnInviteWithThreeOptions()
     {
-        AddSlot(new DateOnly(2026, 9, 10));
-        AddSlot(new DateOnly(2026, 9, 12));
-        AddSlot(new DateOnly(2026, 9, 14));
+        AddEvent(new DateOnly(2026, 9, 10));
+        AddEvent(new DateOnly(2026, 9, 12));
+        AddEvent(new DateOnly(2026, 9, 14));
 
         var result = await Issue();
 
@@ -84,17 +84,17 @@ public class InviteIssuerTests
 
         var invite = Assert.Single(_invites.Items);
         Assert.Equal(result.InviteId, invite.Id);
-        Assert.Equal(_candidate.Id, invite.CandidateId);
+        Assert.Equal(_attendee.Id, invite.AttendeeId);
         Assert.Equal(3, invite.Options.Count);
         Assert.Equal(InviteStatus.Pending, invite.Status);
         Assert.Equal(0, invite.RetryCount);
-        Assert.Equal(CandidateStatus.Invited, _candidate.Status);
+        Assert.Equal(AttendeeStatus.Invited, _attendee.Status);
     }
 
     [Fact]
     public async Task TheExpiryComesFromSystemSettings()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         await Issue();
 
@@ -106,7 +106,7 @@ public class InviteIssuerTests
     [Fact]
     public async Task OnlyTheTokenHashIsStoredAndTheLinkCarriesTheToken()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         var result = await Issue();
 
@@ -118,10 +118,10 @@ public class InviteIssuerTests
     }
 
     [Fact]
-    public async Task FewerThanThreeEligibleSlotsMeansNoInviteAndNoEmail()
+    public async Task FewerThanThreeEligibleEventsMeansNoInviteAndNoEmail()
     {
-        AddSlot(new DateOnly(2026, 9, 10));
-        AddSlot(new DateOnly(2026, 9, 12));
+        AddEvent(new DateOnly(2026, 9, 10));
+        AddEvent(new DateOnly(2026, 9, 12));
 
         var result = await Issue();
 
@@ -130,19 +130,19 @@ public class InviteIssuerTests
         Assert.False(result.EmailSent);
         Assert.Empty(_invites.Items);
         Assert.Empty(_email.Sent);
-        Assert.Equal(CandidateStatus.AwaitingAvailability, _candidate.Status);
+        Assert.Equal(AttendeeStatus.AwaitingAvailability, _attendee.Status);
     }
 
     [Fact]
     public async Task APendingInviteIsSupersededByTheNewOne()
     {
-        AddThreeSlots();
+        AddThreeEvents();
         var old = Invite.CreateInitial(
-            Guid.NewGuid(), _candidate.Id, "old-hash", _clock.UtcNow.AddDays(4),
+            Guid.NewGuid(), _attendee.Id, "old-hash", _clock.UtcNow.AddDays(4),
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
-            _candidate.RequiredAppointmentTypeIds, 0);
+            _attendee.RequiredAppointmentTypeIds, 0);
         _invites.Add(old);
-        _candidate.MarkInvited();
+        _attendee.MarkInvited();
 
         await Issue();
 
@@ -153,7 +153,7 @@ public class InviteIssuerTests
     [Fact]
     public async Task TheRetryCountIsCarriedOntoTheNewInvite()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         await Issue(retryCount: 2);
 
@@ -163,17 +163,17 @@ public class InviteIssuerTests
     [Fact]
     public async Task AReInviteUsesTheReminderTemplate()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         await Issue(isReinvite: true);
 
-        Assert.Equal(EmailTemplate.CandidateReinvite, _email.Sent.Single().Template);
+        Assert.Equal(EmailTemplate.AttendeeReinvite, _email.Sent.Single().Template);
     }
 
     [Fact]
     public async Task AFailedSendStillLeavesTheInviteInPlace()
     {
-        AddThreeSlots();
+        AddThreeEvents();
         _email.FailNextSend = true;
 
         var result = await Issue();
@@ -188,7 +188,7 @@ public class InviteIssuerTests
     [Fact]
     public async Task ASuccessfulIssueWritesBothAuditEntries()
     {
-        AddThreeSlots();
+        AddThreeEvents();
 
         await Issue();
 
@@ -202,21 +202,21 @@ public class InviteIssuerTests
         Assert.DoesNotContain("@", sent.Details, StringComparison.Ordinal);
     }
 
-    private void AddThreeSlots()
+    private void AddThreeEvents()
     {
-        AddSlot(new DateOnly(2026, 9, 10));
-        AddSlot(new DateOnly(2026, 9, 12));
-        AddSlot(new DateOnly(2026, 9, 14));
+        AddEvent(new DateOnly(2026, 9, 10));
+        AddEvent(new DateOnly(2026, 9, 12));
+        AddEvent(new DateOnly(2026, 9, 14));
     }
 
-    private void AddSlot(DateOnly date)
+    private void AddEvent(DateOnly date)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-        _slots.Add(ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal));
+        _events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
     }
 }

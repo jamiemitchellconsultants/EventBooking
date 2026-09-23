@@ -27,12 +27,12 @@ public sealed class AgentOperationCatalogTests
     public void CatalogContainsTheEightNewParityMappings()
     {
         var names = AgentOperationCatalog.All.Values.Select(x => x.McpTool).ToHashSet();
-        Assert.Contains("get_slot_operations", names);
+        Assert.Contains("get_event_operations", names);
         Assert.Contains("start_recovery_invite", names);
         Assert.Contains("cancel_recovery_invite", names);
-        Assert.Contains("list_candidate_bookings", names);
-        Assert.Contains("cancel_candidate_booking", names);
-        Assert.Contains("get_candidate_readiness", names);
+        Assert.Contains("list_attendee_bookings", names);
+        Assert.Contains("cancel_attendee_booking", names);
+        Assert.Contains("get_attendee_readiness", names);
         Assert.Contains("search_audit", names);
         Assert.Contains("export_appointment_roster", names);
     }

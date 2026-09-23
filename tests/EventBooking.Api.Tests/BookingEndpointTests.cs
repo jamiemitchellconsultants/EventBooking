@@ -2,10 +2,10 @@ using System.Net;
 using System.Text.Json;
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,9 +16,9 @@ namespace EventBooking.Api.Tests;
 public class BookingEndpointTests(ApiFactory factory)
 {
     [Fact]
-    public async Task AValidTokenReturnsOnlyTheCandidateFacingOptionsEarliestFirst()
+    public async Task AValidTokenReturnsOnlyTheAttendeeFacingOptionsEarliestFirst()
     {
-        var invite = await GivenAnInvitedCandidate();
+        var invite = await GivenAnInvitedAttendee();
         factory.SignedInAs = null;
         var client = factory.CreateClient();
 
@@ -29,26 +29,26 @@ public class BookingEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(view);
 
-        // Catches an incomplete root projection that drops the invite or candidate identity.
+        // Catches an incomplete root projection that drops the invite or attendee identity.
         Assert.Equal(invite.Id, view!.InviteId);
-        Assert.Equal("Amara Novak", view!.CandidateName);
+        Assert.Equal("Amara Novak", view!.AttendeeName);
 
         // Catches projecting no appointment types or types from the wrong source.
         Assert.Equal(["Drug & Alcohol Testing", "Uniform Fitting"], view.AppointmentTypeNames);
 
-        // Catches removing chronological ordering or ordering by the offered list or slot ID.
+        // Catches removing chronological ordering or ordering by the offered list or event ID.
         Assert.Equal(
             [
                 Guid.Parse("00000000-0000-0000-0000-000000000010"),
                 Guid.Parse("00000000-0000-0000-0000-000000000090"),
                 Guid.Parse("00000000-0000-0000-0000-000000000050"),
             ],
-            view.Options.Select(option => option.ConfirmedSlotId));
+            view.Options.Select(option => option.EventId));
         Assert.Equal(
             [new DateOnly(2030, 1, 14), new DateOnly(2030, 1, 15), new DateOnly(2030, 1, 16)],
             view.Options.Select(option => option.Date));
 
-        // Catches omitted or incorrectly mapped candidate-facing window fields.
+        // Catches omitted or incorrectly mapped attendee-facing window fields.
         Assert.Equal(
             [new TimeOnly(9, 0), new TimeOnly(11, 0), new TimeOnly(13, 0)],
             view.Options.Select(option => option.StartTime));
@@ -63,7 +63,7 @@ public class BookingEndpointTests(ApiFactory factory)
             ],
             view.Options.Select(option => option.Display));
 
-        // Catches returning a domain slot/capacity object instead of the candidate-facing projection.
+        // Catches returning a domain event/capacity object instead of the attendee-facing projection.
         using var document = JsonDocument.Parse(json);
         var links = document.RootElement.GetProperty("_links");
         var confirm = links.GetProperty("confirm");
@@ -83,9 +83,9 @@ public class BookingEndpointTests(ApiFactory factory)
             "window",
             "acceptances",
             "createdByManagerUserId",
-            "candidateId",
+            "attendeeId",
             "tokenHash",
-            "offeredSlotIds",
+            "offeredEventIds",
             "expiresAt",
             "usedAt");
     }
@@ -113,14 +113,14 @@ public class BookingEndpointTests(ApiFactory factory)
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    /// <summary>Seeds three deliberately non-ID-ordered slots, a candidate and a pending invite.</summary>
-    internal async Task<InviteFixture> GivenAnInvitedCandidate()
+    /// <summary>Seeds three deliberately non-ID-ordered events, a attendee and a pending invite.</summary>
+    internal async Task<InviteFixture> GivenAnInvitedAttendee()
     {
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
 
-        var offeredSlots = new[]
+        var offeredEvents = new[]
         {
             new InviteOptionFixture(
                 Guid.Parse("00000000-0000-0000-0000-000000000050"), new DateOnly(2030, 1, 16), new TimeOnly(13, 0)),
@@ -130,33 +130,33 @@ public class BookingEndpointTests(ApiFactory factory)
                 Guid.Parse("00000000-0000-0000-0000-000000000090"), new DateOnly(2030, 1, 15), new TimeOnly(11, 0)),
         };
 
-        foreach (var offeredSlot in offeredSlots)
+        foreach (var offeredEvent in offeredEvents)
         {
-            var proposal = SlotProposal.Create(
+            var proposal = EventProposal.Create(
                 Guid.NewGuid(),
-                new SlotWindow(offeredSlot.Date, offeredSlot.StartTime),
+                new EventWindow(offeredEvent.Date, offeredEvent.StartTime),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-            var slot = ConfirmedSlot.CreateFrom(offeredSlot.Id, proposal);
-            context.SlotProposals.Add(proposal);
-            context.ConfirmedSlots.Add(slot);
+            var eventItem = Event.CreateFrom(offeredEvent.Id, proposal);
+            context.EventProposals.Add(proposal);
+            context.Events.Add(eventItem);
         }
 
-        var pilots = context.EmployeeGroups.Include(g => g.Requirements).Single(g => g.Id == EmployeeGroupIds.Pilots);
-        var candidate = Candidate.Create(
+        var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", $"{Guid.NewGuid():N}@mail.com", pilots);
-        candidate.MarkInvited();
-        context.Candidates.Add(candidate);
+        attendee.MarkInvited();
+        context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
         var issued = tokens.Issue(inviteId);
         context.Invites.Add(Invite.CreateInitial(
-            inviteId, candidate.Id, issued.TokenHash, DateTimeOffset.UtcNow.AddDays(4),
-            offeredSlots.Select(slot => slot.Id).ToList(),
-            candidate.RequiredAppointmentTypeIds, 0));
+            inviteId, attendee.Id, issued.TokenHash, DateTimeOffset.UtcNow.AddDays(4),
+            offeredEvents.Select(eventItem => eventItem.Id).ToList(),
+            attendee.RequiredAppointmentTypeIds, 0));
 
         await context.SaveChangesAsync();
 
@@ -187,7 +187,7 @@ public class BookingEndpointTests(ApiFactory factory)
     internal sealed record InviteOptionFixture(Guid Id, DateOnly Date, TimeOnly StartTime);
 
     internal sealed record InviteOptionResponse(
-        Guid ConfirmedSlotId,
+        Guid EventId,
         DateOnly Date,
         TimeOnly StartTime,
         TimeOnly EndTime,
@@ -195,7 +195,7 @@ public class BookingEndpointTests(ApiFactory factory)
 
     internal sealed record InviteResponse(
         Guid InviteId,
-        string CandidateName,
+        string AttendeeName,
         IReadOnlyList<string> AppointmentTypeNames,
         IReadOnlyList<InviteOptionResponse> Options);
 }

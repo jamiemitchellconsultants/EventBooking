@@ -3,18 +3,18 @@ using EventBooking.Application.Access;
 using EventBooking.Application.Common;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Notifications;
 
-/// <summary>Requests a staff-authorized retry of the candidate's latest failed or pending email.</summary>
+/// <summary>Requests a staff-authorized retry of the attendee's latest failed or pending email.</summary>
 /// <param name="StaffUserId">The coordinator requesting the retry.</param>
-/// <param name="CandidateId">The candidate whose latest delivery should be retried.</param>
-public sealed record RetryEmailCommand(Guid StaffUserId, Guid CandidateId);
+/// <param name="AttendeeId">The attendee whose latest delivery should be retried.</param>
+public sealed record RetryEmailCommand(Guid StaffUserId, Guid AttendeeId);
 
 /// <summary>Reports the durable result of a template-aware email retry.</summary>
 /// <param name="DeliveryStatus">The provider outcome of the new attempt.</param>
@@ -25,31 +25,31 @@ public sealed record RetryEmailOutcome(string DeliveryStatus, Guid DeliveryId);
 /// Regenerates the latest delivery from safe persisted context. Token-bearing templates rotate
 /// their hash before a fresh raw token is placed in the in-memory provider message.
 /// </summary>
-/// <param name="access">Authorizes candidate-management access from the caller's complete profile.</param>
-/// <param name="candidates">Locks the candidate lifecycle root.</param>
+/// <param name="access">Authorizes attendee-management access from the caller's complete profile.</param>
+/// <param name="attendees">Locks the attendee lifecycle root.</param>
 /// <param name="invites">Loads and rotates pending invite hashes.</param>
 /// <param name="bookings">Loads and rotates active booking hashes.</param>
-/// <param name="slots">Loads template slot context.</param>
+/// <param name="events">Loads template event context.</param>
 /// <param name="deliveryRepository">Loads the latest delivery server-side.</param>
 /// <param name="deliveries">Stages and dispatches the replacement attempt.</param>
 /// <param name="tokens">Issues fresh raw tokens and their hashes.</param>
 /// <param name="unitOfWork">Owns the replacement transaction.</param>
 /// <param name="clock">Supplies claim and expiry times.</param>
-/// <param name="portal">Provides candidate portal links and copy settings.</param>
+/// <param name="portal">Provides attendee portal links and copy settings.</param>
 /// <param name="appointments">The appointments.</param>
 public sealed class RetryEmailHandler(
     IStaffAccessAuthorizer access,
-    ICandidateRepository candidates,
+    IAttendeeRepository attendees,
     IInviteRepository invites,
     IBookingRepository bookings,
-    IConfirmedSlotRepository slots,
+    IEventRepository events,
     IBookingAppointmentRepository appointments,
     IEmailDeliveryRepository deliveryRepository,
     EmailDeliveryService deliveries,
     ITokenService tokens,
     IUnitOfWork unitOfWork,
     IClock clock,
-    CandidatePortalOptions portal)
+    AttendeePortalOptions portal)
 {
     private static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(5);
 
@@ -62,7 +62,7 @@ public sealed class RetryEmailHandler(
     {
         var authorized = await access.AuthorizeAsync(
             command.StaffUserId,
-            StaffCapability.ManageCandidates,
+            StaffCapability.ManageAttendees,
             null,
             cancellationToken);
         if (authorized.IsFailure)
@@ -71,19 +71,19 @@ public sealed class RetryEmailHandler(
         }
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
-        var candidate = await candidates.LockForUpdateAsync(command.CandidateId, cancellationToken);
-        if (candidate is null)
+        var attendee = await attendees.LockForUpdateAsync(command.AttendeeId, cancellationToken);
+        if (attendee is null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Result<RetryEmailOutcome>.Failure(Error.NotFound("No such candidate."));
+            return Result<RetryEmailOutcome>.Failure(Error.NotFound("No such attendee."));
         }
 
-        var previous = await deliveryRepository.LockLatestForCandidateAsync(
-            command.CandidateId, cancellationToken);
+        var previous = await deliveryRepository.LockLatestForAttendeeAsync(
+            command.AttendeeId, cancellationToken);
         if (previous is null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Result<RetryEmailOutcome>.Failure(Error.NotFound("This candidate has no email delivery to retry."));
+            return Result<RetryEmailOutcome>.Failure(Error.NotFound("This attendee has no email delivery to retry."));
         }
 
         if (previous.Status is not EmailStatus.Failed and not EmailStatus.Pending)
@@ -105,12 +105,12 @@ public sealed class RetryEmailHandler(
         {
             message = previous.TemplateName switch
             {
-                EmailTemplate.CandidateInvite or EmailTemplate.CandidateReinvite =>
-                    await RegenerateInviteAsync(candidate, previous, cancellationToken),
+                EmailTemplate.AttendeeInvite or EmailTemplate.AttendeeReinvite =>
+                    await RegenerateInviteAsync(attendee, previous, cancellationToken),
                 EmailTemplate.BookingConfirmation =>
-                    await RegenerateBookingAsync(candidate, previous, cancellationToken),
-                EmailTemplate.SlotCancelledRebookingNeeded =>
-                    await RegenerateCancellationAsync(candidate, previous, cancellationToken),
+                    await RegenerateBookingAsync(attendee, previous, cancellationToken),
+                EmailTemplate.EventCancelledRebookingNeeded =>
+                    await RegenerateCancellationAsync(attendee, previous, cancellationToken),
                 _ => throw new DomainException("This email template cannot be retried."),
             };
         }
@@ -122,11 +122,11 @@ public sealed class RetryEmailHandler(
 
         previous.MarkResolved(clock.UtcNow);
         var replacement = deliveries.StagePending(
-            candidate.Id,
+            attendee.Id,
             previous.TemplateName,
             previous.InviteId,
             previous.BookingId,
-            previous.ConfirmedSlotId,
+            previous.EventId,
             after: previous.SentAt);
         deliveries.ClaimForDispatch(replacement);
 
@@ -147,26 +147,26 @@ public sealed class RetryEmailHandler(
     }
 
     private async Task<EmailMessage> RegenerateInviteAsync(
-        Domain.Candidates.Candidate candidate,
+        Domain.Attendees.Attendee attendee,
         EmailLog previous,
         CancellationToken cancellationToken)
     {
         var invite = previous.InviteId is { } inviteId
             ? await invites.LockForUpdateAsync(inviteId, cancellationToken)
-            : await invites.LockPendingForCandidateAsync(candidate.Id, cancellationToken);
+            : await invites.LockPendingForAttendeeAsync(attendee.Id, cancellationToken);
 
-        if (invite is null || !invite.IsUsableAt(clock.UtcNow) || invite.CandidateId != candidate.Id)
+        if (invite is null || !invite.IsUsableAt(clock.UtcNow) || invite.AttendeeId != attendee.Id)
         {
             throw new DomainException("The invite is no longer available for email retry.");
         }
 
-        var options = new List<Domain.Slots.ConfirmedSlot>();
-        foreach (var slotId in invite.OfferedSlotIds)
+        var options = new List<Domain.Events.Event>();
+        foreach (var eventId in invite.OfferedEventIds)
         {
-            var slot = await slots.GetAsync(slotId, cancellationToken);
-            if (slot is not null)
+            var eventItem = await events.GetAsync(eventId, cancellationToken);
+            if (eventItem is not null)
             {
-                options.Add(slot);
+                options.Add(eventItem);
             }
         }
 
@@ -177,79 +177,79 @@ public sealed class RetryEmailHandler(
 
         var issued = tokens.Issue(invite.Id);
         invite.RotateTokenHash(issued.TokenHash);
-        return CandidateEmailComposer.Invite(
-            candidate,
+        return AttendeeEmailComposer.Invite(
+            attendee,
             invite.RequiredAppointmentTypeIds,
             options,
             $"{portal.BaseUrl}/book/{issued.Token}",
-            previous.TemplateName == EmailTemplate.CandidateReinvite,
+            previous.TemplateName == EmailTemplate.AttendeeReinvite,
             invite.RecoveryOfBookingId.HasValue);
     }
 
     private async Task<EmailMessage> RegenerateBookingAsync(
-        Domain.Candidates.Candidate candidate,
+        Domain.Attendees.Attendee attendee,
         EmailLog previous,
         CancellationToken cancellationToken)
     {
         var booking = previous.BookingId is { } bookingId
             ? await bookings.LockForUpdateAsync(bookingId, cancellationToken)
-            : await bookings.LockActiveForCandidateAsync(candidate.Id, cancellationToken);
-        if (booking is null || booking.Status != BookingStatus.Active || booking.CandidateId != candidate.Id)
+            : await bookings.LockActiveForAttendeeAsync(attendee.Id, cancellationToken);
+        if (booking is null || booking.Status != BookingStatus.Active || booking.AttendeeId != attendee.Id)
         {
             throw new DomainException("The booking is no longer available for email retry.");
         }
 
-        var slot = await slots.GetAsync(booking.ConfirmedSlotId, cancellationToken);
-        if (slot is null)
+        var eventItem = await events.GetAsync(booking.EventId, cancellationToken);
+        if (eventItem is null)
         {
-            throw new DomainException("The booking slot is no longer available for email retry.");
+            throw new DomainException("The booking eventItem is no longer available for email retry.");
         }
 
         var snapshot = await BookingSnapshotAsync(booking.Id, cancellationToken);
 
         var issued = tokens.Issue(booking.Id);
         booking.RotateManageTokenHash(issued.TokenHash);
-        return CandidateEmailComposer.BookingConfirmation(
-            candidate,
+        return AttendeeEmailComposer.BookingConfirmation(
+            attendee,
             snapshot,
-            slot,
+            eventItem,
             $"{portal.BaseUrl}/manage/{issued.Token}",
             portal);
     }
 
     private async Task<EmailMessage> RegenerateCancellationAsync(
-        Domain.Candidates.Candidate candidate,
+        Domain.Attendees.Attendee attendee,
         EmailLog previous,
         CancellationToken cancellationToken)
     {
-        if (candidate.Status is not CandidateStatus.Invited
-            and not CandidateStatus.AwaitingAvailability)
+        if (attendee.Status is not AttendeeStatus.Invited
+            and not AttendeeStatus.AwaitingAvailability)
         {
             throw new DomainException("The cancellation notice is no longer actionable.");
         }
 
-        if (previous.ConfirmedSlotId is not { } slotId)
+        if (previous.EventId is not { } eventId)
         {
-            throw new DomainException("The cancelled slot is not available for email retry.");
+            throw new DomainException("The cancelled eventItem is not available for email retry.");
         }
 
-        var slot = await slots.GetAsync(slotId, cancellationToken);
-        if (slot is null || slot.Status != ConfirmedSlotStatus.Cancelled)
+        var eventItem = await events.GetAsync(eventId, cancellationToken);
+        if (eventItem is null || eventItem.Status != EventStatus.Cancelled)
         {
-            throw new DomainException("The cancelled slot is no longer available for email retry.");
+            throw new DomainException("The cancelled eventItem is no longer available for email retry.");
         }
 
         var booking = previous.BookingId is { } bookingId
             ? await bookings.LockForUpdateAsync(bookingId, cancellationToken)
             : null;
-        if (booking is null || booking.CandidateId != candidate.Id)
+        if (booking is null || booking.AttendeeId != attendee.Id)
         {
             throw new DomainException("The booking is no longer available for email retry.");
         }
 
         var snapshot = await BookingSnapshotAsync(booking.Id, cancellationToken);
 
-        return CandidateEmailComposer.SlotCancelled(candidate, snapshot, slot);
+        return AttendeeEmailComposer.EventCancelled(attendee, snapshot, eventItem);
     }
 
     private async Task<IReadOnlyList<Guid>> BookingSnapshotAsync(

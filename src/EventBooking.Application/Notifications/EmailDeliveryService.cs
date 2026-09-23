@@ -28,18 +28,18 @@ public sealed class EmailDeliveryService(
     /// Stages a pending delivery containing only safe context identifiers. The caller owns the
     /// enclosing transaction and must save it before calling <see cref="DispatchAsync"/>.
     /// </summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="template">The template.</param>
     /// <param name="inviteId">The invite id.</param>
     /// <param name="bookingId">The booking id.</param>
-    /// <param name="confirmedSlotId">The confirmed slot id.</param>
+    /// <param name="eventId">The event id.</param>
     /// <param name="after">The after.</param>
     public EmailLog StagePending(
-        Guid candidateId,
+        Guid attendeeId,
         EmailTemplate template,
         Guid? inviteId = null,
         Guid? bookingId = null,
-        Guid? confirmedSlotId = null,
+        Guid? eventId = null,
         DateTimeOffset? after = null)
     {
         var createdAt = clock.UtcNow;
@@ -56,12 +56,12 @@ public sealed class EmailDeliveryService(
         _lastStagedAt = createdAt;
         var delivery = EmailLog.RecordPending(
             Guid.NewGuid(),
-            candidateId,
+            attendeeId,
             template,
             createdAt,
             inviteId,
             bookingId,
-            confirmedSlotId);
+            eventId);
 
         deliveries.Add(delivery);
         return delivery;

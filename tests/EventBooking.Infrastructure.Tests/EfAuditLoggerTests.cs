@@ -12,14 +12,14 @@ public class EfAuditLoggerTests(PostgresFixture fixture)
     {
         public DateTimeOffset UtcNow => now;
 
-        /// <summary>Gets the fixed instant; this clock treats UTC as head-office time.</summary>
-        public DateTimeOffset NowAtHeadOffice => now;
+        /// <summary>Gets the fixed instant; this clock treats UTC as transitional-location time.</summary>
+        public DateTimeOffset NowAtTransitionalLocation => now;
 
-        public DateOnly TodayAtHeadOffice => DateAtHeadOffice(now);
+        public DateOnly TodayAtTransitionalLocation => DateAtTransitionalLocation(now);
 
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) => DateOnly.FromDateTime(instant.UtcDateTime);
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) => DateOnly.FromDateTime(instant.UtcDateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant.ToUniversalTime();
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant.ToUniversalTime();
     }
 
     private static readonly DateTimeOffset Now = new(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
@@ -34,7 +34,7 @@ public class EfAuditLoggerTests(PostgresFixture fixture)
         {
             new EfAuditLogger(context, new FixedClock(Now)).Record(
                 AuditEntityTypes.Booking, entityId, AuditAction.BookingCreated,
-                ActorType.CandidateToken, "invite-1", "chose option 2");
+                ActorType.AttendeeToken, "invite-1", "chose option 2");
 
             await context.SaveChangesAsync();
         }
@@ -44,7 +44,7 @@ public class EfAuditLoggerTests(PostgresFixture fixture)
         Assert.Equal(AuditEntityTypes.Booking, entry.EntityType);
         Assert.Equal(entityId, entry.EntityId);
         Assert.Equal(AuditAction.BookingCreated, entry.Action);
-        Assert.Equal(ActorType.CandidateToken, entry.ActorType);
+        Assert.Equal(ActorType.AttendeeToken, entry.ActorType);
         Assert.Equal("invite-1", entry.ActorId);
         Assert.Equal(Now, entry.Timestamp);
         Assert.Equal("chose option 2", entry.Details);
@@ -60,7 +60,7 @@ public class EfAuditLoggerTests(PostgresFixture fixture)
             await using var transaction = await context.Database.BeginTransactionAsync();
 
             new EfAuditLogger(context, new FixedClock(Now)).Record(
-                AuditEntityTypes.ConfirmedSlot, Guid.NewGuid(), AuditAction.SlotCancelled,
+                AuditEntityTypes.Event, Guid.NewGuid(), AuditAction.EventCancelled,
                 ActorType.Staff, Guid.NewGuid().ToString());
 
             await context.SaveChangesAsync();

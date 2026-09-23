@@ -4,11 +4,11 @@ using EventBooking.Application.Common;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Invites;
 
@@ -32,12 +32,12 @@ internal sealed record EmailDispatchPlan(Guid DeliveryId, EmailMessage Message, 
 
 /// <summary>
 /// Creates one invite and stages its delivery, or records that there is nothing to offer. Shared by the
-/// coordinator trigger (Task 37), the expiry sweep (Task 38) and slot cancellation (Task 42).
+/// coordinator trigger (Task 37), the expiry sweep (Task 38) and event cancellation (Task 42).
 /// Never saves or calls a provider — the caller owns the unit of work and dispatches only after commit.
 /// </summary>
 /// <param name="invites">The invites.</param>
 /// <param name="groups">The groups.</param>
-/// <param name="slotFinder">The slot finder.</param>
+/// <param name="eventFinder">The event finder.</param>
 /// <param name="settings">The settings.</param>
 /// <param name="tokens">The tokens.</param>
 /// <param name="deliveries">The deliveries.</param>
@@ -46,51 +46,51 @@ internal sealed record EmailDispatchPlan(Guid DeliveryId, EmailMessage Message, 
 /// <param name="portal">The portal.</param>
 public sealed class InviteIssuer(
     IInviteRepository invites,
-    IEmployeeGroupRepository groups,
-    EligibleSlotFinder slotFinder,
+    IAttendeeGroupRepository groups,
+    EligibleEventFinder eventFinder,
     ISystemSettingsRepository settings,
     ITokenService tokens,
     EmailDeliveryService deliveries,
     IAuditLogger audit,
     IClock clock,
-    CandidatePortalOptions portal)
+    AttendeePortalOptions portal)
 {
-    /// <summary>Issues an initial Invite from a locked, validated Candidate requirement set.</summary>
-    /// <param name="candidate">The candidate whose lifecycle is already locked by the caller.</param>
+    /// <summary>Issues an initial Invite from a locked, validated Attendee requirement set.</summary>
+    /// <param name="attendee">The attendee whose lifecycle is already locked by the caller.</param>
     /// <param name="retryCount">The automated retry number to persist on the new invite.</param>
     /// <param name="actorType">The actor recorded for invite creation.</param>
     /// <param name="actorId">The actor identifier, when a staff identity caused the change.</param>
     /// <param name="isReinvite">Whether the reminder template should be used.</param>
-    /// <param name="cancellationToken">Cancels repository and slot reads.</param>
+    /// <param name="cancellationToken">Cancels repository and event reads.</param>
     /// <returns>A pending delivery plan the caller dispatches after commit.</returns>
     public async Task<Result<InviteIssueResult>> IssueInitialAsync(
-        Candidate candidate,
+        Attendee attendee,
         int retryCount,
         ActorType actorType,
         string? actorId,
         bool isReinvite,
         CancellationToken cancellationToken)
     {
-        if (!candidate.EmployeeGroupId.HasValue)
+        if (!attendee.AttendeeGroupId.HasValue)
         {
-            return Result<InviteIssueResult>.Failure(Error.CandidateReconciliationRequired(
-                "Assign an employee group before issuing an invite."));
+            return Result<InviteIssueResult>.Failure(Error.AttendeeReconciliationRequired(
+                "Assign an attendee group before issuing an invite."));
         }
 
-        var group = await groups.GetAsync(candidate.EmployeeGroupId.Value, cancellationToken);
+        var group = await groups.GetAsync(attendee.AttendeeGroupId.Value, cancellationToken);
         var mapping = group?.RequiredAppointmentTypeIds
             .Order()
             .ToList();
-        var current = candidate.RequiredAppointmentTypeIds
+        var current = attendee.RequiredAppointmentTypeIds
             .Order()
             .ToList();
         if (group is null || !group.IsActive || mapping!.Count == 0 || !mapping.SequenceEqual(current))
         {
-            return Result<InviteIssueResult>.Failure(Error.CandidateRequirementSnapshotMismatch(
-                "The candidate requirements do not match their employee group."));
+            return Result<InviteIssueResult>.Failure(Error.AttendeeRequirementSnapshotMismatch(
+                "The attendee requirements do not match their attendee group."));
         }
 
-        var pending = await invites.GetPendingForCandidateAsync(candidate.Id, cancellationToken);
+        var pending = await invites.GetPendingForAttendeeAsync(attendee.Id, cancellationToken);
         if (pending?.Status == Domain.Invites.InviteStatus.Pending)
         {
             pending.MarkSuperseded();
@@ -99,7 +99,7 @@ public sealed class InviteIssuer(
         InviteIssueResult issued;
         try
         {
-            var options = await slotFinder.FindAsync(
+            var options = await eventFinder.FindAsync(
                 mapping,
                 Invite.RequiredOptionCount,
                 [],
@@ -107,7 +107,7 @@ public sealed class InviteIssuer(
 
             if (options.Count < Invite.RequiredOptionCount)
             {
-                candidate.MarkAwaitingAvailability();
+                attendee.MarkAwaitingAvailability();
                 return Result<InviteIssueResult>.Success(new InviteIssueResult(false, null, false));
             }
 
@@ -118,7 +118,7 @@ public sealed class InviteIssuer(
 
             var invite = Invite.CreateInitial(
                 inviteId,
-                candidate.Id,
+                attendee.Id,
                 token.TokenHash,
                 clock.UtcNow.AddDays(configuration.InviteExpiryDays),
                 options.Select(o => o.Id),
@@ -126,7 +126,7 @@ public sealed class InviteIssuer(
                 retryCount);
 
             invites.Add(invite);
-            candidate.MarkInvited();
+            attendee.MarkInvited();
 
             audit.Record(
                 AuditEntityTypes.Invite,
@@ -136,15 +136,15 @@ public sealed class InviteIssuer(
                 actorId,
                 $"retry {retryCount}");
 
-            var message = CandidateEmailComposer.Invite(
-                candidate,
+            var message = AttendeeEmailComposer.Invite(
+                attendee,
                 mapping,
                 options,
                 $"{portal.BaseUrl}/book/{token.Token}",
                 isReinvite,
                 isRecovery: false);
 
-            var delivery = deliveries.StagePending(candidate.Id, message.Template, inviteId: inviteId);
+            var delivery = deliveries.StagePending(attendee.Id, message.Template, inviteId: inviteId);
             deliveries.ClaimForDispatch(delivery);
             var plan = new EmailDispatchPlan(
                 delivery.Id,
@@ -171,19 +171,19 @@ public sealed class InviteIssuer(
     }
 
     /// <summary>Issues a recovery Invite for already-selected no-show types from locked journey state.</summary>
-    /// <param name="candidate">The candidate whose lifecycle is already locked by the caller.</param>
+    /// <param name="attendee">The attendee whose lifecycle is already locked by the caller.</param>
     /// <param name="rootBookingId">The original journey-root Booking the recovery belongs to.</param>
     /// <param name="selectedTypeIds">The recoverable snapshot, already revalidated under lock.</param>
-    /// <param name="options">Exactly three future slots with capacity for every selected type.</param>
+    /// <param name="options">Exactly three future events with capacity for every selected type.</param>
     /// <param name="actorType">The actor recorded for invite creation.</param>
     /// <param name="actorId">The actor identifier, when a staff identity caused the change.</param>
     /// <param name="cancellationToken">Cancels repository reads.</param>
     /// <returns>A pending delivery plan the caller dispatches after commit.</returns>
     public async Task<Result<InviteIssueResult>> IssueRecoveryAsync(
-        Candidate candidate,
+        Attendee attendee,
         Guid rootBookingId,
         IReadOnlyList<Guid> selectedTypeIds,
-        IReadOnlyList<ConfirmedSlot> options,
+        IReadOnlyList<Event> options,
         ActorType actorType,
         string? actorId,
         CancellationToken cancellationToken)
@@ -191,7 +191,7 @@ public sealed class InviteIssuer(
         if (options.Count != Invite.RequiredOptionCount)
         {
             return Result<InviteIssueResult>.Failure(Error.Validation(
-                "A recovery invite must offer exactly three slot options."));
+                "A recovery invite must offer exactly three event options."));
         }
 
         InviteIssueResult issued;
@@ -204,7 +204,7 @@ public sealed class InviteIssuer(
 
             var invite = Invite.CreateRecovery(
                 inviteId,
-                candidate.Id,
+                attendee.Id,
                 rootBookingId,
                 token.TokenHash,
                 clock.UtcNow.AddDays(configuration.InviteExpiryDays),
@@ -227,15 +227,15 @@ public sealed class InviteIssuer(
                     new RecoveryInviteAudit(rootBookingId, codes),
                     RecoveryAuditJson));
 
-            var message = CandidateEmailComposer.Invite(
-                candidate,
+            var message = AttendeeEmailComposer.Invite(
+                attendee,
                 selectedTypeIds,
                 options,
                 $"{portal.BaseUrl}/book/{token.Token}",
                 isReinvite: false,
                 isRecovery: true);
 
-            var delivery = deliveries.StagePending(candidate.Id, message.Template, inviteId: inviteId);
+            var delivery = deliveries.StagePending(attendee.Id, message.Template, inviteId: inviteId);
             deliveries.ClaimForDispatch(delivery);
             var plan = new EmailDispatchPlan(
                 delivery.Id,

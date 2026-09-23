@@ -1,7 +1,7 @@
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -121,8 +121,8 @@ public sealed class BookingAppointmentPersistenceTests(PostgresFixture fixture)
                 await discovery.Database.MigrateAsync(migrations[targetIndex - 1]);
             }
 
-            var activeCandidate = Guid.NewGuid();
-            var cancelledCandidate = Guid.NewGuid();
+            var activeAttendee = Guid.NewGuid();
+            var cancelledAttendee = Guid.NewGuid();
             var activeBooking = Guid.NewGuid();
             var cancelledBooking = Guid.NewGuid();
             await using (var connection = new NpgsqlConnection(connectionString))
@@ -131,26 +131,26 @@ public sealed class BookingAppointmentPersistenceTests(PostgresFixture fixture)
                 await using var command = connection.CreateCommand();
                 command.CommandText =
                     """
-                    INSERT INTO candidate (id, name, email, status, status_changed_at)
+                    INSERT INTO attendee (id, name, email, status, status_changed_at)
                     VALUES
-                      (@active_candidate, 'Active Candidate', 'active@example.com', 4, now()),
-                      (@cancelled_candidate, 'Cancelled Candidate', 'cancelled@example.com', 4, now());
-                    INSERT INTO candidate_requirement (candidate_id, appointment_type_id)
+                      (@active_attendee, 'Active Attendee', 'active@example.com', 4, now()),
+                      (@cancelled_attendee, 'Cancelled Attendee', 'cancelled@example.com', 4, now());
+                    INSERT INTO attendee_requirement (attendee_id, appointment_type_id)
                     VALUES
-                      (@active_candidate, @dat),
-                      (@active_candidate, @med),
-                      (@cancelled_candidate, @dat);
+                      (@active_attendee, @dat),
+                      (@active_attendee, @med),
+                      (@cancelled_attendee, @dat);
                     INSERT INTO booking
-                      (id, candidate_id, confirmed_slot_id, invite_id, created_at, status, manage_token_hash)
+                      (id, attendee_id, event_id, invite_id, created_at, status, manage_token_hash)
                     VALUES
-                      (@active_booking, @active_candidate, @slot, @invite_one, now(), 1, 'active-token'),
-                      (@cancelled_booking, @cancelled_candidate, @slot, @invite_two, now(), 2, 'cancelled-token');
+                      (@active_booking, @active_attendee, @eventItem, @invite_one, now(), 1, 'active-token'),
+                      (@cancelled_booking, @cancelled_attendee, @eventItem, @invite_two, now(), 2, 'cancelled-token');
                     """;
-                command.Parameters.AddWithValue("active_candidate", activeCandidate);
-                command.Parameters.AddWithValue("cancelled_candidate", cancelledCandidate);
+                command.Parameters.AddWithValue("active_attendee", activeAttendee);
+                command.Parameters.AddWithValue("cancelled_attendee", cancelledAttendee);
                 command.Parameters.AddWithValue("active_booking", activeBooking);
                 command.Parameters.AddWithValue("cancelled_booking", cancelledBooking);
-                command.Parameters.AddWithValue("slot", Guid.NewGuid());
+                command.Parameters.AddWithValue("eventItem", Guid.NewGuid());
                 command.Parameters.AddWithValue("invite_one", Guid.NewGuid());
                 command.Parameters.AddWithValue("invite_two", Guid.NewGuid());
                 command.Parameters.AddWithValue("dat", AppointmentTypeIds.DrugAndAlcoholTesting);
@@ -177,21 +177,21 @@ public sealed class BookingAppointmentPersistenceTests(PostgresFixture fixture)
     }
 
     /// <summary>Creates a booking for persistence tests.</summary>
-    /// <param name="candidateId">The candidate identifier.</param>
-    /// <param name="slotId">The confirmed-slot identifier.</param>
+    /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="eventId">The event identifier.</param>
     /// <returns>A new active booking.</returns>
-    private static Booking NewBooking(Guid candidateId, Guid slotId)
+    private static Booking NewBooking(Guid attendeeId, Guid eventId)
     {
         var invite = Domain.Invites.Invite.CreateInitial(
             Guid.NewGuid(),
-            candidateId,
+            attendeeId,
             "invite-token-hash",
             DateTimeOffset.UtcNow.AddDays(1),
-            [slotId, Guid.NewGuid(), Guid.NewGuid()],
+            [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting],
             0);
         return Booking.Create(
-            Guid.NewGuid(), invite, slotId, "manage-token-hash", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventId, "manage-token-hash", DateTimeOffset.UtcNow);
     }
 
     /// <summary>Creates a context against the supplied connection string.</summary>

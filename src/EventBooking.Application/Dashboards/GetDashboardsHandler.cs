@@ -9,22 +9,22 @@ namespace EventBooking.Application.Dashboards;
 /// <summary>Defines dashboards view for the current use case.</summary>
 /// <param name="AwaitingAvailability">The awaiting availability.</param>
 /// <param name="NoResponse">The no response.</param>
-/// <param name="Slots">The slots.</param>
+/// <param name="Events">The events.</param>
 /// <param name="EmailStatuses">The email statuses.</param>
 public sealed record DashboardsView(
     IReadOnlyList<AwaitingAvailabilityRow> AwaitingAvailability,
     IReadOnlyList<NoResponseRow> NoResponse,
-    IReadOnlyList<SlotOverviewRow> Slots,
-    IReadOnlyList<CandidateEmailStatusView> EmailStatuses);
+    IReadOnlyList<EventOverviewRow> Events,
+    IReadOnlyList<AttendeeEmailStatusView> EmailStatuses);
 
-/// <summary>Staff-facing delivery state for one candidate.</summary>
-/// <param name="CandidateId">The candidate whose latest delivery is shown.</param>
+/// <summary>Staff-facing delivery state for one attendee.</summary>
+/// <param name="AttendeeId">The attendee whose latest delivery is shown.</param>
 /// <param name="TemplateDisplay">Human-readable template name.</param>
 /// <param name="SentAt">The latest attempt or pending timestamp.</param>
 /// <param name="Status">The durable delivery status.</param>
 /// <param name="CanRetry">Whether the current domain state still permits retry.</param>
-public sealed record CandidateEmailStatusView(
-    Guid CandidateId,
+public sealed record AttendeeEmailStatusView(
+    Guid AttendeeId,
     string TemplateDisplay,
     DateTimeOffset SentAt,
     string Status,
@@ -50,7 +50,7 @@ public sealed class GetDashboardsHandler(
     {
         var authorized = await access.AuthorizeAsync(
             query.StaffUserId,
-            StaffCapability.ViewCandidateDashboards,
+            StaffCapability.ViewAttendeeDashboards,
             null,
             cancellationToken);
         if (authorized.IsFailure)
@@ -63,10 +63,10 @@ public sealed class GetDashboardsHandler(
         return Result<DashboardsView>.Success(new DashboardsView(
             await queries.AwaitingAvailabilityAsync(cancellationToken),
             await queries.NoResponseAsync(cancellationToken),
-            await queries.SlotsOverviewAsync(cancellationToken),
+            await queries.EventsOverviewAsync(cancellationToken),
             emailStatuses
-                .Select(e => new CandidateEmailStatusView(
-                    e.CandidateId,
+                .Select(e => new AttendeeEmailStatusView(
+                    e.AttendeeId,
                     TemplateDisplayOf(e.TemplateName),
                     e.SentAt,
                     e.Status.ToString(),
@@ -74,14 +74,14 @@ public sealed class GetDashboardsHandler(
                 .ToList()));
     }
 
-    /// <summary>Area H's template names, in the wording a coordinator reads on /candidates and /dashboards.</summary>
+    /// <summary>Area H's template names, in the wording a coordinator reads on /attendees and /dashboards.</summary>
     /// <param name="template">The template.</param>
     public static string TemplateDisplayOf(EmailTemplate template) => template switch
     {
-        EmailTemplate.CandidateInvite => "Invite",
+        EmailTemplate.AttendeeInvite => "Invite",
         EmailTemplate.BookingConfirmation => "Booking confirmation",
-        EmailTemplate.SlotCancelledRebookingNeeded => "Slot cancelled - rebooking needed",
-        EmailTemplate.CandidateReinvite => "Re-invite",
+        EmailTemplate.EventCancelledRebookingNeeded => "Event cancelled - rebooking needed",
+        EmailTemplate.AttendeeReinvite => "Re-invite",
         _ => template.ToString(),
     };
 }

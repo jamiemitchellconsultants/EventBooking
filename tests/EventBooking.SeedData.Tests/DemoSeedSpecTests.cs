@@ -9,26 +9,26 @@ namespace EventBooking.SeedData.Tests;
 public sealed class DemoSeedSpecTests
 {
     /// <summary>
-    /// Verifies that the demo dataset provides three distinct agreed slot windows with capacity
+    /// Verifies that the demo dataset provides three distinct agreed event windows with capacity
     /// for all three appointment types.
     /// </summary>
     [Fact]
-    public void AgreedSlots_AreThreeWindowsWithEightTwelveSix()
+    public void AgreedEvents_AreThreeWindowsWithEightTwelveSix()
     {
-        var slots = DemoSeedSpec.AgreedSlots();
+        var events = DemoSeedSpec.AgreedEvents();
 
-        Assert.Equal(3, slots.Count);
-        Assert.Equal(3, slots.Select(s => (s.Date, s.StartTime)).Distinct().Count());
-        foreach (var slot in slots)
+        Assert.Equal(3, events.Count);
+        Assert.Equal(3, events.Select(s => (s.Date, s.StartTime)).Distinct().Count());
+        foreach (var eventItem in events)
         {
-            Assert.Equal(8, slot.DatHeadcount);
-            Assert.Equal(12, slot.MedHeadcount);
-            Assert.Equal(6, slot.UniHeadcount);
+            Assert.Equal(8, eventItem.DatHeadcount);
+            Assert.Equal(12, eventItem.MedHeadcount);
+            Assert.Equal(6, eventItem.UniHeadcount);
         }
     }
 
     /// <summary>
-    /// Verifies that every open slot proposal is after the dataset anchor and initially records
+    /// Verifies that every open event proposal is after the dataset anchor and initially records
     /// headcount for exactly one appointment type.
     /// </summary>
     [Fact]
@@ -74,29 +74,29 @@ public sealed class DemoSeedSpecTests
     }
 
     /// <summary>
-    /// Verifies the deterministic candidate journey mix across all five employee groups.
+    /// Verifies the deterministic attendee journey mix across all five attendee groups.
     /// </summary>
     [Fact]
-    public void Candidates_CoverEveryGroupAndJourney()
+    public void Attendees_CoverEveryGroupAndJourney()
     {
-        var candidates = DemoSeedSpec.Candidates();
+        var attendees = DemoSeedSpec.Attendees();
 
-        Assert.Equal(100, candidates.Count);
-        Assert.Equal(100, candidates.Select(c => c.Email).Distinct().Count());
-        Assert.All(candidates, c => Assert.False(string.IsNullOrWhiteSpace(c.Name)));
+        Assert.Equal(100, attendees.Count);
+        Assert.Equal(100, attendees.Select(c => c.Email).Distinct().Count());
+        Assert.All(attendees, c => Assert.False(string.IsNullOrWhiteSpace(c.Name)));
         Assert.All(
-            candidates,
+            attendees,
             c => Assert.Contains(
-                c.EmployeeGroupCode,
+                c.AttendeeGroupCode,
                 new[]
                 {
                     "CABIN_CREW", "PILOTS", "GROUND_OPERATIONS_AGENT", "ENGINEERING",
                     "GROUND_TRANSPORT_SERVICES",
                 }));
-        Assert.Equal(20, candidates.Count(c => c.Journey == DemoCandidateJourney.Unbooked));
-        Assert.Equal(30, candidates.Count(c => c.Journey == DemoCandidateJourney.Ready));
-        Assert.Equal(25, candidates.Count(c => c.Journey == DemoCandidateJourney.Outstanding));
-        Assert.Equal(15, candidates.Count(c => c.Journey == DemoCandidateJourney.NoShow));
-        Assert.Equal(10, candidates.Count(c => c.Journey == DemoCandidateJourney.RecoveryCompleted));
+        Assert.Equal(20, attendees.Count(c => c.Journey == DemoAttendeeJourney.Unbooked));
+        Assert.Equal(30, attendees.Count(c => c.Journey == DemoAttendeeJourney.Ready));
+        Assert.Equal(25, attendees.Count(c => c.Journey == DemoAttendeeJourney.Outstanding));
+        Assert.Equal(15, attendees.Count(c => c.Journey == DemoAttendeeJourney.NoShow));
+        Assert.Equal(10, attendees.Count(c => c.Journey == DemoAttendeeJourney.RecoveryCompleted));
     }
 }

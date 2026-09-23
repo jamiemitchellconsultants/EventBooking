@@ -3,10 +3,10 @@ using System.Net.Http.Json;
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +26,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
             $"/api/booking/manage/{booking.ManageToken}");
 
         Assert.NotNull(view);
-        Assert.Equal("Amara Novak", view!.CandidateName);
+        Assert.Equal("Amara Novak", view!.AttendeeName);
         Assert.Contains("-", view.Display);
 
         using var document = System.Text.Json.JsonDocument.Parse(
@@ -58,7 +58,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
         var persisted = await ReadCancellationStateAsync(booking);
         Assert.Equal(BookingStatus.Cancelled, persisted.BookingStatus);
-        Assert.Equal(CandidateStatus.NotYetInvited, persisted.CandidateStatus);
+        Assert.Equal(AttendeeStatus.NotYetInvited, persisted.AttendeeStatus);
         Assert.Equal(persisted.TotalHeadcount, persisted.RemainingCapacity);
         Assert.Empty(persisted.PendingInviteIds);
     }
@@ -78,7 +78,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
         var persisted = await ReadCancellationStateAsync(booking);
         Assert.Equal(BookingStatus.Cancelled, persisted.BookingStatus);
-        Assert.Equal(CandidateStatus.Invited, persisted.CandidateStatus);
+        Assert.Equal(AttendeeStatus.Invited, persisted.AttendeeStatus);
         Assert.Equal(persisted.TotalHeadcount, persisted.RemainingCapacity);
         var inviteId = Assert.Single(persisted.PendingInviteIds);
         Assert.NotEqual(booking.OriginalInviteId, inviteId);
@@ -96,34 +96,34 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
     private async Task<BookingFixture> GivenABooking()
     {
-        var invite = await GivenAnInvitedCandidate();
+        var invite = await GivenAnInvitedAttendee();
         factory.SignedInAs = null;
         var client = factory.CreateClient();
 
         var view = await client.GetFromJsonAsync<BookingEndpointTests.InviteResponse>(
             $"/api/booking/{invite.Token}");
 
-        var confirmedSlotId = view!.Options[0].ConfirmedSlotId;
+        var eventId = view!.Options[0].EventId;
         var confirmed = await client.PostAsJsonAsync(
             $"/api/booking/{invite.Token}/confirm",
-            new { ConfirmedSlotId = confirmedSlotId });
+            new { EventId = eventId });
 
         var outcome = await confirmed.Content.ReadFromJsonAsync<ConfirmResponse>();
         return new BookingFixture(
             outcome!.BookingId,
             outcome.ManageToken,
-            invite.CandidateId,
+            invite.AttendeeId,
             invite.Id,
-            confirmedSlotId);
+            eventId);
     }
 
-    private async Task<CandidateInviteFixture> GivenAnInvitedCandidate()
+    private async Task<AttendeeInviteFixture> GivenAnInvitedAttendee()
     {
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
 
-        var confirmedSlotIds = new List<Guid>();
+        var eventIds = new List<Guid>();
         foreach (var (date, startTime) in new[]
                  {
                      (new DateOnly(2030, 1, 14), new TimeOnly(9, 0)),
@@ -131,35 +131,35 @@ public class ManageBookingEndpointTests(ApiFactory factory)
                      (new DateOnly(2030, 1, 16), new TimeOnly(13, 0)),
                  })
         {
-            var proposal = SlotProposal.Create(
-                Guid.NewGuid(), new SlotWindow(date, startTime), Guid.NewGuid());
+            var proposal = EventProposal.Create(
+                Guid.NewGuid(), new EventWindow(date, startTime), Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-            var confirmedSlotId = Guid.NewGuid();
-            context.SlotProposals.Add(proposal);
-            context.ConfirmedSlots.Add(ConfirmedSlot.CreateFrom(confirmedSlotId, proposal));
-            confirmedSlotIds.Add(confirmedSlotId);
+            var eventId = Guid.NewGuid();
+            context.EventProposals.Add(proposal);
+            context.Events.Add(Event.CreateFrom(eventId, proposal));
+            eventIds.Add(eventId);
         }
 
-        var candidate = Candidate.Create(
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", $"{Guid.NewGuid():N}@mail.com",
-            EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]));
-        candidate.MarkInvited();
-        context.Candidates.Add(candidate);
+        attendee.MarkInvited();
+        context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
         var issued = tokens.Issue(inviteId);
         context.Invites.Add(Invite.CreateInitial(
-            inviteId, candidate.Id, issued.TokenHash, DateTimeOffset.UtcNow.AddDays(4),
-            confirmedSlotIds,
+            inviteId, attendee.Id, issued.TokenHash, DateTimeOffset.UtcNow.AddDays(4),
+            eventIds,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting], 0));
         await context.SaveChangesAsync();
 
-        return new CandidateInviteFixture(issued.Token, candidate.Id, inviteId);
+        return new AttendeeInviteFixture(issued.Token, attendee.Id, inviteId);
     }
 
     private async Task<CancellationState> ReadCancellationStateAsync(BookingFixture booking)
@@ -168,18 +168,18 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
 
         var persistedBooking = await context.Bookings.SingleAsync(b => b.Id == booking.BookingId);
-        var candidate = await context.Candidates.SingleAsync(c => c.Id == booking.CandidateId);
-        var capacity = await context.SlotCapacities.SingleAsync(c =>
-            c.ConfirmedSlotId == booking.ConfirmedSlotId &&
+        var attendee = await context.Attendees.SingleAsync(c => c.Id == booking.AttendeeId);
+        var capacity = await context.EventCapacities.SingleAsync(c =>
+            c.EventId == booking.EventId &&
             c.AppointmentTypeId == AppointmentTypeIds.DrugAndAlcoholTesting);
         var pendingInviteIds = await context.Invites
-            .Where(i => i.CandidateId == booking.CandidateId && i.Status == InviteStatus.Pending)
+            .Where(i => i.AttendeeId == booking.AttendeeId && i.Status == InviteStatus.Pending)
             .Select(i => i.Id)
             .ToListAsync();
 
         return new CancellationState(
             persistedBooking.Status,
-            candidate.Status,
+            attendee.Status,
             capacity.TotalHeadcount,
             capacity.RemainingCapacity,
             pendingInviteIds);
@@ -187,23 +187,23 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
     private sealed record ConfirmResponse(Guid BookingId, string ManageToken);
 
-    private sealed record CandidateInviteFixture(string Token, Guid CandidateId, Guid Id);
+    private sealed record AttendeeInviteFixture(string Token, Guid AttendeeId, Guid Id);
 
     private sealed record BookingFixture(
         Guid BookingId,
         string ManageToken,
-        Guid CandidateId,
+        Guid AttendeeId,
         Guid OriginalInviteId,
-        Guid ConfirmedSlotId);
+        Guid EventId);
 
     private sealed record CancellationState(
         BookingStatus BookingStatus,
-        CandidateStatus CandidateStatus,
+        AttendeeStatus AttendeeStatus,
         int TotalHeadcount,
         int RemainingCapacity,
         IReadOnlyList<Guid> PendingInviteIds);
 
-    private sealed record BookingResponse(DateOnly Date, string Display, string CandidateName);
+    private sealed record BookingResponse(DateOnly Date, string Display, string AttendeeName);
 
     private sealed record CancelResponse(bool Reinvited);
 }

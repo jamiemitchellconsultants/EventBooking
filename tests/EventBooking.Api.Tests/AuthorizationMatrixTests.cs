@@ -9,28 +9,28 @@ public class AuthorizationMatrixTests(ApiFactory factory)
 {
     public static TheoryData<Role, string, HttpStatusCode> Matrix => new()
     {
-        { Role.Admin, "/api/candidates", HttpStatusCode.Forbidden },
+        { Role.Admin, "/api/attendees", HttpStatusCode.Forbidden },
         { Role.Admin, "/api/dashboards", HttpStatusCode.Forbidden },
-        { Role.Admin, $"/api/audit/candidate/{Guid.NewGuid()}", HttpStatusCode.Forbidden },
+        { Role.Admin, $"/api/audit/attendee/{Guid.NewGuid()}", HttpStatusCode.Forbidden },
         { Role.Admin, "/api/admin/settings", HttpStatusCode.OK },
-        { Role.Coordinator, "/api/candidates", HttpStatusCode.OK },
+        { Role.Coordinator, "/api/attendees", HttpStatusCode.OK },
         { Role.Coordinator, "/api/dashboards", HttpStatusCode.OK },
         { Role.Coordinator, "/api/admin/settings", HttpStatusCode.Forbidden },
-        { Role.Manager, "/api/slots/board", HttpStatusCode.OK },
-        { Role.AppointmentStaff, "/api/slots/board", HttpStatusCode.Forbidden },
-        { Role.AppointmentStaff, "/api/candidates", HttpStatusCode.Forbidden },
+        { Role.Manager, "/api/events/board", HttpStatusCode.OK },
+        { Role.AppointmentStaff, "/api/events/board", HttpStatusCode.Forbidden },
+        { Role.AppointmentStaff, "/api/attendees", HttpStatusCode.Forbidden },
     };
 
     public static TheoryData<Role[], string, HttpStatusCode> CombinedMatrix => new()
     {
-        { [Role.Coordinator, Role.Manager], "/api/candidates", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.Manager], "/api/slots/board", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.AppointmentStaff], "/api/candidates", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.AppointmentStaff], "/api/slots/board", HttpStatusCode.Forbidden },
-        { [Role.Manager, Role.AppointmentStaff], "/api/slots/board", HttpStatusCode.OK },
-        { [Role.Manager, Role.AppointmentStaff], "/api/candidates", HttpStatusCode.Forbidden },
-        { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/candidates", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/slots/board", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.Manager], "/api/attendees", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.Manager], "/api/events/board", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.AppointmentStaff], "/api/attendees", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.AppointmentStaff], "/api/events/board", HttpStatusCode.Forbidden },
+        { [Role.Manager, Role.AppointmentStaff], "/api/events/board", HttpStatusCode.OK },
+        { [Role.Manager, Role.AppointmentStaff], "/api/attendees", HttpStatusCode.Forbidden },
+        { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/attendees", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/events/board", HttpStatusCode.OK },
     };
 
     [Theory]
@@ -71,10 +71,10 @@ public class AuthorizationMatrixTests(ApiFactory factory)
     {
         factory.SignedInAs = Guid.NewGuid();
         factory.RolesClaim = [];
-        var unassigned = await factory.CreateClient().GetAsync("/api/candidates");
+        var unassigned = await factory.CreateClient().GetAsync("/api/attendees");
 
         factory.SignedInAs = null;
-        var anonymous = await factory.CreateClient().GetAsync("/api/candidates");
+        var anonymous = await factory.CreateClient().GetAsync("/api/attendees");
 
         Assert.Equal(HttpStatusCode.Forbidden, unassigned.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);

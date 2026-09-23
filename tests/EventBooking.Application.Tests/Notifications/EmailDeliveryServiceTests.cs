@@ -22,9 +22,9 @@ public class EmailDeliveryServiceTests
     public async Task SuccessfulDispatchMarksTheDeliverySent()
     {
         var service = NewService();
-        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
 
-        var result = await service.DispatchAsync(staged.Id, Message(staged.CandidateId), CancellationToken.None);
+        var result = await service.DispatchAsync(staged.Id, Message(staged.AttendeeId), CancellationToken.None);
 
         Assert.Equal(EmailStatus.Sent, result);
         Assert.Equal(EmailStatus.Sent, staged.Status);
@@ -37,9 +37,9 @@ public class EmailDeliveryServiceTests
     {
         _sender.FailNextSend = true;
         var service = NewService();
-        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
 
-        var result = await service.DispatchAsync(staged.Id, Message(staged.CandidateId), CancellationToken.None);
+        var result = await service.DispatchAsync(staged.Id, Message(staged.AttendeeId), CancellationToken.None);
 
         Assert.Equal(EmailStatus.Failed, result);
         Assert.Equal(EmailStatus.Failed, staged.Status);
@@ -52,10 +52,10 @@ public class EmailDeliveryServiceTests
     {
         _unitOfWork.ThrowOnCommit = true;
         var service = NewService();
-        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.DispatchAsync(
-            staged.Id, Message(staged.CandidateId), CancellationToken.None));
+            staged.Id, Message(staged.AttendeeId), CancellationToken.None));
 
         Assert.Empty(_sender.Sent);
         Assert.Equal(EmailStatus.Pending, staged.Status);
@@ -67,10 +67,10 @@ public class EmailDeliveryServiceTests
     public async Task AFreshClaimDoesNotSendTheSameDeliveryTwice()
     {
         var service = NewService();
-        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
         Assert.True(staged.TryClaim(Now, TimeSpan.FromMinutes(5)));
 
-        var result = await service.DispatchAsync(staged.Id, Message(staged.CandidateId), CancellationToken.None);
+        var result = await service.DispatchAsync(staged.Id, Message(staged.AttendeeId), CancellationToken.None);
 
         Assert.Equal(EmailStatus.Pending, result);
         Assert.Empty(_sender.Sent);
@@ -81,11 +81,11 @@ public class EmailDeliveryServiceTests
     public async Task AResolvedDeliveryDoesNotCallTheTransport()
     {
         var service = NewService();
-        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
         staged.MarkResolved(Now);
 
         var result = await service.DispatchAsync(
-            staged.Id, Message(staged.CandidateId), CancellationToken.None);
+            staged.Id, Message(staged.AttendeeId), CancellationToken.None);
 
         Assert.Equal(EmailStatus.Resolved, result);
         Assert.Empty(_sender.Sent);
@@ -95,15 +95,15 @@ public class EmailDeliveryServiceTests
     [Fact]
     public void ClaimsDoNotMakeSameTickDeliveriesAmbiguous()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var service = NewService();
-        var first = service.StagePending(candidateId, EmailTemplate.CandidateInvite);
+        var first = service.StagePending(attendeeId, EmailTemplate.AttendeeInvite);
         service.ClaimForDispatch(first);
-        var second = service.StagePending(candidateId, EmailTemplate.SlotCancelledRebookingNeeded);
+        var second = service.StagePending(attendeeId, EmailTemplate.EventCancelledRebookingNeeded);
         service.ClaimForDispatch(second);
 
         Assert.Equal(second.Id, _deliveries.Items
-            .Where(delivery => delivery.CandidateId == candidateId)
+            .Where(delivery => delivery.AttendeeId == attendeeId)
             .OrderByDescending(delivery => delivery.SentAt)
             .ThenByDescending(delivery => delivery.Id)
             .First()
@@ -117,11 +117,11 @@ public class EmailDeliveryServiceTests
         var logger = new RecordingLogger<EmailDeliveryService>();
         var service = EmailDeliveryTestFactory.Create(
             _deliveries, _sender, _unitOfWork, _clock, logger);
-        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var staged = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
 
         var result = await service.DispatchAsync(
             staged.Id,
-            Message(staged.CandidateId),
+            Message(staged.AttendeeId),
             CancellationToken.None,
             () => throw new InvalidOperationException("audit unavailable"));
 
@@ -136,12 +136,12 @@ public class EmailDeliveryServiceTests
     private EmailDeliveryService NewService() =>
         EmailDeliveryTestFactory.Create(_deliveries, _sender, _unitOfWork, _clock);
 
-    private static EmailMessage Message(Guid candidateId) =>
+    private static EmailMessage Message(Guid attendeeId) =>
         new(
-            candidateId,
-            "candidate@example.com",
-            "Candidate",
-            EmailTemplate.CandidateInvite,
+            attendeeId,
+            "attendee@example.com",
+            "Attendee",
+            EmailTemplate.AttendeeInvite,
             "Choose a time",
             "body",
             "<p>body</p>");

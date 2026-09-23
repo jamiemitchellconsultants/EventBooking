@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Web.Tests;
 
-/// <summary>Verifies candidate pages describe durable email outcomes without false promises.</summary>
+/// <summary>Verifies attendee pages describe durable email outcomes without false promises.</summary>
 public class RepairDNotificationComponentTests : BunitContext
 {
     private static readonly JsonSerializerOptions CamelCase = new()
@@ -39,7 +39,7 @@ public class RepairDNotificationComponentTests : BunitContext
             "fresh-manage-token",
             "Failed")));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
         cut.WaitForAssertion(() => Assert.Contains("Confirm this time", cut.Markup));
@@ -54,9 +54,9 @@ public class RepairDNotificationComponentTests : BunitContext
         });
     }
 
-    /// <summary>The confirmed page names the head office the API sent, the same one the confirmation email uses.</summary>
+    /// <summary>The confirmed page names the transitional location the API sent, the same one the confirmation email uses.</summary>
     [Fact]
-    public void BookPageShowsTheHeadOfficeAddressReturnedByTheApi()
+    public void BookPageShowsTheTransitionalLocationAddressReturnedByTheApi()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new InviteDto(
@@ -78,7 +78,7 @@ public class RepairDNotificationComponentTests : BunitContext
             "Sent",
             "2 Api Street, London")));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
         cut.WaitForAssertion(() => Assert.Contains("Confirm this time", cut.Markup));
@@ -111,7 +111,7 @@ public class RepairDNotificationComponentTests : BunitContext
             "fresh-manage-token",
             "Pending")));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
         cut.WaitForAssertion(() => Assert.Contains("Confirm this time", cut.Markup));
@@ -143,7 +143,7 @@ public class RepairDNotificationComponentTests : BunitContext
             DeliveryStatus: "Failed",
             DeliveryId: Guid.NewGuid())));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
         cut.WaitForAssertion(() => Assert.Contains("Cancel and choose a new time", cut.Markup));
@@ -174,7 +174,7 @@ public class RepairDNotificationComponentTests : BunitContext
             DeliveryStatus: "Pending",
             DeliveryId: Guid.NewGuid())));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
         cut.WaitForAssertion(() => Assert.Contains("Cancel and choose a new time", cut.Markup));
@@ -204,7 +204,7 @@ public class RepairDNotificationComponentTests : BunitContext
             InviteCreated: false,
             DeliveryStatus: "Unavailable")));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
         cut.WaitForAssertion(() => Assert.Contains("Cancel and choose a new time", cut.Markup));
@@ -235,7 +235,7 @@ public class RepairDNotificationComponentTests : BunitContext
             DeliveryStatus: "Sent",
             DeliveryId: Guid.NewGuid())));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new CandidatePageOptions("recruitment@example.com"));
+        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
         cut.WaitForAssertion(() => Assert.Contains("Cancel and choose a new time", cut.Markup));
@@ -250,32 +250,32 @@ public class RepairDNotificationComponentTests : BunitContext
 
     /// <summary>A stale failed delivery remains visible but offers no enabled resend action.</summary>
     [Fact]
-    public void CandidatesHideResendWhenServerMarksTheLatestContextStale()
+    public void AttendeesHideResendWhenServerMarksTheLatestContextStale()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<CandidateDto>
+        handler.Enqueue(_ => Json(new List<AttendeeDto>
         {
-            new(candidateId, "Amara Novak", "a.novak@mail.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited"),
+            new(attendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited"),
         }));
         handler.Enqueue(_ => Json(new DashboardsDto(
             AwaitingAvailability: [],
             NoResponse: [],
-            Slots: [],
+            Events: [],
             EmailStatuses:
-            [new CandidateEmailStatusDto(
-                candidateId,
+            [new AttendeeEmailStatusDto(
+                attendeeId,
                 "Booking confirmation",
                 new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero),
                 "Failed",
                 CanRetry: false)])));
-        handler.Enqueue(_ => Json(new List<EmployeeGroupOptionDto>()));
-        Services.AddSingleton(new CandidatesClient(NewHttpClient(handler)));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
         Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
         Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
-        var cut = Render<Candidates>();
+        var cut = Render<Attendees>();
 
         cut.WaitForAssertion(() =>
         {
@@ -288,45 +288,45 @@ public class RepairDNotificationComponentTests : BunitContext
     [Theory]
     [InlineData("Failed")]
     [InlineData("Pending")]
-    public void CandidatesResendActionUsesTheTemplateAwareRetryEndpoint(string status)
+    public void AttendeesResendActionUsesTheTemplateAwareRetryEndpoint(string status)
     {
-        var candidateId = Guid.NewGuid();
-        var candidate = new CandidateDto(
-            candidateId, "Amara Novak", "a.novak@mail.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited");
+        var attendeeId = Guid.NewGuid();
+        var attendee = new AttendeeDto(
+            attendeeId, "Amara Novak", "a.novak@mail.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited");
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<CandidateDto> { candidate }));
+        handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
         handler.Enqueue(_ => Json(new DashboardsDto(
             AwaitingAvailability: [],
             NoResponse: [],
-            Slots: [],
+            Events: [],
             EmailStatuses:
-            [new CandidateEmailStatusDto(
-                candidateId,
+            [new AttendeeEmailStatusDto(
+                attendeeId,
                 "Booking confirmation",
                 new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero),
                 status,
                 CanRetry: true)])));
-        handler.Enqueue(_ => Json(new List<EmployeeGroupOptionDto>()));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
         handler.Enqueue(_ => Json(new EmailRetryDto("Sent", Guid.NewGuid())));
-        handler.Enqueue(_ => Json(new List<CandidateDto> { candidate }));
+        handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
         handler.Enqueue(_ => Json(new DashboardsDto(
             AwaitingAvailability: [],
             NoResponse: [],
-            Slots: [],
+            Events: [],
             EmailStatuses:
-            [new CandidateEmailStatusDto(
-                candidateId,
+            [new AttendeeEmailStatusDto(
+                attendeeId,
                 "Booking confirmation",
                 new DateTimeOffset(2026, 9, 7, 10, 1, 0, TimeSpan.Zero),
                 "Sent",
                 CanRetry: false)])));
-        handler.Enqueue(_ => Json(new List<EmployeeGroupOptionDto>()));
-        Services.AddSingleton(new CandidatesClient(NewHttpClient(handler)));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
         Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
         Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
-        var cut = Render<Candidates>();
+        var cut = Render<Attendees>();
         cut.WaitForAssertion(() => Assert.Contains(">Resend<", cut.Markup));
 
         cut.FindAll("button").Single(button => button.TextContent == "Resend").Click();
@@ -336,11 +336,11 @@ public class RepairDNotificationComponentTests : BunitContext
             Assert.Contains(
                 handler.Requests,
                 request => request.Method == HttpMethod.Post
-                    && request.Path == $"/api/candidates/{candidateId}/email-retry");
+                    && request.Path == $"/api/attendees/{attendeeId}/email-retry");
             Assert.DoesNotContain(
                 handler.Requests,
                 request => request.Method == HttpMethod.Post
-                    && request.Path == $"/api/candidates/{candidateId}/invite");
+                    && request.Path == $"/api/attendees/{attendeeId}/invite");
         });
     }
 

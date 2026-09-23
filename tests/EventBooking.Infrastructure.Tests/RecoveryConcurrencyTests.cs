@@ -4,9 +4,9 @@ using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,7 +24,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
     /// <summary>
     /// Whichever racer commits first wins: a confirmed recovery is then cancelled with the
     /// whole journey, while a cancelled original leaves the recovery invite superseded. Both
-    /// outcomes restore every capacity row and keep the candidate lifecycle consistent.
+    /// outcomes restore every capacity row and keep the attendee lifecycle consistent.
     /// </summary>
     [Fact]
     public async Task RecoveryConfirmationRacingOriginalCancellationSerializes()
@@ -39,7 +39,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         var cancelHandler = BuildCancelHandler(cancelScope.ServiceProvider, cancelTrace);
 
         var confirmTask = confirmHandler.HandleAsync(
-            new ConfirmBookingCommand(race.RecoveryToken, race.RecoverySlotId), CancellationToken.None);
+            new ConfirmBookingCommand(race.RecoveryToken, race.RecoveryEventId), CancellationToken.None);
         var cancelTask = cancelHandler.HandleAsync(
             new CancelBookingCommand(race.ManageToken, false), CancellationToken.None);
         await Task.WhenAll(confirmTask, cancelTask);
@@ -67,24 +67,24 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             Assert.Equal(
                 [
                     "transaction-begun",
-                    "candidate-locked",
+                    "attendee-locked",
                     "invite-locked",
                     "original-booking-locked",
                     "active-recovery-locked",
-                    "slot-guard-locked",
+                    "event-guard-locked",
                     "capacity-locked",
                 ],
                 confirmTrace);
             Assert.Equal(
                 [
-                    "booking-slot-located",
+                    "booking-event-located",
                     "transaction-begun",
-                    "candidate-locked",
+                    "attendee-locked",
                     "pending-invites-locked",
                     "booking-locked",
                     "active-recovery-locked",
-                    "slot-guard-locked",
-                    "slot-guard-locked",
+                    "event-guard-locked",
+                    "event-guard-locked",
                     "capacity-locked",
                     "capacity-locked",
                 ],
@@ -96,30 +96,30 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             Assert.DoesNotContain(bookings, b => b.RecoveryOfBookingId.HasValue);
             Assert.Equal(InviteStatus.Superseded, recoveryInvite.Status);
             Assert.Equal(
-                ["transaction-begun", "candidate-locked", "invite-locked"],
+                ["transaction-begun", "attendee-locked", "invite-locked"],
                 confirmTrace);
             Assert.Equal(
                 [
-                    "booking-slot-located",
+                    "booking-event-located",
                     "transaction-begun",
-                    "candidate-locked",
+                    "attendee-locked",
                     "pending-invites-locked",
                     "booking-locked",
                     "active-recovery-locked",
-                    "slot-guard-locked",
+                    "event-guard-locked",
                     "capacity-locked",
                 ],
                 cancelTrace);
         }
 
         Assert.Equal(BookingStatus.Cancelled, bookings.Single(b => b.Id == race.OriginalId).Status);
-        var candidate = await verify.Candidates.SingleAsync(c => c.Id == race.CandidateId);
-        Assert.Equal(CandidateStatus.NotYetInvited, candidate.Status);
+        var attendee = await verify.Attendees.SingleAsync(c => c.Id == race.AttendeeId);
+        Assert.Equal(AttendeeStatus.NotYetInvited, attendee.Status);
 
-        foreach (var slotId in new[] { race.OriginalSlotId, race.RecoverySlotId })
+        foreach (var eventId in new[] { race.OriginalEventId, race.RecoveryEventId })
         {
-            var remaining = await verify.SlotCapacities
-                .Where(c => c.ConfirmedSlotId == slotId
+            var remaining = await verify.EventCapacities
+                .Where(c => c.EventId == eventId
                     && c.AppointmentTypeId == AppointmentTypeIds.DrugAndAlcoholTesting)
                 .Select(c => c.RemainingCapacity)
                 .SingleAsync();
@@ -147,23 +147,23 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
 
         var confirmResult = await BuildConfirmHandler(confirmScope.ServiceProvider, confirmTrace)
             .HandleAsync(
-                new ConfirmBookingCommand(race.RecoveryToken, race.RecoverySlotId),
+                new ConfirmBookingCommand(race.RecoveryToken, race.RecoveryEventId),
                 CancellationToken.None);
 
         Assert.True(confirmResult.IsFailure);
         Assert.Equal("not_found", confirmResult.Error.Code);
         Assert.Equal(
-            ["transaction-begun", "candidate-locked", "invite-locked"],
+            ["transaction-begun", "attendee-locked", "invite-locked"],
             confirmTrace);
         Assert.Equal(
             [
-                "booking-slot-located",
+                "booking-event-located",
                 "transaction-begun",
-                "candidate-locked",
+                "attendee-locked",
                 "pending-invites-locked",
                 "booking-locked",
                 "active-recovery-locked",
-                "slot-guard-locked",
+                "event-guard-locked",
                 "capacity-locked",
             ],
             cancelTrace);
@@ -180,8 +180,8 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
                 .SingleAsync());
         Assert.Equal(
             10,
-            await verify.SlotCapacities
-                .Where(c => c.ConfirmedSlotId == race.RecoverySlotId
+            await verify.EventCapacities
+                .Where(c => c.EventId == race.RecoveryEventId
                     && c.AppointmentTypeId == AppointmentTypeIds.DrugAndAlcoholTesting)
                 .Select(c => c.RemainingCapacity)
                 .SingleAsync());
@@ -203,7 +203,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
 
         var confirmResult = await BuildConfirmHandler(confirmScope.ServiceProvider, confirmTrace)
             .HandleAsync(
-                new ConfirmBookingCommand(race.RecoveryToken, race.RecoverySlotId),
+                new ConfirmBookingCommand(race.RecoveryToken, race.RecoveryEventId),
                 CancellationToken.None);
         Assert.True(confirmResult.IsSuccess);
 
@@ -214,24 +214,24 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         Assert.Equal(
             [
                 "transaction-begun",
-                "candidate-locked",
+                "attendee-locked",
                 "invite-locked",
                 "original-booking-locked",
                 "active-recovery-locked",
-                "slot-guard-locked",
+                "event-guard-locked",
                 "capacity-locked",
             ],
             confirmTrace);
         Assert.Equal(
             [
-                "booking-slot-located",
+                "booking-event-located",
                 "transaction-begun",
-                "candidate-locked",
+                "attendee-locked",
                 "pending-invites-locked",
                 "booking-locked",
                 "active-recovery-locked",
-                "slot-guard-locked",
-                "slot-guard-locked",
+                "event-guard-locked",
+                "event-guard-locked",
                 "capacity-locked",
                 "capacity-locked",
             ],
@@ -250,43 +250,43 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
                 .Select(i => i.Status)
                 .SingleAsync());
 
-        foreach (var slotId in new[] { race.OriginalSlotId, race.RecoverySlotId })
+        foreach (var eventId in new[] { race.OriginalEventId, race.RecoveryEventId })
         {
             Assert.Equal(
                 10,
-                await verify.SlotCapacities
-                    .Where(c => c.ConfirmedSlotId == slotId
+                await verify.EventCapacities
+                    .Where(c => c.EventId == eventId
                         && c.AppointmentTypeId == AppointmentTypeIds.DrugAndAlcoholTesting)
                     .Select(c => c.RemainingCapacity)
                     .SingleAsync());
         }
     }
 
-    /// <summary>One booked candidate with a no-show and a pending recovery invite.</summary>
+    /// <summary>One booked attendee with a no-show and a pending recovery invite.</summary>
     private sealed record RecoveryRace(
-        Guid OriginalSlotId,
-        Guid RecoverySlotId,
-        Guid CandidateId,
+        Guid OriginalEventId,
+        Guid RecoveryEventId,
+        Guid AttendeeId,
         Guid OriginalId,
         string ManageToken,
         string RecoveryToken);
 
     private async Task<RecoveryRace> GivenRecoveryRaceAsync(ConcurrencyHarness harness)
     {
-        var originalSlotId = await harness.GivenSlotAsync(10, 6, 8);
-        var recoverySlotId = await harness.GivenSlotAsync(10, 6, 8);
+        var originalEventId = await harness.GivenEventAsync(10, 6, 8);
+        var recoveryEventId = await harness.GivenEventAsync(10, 6, 8);
 
-        var initialToken = await harness.GivenInvitedCandidateAsync(
-            originalSlotId, AppointmentTypeIds.DrugAndAlcoholTesting);
-        var confirmed = await harness.ConfirmAsync(initialToken, originalSlotId);
+        var initialToken = await harness.GivenInvitedAttendeeAsync(
+            originalEventId, AppointmentTypeIds.DrugAndAlcoholTesting);
+        var confirmed = await harness.ConfirmAsync(initialToken, originalEventId);
         Assert.True(confirmed.IsSuccess);
         var originalId = confirmed.Value.BookingId;
 
-        Guid candidateId;
+        Guid attendeeId;
         await using (var context = fixture.NewContext())
         {
             var original = await context.Bookings.SingleAsync(b => b.Id == originalId);
-            candidateId = original.CandidateId;
+            attendeeId = original.AttendeeId;
             var missed = await context.BookingAppointments.SingleAsync(a => a.BookingId == originalId);
             missed.TransitionTo(
                 BookingAppointmentStatus.NoShow, Guid.NewGuid(), DateTimeOffset.UtcNow, false, true);
@@ -302,57 +302,57 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             recoveryToken = issued.Token;
             await using var context = fixture.NewContext();
             context.Invites.Add(Invite.CreateRecovery(
-                recoveryId, candidateId, originalId, issued.TokenHash,
+                recoveryId, attendeeId, originalId, issued.TokenHash,
                 DateTimeOffset.UtcNow.AddDays(4),
-                [recoverySlotId, ..harness.FallbackSlotIds],
+                [recoveryEventId, ..harness.FallbackEventIds],
                 [AppointmentTypeIds.DrugAndAlcoholTesting]));
             await context.SaveChangesAsync();
         }
 
         return new RecoveryRace(
-            originalSlotId, recoverySlotId, candidateId, originalId,
+            originalEventId, recoveryEventId, attendeeId, originalId,
             confirmed.Value.ManageToken, recoveryToken);
     }
 
     private static ConfirmBookingHandler BuildConfirmHandler(IServiceProvider services, List<string> trace) => new(
         new RecordingInviteRepository(services.GetRequiredService<IInviteRepository>(), trace),
-        new RecordingCandidateRepository(services.GetRequiredService<ICandidateRepository>(), trace),
-        new RecordingSlotRepository(services.GetRequiredService<IConfirmedSlotRepository>(), trace),
+        new RecordingAttendeeRepository(services.GetRequiredService<IAttendeeRepository>(), trace),
+        new RecordingEventRepository(services.GetRequiredService<IEventRepository>(), trace),
         new RecordingBookingRepository(services.GetRequiredService<IBookingRepository>(), trace),
         services.GetRequiredService<IBookingAppointmentRepository>(),
-        new RecordingCapacityRepository(services.GetRequiredService<ISlotCapacityRepository>(), trace),
-        new EligibleSlotFinder(
-            services.GetRequiredService<IConfirmedSlotRepository>(),
+        new RecordingCapacityRepository(services.GetRequiredService<IEventCapacityRepository>(), trace),
+        new EligibleEventFinder(
+            services.GetRequiredService<IEventRepository>(),
             services.GetRequiredService<IClock>()),
         services.GetRequiredService<ITokenService>(),
         services.GetRequiredService<EmailDeliveryService>(),
         services.GetRequiredService<IAuditLogger>(),
         new RecordingUnitOfWork(services.GetRequiredService<IUnitOfWork>(), trace),
         services.GetRequiredService<IClock>(),
-        services.GetRequiredService<CandidatePortalOptions>());
+        services.GetRequiredService<AttendeePortalOptions>());
 
     private static CancelBookingHandler BuildCancelHandler(IServiceProvider services, List<string> trace)
     {
         var bookings = new RecordingBookingRepository(services.GetRequiredService<IBookingRepository>(), trace);
-        var capacities = new RecordingCapacityRepository(services.GetRequiredService<ISlotCapacityRepository>(), trace);
+        var capacities = new RecordingCapacityRepository(services.GetRequiredService<IEventCapacityRepository>(), trace);
         var audit = services.GetRequiredService<IAuditLogger>();
         var issuer = new InviteIssuer(
             new RecordingInviteRepository(services.GetRequiredService<IInviteRepository>(), trace),
-            services.GetRequiredService<IEmployeeGroupRepository>(),
-            new EligibleSlotFinder(
-                services.GetRequiredService<IConfirmedSlotRepository>(),
+            services.GetRequiredService<IAttendeeGroupRepository>(),
+            new EligibleEventFinder(
+                services.GetRequiredService<IEventRepository>(),
                 services.GetRequiredService<IClock>()),
             services.GetRequiredService<ISystemSettingsRepository>(),
             services.GetRequiredService<ITokenService>(),
             services.GetRequiredService<EmailDeliveryService>(),
             audit,
             services.GetRequiredService<IClock>(),
-            services.GetRequiredService<CandidatePortalOptions>());
+            services.GetRequiredService<AttendeePortalOptions>());
 
         return new CancelBookingHandler(
             bookings,
-            new RecordingSlotRepository(services.GetRequiredService<IConfirmedSlotRepository>(), trace),
-            new RecordingCandidateRepository(services.GetRequiredService<ICandidateRepository>(), trace),
+            new RecordingEventRepository(services.GetRequiredService<IEventRepository>(), trace),
+            new RecordingAttendeeRepository(services.GetRequiredService<IAttendeeRepository>(), trace),
             new RecordingInviteRepository(services.GetRequiredService<IInviteRepository>(), trace),
             new BookingCanceller(
                 services.GetRequiredService<IBookingAppointmentRepository>(), capacities, audit),
@@ -363,31 +363,31 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             new RecordingUnitOfWork(services.GetRequiredService<IUnitOfWork>(), trace));
     }
 
-    /// <summary>Records candidate lifecycle-lock acquisition around the real repository.</summary>
-    private sealed class RecordingCandidateRepository(
-        ICandidateRepository inner,
-        List<string> trace) : ICandidateRepository
+    /// <summary>Records attendee lifecycle-lock acquisition around the real repository.</summary>
+    private sealed class RecordingAttendeeRepository(
+        IAttendeeRepository inner,
+        List<string> trace) : IAttendeeRepository
     {
-        public Task<Candidate?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        public Task<Attendee?> GetAsync(Guid id, CancellationToken cancellationToken) =>
             inner.GetAsync(id, cancellationToken);
 
-        public Task<Candidate?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
+        public Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
         {
-            trace.Add("candidate-locked");
+            trace.Add("attendee-locked");
             return inner.LockForUpdateAsync(id, cancellationToken);
         }
 
-        public Task<Candidate?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
+        public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
             inner.GetByEmailAsync(email, cancellationToken);
 
-        public Task<IReadOnlyList<Candidate>> ListAsync(
-            CandidateStatus? status,
+        public Task<IReadOnlyList<Attendee>> ListAsync(
+            AttendeeStatus? status,
             CancellationToken cancellationToken) =>
             inner.ListAsync(status, cancellationToken);
 
-        public void Add(Candidate candidate) => inner.Add(candidate);
+        public void Add(Attendee attendee) => inner.Add(attendee);
 
-        public void Remove(Candidate candidate) => inner.Remove(candidate);
+        public void Remove(Attendee attendee) => inner.Remove(attendee);
     }
 
     /// <summary>Records invite-lock acquisition order around the real repository.</summary>
@@ -412,27 +412,27 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             return inner.LockByTokenHashForUpdateAsync(tokenHash, cancellationToken);
         }
 
-        public Task<Invite?> LockPendingForCandidateAsync(
-            Guid candidateId,
+        public Task<Invite?> LockPendingForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken) =>
-            inner.LockPendingForCandidateAsync(candidateId, cancellationToken);
+            inner.LockPendingForAttendeeAsync(attendeeId, cancellationToken);
 
-        public Task<Invite?> GetPendingForCandidateAsync(
-            Guid candidateId,
+        public Task<Invite?> GetPendingForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken) =>
-            inner.GetPendingForCandidateAsync(candidateId, cancellationToken);
+            inner.GetPendingForAttendeeAsync(attendeeId, cancellationToken);
 
-        public Task<Invite?> LockPendingInitialForCandidateAsync(
-            Guid candidateId,
+        public Task<Invite?> LockPendingInitialForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken) =>
-            inner.LockPendingInitialForCandidateAsync(candidateId, cancellationToken);
+            inner.LockPendingInitialForAttendeeAsync(attendeeId, cancellationToken);
 
-        public Task<IReadOnlyList<Invite>> LockPendingListForCandidateAsync(
-            Guid candidateId,
+        public Task<IReadOnlyList<Invite>> LockPendingListForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken)
         {
             trace.Add("pending-invites-locked");
-            return inner.LockPendingListForCandidateAsync(candidateId, cancellationToken);
+            return inner.LockPendingListForAttendeeAsync(attendeeId, cancellationToken);
         }
 
         public Task<IReadOnlyList<Invite>> ListPendingExpiredAsync(
@@ -459,18 +459,18 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             CancellationToken cancellationToken) =>
             inner.GetByManageTokenHashAsync(manageTokenHash, cancellationToken);
 
-        public Task<Guid?> GetConfirmedSlotIdByManageTokenHashAsync(
+        public Task<Guid?> GetEventIdByManageTokenHashAsync(
             string manageTokenHash,
             CancellationToken cancellationToken)
         {
-            trace.Add("booking-slot-located");
-            return inner.GetConfirmedSlotIdByManageTokenHashAsync(manageTokenHash, cancellationToken);
+            trace.Add("booking-event-located");
+            return inner.GetEventIdByManageTokenHashAsync(manageTokenHash, cancellationToken);
         }
 
-        public Task<Guid?> GetCandidateIdByManageTokenHashAsync(
+        public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
             string manageTokenHash,
             CancellationToken cancellationToken) =>
-            inner.GetCandidateIdByManageTokenHashAsync(manageTokenHash, cancellationToken);
+            inner.GetAttendeeIdByManageTokenHashAsync(manageTokenHash, cancellationToken);
 
         public Task<Booking?> LockByManageTokenHashForUpdateAsync(
             string manageTokenHash,
@@ -480,42 +480,42 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
             return inner.LockByManageTokenHashForUpdateAsync(manageTokenHash, cancellationToken);
         }
 
-        public Task<Booking?> LockByIdForCandidateAsync(
+        public Task<Booking?> LockByIdForAttendeeAsync(
             Guid bookingId,
-            Guid candidateId,
+            Guid attendeeId,
             CancellationToken cancellationToken)
         {
             trace.Add("booking-locked");
-            return inner.LockByIdForCandidateAsync(bookingId, candidateId, cancellationToken);
+            return inner.LockByIdForAttendeeAsync(bookingId, attendeeId, cancellationToken);
         }
 
-        public Task<Booking?> LockActiveForCandidateAsync(
-            Guid candidateId,
+        public Task<Booking?> LockActiveForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken) =>
-            inner.LockActiveForCandidateAsync(candidateId, cancellationToken);
+            inner.LockActiveForAttendeeAsync(attendeeId, cancellationToken);
 
-        public Task<Booking?> GetActiveForCandidateAsync(
-            Guid candidateId,
+        public Task<Booking?> GetActiveForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken) =>
-            inner.GetActiveForCandidateAsync(candidateId, cancellationToken);
+            inner.GetActiveForAttendeeAsync(attendeeId, cancellationToken);
 
-        public Task<Booking?> LockActiveOriginalForCandidateAsync(
-            Guid candidateId,
+        public Task<Booking?> LockActiveOriginalForAttendeeAsync(
+            Guid attendeeId,
             CancellationToken cancellationToken)
         {
             trace.Add("original-booking-locked");
-            return inner.LockActiveOriginalForCandidateAsync(candidateId, cancellationToken);
+            return inner.LockActiveOriginalForAttendeeAsync(attendeeId, cancellationToken);
         }
 
-        public Task<IReadOnlyList<Guid>> ListActiveCandidateIdsForSlotAsync(
-            Guid confirmedSlotId,
+        public Task<IReadOnlyList<Guid>> ListActiveAttendeeIdsForEventAsync(
+            Guid eventId,
             CancellationToken cancellationToken) =>
-            inner.ListActiveCandidateIdsForSlotAsync(confirmedSlotId, cancellationToken);
+            inner.ListActiveAttendeeIdsForEventAsync(eventId, cancellationToken);
 
-        public Task<IReadOnlyList<Booking>> ListActiveForSlotAsync(
-            Guid confirmedSlotId,
+        public Task<IReadOnlyList<Booking>> ListActiveForEventAsync(
+            Guid eventId,
             CancellationToken cancellationToken) =>
-            inner.ListActiveForSlotAsync(confirmedSlotId, cancellationToken);
+            inner.ListActiveForEventAsync(eventId, cancellationToken);
 
         public Task<IReadOnlyList<Booking>> ListJourneyAsync(
             Guid originalBookingId,
@@ -533,43 +533,43 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         public void Add(Booking booking) => inner.Add(booking);
     }
 
-    /// <summary>Records slot-guard acquisition around the real repository.</summary>
-    private sealed class RecordingSlotRepository(
-        IConfirmedSlotRepository inner,
-        List<string> trace) : IConfirmedSlotRepository
+    /// <summary>Records event-guard acquisition around the real repository.</summary>
+    private sealed class RecordingEventRepository(
+        IEventRepository inner,
+        List<string> trace) : IEventRepository
     {
-        public Task<ConfirmedSlot?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        public Task<Event?> GetAsync(Guid id, CancellationToken cancellationToken) =>
             inner.GetAsync(id, cancellationToken);
 
-        public Task<ConfirmedSlot?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
+        public Task<Event?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
         {
-            trace.Add("slot-guard-locked");
+            trace.Add("event-guard-locked");
             return inner.LockForUpdateAsync(id, cancellationToken);
         }
 
-        public Task<IReadOnlyList<ConfirmedSlot>> ListActiveAsync(
+        public Task<IReadOnlyList<Event>> ListActiveAsync(
             DateOnly onOrAfter,
             CancellationToken cancellationToken) =>
             inner.ListActiveAsync(onOrAfter, cancellationToken);
 
-        public Task<IReadOnlyList<ConfirmedSlot>> ListAllAsync(CancellationToken cancellationToken) =>
+        public Task<IReadOnlyList<Event>> ListAllAsync(CancellationToken cancellationToken) =>
             inner.ListAllAsync(cancellationToken);
 
-        public void Add(ConfirmedSlot slot) => inner.Add(slot);
+        public void Add(Event eventItem) => inner.Add(eventItem);
     }
 
     /// <summary>Records capacity-lock acquisition around the real repository.</summary>
     private sealed class RecordingCapacityRepository(
-        ISlotCapacityRepository inner,
-        List<string> trace) : ISlotCapacityRepository
+        IEventCapacityRepository inner,
+        List<string> trace) : IEventCapacityRepository
     {
-        public Task<IReadOnlyList<SlotCapacity>> LockForUpdateAsync(
-            Guid confirmedSlotId,
+        public Task<IReadOnlyList<EventCapacity>> LockForUpdateAsync(
+            Guid eventId,
             IReadOnlyCollection<Guid> appointmentTypeIds,
             CancellationToken cancellationToken)
         {
             trace.Add("capacity-locked");
-            return inner.LockForUpdateAsync(confirmedSlotId, appointmentTypeIds, cancellationToken);
+            return inner.LockForUpdateAsync(eventId, appointmentTypeIds, cancellationToken);
         }
     }
 

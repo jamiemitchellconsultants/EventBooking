@@ -1,12 +1,12 @@
 using EventBooking.Application.Abstractions;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace EventBooking.Infrastructure.Persistence;
 
 /// <summary>
-/// Persists a candidate's status timestamp in the same save as the status change.
+/// Persists a attendee's status timestamp in the same save as the status change.
 /// </summary>
 public sealed class StatusStampingInterceptor(IClock clock) : SaveChangesInterceptor
 {
@@ -36,7 +36,7 @@ public sealed class StatusStampingInterceptor(IClock clock) : SaveChangesInterce
             return;
         }
 
-        foreach (var entry in context.ChangeTracker.Entries<Candidate>())
+        foreach (var entry in context.ChangeTracker.Entries<Attendee>())
         {
             if (entry.State == EntityState.Added ||
                 (entry.State == EntityState.Modified && entry.Property(c => c.Status).IsModified))

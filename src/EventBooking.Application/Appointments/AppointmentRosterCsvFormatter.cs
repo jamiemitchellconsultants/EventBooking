@@ -15,27 +15,27 @@ public sealed record RosterCsvResult
 }
 
 /// <summary>
-/// Projects a scoped appointment-workspace slot detail into roster CSV text plus a filename. It
-/// consumes only the slot detail the workspace handler already returns, so it cannot expose a
-/// field the JSON slot-detail route does not already expose.
+/// Projects a scoped appointment-workspace event detail into roster CSV text plus a filename. It
+/// consumes only the event detail the workspace handler already returns, so it cannot expose a
+/// field the JSON event-detail route does not already expose.
 /// </summary>
 /// <param name="clock">The clock.</param>
 public sealed class AppointmentRosterCsvFormatter(IClock clock)
 {
     private static readonly string[] HeaderFields =
     [
-        "Candidate Name",
-        "Candidate Email",
+        "Attendee Name",
+        "Attendee Email",
         "Appointment Type",
         "Status",
         "Checked In At",
         "Outcome At",
     ];
 
-    /// <summary>Formats the given slot detail as CSV text with its download filename.</summary>
-    /// <param name="detail">The scoped slot detail already returned by the workspace handler.</param>
+    /// <summary>Formats the given event detail as CSV text with its download filename.</summary>
+    /// <param name="detail">The scoped event detail already returned by the workspace handler.</param>
     /// <returns>The CSV body text and the filesystem-safe download filename.</returns>
-    public RosterCsvResult Format(AppointmentSlotDetail detail)
+    public RosterCsvResult Format(AppointmentEventDetail detail)
     {
         // A literal line feed rather than AppendLine: the body must not vary with the host's
         // newline convention, and both CSV parsers in this codebase normalise either ending.
@@ -48,8 +48,8 @@ public sealed class AppointmentRosterCsvFormatter(IClock clock)
             builder
                 .Append(string.Join(
                     ',',
-                    Escape(row.CandidateName),
-                    Escape(row.CandidateEmail),
+                    Escape(row.AttendeeName),
+                    Escape(row.AttendeeEmail),
                     Escape(detail.AppointmentTypeName),
                     Escape(row.Status.ToString()),
                     Escape(FormatInstant(row.CheckedInAt)),
@@ -64,14 +64,14 @@ public sealed class AppointmentRosterCsvFormatter(IClock clock)
         };
     }
 
-    /// <summary>Formats a nullable instant as head-office ISO 8601, or empty when null.</summary>
+    /// <summary>Formats a nullable instant as transitional-location ISO 8601, or empty when null.</summary>
     private string FormatInstant(DateTimeOffset? instant) =>
         instant is null
             ? string.Empty
-            : clock.InstantAtHeadOffice(instant.Value).ToString("o", CultureInfo.InvariantCulture);
+            : clock.InstantAtTransitionalLocation(instant.Value).ToString("o", CultureInfo.InvariantCulture);
 
-    /// <summary>Builds the download filename from the slot's type slug, date, and start time.</summary>
-    private static string BuildFileName(AppointmentSlotDetail detail)
+    /// <summary>Builds the download filename from the event's type slug, date, and start time.</summary>
+    private static string BuildFileName(AppointmentEventDetail detail)
     {
         // Spaces to hyphens and lower-cased, nothing else altered or removed.
         var slug = detail.AppointmentTypeName.Replace(' ', '-').ToLowerInvariant();

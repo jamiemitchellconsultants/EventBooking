@@ -10,7 +10,7 @@ namespace EventBooking.Mcp.Tests;
 public sealed class OperationsMcpTests(McpFactory factory)
 {
     [Fact]
-    public async Task AdminSearchesOperationalAuditWithoutCandidateRows()
+    public async Task AdminSearchesOperationalAuditWithoutAttendeeRows()
     {
         factory.SignedInAs = await factory.GivenStaffAsync([Role.Admin], null);
         using var result = await CallResultAsync("search_audit", new { pageSize = 10 });
@@ -29,14 +29,14 @@ public sealed class OperationsMcpTests(McpFactory factory)
     [Fact]
     public async Task ScopedStaffExportsRosterTextAndFilename()
     {
-        var slotId = await McpScenarioSeeder.GivenAppointmentWorkspaceAsync(
+        var eventId = await McpScenarioSeeder.GivenAppointmentWorkspaceAsync(
             factory, AppointmentTypeIds.DrugAndAlcoholTesting);
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
         using var result = await CallResultAsync(
-            "export_appointment_roster", new { confirmedSlotId = slotId });
+            "export_appointment_roster", new { eventId = eventId });
         Assert.StartsWith("roster-drug-&-alcohol-testing-", result.RootElement.GetProperty("fileName").GetString());
-        Assert.Contains("Candidate Name,Candidate Email", result.RootElement.GetProperty("csvText").GetString());
+        Assert.Contains("Attendee Name,Attendee Email", result.RootElement.GetProperty("csvText").GetString());
     }
 
     private async Task<JsonDocument> CallResultAsync(string name, object arguments)

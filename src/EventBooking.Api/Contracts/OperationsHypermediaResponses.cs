@@ -5,65 +5,65 @@ using EventBooking.Domain.Audit;
 
 namespace EventBooking.Api.Contracts;
 
-/// <summary>One slot-overview row plus its audit and cancel affordances.</summary>
-public sealed record SlotOverviewResourceResponse(
-    /// <summary>Gets the stable confirmed slot identifier.</summary>
-    Guid ConfirmedSlotId,
-    /// <summary>Gets the slot window calendar date.</summary>
+/// <summary>One event-overview row plus its audit and cancel affordances.</summary>
+public sealed record EventOverviewResourceResponse(
+    /// <summary>Gets the stable event identifier.</summary>
+    Guid EventId,
+    /// <summary>Gets the event window calendar date.</summary>
     DateOnly Date,
-    /// <summary>Gets the start of the slot window.</summary>
+    /// <summary>Gets the start of the event window.</summary>
     TimeOnly StartTime,
-    /// <summary>Gets the end of the slot window.</summary>
+    /// <summary>Gets the end of the event window.</summary>
     TimeOnly EndTime,
     /// <summary>Gets the per-appointment-type capacity rows.</summary>
-    IReadOnlyList<SlotCapacityRow> Capacities,
+    IReadOnlyList<EventCapacityRow> Capacities,
     /// <summary>Gets the aggregate active booking count.</summary>
     int ActiveBookings,
-    /// <summary>Gets the audit and cancel affordances for the slot.</summary>
+    /// <summary>Gets the audit and cancel affordances for the eventItem.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
-    /// <summary>Projects one slot-overview row into its hypermedia resource.</summary>
-    /// <param name="row">The application slot-overview row to project.</param>
-    /// <returns>The API resource with slot-overview links.</returns>
-    public static SlotOverviewResourceResponse From(SlotOverviewRow row) =>
-        new(row.ConfirmedSlotId, row.Date, row.StartTime, row.EndTime,
+    /// <summary>Projects one event-overview row into its hypermedia resource.</summary>
+    /// <param name="row">The application event-overview row to project.</param>
+    /// <returns>The API resource with event-overview links.</returns>
+    public static EventOverviewResourceResponse From(EventOverviewRow row) =>
+        new(row.EventId, row.Date, row.StartTime, row.EndTime,
             row.Capacities, row.ActiveBookings,
             new Dictionary<string, ApiLink>
             {
-                ["audit"] = new($"/api/audit/slot/{row.ConfirmedSlotId}", "GET", "getSlotAuditHistory"),
-                ["cancel"] = new($"/api/slots/confirmed/{row.ConfirmedSlotId}", "DELETE", "cancelConfirmedSlot"),
+                ["audit"] = new($"/api/audit/event/{row.EventId}", "GET", "getEventAuditHistory"),
+                ["cancel"] = new($"/api/events/{row.EventId}", "DELETE", "cancelEvent"),
             });
 }
 
-/// <summary>Slot-only operations view plus the collection self affordance.</summary>
-public sealed record SlotOperationsResourceResponse(
-    /// <summary>Gets one row per confirmed slot with capacity and booking counts.</summary>
-    IReadOnlyList<SlotOverviewResourceResponse> Slots,
+/// <summary>Event-only operations view plus the collection self affordance.</summary>
+public sealed record EventOperationsResourceResponse(
+    /// <summary>Gets one row per event with capacity and booking counts.</summary>
+    IReadOnlyList<EventOverviewResourceResponse> Events,
     /// <summary>Gets the collection affordances.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
-    /// <summary>Projects one slot operations view into its hypermedia resource.</summary>
-    /// <param name="view">The application slot operations view to project.</param>
+    /// <summary>Projects one event operations view into its hypermedia resource.</summary>
+    /// <param name="view">The application event operations view to project.</param>
     /// <returns>The API resource with operations and row links.</returns>
-    public static SlotOperationsResourceResponse From(SlotOperationsView view) =>
-        new(view.Slots.Select(SlotOverviewResourceResponse.From).ToList(),
+    public static EventOperationsResourceResponse From(EventOperationsView view) =>
+        new(view.Events.Select(EventOverviewResourceResponse.From).ToList(),
             new Dictionary<string, ApiLink>
             {
-                ["self"] = new("/api/slots/operations", "GET", "getSlotOperations"),
-                ["board"] = new("/api/slots/board", "GET", "getSlotBoard"),
+                ["self"] = new("/api/events/operations", "GET", "getEventOperations"),
+                ["board"] = new("/api/events/board", "GET", "getEventBoard"),
             });
 }
 
 /// <summary>Coordinator dashboards plus entry affordances for related collections.</summary>
 public sealed record DashboardResourceResponse(
-    /// <summary>Gets the candidates waiting for availability.</summary>
+    /// <summary>Gets the attendees waiting for availability.</summary>
     IReadOnlyList<AwaitingAvailabilityRow> AwaitingAvailability,
-    /// <summary>Gets the candidates needing follow-up after no response.</summary>
+    /// <summary>Gets the attendees needing follow-up after no response.</summary>
     IReadOnlyList<NoResponseRow> NoResponse,
-    /// <summary>Gets the slot overview rows with capacity and booking counts.</summary>
-    IReadOnlyList<SlotOverviewResourceResponse> Slots,
-    /// <summary>Gets the latest email delivery state per candidate.</summary>
-    IReadOnlyList<CandidateEmailStatusView> EmailStatuses,
+    /// <summary>Gets the event overview rows with capacity and booking counts.</summary>
+    IReadOnlyList<EventOverviewResourceResponse> Events,
+    /// <summary>Gets the latest email delivery state per attendee.</summary>
+    IReadOnlyList<AttendeeEmailStatusView> EmailStatuses,
     /// <summary>Gets the dashboard self and collection entry affordances.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
@@ -72,18 +72,18 @@ public sealed record DashboardResourceResponse(
     /// <returns>The API resource with dashboard links.</returns>
     public static DashboardResourceResponse From(DashboardsView view) =>
         new(view.AwaitingAvailability, view.NoResponse,
-            view.Slots.Select(SlotOverviewResourceResponse.From).ToList(),
+            view.Events.Select(EventOverviewResourceResponse.From).ToList(),
             view.EmailStatuses,
             new Dictionary<string, ApiLink>
             {
                 ["self"] = new("/api/dashboards", "GET", "getDashboards"),
-                ["candidates"] = new("/api/candidates", "GET", "listCandidates"),
-                ["slotOperations"] = new("/api/slots/operations", "GET", "getSlotOperations"),
+                ["attendees"] = new("/api/attendees", "GET", "listAttendees"),
+                ["eventOperations"] = new("/api/events/operations", "GET", "getEventOperations"),
                 ["audit"] = new("/api/audit/search", "GET", "searchAudit"),
             });
 }
 
-/// <summary>One audit history row plus a link when it addresses a real candidate or slot route.</summary>
+/// <summary>One audit history row plus a link when it addresses a real attendee or event route.</summary>
 public sealed record AuditHistoryResourceResponse(
     /// <summary>Gets when the audited action was recorded.</summary>
     DateTimeOffset Timestamp,
@@ -102,27 +102,27 @@ public sealed record AuditHistoryResourceResponse(
     /// <summary>Gets the history link when the row addresses a real route, otherwise empty.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
-    private static readonly IReadOnlySet<string> CandidateBucket =
+    private static readonly IReadOnlySet<string> AttendeeBucket =
         new HashSet<string>(StringComparer.Ordinal)
         {
-            AuditEntityTypes.Candidate, AuditEntityTypes.Invite,
+            AuditEntityTypes.Attendee, AuditEntityTypes.Invite,
             AuditEntityTypes.Booking, AuditEntityTypes.BookingAppointment,
         };
 
-    /// <summary>Projects one audit history row, linking only to real candidate or slot routes.</summary>
+    /// <summary>Projects one audit history row, linking only to real attendee or event routes.</summary>
     /// <param name="row">The application audit history row to project.</param>
     /// <returns>The API resource with a history link or an empty link dictionary.</returns>
     public static AuditHistoryResourceResponse From(AuditHistoryRow row)
     {
         IReadOnlyDictionary<string, ApiLink> links = row.EntityType switch
         {
-            AuditEntityTypes.ConfirmedSlot => new Dictionary<string, ApiLink>
+            AuditEntityTypes.Event => new Dictionary<string, ApiLink>
             {
-                ["history"] = new($"/api/audit/slot/{row.EntityId}", "GET", "getSlotAuditHistory"),
+                ["history"] = new($"/api/audit/event/{row.EntityId}", "GET", "getEventAuditHistory"),
             },
-            _ when CandidateBucket.Contains(row.EntityType) => new Dictionary<string, ApiLink>
+            _ when AttendeeBucket.Contains(row.EntityType) => new Dictionary<string, ApiLink>
             {
-                ["history"] = new($"/api/audit/candidate/{row.EntityId}", "GET", "getCandidateAuditHistory"),
+                ["history"] = new($"/api/audit/attendee/{row.EntityId}", "GET", "getAttendeeAuditHistory"),
             },
             _ => new Dictionary<string, ApiLink>(),
         };

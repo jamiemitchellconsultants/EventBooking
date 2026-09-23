@@ -11,12 +11,12 @@ namespace EventBooking.Application.Invites;
 public sealed record InviteSweepSummary(int Expired, int ReIssued, int FlaggedForFollowUp);
 
 /// <summary>
-/// The scheduled half of the invite engine. Expiry is never triggered by a candidate opening a
+/// The scheduled half of the invite engine. Expiry is never triggered by a attendee opening a
 /// link — an invite nobody ever opens has to expire too.
 /// </summary>
 /// <param name="deliveries">Dispatches staged re-invites after each commit.</param>
 /// <param name="invites">The invites.</param>
-/// <param name="candidates">The candidates.</param>
+/// <param name="attendees">The attendees.</param>
 /// <param name="settings">The settings.</param>
 /// <param name="issuer">The issuer.</param>
 /// <param name="audit">The audit.</param>
@@ -24,7 +24,7 @@ public sealed record InviteSweepSummary(int Expired, int ReIssued, int FlaggedFo
 /// <param name="clock">The clock.</param>
 public sealed class ExpireInvitesHandler(
     IInviteRepository invites,
-    ICandidateRepository candidates,
+    IAttendeeRepository attendees,
     ISystemSettingsRepository settings,
     InviteIssuer issuer,
     EmailDeliveryService deliveries,
@@ -32,7 +32,7 @@ public sealed class ExpireInvitesHandler(
     IUnitOfWork unitOfWork,
     IClock clock)
 {
-    /// <summary>Expires and optionally replaces each due invite under its candidate lifecycle lock.</summary>
+    /// <summary>Expires and optionally replaces each due invite under its attendee lifecycle lock.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     public async Task<InviteSweepSummary> HandleAsync(CancellationToken cancellationToken)
     {
@@ -47,10 +47,10 @@ public sealed class ExpireInvitesHandler(
         {
             await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            // The candidate is the lifecycle root. The due-list row is only a work hint and is
-            // re-read under the candidate and invite locks before any transition is made.
-            var candidate = await candidates.LockForUpdateAsync(dueInvite.CandidateId, cancellationToken);
-            if (candidate is null)
+            // The attendee is the lifecycle root. The due-list row is only a work hint and is
+            // re-read under the attendee and invite locks before any transition is made.
+            var attendee = await attendees.LockForUpdateAsync(dueInvite.AttendeeId, cancellationToken);
+            if (attendee is null)
             {
                 continue;
             }
@@ -95,7 +95,7 @@ public sealed class ExpireInvitesHandler(
                 continue;
             }
 
-            if (invite.ExpiresAt > clock.UtcNow || candidate.Status == Domain.Candidates.CandidateStatus.Booked)
+            if (invite.ExpiresAt > clock.UtcNow || attendee.Status == Domain.Attendees.AttendeeStatus.Booked)
             {
                 await transaction.CommitAsync(cancellationToken);
                 continue;
@@ -114,7 +114,7 @@ public sealed class ExpireInvitesHandler(
 
             if (invite.RetryCount >= configuration.MaxAutoRetryCount)
             {
-                candidate.MarkNoResponse();
+                attendee.MarkNoResponse();
                 flagged++;
                 await unitOfWork.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
@@ -122,7 +122,7 @@ public sealed class ExpireInvitesHandler(
             }
 
             var issueResult = await issuer.IssueInitialAsync(
-                candidate,
+                attendee,
                 invite.RetryCount + 1,
                 ActorType.System,
                 null,
@@ -131,9 +131,9 @@ public sealed class ExpireInvitesHandler(
 
             if (issueResult.IsFailure)
             {
-                if (candidate.Status == Domain.Candidates.CandidateStatus.Invited)
+                if (attendee.Status == Domain.Attendees.AttendeeStatus.Invited)
                 {
-                    candidate.MarkNoResponse();
+                    attendee.MarkNoResponse();
                     flagged++;
                     audit.Record(
                         AuditEntityTypes.Invite,

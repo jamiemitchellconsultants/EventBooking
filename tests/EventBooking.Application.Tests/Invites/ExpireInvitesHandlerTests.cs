@@ -3,37 +3,37 @@ using EventBooking.Application.Notifications;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Invites;
 
 public class ExpireInvitesHandlerTests
 {
-    private static readonly CandidatePortalOptions Portal = new(
+    private static readonly AttendeePortalOptions Portal = new(
         "https://booking.example.com", "Corporate HQ", "recruitment@corp.com");
 
-    private readonly InMemoryCandidateRepository _candidates = new();
+    private readonly InMemoryAttendeeRepository _attendees = new();
     private readonly InMemoryInviteRepository _invites = new();
-    private readonly InMemoryEmployeeGroupRepository _groups = new();
-    private readonly InMemoryConfirmedSlotRepository _slots = new();
+    private readonly InMemoryAttendeeGroupRepository _groups = new();
+    private readonly InMemoryEventRepository _events = new();
     private readonly InMemorySystemSettingsRepository _settings = new();
     private readonly RecordingEmailSender _email = new();
     private readonly InMemoryEmailDeliveryRepository _deliveries = new();
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
-    private readonly Candidate _candidate;
+    private readonly Attendee _attendee;
 
     private ExpireInvitesHandler Handler => new(
         _invites,
-        _candidates,
+        _attendees,
         _settings,
         new InviteIssuer(
-            _invites, _groups, new EligibleSlotFinder(_slots, _clock), _settings,
+            _invites, _groups, new EligibleEventFinder(_events, _clock), _settings,
             new FakeTokenService(), EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),
         EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
@@ -43,13 +43,13 @@ public class ExpireInvitesHandlerTests
 
     public ExpireInvitesHandlerTests()
     {
-        var pilots = EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        var pilots = AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
         _groups.Items.Add(pilots);
-        _candidate = Candidate.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
-        _candidates.Add(_candidate);
-        AddThreeSlots();
+        _attendee = Attendee.Create(Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
+        _attendees.Add(_attendee);
+        AddThreeEvents();
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class ExpireInvitesHandlerTests
         Assert.Equal(InviteStatus.Expired, _invites.Items[0].Status);
         Assert.Equal(InviteStatus.Pending, _invites.Items[1].Status);
         Assert.Equal(1, _invites.Items[1].RetryCount);
-        Assert.Equal(CandidateStatus.Invited, _candidate.Status);
+        Assert.Equal(AttendeeStatus.Invited, _attendee.Status);
     }
 
     [Fact]
@@ -88,11 +88,11 @@ public class ExpireInvitesHandlerTests
 
         await Handler.HandleAsync(CancellationToken.None);
 
-        Assert.Equal(EmailTemplate.CandidateReinvite, _email.Sent.Single().Template);
+        Assert.Equal(EmailTemplate.AttendeeReinvite, _email.Sent.Single().Template);
     }
 
     [Fact]
-    public async Task AtTheCeilingTheCandidateIsFlaggedForFollowUpAndNothingIsSent()
+    public async Task AtTheCeilingTheAttendeeIsFlaggedForFollowUpAndNothingIsSent()
     {
         GivePendingInvite(expiresInDays: -1, retryCount: _settings.Settings.MaxAutoRetryCount);
 
@@ -104,12 +104,12 @@ public class ExpireInvitesHandlerTests
 
         Assert.Single(_invites.Items);
         Assert.Equal(InviteStatus.Expired, _invites.Items.Single().Status);
-        Assert.Equal(CandidateStatus.NoResponseNeedsFollowUp, _candidate.Status);
+        Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, _attendee.Status);
         Assert.Empty(_email.Sent);
     }
 
     [Fact]
-    public async Task RepeatedSweepsDoNotChaseACandidateWhoIsAlreadyFlagged()
+    public async Task RepeatedSweepsDoNotChaseAAttendeeWhoIsAlreadyFlagged()
     {
         GivePendingInvite(expiresInDays: -1, retryCount: _settings.Settings.MaxAutoRetryCount);
         await Handler.HandleAsync(CancellationToken.None);
@@ -117,29 +117,29 @@ public class ExpireInvitesHandlerTests
         var summary = await Handler.HandleAsync(CancellationToken.None);
 
         Assert.Equal(0, summary.Expired);
-        Assert.Equal(CandidateStatus.NoResponseNeedsFollowUp, _candidate.Status);
+        Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, _attendee.Status);
     }
 
     [Fact]
-    public async Task AReIssueWithNoEligibleSlotsFlagsAwaitingAvailabilityInstead()
+    public async Task AReIssueWithNoEligibleEventsFlagsAwaitingAvailabilityInstead()
     {
         GivePendingInvite(expiresInDays: -1, retryCount: 0);
-        _slots.Items.Clear();
+        _events.Items.Clear();
 
         var summary = await Handler.HandleAsync(CancellationToken.None);
 
         Assert.Equal(1, summary.Expired);
         Assert.Equal(0, summary.ReIssued);
-        Assert.Equal(CandidateStatus.AwaitingAvailability, _candidate.Status);
+        Assert.Equal(AttendeeStatus.AwaitingAvailability, _attendee.Status);
     }
 
     [Fact]
-    public async Task AFailedReIssueFlagsTheCandidateForFollowUp()
+    public async Task AFailedReIssueFlagsTheAttendeeForFollowUp()
     {
         GivePendingInvite(expiresInDays: -1, retryCount: 0);
         _groups.Items.Clear();
-        _groups.Items.Add(EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        _groups.Items.Add(AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting]));
 
         var summary = await Handler.HandleAsync(CancellationToken.None);
@@ -148,7 +148,7 @@ public class ExpireInvitesHandlerTests
         Assert.Equal(0, summary.ReIssued);
         Assert.Equal(1, summary.FlaggedForFollowUp);
         Assert.Equal(InviteStatus.Expired, _invites.Items.Single().Status);
-        Assert.Equal(CandidateStatus.NoResponseNeedsFollowUp, _candidate.Status);
+        Assert.Equal(AttendeeStatus.NoResponseNeedsFollowUp, _attendee.Status);
         Assert.Empty(_email.Sent);
     }
 
@@ -176,17 +176,17 @@ public class ExpireInvitesHandlerTests
     }
 
     [Fact]
-    public async Task AnExpiredRecoveryInviteLeavesTheCandidateBooked()
+    public async Task AnExpiredRecoveryInviteLeavesTheAttendeeBooked()
     {
-        _candidate.MarkInvited();
-        _candidate.MarkBooked();
+        _attendee.MarkInvited();
+        _attendee.MarkBooked();
         _invites.Add(Invite.CreateRecovery(
             Guid.NewGuid(),
-            _candidate.Id,
+            _attendee.Id,
             Guid.NewGuid(),
             $"hash-{Guid.NewGuid():N}",
             _clock.UtcNow.AddDays(-1),
-            _slots.Items.Take(3).Select(s => s.Id),
+            _events.Items.Take(3).Select(s => s.Id),
             [AppointmentTypeIds.DrugAndAlcoholTesting]));
 
         var summary = await Handler.HandleAsync(CancellationToken.None);
@@ -195,7 +195,7 @@ public class ExpireInvitesHandlerTests
         Assert.Equal(0, summary.ReIssued);
         Assert.Equal(0, summary.FlaggedForFollowUp);
         Assert.Equal(InviteStatus.Expired, _invites.Items.Single().Status);
-        Assert.Equal(CandidateStatus.Booked, _candidate.Status);
+        Assert.Equal(AttendeeStatus.Booked, _attendee.Status);
         Assert.Single(_invites.Items);
         Assert.Empty(_email.Sent);
         Assert.True(_audit.Contains(AuditAction.InviteExpired));
@@ -203,29 +203,29 @@ public class ExpireInvitesHandlerTests
 
     private void GivePendingInvite(int expiresInDays, int retryCount)
     {
-        _candidate.MarkInvited();
+        _attendee.MarkInvited();
         _invites.Add(Invite.CreateInitial(
             Guid.NewGuid(),
-            _candidate.Id,
+            _attendee.Id,
             $"hash-{Guid.NewGuid():N}",
             _clock.UtcNow.AddDays(expiresInDays),
-            _slots.Items.Take(3).Select(s => s.Id),
-            _candidate.RequiredAppointmentTypeIds,
+            _events.Items.Take(3).Select(s => s.Id),
+            _attendee.RequiredAppointmentTypeIds,
             retryCount));
     }
 
-    private void AddThreeSlots()
+    private void AddThreeEvents()
     {
         foreach (var day in new[] { 10, 12, 14 })
         {
-            var proposal = SlotProposal.Create(
-                Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
+            var proposal = EventProposal.Create(
+                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(9, 0)),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-            _slots.Add(ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal));
+            _events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
         }
     }
 }

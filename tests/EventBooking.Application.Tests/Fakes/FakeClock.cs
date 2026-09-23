@@ -12,16 +12,16 @@ public sealed class FakeClock : IClock
     public DateTimeOffset UtcNow { get; set; }
 
     /// <inheritdoc/>
-    public DateTimeOffset NowAtHeadOffice => UtcNow;
+    public DateTimeOffset NowAtTransitionalLocation => UtcNow;
 
-    public DateOnly TodayAtHeadOffice => DateAtHeadOffice(UtcNow);
+    public DateOnly TodayAtTransitionalLocation => DateAtTransitionalLocation(UtcNow);
 
-    public DateOnly DateAtHeadOffice(DateTimeOffset instant) => DateOnly.FromDateTime(instant.UtcDateTime);
+    public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) => DateOnly.FromDateTime(instant.UtcDateTime);
 
     /// <inheritdoc/>
-    // This fake treats head office as UTC, exactly as NowAtHeadOffice and DateAtHeadOffice do, so
+    // This fake treats transitional location as UTC, exactly as NowAtTransitionalLocation and DateAtTransitionalLocation do, so
     // application-layer tests stay deterministic without a real time-zone database.
-    public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant.ToUniversalTime();
+    public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant.ToUniversalTime();
 
     public void Advance(TimeSpan by) => UtcNow = UtcNow.Add(by);
 }

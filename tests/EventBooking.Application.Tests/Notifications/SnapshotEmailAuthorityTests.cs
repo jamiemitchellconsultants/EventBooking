@@ -1,39 +1,39 @@
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Notifications;
 
-/// <summary>Verifies candidate emails name exactly their persisted requirement snapshot.</summary>
+/// <summary>Verifies attendee emails name exactly their persisted requirement snapshot.</summary>
 public sealed class SnapshotEmailAuthorityTests
 {
-    private static readonly Candidate Candidate = Candidate.Create(
+    private static readonly Attendee Attendee = Attendee.Create(
         Guid.NewGuid(), "Amara", "amara@example.com",
-        EmployeeGroup.Define(
-            EmployeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
+        AttendeeGroup.Define(
+            AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
                 AppointmentTypeIds.UniformFitting]));
-    private static readonly ConfirmedSlot Slot = ConfirmedSlot.CreateImported(
-        Guid.NewGuid(), new SlotWindow(new DateOnly(2026, 10, 10), new TimeOnly(9, 0)),
+    private static readonly Event Event = Event.CreateImported(
+        Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10), new TimeOnly(9, 0)),
         new Dictionary<Guid, int>
         {
             [AppointmentTypeIds.DrugAndAlcoholTesting] = 10,
             [AppointmentTypeIds.MedicalCheckUp] = 10,
             [AppointmentTypeIds.UniformFitting] = 10,
         });
-    private static readonly CandidatePortalOptions Portal = new(
+    private static readonly AttendeePortalOptions Portal = new(
         "https://booking.example", "Head Office", "recruitment@example.com");
 
     /// <summary>An Invite names only a one-type snapshot and uses singular recovery copy.</summary>
     [Fact]
     public void RecoveryInviteUsesSnapshotAndSingularCopy()
     {
-        var email = CandidateEmailComposer.Invite(
-            Candidate,
+        var email = AttendeeEmailComposer.Invite(
+            Attendee,
             [AppointmentTypeIds.MedicalCheckUp],
-            [Slot, Slot, Slot],
+            [Event, Event, Event],
             "https://booking.example/book/token",
             isReinvite: false,
             isRecovery: true);
@@ -43,14 +43,14 @@ public sealed class SnapshotEmailAuthorityTests
         Assert.Contains("missed appointment", email.TextBody, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Booking confirmation names a two-type Booking snapshot, not all Candidate types.</summary>
+    /// <summary>Booking confirmation names a two-type Booking snapshot, not all Attendee types.</summary>
     [Fact]
     public void ConfirmationUsesBookingSnapshot()
     {
-        var email = CandidateEmailComposer.BookingConfirmation(
-            Candidate,
+        var email = AttendeeEmailComposer.BookingConfirmation(
+            Attendee,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting],
-            Slot,
+            Event,
             "https://booking.example/manage/token",
             Portal);
 
@@ -63,8 +63,8 @@ public sealed class SnapshotEmailAuthorityTests
     [Fact]
     public void CancellationUsesAffectedBookingSnapshot()
     {
-        var email = CandidateEmailComposer.SlotCancelled(
-            Candidate, [AppointmentTypeIds.MedicalCheckUp], Slot);
+        var email = AttendeeEmailComposer.EventCancelled(
+            Attendee, [AppointmentTypeIds.MedicalCheckUp], Event);
 
         Assert.Contains("Medical Check-up", email.TextBody);
         Assert.DoesNotContain("Drug & Alcohol Testing", email.TextBody);
@@ -74,11 +74,11 @@ public sealed class SnapshotEmailAuthorityTests
     [Fact]
     public void ThreeTypeInviteNamesEverySnapshotType()
     {
-        var email = CandidateEmailComposer.Invite(
-            Candidate,
+        var email = AttendeeEmailComposer.Invite(
+            Attendee,
             [AppointmentTypeIds.UniformFitting, AppointmentTypeIds.MedicalCheckUp,
                 AppointmentTypeIds.DrugAndAlcoholTesting],
-            [Slot, Slot, Slot],
+            [Event, Event, Event],
             "https://booking.example/book/token",
             isReinvite: true,
             isRecovery: false);
@@ -93,10 +93,10 @@ public sealed class SnapshotEmailAuthorityTests
     [Fact]
     public void TwoTypeCancellationUsesPluralCopy()
     {
-        var email = CandidateEmailComposer.SlotCancelled(
-            Candidate,
+        var email = AttendeeEmailComposer.EventCancelled(
+            Attendee,
             [AppointmentTypeIds.MedicalCheckUp, AppointmentTypeIds.DrugAndAlcoholTesting],
-            Slot);
+            Event);
 
         Assert.Contains("Medical Check-up", email.TextBody);
         Assert.Contains("Drug & Alcohol Testing", email.TextBody);

@@ -1,6 +1,6 @@
 @using EventBooking.Web.Services
 @inject AuditClient Audit
-@inject HeadOfficeTimePresentation TimePresentation
+@inject TransitionalLocationTimePresentation TimePresentation
 
 <details class="audit-history" @ontoggle="OnToggleAsync">
     <summary title="Every recorded change, newest first, with who made it. Loaded when you expand it.">History</summary>
@@ -41,18 +41,18 @@
 </details>
 
 @code {
-    /// <summary>Either a confirmed slot or a candidate. Set exactly one.</summary>
+    /// <summary>Either a event or a attendee. Set exactly one.</summary>
     [Parameter]
-    public Guid? SlotId { get; set; }
+    public Guid? EventId { get; set; }
 
     [Parameter]
-    public Guid? CandidateId { get; set; }
+    public Guid? AttendeeId { get; set; }
 
     private List<AuditRowDto>? _rows;
     private string? _error;
     private bool _requested;
 
-    // Loaded on first expand rather than on render: a table of 20 slots should not fire 20 requests.
+    // Loaded on first expand rather than on render: a table of 20 events should not fire 20 requests.
     private async Task OnToggleAsync()
     {
         if (_requested)
@@ -64,9 +64,9 @@
 
         try
         {
-            var outcome = SlotId is not null
-                ? await Audit.ForSlotAsync(SlotId.Value, CancellationToken.None)
-                : await Audit.ForCandidateAsync(CandidateId!.Value, CancellationToken.None);
+            var outcome = EventId is not null
+                ? await Audit.ForEventAsync(EventId.Value, CancellationToken.None)
+                : await Audit.ForAttendeeAsync(AttendeeId!.Value, CancellationToken.None);
 
             _rows = outcome.Value;
             _error = outcome.ErrorMessage;

@@ -29,7 +29,7 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
             NullLogger<EmailDeliveryService>.Instance);
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(CancellationToken.None);
-        var delivery = service.StagePending(Guid.NewGuid(), EmailTemplate.CandidateInvite);
+        var delivery = service.StagePending(Guid.NewGuid(), EmailTemplate.AttendeeInvite);
         service.ClaimForDispatch(delivery);
         await unitOfWork.SaveChangesAsync(CancellationToken.None);
 
@@ -47,15 +47,15 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
     public async Task ConcurrentDispatchesSendOneMessageAndPersistOneSentOutcome()
     {
         await fixture.ResetAsync();
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var deliveryId = Guid.NewGuid();
 
         await using (var seed = fixture.NewContext())
         {
             seed.EmailLogs.Add(EmailLog.RecordPending(
                 deliveryId,
-                candidateId,
-                EmailTemplate.CandidateInvite,
+                attendeeId,
+                EmailTemplate.AttendeeInvite,
                 Now));
             await seed.SaveChangesAsync();
         }
@@ -78,13 +78,13 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
 
         var firstTask = first.DispatchAsync(
             deliveryId,
-            Message(candidateId),
+            Message(attendeeId),
             CancellationToken.None);
         await transport.SendStarted;
 
         var secondTask = second.DispatchAsync(
             deliveryId,
-            Message(candidateId),
+            Message(attendeeId),
             CancellationToken.None);
 
         Assert.Equal(EmailStatus.Pending, await secondTask);
@@ -102,14 +102,14 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
     public async Task RetryLockPrioritizesOutstandingDeliveryOverLaterTerminalHistory()
     {
         await fixture.ResetAsync();
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var outstanding = EmailLog.RecordPending(
-            Guid.NewGuid(), candidateId, EmailTemplate.CandidateInvite, Now);
+            Guid.NewGuid(), attendeeId, EmailTemplate.AttendeeInvite, Now);
         outstanding.MarkFailed(Now);
         var laterSent = EmailLog.Record(
             Guid.NewGuid(),
-            candidateId,
-            EmailTemplate.SlotCancelledRebookingNeeded,
+            attendeeId,
+            EmailTemplate.EventCancelledRebookingNeeded,
             Now.AddMinutes(3),
             EmailStatus.Sent);
 
@@ -123,7 +123,7 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
         await using (var transaction = await retry.Database.BeginTransactionAsync())
         {
             var selected = await new EmailDeliveryRepository(retry)
-                .LockLatestForCandidateAsync(candidateId, CancellationToken.None);
+                .LockLatestForAttendeeAsync(attendeeId, CancellationToken.None);
             Assert.Equal(outstanding.Id, selected?.Id);
             selected!.MarkResolved(Now.AddMinutes(2));
             await retry.SaveChangesAsync();
@@ -133,17 +133,17 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
         await using var terminalRead = fixture.NewContext();
         await using var terminalTransaction = await terminalRead.Database.BeginTransactionAsync();
         var terminal = await new EmailDeliveryRepository(terminalRead)
-            .LockLatestForCandidateAsync(candidateId, CancellationToken.None);
+            .LockLatestForAttendeeAsync(attendeeId, CancellationToken.None);
         Assert.Equal(laterSent.Id, terminal?.Id);
         await terminalTransaction.CommitAsync();
     }
 
-    private static EmailMessage Message(Guid candidateId) =>
+    private static EmailMessage Message(Guid attendeeId) =>
         new(
-            candidateId,
-            "candidate@example.com",
-            "Candidate",
-            EmailTemplate.CandidateInvite,
+            attendeeId,
+            "attendee@example.com",
+            "Attendee",
+            EmailTemplate.AttendeeInvite,
             "Choose a time",
             "body",
             "<p>body</p>");
@@ -152,15 +152,15 @@ public class DurableEmailDeliveryTests(PostgresFixture fixture)
     {
         public DateTimeOffset UtcNow => now;
 
-        /// <summary>Gets the fixed instant; this clock treats UTC as head-office time.</summary>
-        public DateTimeOffset NowAtHeadOffice => now;
+        /// <summary>Gets the fixed instant; this clock treats UTC as transitional-location time.</summary>
+        public DateTimeOffset NowAtTransitionalLocation => now;
 
-        public DateOnly TodayAtHeadOffice => DateOnly.FromDateTime(now.UtcDateTime);
+        public DateOnly TodayAtTransitionalLocation => DateOnly.FromDateTime(now.UtcDateTime);
 
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) =>
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) =>
             DateOnly.FromDateTime(instant.UtcDateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant.ToUniversalTime();
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant.ToUniversalTime();
     }
 
     private sealed class RecordingSender : IEmailSender

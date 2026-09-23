@@ -1,6 +1,6 @@
 namespace EventBooking.Domain.Notifications;
 
-/// <summary>Durable outcome of one candidate email delivery attempt.</summary>
+/// <summary>Durable outcome of one attendee email delivery attempt.</summary>
 public enum EmailStatus
 {
     /// <summary>The provider accepted the message for this delivery attempt.</summary>

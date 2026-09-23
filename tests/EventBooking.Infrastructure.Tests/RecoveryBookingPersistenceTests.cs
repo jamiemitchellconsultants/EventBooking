@@ -15,15 +15,15 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
     public async Task JourneyLinksPersistAndReloadInCreationOrder()
     {
         await fixture.ResetAsync();
-        var candidateId = Guid.NewGuid();
-        var slotId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         var initial = Invite.CreateInitial(
-            Guid.NewGuid(), candidateId, "initial", DateTimeOffset.UtcNow.AddDays(1),
-            [slotId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+            Guid.NewGuid(), attendeeId, "initial", DateTimeOffset.UtcNow.AddDays(1),
+            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
         var original = Booking.Create(
-            Guid.NewGuid(), initial, slotId, "manage-original", DateTimeOffset.UtcNow);
-        var first = RecoveryFor(candidateId, original, DateTimeOffset.UtcNow.AddHours(1));
-        var second = RecoveryFor(candidateId, original, DateTimeOffset.UtcNow.AddHours(2));
+            Guid.NewGuid(), initial, eventId, "manage-original", DateTimeOffset.UtcNow);
+        var first = RecoveryFor(attendeeId, original, DateTimeOffset.UtcNow.AddHours(1));
+        var second = RecoveryFor(attendeeId, original, DateTimeOffset.UtcNow.AddHours(2));
         first.Conclude();
         second.Conclude();
 
@@ -44,14 +44,14 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
         Assert.All(journey.Skip(1), b => Assert.Equal(BookingStatus.Concluded, b.Status));
     }
 
-    /// <summary>Verifies a second active original for one candidate violates uniqueness.</summary>
+    /// <summary>Verifies a second active original for one attendee violates uniqueness.</summary>
     [Fact]
     public async Task SecondActiveOriginalViolatesUniqueness()
     {
         await fixture.ResetAsync();
-        var candidateId = Guid.NewGuid();
-        var first = OriginalFor(candidateId);
-        var second = OriginalFor(candidateId);
+        var attendeeId = Guid.NewGuid();
+        var first = OriginalFor(attendeeId);
+        var second = OriginalFor(attendeeId);
 
         await using var context = fixture.NewContext();
         context.Bookings.AddRange(first, second);
@@ -64,10 +64,10 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
     public async Task SecondActiveRecoveryViolatesUniqueness()
     {
         await fixture.ResetAsync();
-        var candidateId = Guid.NewGuid();
-        var original = OriginalFor(candidateId);
-        var first = RecoveryFor(candidateId, original, DateTimeOffset.UtcNow.AddHours(1));
-        var second = RecoveryFor(candidateId, original, DateTimeOffset.UtcNow.AddHours(2));
+        var attendeeId = Guid.NewGuid();
+        var original = OriginalFor(attendeeId);
+        var first = RecoveryFor(attendeeId, original, DateTimeOffset.UtcNow.AddHours(1));
+        var second = RecoveryFor(attendeeId, original, DateTimeOffset.UtcNow.AddHours(2));
 
         await using var context = fixture.NewContext();
         context.Bookings.AddRange(original, first, second);
@@ -75,22 +75,22 @@ public sealed class RecoveryBookingPersistenceTests(PostgresFixture fixture)
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
     }
 
-    private static Booking OriginalFor(Guid candidateId)
+    private static Booking OriginalFor(Guid attendeeId)
     {
-        var slotId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), candidateId, "initial", DateTimeOffset.UtcNow.AddDays(1),
-            [slotId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
-        return Booking.Create(Guid.NewGuid(), invite, slotId, "manage", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), attendeeId, "initial", DateTimeOffset.UtcNow.AddDays(1),
+            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp], 0);
+        return Booking.Create(Guid.NewGuid(), invite, eventId, "manage", DateTimeOffset.UtcNow);
     }
 
-    private static Booking RecoveryFor(Guid candidateId, Booking original, DateTimeOffset createdAt)
+    private static Booking RecoveryFor(Guid attendeeId, Booking original, DateTimeOffset createdAt)
     {
-        var slotId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
         var invite = Invite.CreateRecovery(
-            Guid.NewGuid(), candidateId, original.Id, "recovery", DateTimeOffset.UtcNow.AddDays(2),
-            [slotId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            Guid.NewGuid(), attendeeId, original.Id, "recovery", DateTimeOffset.UtcNow.AddDays(2),
+            [eventId, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
         return Booking.CreateRecovery(
-            Guid.NewGuid(), invite, original, slotId, $"manage-recovery-{Guid.NewGuid():N}", createdAt);
+            Guid.NewGuid(), invite, original, eventId, $"manage-recovery-{Guid.NewGuid():N}", createdAt);
     }
 }

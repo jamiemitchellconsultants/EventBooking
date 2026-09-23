@@ -9,7 +9,7 @@ namespace EventBooking.Application.Access;
 
 /// <summary>Mirrors a staff identity's identity-provider-asserted roles onto its
 /// <c>StaffAccessProfile</c>, deriving dependent scope changes and never overwriting a previously-valid
-/// profile with an invalid candidate shape.</summary>
+/// profile with an invalid attendee shape.</summary>
 /// <param name="profiles">The profiles.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="audit">The audit.</param>

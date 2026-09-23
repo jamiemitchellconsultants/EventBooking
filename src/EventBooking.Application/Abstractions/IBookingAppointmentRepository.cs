@@ -3,16 +3,16 @@ using EventBooking.Domain.Bookings;
 namespace EventBooking.Application.Abstractions;
 
 /// <summary>Identifies the lifecycle owners of one appointment without granting authority.</summary>
-/// <param name="CandidateId">The candidate owning the parent Booking.</param>
+/// <param name="AttendeeId">The attendee owning the parent Booking.</param>
 /// <param name="OriginalBookingId">The journey-root Booking identifier.</param>
 /// <param name="BookingId">The parent booking identifier.</param>
-/// <param name="ConfirmedSlotId">The confirmed slot selected by that booking.</param>
+/// <param name="EventId">The event selected by that booking.</param>
 /// <param name="AppointmentTypeId">The appointment type scoping the lookup.</param>
 public sealed record BookingAppointmentLocator(
-    Guid CandidateId,
+    Guid AttendeeId,
     Guid OriginalBookingId,
     Guid BookingId,
-    Guid ConfirmedSlotId,
+    Guid EventId,
     Guid AppointmentTypeId);
 
 /// <summary>Persists and locks booking appointments without widening appointment-type scope.</summary>

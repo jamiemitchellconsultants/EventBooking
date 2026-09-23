@@ -5,10 +5,10 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,12 +28,12 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
     [Fact]
     public async Task CoordinatorStartsRecoveryAndReceivesDeliveryOutcome()
     {
-        var candidateId = await GivenCandidateWithNoShowAsync();
+        var attendeeId = await GivenAttendeeWithNoShowAsync();
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
         using var response = await client.PostAsync(
-            $"/api/candidates/{candidateId}/recovery-invites", null);
+            $"/api/attendees/{attendeeId}/recovery-invites", null);
         var body = await response.Content.ReadFromJsonAsync<DeliveryOutcomeResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -47,16 +47,16 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
-        var created = await client.PostAsJsonAsync("/api/candidates", new
+        var created = await client.PostAsJsonAsync("/api/attendees", new
         {
             Name = "Amara Novak",
             Email = $"{Guid.NewGuid():N}@example.com",
-            EmployeeGroupId = EmployeeGroupIds.CabinCrew,
+            AttendeeGroupId = AttendeeGroupIds.CabinCrew,
         });
-        var candidateId = await created.Content.ReadFromJsonAsync<Guid>();
+        var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
 
         using var response = await client.PostAsync(
-            $"/api/candidates/{candidateId}/recovery-invites", null);
+            $"/api/attendees/{attendeeId}/recovery-invites", null);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -72,7 +72,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
 
         using var response = await factory.CreateClient().PostAsync(
-            $"/api/candidates/{Guid.NewGuid()}/recovery-invites", null);
+            $"/api/attendees/{Guid.NewGuid()}/recovery-invites", null);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -85,7 +85,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient().PostAsync(
-            $"/api/candidates/{Guid.NewGuid()}/recovery-invites", null);
+            $"/api/attendees/{Guid.NewGuid()}/recovery-invites", null);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -97,7 +97,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         factory.SignedInAs = null;
 
         using var response = await factory.CreateClient().PostAsync(
-            $"/api/candidates/{Guid.NewGuid()}/recovery-invites", null);
+            $"/api/attendees/{Guid.NewGuid()}/recovery-invites", null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -106,17 +106,17 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
     [Fact]
     public async Task CoordinatorCancelsPendingRecovery()
     {
-        var candidateId = await GivenCandidateWithNoShowAsync();
+        var attendeeId = await GivenAttendeeWithNoShowAsync();
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
         using var started = await client.PostAsync(
-            $"/api/candidates/{candidateId}/recovery-invites", null);
+            $"/api/attendees/{attendeeId}/recovery-invites", null);
         var outcome = await started.Content.ReadFromJsonAsync<DeliveryOutcomeResponse>();
 
         using var cancelled = await client.DeleteAsync(
-            $"/api/candidates/{candidateId}/recovery-invites/{outcome!.InviteId}");
+            $"/api/attendees/{attendeeId}/recovery-invites/{outcome!.InviteId}");
         using var again = await client.DeleteAsync(
-            $"/api/candidates/{candidateId}/recovery-invites/{outcome.InviteId}");
+            $"/api/attendees/{attendeeId}/recovery-invites/{outcome.InviteId}");
 
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, cancelled.StatusCode);
@@ -129,16 +129,16 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
-        var created = await client.PostAsJsonAsync("/api/candidates", new
+        var created = await client.PostAsJsonAsync("/api/attendees", new
         {
             Name = "Amara Novak",
             Email = $"{Guid.NewGuid():N}@example.com",
-            EmployeeGroupId = EmployeeGroupIds.CabinCrew,
+            AttendeeGroupId = AttendeeGroupIds.CabinCrew,
         });
-        var candidateId = await created.Content.ReadFromJsonAsync<Guid>();
+        var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
 
         using var response = await client.DeleteAsync(
-            $"/api/candidates/{candidateId}/recovery-invites/{Guid.NewGuid()}");
+            $"/api/attendees/{attendeeId}/recovery-invites/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -150,7 +150,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
 
         using var response = await factory.CreateClient().DeleteAsync(
-            $"/api/candidates/{Guid.NewGuid()}/recovery-invites/{Guid.NewGuid()}");
+            $"/api/attendees/{Guid.NewGuid()}/recovery-invites/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -163,46 +163,46 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient().DeleteAsync(
-            $"/api/candidates/{Guid.NewGuid()}/recovery-invites/{Guid.NewGuid()}");
+            $"/api/attendees/{Guid.NewGuid()}/recovery-invites/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    /// <summary>Seeds a booked candidate with one Medical Check-up no-show and a spare slot.</summary>
-    private async Task<Guid> GivenCandidateWithNoShowAsync()
+    /// <summary>Seeds a booked attendee with one Medical Check-up no-show and a spare eventItem.</summary>
+    private async Task<Guid> GivenAttendeeWithNoShowAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtHeadOffice;
-        var bookedSlot = ConfirmedSlot.CreateImported(
-            Guid.NewGuid(), new SlotWindow(today.AddDays(-1), new TimeOnly(9, 0)),
+        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var bookedEvent = Event.CreateImported(
+            Guid.NewGuid(), new EventWindow(today.AddDays(-1), new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
-        var spareSlots = new[]
+        var spareEvents = new[]
         {
             new TimeOnly(11, 0),
             new TimeOnly(13, 0),
             new TimeOnly(15, 0),
         }
-        .Select(start => ConfirmedSlot.CreateImported(
-            Guid.NewGuid(), new SlotWindow(today.AddDays(2), start),
+        .Select(start => Event.CreateImported(
+            Guid.NewGuid(), new EventWindow(today.AddDays(2), start),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
         .ToList();
-        var group = context.EmployeeGroups
+        var group = context.AttendeeGroups
             .Include(g => g.Requirements)
-            .Single(g => g.Id == EmployeeGroupIds.GroundOperationsAgent);
-        var candidate = Candidate.Create(
+            .Single(g => g.Id == AttendeeGroupIds.GroundOperationsAgent);
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Alex Morgan", $"alex-{Guid.NewGuid():N}@example.com", group);
         var invite = Invite.CreateInitial(
-            Guid.NewGuid(), candidate.Id, $"invite-{Guid.NewGuid():N}",
-            DateTimeOffset.UtcNow.AddDays(1), [bookedSlot.Id, Guid.NewGuid(), Guid.NewGuid()],
-            candidate.RequiredAppointmentTypeIds, 0);
+            Guid.NewGuid(), attendee.Id, $"invite-{Guid.NewGuid():N}",
+            DateTimeOffset.UtcNow.AddDays(1), [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
+            attendee.RequiredAppointmentTypeIds, 0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, bookedSlot.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.MedicalCheckUp);
-        context.AddRange(bookedSlot);
-        context.AddRange(spareSlots);
-        context.AddRange(candidate, booking, appointment);
+        context.AddRange(bookedEvent);
+        context.AddRange(spareEvents);
+        context.AddRange(attendee, booking, appointment);
         await context.SaveChangesAsync();
 
         factory.SignedInAs = await factory.GivenStaffAsync(
@@ -211,6 +211,6 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             $"/api/appointment-workspace/appointments/{appointment.Id}/status",
             new { status = "NoShow", expectedVersion = 1 });
         Assert.Equal(HttpStatusCode.OK, marked.StatusCode);
-        return candidate.Id;
+        return attendee.Id;
     }
 }

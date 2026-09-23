@@ -1,10 +1,10 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence.Queries;
@@ -14,13 +14,13 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
     public async Task<IReadOnlyList<AwaitingAvailabilityRow>> AwaitingAvailabilityAsync(
         CancellationToken cancellationToken)
     {
-        var today = clock.TodayAtHeadOffice;
-        var rows = await CandidateRows(CandidateStatus.AwaitingAvailability).ToListAsync(cancellationToken);
+        var today = clock.TodayAtTransitionalLocation;
+        var rows = await AttendeeRows(AttendeeStatus.AwaitingAvailability).ToListAsync(cancellationToken);
 
         return rows
             .Select(row =>
             {
-                var since = clock.DateAtHeadOffice(row.StatusChangedAt);
+                var since = clock.DateAtTransitionalLocation(row.StatusChangedAt);
                 return new AwaitingAvailabilityRow(
                     row.Id,
                     row.Name,
@@ -36,7 +36,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
 
     public async Task<IReadOnlyList<NoResponseRow>> NoResponseAsync(CancellationToken cancellationToken)
     {
-        var rows = await CandidateRows(CandidateStatus.NoResponseNeedsFollowUp).ToListAsync(cancellationToken);
+        var rows = await AttendeeRows(AttendeeStatus.NoResponseNeedsFollowUp).ToListAsync(cancellationToken);
 
         return rows
             .Select(row => new NoResponseRow(
@@ -45,42 +45,42 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 row.Email,
                 row.AppointmentTypeIds.Select(AppointmentTypeIds.CodeOf)
                     .OrderBy(code => code, StringComparer.Ordinal).ToList(),
-                clock.DateAtHeadOffice(row.StatusChangedAt)))
+                clock.DateAtTransitionalLocation(row.StatusChangedAt)))
             .OrderBy(row => row.GaveUpOn)
             .ToList();
     }
 
-    public async Task<IReadOnlyList<SlotOverviewRow>> SlotsOverviewAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<EventOverviewRow>> EventsOverviewAsync(CancellationToken cancellationToken)
     {
-        // Past slots can no longer be cancelled, so the operations list shows only
-        // today and future slots.
-        var today = clock.TodayAtHeadOffice;
-        var rows = await context.ConfirmedSlots
+        // Past events can no longer be cancelled, so the operations list shows only
+        // today and future events.
+        var today = clock.TodayAtTransitionalLocation;
+        var rows = await context.Events
             .AsNoTracking()
-            .Where(slot => slot.Status == ConfirmedSlotStatus.Active && slot.Window.Date >= today)
-            .Select(slot => new
+            .Where(eventItem => eventItem.Status == EventStatus.Active && eventItem.Window.Date >= today)
+            .Select(eventItem => new
             {
-                slot.Id,
-                slot.Window.Date,
-                slot.Window.StartTime,
-                Capacities = slot.Capacities.Select(capacity => new
+                eventItem.Id,
+                eventItem.Window.Date,
+                eventItem.Window.StartTime,
+                Capacities = eventItem.Capacities.Select(capacity => new
                 {
                     capacity.AppointmentTypeId,
                     capacity.TotalHeadcount,
                     capacity.RemainingCapacity,
                 }).ToList(),
                 ActiveBookings = context.Bookings.Count(booking =>
-                    booking.ConfirmedSlotId == slot.Id && booking.Status == BookingStatus.Active),
+                    booking.EventId == eventItem.Id && booking.Status == BookingStatus.Active),
             })
             .ToListAsync(cancellationToken);
 
         return rows
-            .Select(row => new SlotOverviewRow(
+            .Select(row => new EventOverviewRow(
                 row.Id,
                 row.Date,
                 row.StartTime,
-                row.StartTime.Add(SlotWindow.Duration),
-                row.Capacities.Select(capacity => new SlotCapacityRow(
+                row.StartTime.Add(EventWindow.Duration),
+                row.Capacities.Select(capacity => new EventCapacityRow(
                     AppointmentTypeIds.CodeOf(capacity.AppointmentTypeId),
                     capacity.TotalHeadcount,
                     capacity.RemainingCapacity))
@@ -91,16 +91,16 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             .ToList();
     }
 
-    /// <summary>Returns the latest delivery per candidate and whether its persisted context remains actionable.</summary>
-    public async Task<IReadOnlyList<CandidateEmailStatusRow>> LatestEmailStatusAsync(
+    /// <summary>Returns the latest delivery per attendee and whether its persisted context remains actionable.</summary>
+    public async Task<IReadOnlyList<AttendeeEmailStatusRow>> LatestEmailStatusAsync(
         CancellationToken cancellationToken)
     {
         // EF Core cannot translate this per-group priority cleanly. An unresolved attempt remains
-        // visible ahead of terminal history so one candidate's second message cannot hide it.
+        // visible ahead of terminal history so one attendee's second message cannot hide it.
         var latest = (await context.EmailLogs
             .AsNoTracking()
             .ToListAsync(cancellationToken))
-            .GroupBy(delivery => delivery.CandidateId)
+            .GroupBy(delivery => delivery.AttendeeId)
             .Select(group => group
                 .OrderBy(delivery => delivery.Status is EmailStatus.Failed or EmailStatus.Pending ? 0 : 1)
                 .ThenByDescending(delivery => delivery.SentAt)
@@ -108,11 +108,11 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 .First())
             .ToList();
 
-        var candidateIds = latest.Select(delivery => delivery.CandidateId).Distinct().ToList();
-        var candidateStatuses = await context.Candidates
+        var attendeeIds = latest.Select(delivery => delivery.AttendeeId).Distinct().ToList();
+        var attendeeStatuses = await context.Attendees
             .AsNoTracking()
-            .Where(candidate => candidateIds.Contains(candidate.Id))
-            .ToDictionaryAsync(candidate => candidate.Id, candidate => candidate.Status, cancellationToken);
+            .Where(attendee => attendeeIds.Contains(attendee.Id))
+            .ToDictionaryAsync(attendee => attendee.Id, attendee => attendee.Status, cancellationToken);
 
         var inviteIds = latest.Where(delivery => delivery.InviteId.HasValue)
             .Select(delivery => delivery.InviteId!.Value).Distinct().ToList();
@@ -132,7 +132,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             .Select(booking => booking.Id)
             .ToHashSetAsync(cancellationToken);
 
-        // Slot-cancellation retry needs the staged booking to exist (it is cancelled, not
+        // Event-cancellation retry needs the staged booking to exist (it is cancelled, not
         // active), matching RetryEmailHandler's booking lookup.
         var existingBookingIds = await context.Bookings
             .AsNoTracking()
@@ -140,51 +140,51 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             .Select(booking => booking.Id)
             .ToHashSetAsync(cancellationToken);
 
-        var slotIds = latest.Where(delivery => delivery.ConfirmedSlotId.HasValue)
-            .Select(delivery => delivery.ConfirmedSlotId!.Value).Distinct().ToList();
-        var cancelledSlotIds = await context.ConfirmedSlots
+        var eventIds = latest.Where(delivery => delivery.EventId.HasValue)
+            .Select(delivery => delivery.EventId!.Value).Distinct().ToList();
+        var cancelledEventIds = await context.Events
             .AsNoTracking()
-            .Where(slot => slotIds.Contains(slot.Id) && slot.Status == ConfirmedSlotStatus.Cancelled)
-            .Select(slot => slot.Id)
+            .Where(eventItem => eventIds.Contains(eventItem.Id) && eventItem.Status == EventStatus.Cancelled)
+            .Select(eventItem => eventItem.Id)
             .ToHashSetAsync(cancellationToken);
 
         return latest
-            .Select(delivery => new CandidateEmailStatusRow(
-                delivery.CandidateId,
+            .Select(delivery => new AttendeeEmailStatusRow(
+                delivery.AttendeeId,
                 delivery.TemplateName,
                 delivery.SentAt,
                 delivery.Status,
                 (delivery.Status is EmailStatus.Failed or EmailStatus.Pending)
                 && (delivery.TemplateName switch
                     {
-                        EmailTemplate.CandidateInvite or EmailTemplate.CandidateReinvite =>
+                        EmailTemplate.AttendeeInvite or EmailTemplate.AttendeeReinvite =>
                             delivery.InviteId is { } inviteId && retryableInviteIds.Contains(inviteId),
                         EmailTemplate.BookingConfirmation =>
                             delivery.BookingId is { } bookingId && retryableBookingIds.Contains(bookingId),
-                        EmailTemplate.SlotCancelledRebookingNeeded =>
-                            delivery.ConfirmedSlotId is { } slotId
-                            && cancelledSlotIds.Contains(slotId)
+                        EmailTemplate.EventCancelledRebookingNeeded =>
+                            delivery.EventId is { } eventId
+                            && cancelledEventIds.Contains(eventId)
                             && delivery.BookingId is { } cancellationBookingId
                             && existingBookingIds.Contains(cancellationBookingId)
-                            && candidateStatuses.TryGetValue(delivery.CandidateId, out var status)
-                            && status is CandidateStatus.Invited or CandidateStatus.AwaitingAvailability,
+                            && attendeeStatuses.TryGetValue(delivery.AttendeeId, out var status)
+                            && status is AttendeeStatus.Invited or AttendeeStatus.AwaitingAvailability,
                         _ => false,
                     })))
             .ToList();
     }
 
-    private IQueryable<CandidateRow> CandidateRows(CandidateStatus status) =>
-        context.Candidates
+    private IQueryable<AttendeeRow> AttendeeRows(AttendeeStatus status) =>
+        context.Attendees
             .AsNoTracking()
-            .Where(candidate => candidate.Status == status)
-            .Select(candidate => new CandidateRow(
-                candidate.Id,
-                candidate.Name,
-                candidate.Email,
-                EF.Property<DateTimeOffset>(candidate, StatusStampingInterceptor.ShadowProperty),
-                candidate.Requirements.Select(requirement => requirement.AppointmentTypeId).ToList()));
+            .Where(attendee => attendee.Status == status)
+            .Select(attendee => new AttendeeRow(
+                attendee.Id,
+                attendee.Name,
+                attendee.Email,
+                EF.Property<DateTimeOffset>(attendee, StatusStampingInterceptor.ShadowProperty),
+                attendee.Requirements.Select(requirement => requirement.AppointmentTypeId).ToList()));
 
-    private sealed record CandidateRow(
+    private sealed record AttendeeRow(
         Guid Id,
         string Name,
         string Email,

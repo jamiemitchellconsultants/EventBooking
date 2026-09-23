@@ -4,7 +4,7 @@ using EventBooking.Application.Common;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Notifications;
 
@@ -12,23 +12,23 @@ namespace EventBooking.Application.Invites;
 
 /// <summary>A null staff identity means the system triggered this, not a person.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
-/// <param name="CandidateId">The candidate id.</param>
-public sealed record TriggerInviteCommand(Guid? StaffUserId, Guid CandidateId);
+/// <param name="AttendeeId">The attendee id.</param>
+public sealed record TriggerInviteCommand(Guid? StaffUserId, Guid AttendeeId);
 
-/// <summary>Issues an invite while serializing all transitions for the candidate lifecycle.</summary>
+/// <summary>Issues an invite while serializing all transitions for the attendee lifecycle.</summary>
 /// <param name="deliveries">Dispatches the staged invite after commit.</param>
-/// <param name="candidates">The candidates.</param>
+/// <param name="attendees">The attendees.</param>
 /// <param name="access">The access.</param>
 /// <param name="issuer">The issuer.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 public sealed class TriggerInviteHandler(
-    ICandidateRepository candidates,
+    IAttendeeRepository attendees,
     IStaffAccessAuthorizer access,
     InviteIssuer issuer,
     EmailDeliveryService deliveries,
     IUnitOfWork unitOfWork)
 {
-    /// <summary>Issues or replaces a candidate invite under the candidate row lock.</summary>
+    /// <summary>Issues or replaces a attendee invite under the attendee row lock.</summary>
     /// <param name="command">The command.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     public async Task<Result<InviteIssueResult>> HandleAsync(
@@ -42,7 +42,7 @@ public sealed class TriggerInviteHandler(
         {
             var authorized = await access.AuthorizeAsync(
                 command.StaffUserId.Value,
-                StaffCapability.ManageCandidates,
+                StaffCapability.ManageAttendees,
                 null,
                 cancellationToken);
             if (authorized.IsFailure)
@@ -56,15 +56,15 @@ public sealed class TriggerInviteHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        var candidate = await candidates.LockForUpdateAsync(command.CandidateId, cancellationToken);
-        if (candidate is null)
+        var attendee = await attendees.LockForUpdateAsync(command.AttendeeId, cancellationToken);
+        if (attendee is null)
         {
-            return Result<InviteIssueResult>.Failure(Error.NotFound("No such candidate."));
+            return Result<InviteIssueResult>.Failure(Error.NotFound("No such attendee."));
         }
 
-        if (candidate.Status == CandidateStatus.Booked)
+        if (attendee.Status == AttendeeStatus.Booked)
         {
-            return Result<InviteIssueResult>.Failure(Error.Conflict("This candidate is already booked."));
+            return Result<InviteIssueResult>.Failure(Error.Conflict("This attendee is already booked."));
         }
 
         InviteIssueResult issued;
@@ -73,7 +73,7 @@ public sealed class TriggerInviteHandler(
             // A manually triggered invite starts the retry count again: a coordinator pressing
             // "Re-invite Now" means start over, not continue chasing.
             var issueResult = await issuer.IssueInitialAsync(
-                candidate, 0, actorType, actorId, isReinvite: false, cancellationToken);
+                attendee, 0, actorType, actorId, isReinvite: false, cancellationToken);
             if (issueResult.IsFailure)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -97,7 +97,7 @@ public sealed class TriggerInviteHandler(
         {
             await transaction.RollbackAsync(cancellationToken);
             return Result<InviteIssueResult>.Failure(
-                Error.Conflict("This candidate already has a pending invite."));
+                Error.Conflict("This attendee already has a pending invite."));
         }
         catch
         {

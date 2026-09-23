@@ -12,10 +12,10 @@ public static class EventBookingConfiguration
     /// </summary>
     public static (
         string ConnectionString,
-        HeadOfficeOptions HeadOffice,
+        TransitionalLocationOptions TransitionalLocation,
         TokenOptions Tokens,
         EmailOptions Email,
-        CandidatePortalOptions Portal) Read(IConfiguration configuration)
+        AttendeePortalOptions Portal) Read(IConfiguration configuration)
     {
         var missing = new List<string>();
 
@@ -32,8 +32,8 @@ public static class EventBookingConfiguration
         }
 
         var connectionString = Required("ConnectionStrings:EventBooking");
-        var timeZone = Required("HeadOffice:TimeZoneId");
-        var address = Required("HeadOffice:Address");
+        var timeZone = Required("TransitionalLocation:TimeZoneId");
+        var address = Required("TransitionalLocation:Address");
         var signingKey = Required("Tokens:SigningKey");
         var fromAddress = Required("Email:FromAddress");
         var fromName = Required("Email:FromName");
@@ -66,9 +66,9 @@ public static class EventBookingConfiguration
 
         return (
             connectionString,
-            new HeadOfficeOptions(timeZone),
+            new TransitionalLocationOptions(timeZone),
             new TokenOptions(signingKey),
             new EmailOptions(fromAddress, fromName, emailProvider),
-            new CandidatePortalOptions(baseUrl, address, coordinatorContact));
+            new AttendeePortalOptions(baseUrl, address, coordinatorContact));
     }
 }

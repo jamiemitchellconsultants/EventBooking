@@ -10,13 +10,13 @@ namespace EventBooking.Web.Tests;
 public class HelpPageTests : BunitContext
 {
     [Fact]
-    public void SignedOutVisitorSeesTheCandidateGuide()
+    public void SignedOutVisitorSeesTheAttendeeGuide()
     {
         this.AddAuthorization().SetNotAuthorized();
 
         var cut = RenderHelp(meOutcome: null);
 
-        Assert.Contains("Candidate guide", cut.Markup);
+        Assert.Contains("Attendee guide", cut.Markup);
         Assert.Contains("personal links sent to your email", cut.Markup);
     }
 
@@ -31,7 +31,7 @@ public class HelpPageTests : BunitContext
         Assert.Contains("Manager guide", cut.Markup);
         Assert.Contains("Appointment staff guide", cut.Markup);
         Assert.Contains("Coordinator guide", cut.Markup);
-        Assert.Contains("Candidate guide", cut.Markup);
+        Assert.Contains("Attendee guide", cut.Markup);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class HelpPageTests : BunitContext
         var toc = cut.Find("nav.guide-toc");
         var links = toc.QuerySelectorAll("a");
         Assert.Equal(
-            ["/help#admin", "/help#manager", "/help#appointmentstaff", "/help#coordinator", "/help#candidate"],
+            ["/help#admin", "/help#manager", "/help#appointmentstaff", "/help#coordinator", "/help#attendee"],
             links.Select(link => link.GetAttribute("href")));
     }
 
@@ -67,7 +67,7 @@ public class HelpPageTests : BunitContext
 
         Assert.Contains("Manager guide", cut.Markup);
         Assert.Contains("Coordinator guide", cut.Markup);
-        Assert.Contains("Candidate guide", cut.Markup);
+        Assert.Contains("Attendee guide", cut.Markup);
     }
 
     [Fact]

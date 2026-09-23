@@ -54,11 +54,11 @@ public sealed class OpenApiContractTests(ApiFactory factory)
     {
         using var document = await GetDocumentAsync();
         var paths = document.RootElement.GetProperty("paths");
-        var candidateImport = paths.GetProperty("/api/candidates/import").GetProperty("post");
-        Assert.True(candidateImport.GetProperty("requestBody").GetProperty("content").TryGetProperty("text/csv", out _));
-        var roster = paths.GetProperty("/api/appointment-workspace/slots/{confirmedSlotId}/roster").GetProperty("get");
+        var attendeeImport = paths.GetProperty("/api/attendees/import").GetProperty("post");
+        Assert.True(attendeeImport.GetProperty("requestBody").GetProperty("content").TryGetProperty("text/csv", out _));
+        var roster = paths.GetProperty("/api/appointment-workspace/events/{eventId}/roster").GetProperty("get");
         Assert.True(roster.GetProperty("responses").GetProperty("200").GetProperty("content").TryGetProperty("text/csv", out _));
-        var withdraw = paths.GetProperty("/api/slots/proposals/{id}/acceptance").GetProperty("delete");
+        var withdraw = paths.GetProperty("/api/event-proposals/{id}/acceptance").GetProperty("delete");
         Assert.True(withdraw.GetProperty("responses").TryGetProperty("204", out _));
         Assert.True(withdraw.GetProperty("responses").GetProperty("404").GetProperty("content")
             .TryGetProperty("application/problem+json", out _));

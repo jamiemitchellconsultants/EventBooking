@@ -4,44 +4,44 @@ using EventBooking.Application.Notifications;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Bookings;
 
 /// <summary>Verifies booking confirmation snapshots required operational appointments atomically.</summary>
 public sealed class BookingAppointmentSnapshotTests
 {
-    /// <summary>Verifies one Expected appointment is created for each current candidate requirement.</summary>
+    /// <summary>Verifies one Expected appointment is created for each current attendee requirement.</summary>
     [Fact]
     public async Task ConfirmationCreatesOneAppointmentPerRequirementBeforeTheSingleSave()
     {
         var clock = new FakeClock(new DateTimeOffset(2026, 9, 7, 9, 0, 0, TimeSpan.Zero));
         var tokens = new FakeTokenService();
-        var candidates = new InMemoryCandidateRepository();
-        var pilots = EmployeeGroup.Define(
-            EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+        var attendees = new InMemoryAttendeeRepository();
+        var pilots = AttendeeGroup.Define(
+            AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]);
-        var candidate = Candidate.Create(
+        var attendee = Attendee.Create(
             Guid.NewGuid(),
             "Amara Novak",
             "amara@example.com",
             pilots);
-        candidates.Add(candidate);
-        candidate.MarkInvited();
+        attendees.Add(attendee);
+        attendee.MarkInvited();
 
-        var slots = new InMemoryConfirmedSlotRepository();
-        var selected = AddSlot(slots, new DateOnly(2026, 9, 8));
-        var second = AddSlot(slots, new DateOnly(2026, 9, 9));
-        var third = AddSlot(slots, new DateOnly(2026, 9, 10));
+        var events = new InMemoryEventRepository();
+        var selected = AddEvent(events, new DateOnly(2026, 9, 8));
+        var second = AddEvent(events, new DateOnly(2026, 9, 9));
+        var third = AddEvent(events, new DateOnly(2026, 9, 10));
         var inviteId = Guid.NewGuid();
         var token = tokens.Issue(inviteId);
         var invites = new InMemoryInviteRepository();
         invites.Add(Invite.CreateInitial(
             inviteId,
-            candidate.Id,
+            attendee.Id,
             token.TokenHash,
             clock.UtcNow.AddDays(4),
             [selected.Id, second.Id, third.Id],
@@ -58,18 +58,18 @@ public sealed class BookingAppointmentSnapshotTests
             clock);
         var handler = new ConfirmBookingHandler(
             invites,
-            candidates,
-            slots,
+            attendees,
+            events,
             bookings,
             appointments,
-            new InMemorySlotCapacityRepository(slots),
-            new EligibleSlotFinder(slots, clock),
+            new InMemoryEventCapacityRepository(events),
+            new EligibleEventFinder(events, clock),
             tokens,
             deliveries,
             new RecordingAuditLogger(),
             unitOfWork,
             clock,
-            new CandidatePortalOptions(
+            new AttendeePortalOptions(
                 "https://booking.example.com", "Head office", "help@example.com"));
 
         var result = await handler.HandleAsync(
@@ -85,7 +85,7 @@ public sealed class BookingAppointmentSnapshotTests
             Assert.Equal(1, value.Version);
         });
         Assert.Equal(
-            candidate.RequiredAppointmentTypeIds.OrderBy(value => value),
+            attendee.RequiredAppointmentTypeIds.OrderBy(value => value),
             appointments.Items.Select(value => value.AppointmentTypeId).OrderBy(value => value));
         Assert.Equal(1, unitOfWork.SaveCount);
         Assert.Equal(1, unitOfWork.CommitCount);
@@ -108,24 +108,24 @@ public sealed class BookingAppointmentSnapshotTests
 
         var clock = new FakeClock(new DateTimeOffset(2026, 9, 7, 9, 0, 0, TimeSpan.Zero));
         var tokens = new FakeTokenService();
-        var candidates = new InMemoryCandidateRepository();
-        var candidate = Candidate.Create(
+        var attendees = new InMemoryAttendeeRepository();
+        var attendee = Attendee.Create(
             Guid.NewGuid(), "Amara Novak", "amara@example.com",
-            EmployeeGroup.Define(
+            AttendeeGroup.Define(
                 Guid.NewGuid(), "DAT_ONLY", "DAT only", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting]));
-        candidates.Add(candidate);
-        candidate.MarkInvited();
+        attendees.Add(attendee);
+        attendee.MarkInvited();
 
-        var slots = new InMemoryConfirmedSlotRepository();
-        var selected = AddSlot(slots, new DateOnly(2026, 9, 8));
+        var events = new InMemoryEventRepository();
+        var selected = AddEvent(events, new DateOnly(2026, 9, 8));
         var inviteId = Guid.NewGuid();
         var token = tokens.Issue(inviteId);
         var invites = new InMemoryInviteRepository();
         invites.Add(Invite.CreateInitial(
-            inviteId, candidate.Id, token.TokenHash, clock.UtcNow.AddDays(4),
-            [selected.Id, AddSlot(slots, new DateOnly(2026, 9, 9)).Id,
-                AddSlot(slots, new DateOnly(2026, 9, 10)).Id],
+            inviteId, attendee.Id, token.TokenHash, clock.UtcNow.AddDays(4),
+            [selected.Id, AddEvent(events, new DateOnly(2026, 9, 9)).Id,
+                AddEvent(events, new DateOnly(2026, 9, 10)).Id],
             snapshot, 0));
 
         var bookings = new InMemoryBookingRepository();
@@ -133,12 +133,12 @@ public sealed class BookingAppointmentSnapshotTests
         var unitOfWork = new FakeUnitOfWork();
         var handler = new ConfirmBookingHandler(
             invites,
-            candidates,
-            slots,
+            attendees,
+            events,
             bookings,
             appointments,
-            new InMemorySlotCapacityRepository(slots),
-            new EligibleSlotFinder(slots, clock),
+            new InMemoryEventCapacityRepository(events),
+            new EligibleEventFinder(events, clock),
             tokens,
             EmailDeliveryTestFactory.Create(
                 new InMemoryEmailDeliveryRepository(),
@@ -148,24 +148,24 @@ public sealed class BookingAppointmentSnapshotTests
             new RecordingAuditLogger(),
             unitOfWork,
             clock,
-            new CandidatePortalOptions(
+            new AttendeePortalOptions(
                 "https://booking.example.com", "Head office", "help@example.com"));
 
         // Each snapshot size needs its matching group so confirmation proceeds.
         var group = snapshot.Count switch
         {
-            1 => EmployeeGroup.Define(
-                EmployeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
+            1 => AttendeeGroup.Define(
+                AttendeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
                 [AppointmentTypeIds.MedicalCheckUp]),
-            2 => EmployeeGroup.Define(
-                EmployeeGroupIds.Pilots, "PILOTS", "Pilots", true,
+            2 => AttendeeGroup.Define(
+                AttendeeGroupIds.Pilots, "PILOTS", "Pilots", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.UniformFitting]),
-            _ => EmployeeGroup.Define(
-                EmployeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
+            _ => AttendeeGroup.Define(
+                AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
                     AppointmentTypeIds.UniformFitting]),
         };
-        candidate.AssignEmployeeGroup(group);
+        attendee.AssignAttendeeGroup(group);
 
         var result = await handler.HandleAsync(
             new ConfirmBookingCommand(token.Token, selected.Id),
@@ -177,17 +177,17 @@ public sealed class BookingAppointmentSnapshotTests
             appointments.Items.Select(value => value.AppointmentTypeId).OrderBy(value => value));
     }
 
-    private static ConfirmedSlot AddSlot(
-        InMemoryConfirmedSlotRepository slots,
+    private static Event AddEvent(
+        InMemoryEventRepository events,
         DateOnly date)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 10);
-        var slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
-        slots.Add(slot);
-        return slot;
+        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
+        events.Add(eventItem);
+        return eventItem;
     }
 }

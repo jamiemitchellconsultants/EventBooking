@@ -30,11 +30,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
         services.AddScoped<ISystemSettingsRepository, SystemSettingsRepository>();
-        services.AddScoped<ISlotProposalRepository, SlotProposalRepository>();
-        services.AddScoped<IConfirmedSlotRepository, ConfirmedSlotRepository>();
-        services.AddScoped<ISlotCapacityRepository, SlotCapacityRepository>();
-        services.AddScoped<ICandidateRepository, CandidateRepository>();
-        services.AddScoped<IEmployeeGroupRepository, EmployeeGroupRepository>();
+        services.AddScoped<IEventProposalRepository, EventProposalRepository>();
+        services.AddScoped<IEventRepository, EventRepository>();
+        services.AddScoped<IEventCapacityRepository, EventCapacityRepository>();
+        services.AddScoped<IAttendeeRepository, AttendeeRepository>();
+        services.AddScoped<IAttendeeGroupRepository, AttendeeGroupRepository>();
         services.AddScoped<IInviteRepository, InviteRepository>();
         services.AddScoped<IEmailDeliveryRepository, EmailDeliveryRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
@@ -44,8 +44,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IDashboardQueries, DashboardQueries>();
         services.AddScoped<IAuditQueries, AuditQueries>();
         services.AddScoped<IAppointmentWorkspaceQueries, AppointmentWorkspaceQueries>();
-        services.AddScoped<ICandidateReadinessQueries, CandidateReadinessQueries>();
-        services.AddScoped<ICandidateBookingQueries, CandidateBookingQueries>();
+        services.AddScoped<IAttendeeReadinessQueries, AttendeeReadinessQueries>();
+        services.AddScoped<IAttendeeBookingQueries, AttendeeBookingQueries>();
 
         return services;
     }
@@ -53,12 +53,12 @@ public static class InfrastructureServiceCollectionExtensions
     public static IServiceCollection AddEventBookingInfrastructure(
         this IServiceCollection services,
         string connectionString,
-        HeadOfficeOptions headOffice,
+        TransitionalLocationOptions transitionalLocation,
         TokenOptions tokens)
     {
         services.AddEventBookingPersistence(connectionString);
 
-        services.AddSingleton(headOffice);
+        services.AddSingleton(transitionalLocation);
         services.AddSingleton(tokens);
 
         services.AddSingleton<IClock, SystemClock>();

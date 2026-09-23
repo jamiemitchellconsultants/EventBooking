@@ -6,12 +6,12 @@ namespace EventBooking.Web.Tests;
 public class UserGuideCatalogTests
 {
     [Fact]
-    public void AnyRecognisedRoleGetsEveryGuideIncludingCandidate()
+    public void AnyRecognisedRoleGetsEveryGuideIncludingAttendee()
     {
         var guides = UserGuideCatalog.GuidesFor(["Admin"]);
 
         Assert.Equal(
-            ["Admin", "Manager", "AppointmentStaff", "Coordinator", "Candidate"],
+            ["Admin", "Manager", "AppointmentStaff", "Coordinator", "Attendee"],
             guides.Select(g => g.RoleKey));
     }
 
@@ -21,7 +21,7 @@ public class UserGuideCatalogTests
         var guides = UserGuideCatalog.GuidesFor(["Coordinator", "Manager", "AppointmentStaff"]);
 
         Assert.Equal(
-            ["Admin", "Manager", "AppointmentStaff", "Coordinator", "Candidate"],
+            ["Admin", "Manager", "AppointmentStaff", "Coordinator", "Attendee"],
             guides.Select(g => g.RoleKey));
     }
 
@@ -31,9 +31,9 @@ public class UserGuideCatalogTests
         var guides = UserGuideCatalog.GuidesFor(["Coordinator"]);
 
         Assert.Equal(
-            ["Admin", "Manager", "AppointmentStaff", "Coordinator", "Candidate"],
+            ["Admin", "Manager", "AppointmentStaff", "Coordinator", "Attendee"],
             guides.Select(g => g.RoleKey));
-        Assert.Contains(guides, g => g.RoleKey == "Coordinator" && g.Html.Contains("Candidates"));
+        Assert.Contains(guides, g => g.RoleKey == "Coordinator" && g.Html.Contains("Attendees"));
     }
 
     [Fact]
@@ -73,11 +73,11 @@ public class UserGuideCatalogTests
     }
 
     [Fact]
-    public void CandidateGuideIsAvailableOutsideTheRoleMap()
+    public void AttendeeGuideIsAvailableOutsideTheRoleMap()
     {
-        var guide = UserGuideCatalog.CandidateGuide();
+        var guide = UserGuideCatalog.AttendeeGuide();
 
-        Assert.Equal("Candidate", guide.RoleKey);
+        Assert.Equal("Attendee", guide.RoleKey);
         Assert.Contains("<h1", guide.Html);
         Assert.DoesNotContain("README.md", guide.Html);
     }

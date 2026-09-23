@@ -12,12 +12,12 @@ public sealed class RecoveryBookingLifecycleTests
     [Fact]
     public void CompletedTypeMakesPendingRecoverySnapshotStale()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var originalId = Guid.NewGuid();
-        var recoverySlot = Guid.NewGuid();
+        var recoveryEvent = Guid.NewGuid();
         var recoveryInvite = Invite.CreateRecovery(
-            Guid.NewGuid(), candidateId, originalId, "recovery", DateTimeOffset.UtcNow.AddDays(2),
-            [recoverySlot, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
+            Guid.NewGuid(), attendeeId, originalId, "recovery", DateTimeOffset.UtcNow.AddDays(2),
+            [recoveryEvent, Guid.NewGuid(), Guid.NewGuid()], [AppointmentTypeIds.MedicalCheckUp]);
         var attempts = new[]
         {
             new EventBooking.Application.Invites.RecoveryAttempt(

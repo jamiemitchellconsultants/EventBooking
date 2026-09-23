@@ -34,8 +34,8 @@ public class RepairBWebComponentTests : BunitContext
 
         Assert.Contains("Roles: Manager", cut.Markup);
         Assert.Contains("Appointment type: Medical Check-up", cut.Markup);
-        Assert.Contains("href=\"/slots\"", cut.Markup);
-        Assert.DoesNotContain("href=\"/candidates\"", cut.Markup);
+        Assert.Contains("href=\"/events/negotiate\"", cut.Markup);
+        Assert.DoesNotContain("href=\"/attendees\"", cut.Markup);
     }
 
     /// <summary>
@@ -48,8 +48,8 @@ public class RepairBWebComponentTests : BunitContext
 
         Assert.Contains("Roles: Coordinator", cut.Markup);
         Assert.DoesNotContain("Appointment type:", cut.Markup);
-        Assert.Contains("href=\"/candidates\"", cut.Markup);
-        Assert.DoesNotContain("href=\"/slots\"", cut.Markup);
+        Assert.Contains("href=\"/attendees\"", cut.Markup);
+        Assert.DoesNotContain("href=\"/events\"", cut.Markup);
         Assert.DoesNotContain("href=\"/settings\"", cut.Markup);
     }
 
@@ -63,7 +63,7 @@ public class RepairBWebComponentTests : BunitContext
 
         Assert.Contains("Roles: Admin", cut.Markup);
         Assert.Contains("href=\"/settings\"", cut.Markup);
-        Assert.DoesNotContain("href=\"/slots\"", cut.Markup);
+        Assert.DoesNotContain("href=\"/events\"", cut.Markup);
     }
 
     /// <summary>
@@ -75,17 +75,17 @@ public class RepairBWebComponentTests : BunitContext
         var cut = RenderAuthenticatedHome(new([], null, null));
 
         Assert.Contains("has not been assigned a role yet", cut.Markup);
-        Assert.DoesNotContain("href=\"/slots\"", cut.Markup);
-        Assert.DoesNotContain("href=\"/candidates\"", cut.Markup);
+        Assert.DoesNotContain("href=\"/events\"", cut.Markup);
+        Assert.DoesNotContain("href=\"/attendees\"", cut.Markup);
     }
 
     /// <summary>
     /// Verifies winter, daylight-saving, and local-date-crossing presentation of stored UTC instants.
     /// </summary>
     [Fact]
-    public void HeadOfficeTimestampPresentationConvertsUtcInstantsWithoutChangingTheInstant()
+    public void TransitionalLocationTimestampPresentationConvertsUtcInstantsWithoutChangingTheInstant()
     {
-        var presentation = new HeadOfficeTimePresentation("Europe/London");
+        var presentation = new TransitionalLocationTimePresentation("Europe/London");
 
         Assert.Equal("2026-01-15 12:00 +00:00 (Europe/London)",
             presentation.Format(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero)));
@@ -96,20 +96,20 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
-    /// Verifies audit timestamps render as configured head-office local time with their offset and zone identifier.
+    /// Verifies audit timestamps render as configured transitional-location local time with their offset and zone identifier.
     /// </summary>
     [Fact]
-    public void AuditHistoryRendersHeadOfficeLocalTimestamp()
+    public void AuditHistoryRendersTransitionalLocationLocalTimestamp()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new List<AuditRowDto>
         {
-            new(new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero), "Candidate", Guid.NewGuid(), "Updated", "Staff", "staff-1", null),
+            new(new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero), "Attendee", Guid.NewGuid(), "Updated", "Staff", "staff-1", null),
         }));
         Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
-        var cut = Render<AuditHistory>(parameters => parameters.Add(p => p.CandidateId, Guid.NewGuid()));
+        var cut = Render<AuditHistory>(parameters => parameters.Add(p => p.AttendeeId, Guid.NewGuid()));
         cut.Find("details").TriggerEvent("ontoggle", new EventArgs());
 
         cut.WaitForAssertion(() => Assert.Contains("2026-06-02 00:30 +01:00 (Europe/London)", cut.Markup));
@@ -119,94 +119,94 @@ public class RepairBWebComponentTests : BunitContext
     /// Verifies the latest delivery timestamp uses the same configured local-time presentation as audit history.
     /// </summary>
     [Fact]
-    public void CandidatesRenderLatestDeliveryInHeadOfficeLocalTime()
+    public void AttendeesRenderLatestDeliveryInTransitionalLocationLocalTime()
     {
-        var candidateId = Guid.NewGuid();
+        var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<CandidateDto>
+        handler.Enqueue(_ => Json(new List<AttendeeDto>
         {
-            new(candidateId, "C. Candidate", "candidate@example.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 3, "Invited"),
+            new(attendeeId, "C. Attendee", "attendee@example.com", null, null, null, false, [new("DAT", "Drug & Alcohol Testing")], 3, "Invited"),
         }));
         handler.Enqueue(_ => Json(new DashboardsDto(
             AwaitingAvailability: [],
             NoResponse: [],
-            Slots: [],
+            Events: [],
             EmailStatuses:
-            [new CandidateEmailStatusDto(
-                candidateId,
+            [new AttendeeEmailStatusDto(
+                attendeeId,
                 "Invite",
                 new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero),
                 "Sent",
                 CanRetry: false)])));
-        handler.Enqueue(_ => Json(new List<EmployeeGroupOptionDto>()));
-        Services.AddSingleton(new CandidatesClient(NewHttpClient(handler)));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
         Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
         Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
-        var cut = Render<Candidates>();
+        var cut = Render<Attendees>();
 
         cut.WaitForAssertion(() => Assert.Contains("Invite 2026-06-02 00:30 +01:00 (Europe/London)", cut.Markup));
     }
 
     /// <summary>
-    /// Verifies a slot-board transport exception becomes an alert and restores the page busy state.
+    /// Verifies a event-board transport exception becomes an alert and restores the page busy state.
     /// </summary>
     [Fact]
-    public void SlotsReloadTransportExceptionRendersAnAlertAndClearsBusy()
+    public void EventsReloadTransportExceptionRendersAnAlertAndClearsBusy()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new SlotsClient(NewHttpClient(handler)));
+        Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
 
-        var cut = Render<Slots>();
+        var cut = Render<EventNegotiation>();
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("false", cut.Find(".slot-board").GetAttribute("aria-busy"));
+            Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy"));
             Assert.Equal("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent.Trim());
         });
     }
 
     /// <summary>
-    /// Verifies a confirmed-slot file-read exception is recoverable and does not strand the busy flag.
+    /// Verifies a event file-read exception is recoverable and does not strand the busy flag.
     /// </summary>
     [Fact]
-    public async Task ConfirmedSlotImportFileReadExceptionRendersAnAlertAndClearsBusy()
+    public async Task EventImportFileReadExceptionRendersAnAlertAndClearsBusy()
     {
         var handler = new RoutedHandler();
-        Services.AddSingleton(new ConfirmedSlotsClient(NewHttpClient(handler)));
-        GivenNoConfirmedSlots();
+        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
+        GivenNoEvents();
 
-        var cut = Render<ConfirmedSlots>();
+        var cut = Render<EventOperations>();
 
         await cut.InvokeAsync(() => cut.Instance.ImportFileForTestingAsync(new InputFileChangeEventArgs([])));
         cut.Render();
 
-        Assert.Equal("false", cut.Find(".confirmed-slots-page").GetAttribute("aria-busy"));
+        Assert.Equal("false", cut.Find(".events-page").GetAttribute("aria-busy"));
         Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
         var input = cut.Find("input[type=file]");
         Assert.Null(input.GetAttribute("disabled"));
-        Assert.Equal("Import confirmed slots CSV", input.GetAttribute("aria-label"));
+        Assert.Equal("Import events CSV", input.GetAttribute("aria-label"));
     }
 
     /// <summary>
-    /// Verifies a slot mutation transport failure renders the safe alert and releases the page busy state.
+    /// Verifies a event mutation transport failure renders the safe alert and releases the page busy state.
     /// </summary>
     [Fact]
-    public async Task SlotsMutationTransportExceptionRendersAnAlertAndClearsBusy()
+    public async Task EventsMutationTransportExceptionRendersAnAlertAndClearsBusy()
     {
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new SlotBoardDto([], [])));
+        handler.Enqueue(_ => Json(new EventBoardDto([], [])));
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new SlotsClient(NewHttpClient(handler)));
+        Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
 
-        var cut = Render<Slots>();
+        var cut = Render<EventNegotiation>();
         cut.WaitForAssertion(() => Assert.Contains("Submit proposal", cut.Markup));
 
         await cut.InvokeAsync(() => cut.Find("button.button-primary").Click());
 
-        Assert.Equal("false", cut.Find(".slot-board").GetAttribute("aria-busy"));
+        Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy"));
         Assert.Equal("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent.Trim());
     }
 
@@ -231,35 +231,35 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
-    /// Verifies a confirmed-slot import transport failure releases the input's busy state.
+    /// Verifies a event import transport failure releases the input's busy state.
     /// </summary>
     [Fact]
-    public async Task ConfirmedSlotImportTransportExceptionRendersAnAlertAndClearsBusy()
+    public async Task EventImportTransportExceptionRendersAnAlertAndClearsBusy()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new ConfirmedSlotsClient(NewHttpClient(handler)));
-        GivenNoConfirmedSlots();
+        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
+        GivenNoEvents();
 
-        var cut = Render<ConfirmedSlots>();
+        var cut = Render<EventOperations>();
 
         await cut.InvokeAsync(() => cut.Instance.ImportFileForTestingAsync(new InputFileChangeEventArgs(
-            [new BrowserFile("slots.csv", "date,startTime,DAT,MED,UNI\n2026-10-01,09:00,1,1,1")] )));
+            [new BrowserFile("events.csv", "date,startTime,DAT,MED,UNI\n2026-10-01,09:00,1,1,1")] )));
         cut.Render();
 
-        Assert.Equal("false", cut.Find(".confirmed-slots-page").GetAttribute("aria-busy"));
+        Assert.Equal("false", cut.Find(".events-page").GetAttribute("aria-busy"));
         Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
         Assert.Null(cut.Find("input[type=file]").GetAttribute("disabled"));
     }
 
-    /// <summary>A second confirmed-slot import cannot start while the first request is in flight.</summary>
+    /// <summary>A second event import cannot start while the first request is in flight.</summary>
     [Fact]
-    public async Task ConfirmedSlotImportSuppressesReentryUntilTheRequestCompletes()
+    public async Task EventImportSuppressesReentryUntilTheRequestCompletes()
     {
         var handler = new DeferredImportHandler();
-        Services.AddSingleton(new ConfirmedSlotsClient(NewHttpClient(handler)));
-        GivenNoConfirmedSlots();
-        var cut = Render<ConfirmedSlots>();
+        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
+        GivenNoEvents();
+        var cut = Render<EventOperations>();
 
         var first = cut.InvokeAsync(() => cut.Instance.ImportCsvForTestingAsync("first"));
         await handler.ImportStarted.WaitAsync(TimeSpan.FromSeconds(2));
@@ -270,7 +270,7 @@ public class RepairBWebComponentTests : BunitContext
         await Task.WhenAll(first, second);
         cut.Render();
 
-        Assert.Equal("false", cut.Find(".confirmed-slots-page").GetAttribute("aria-busy"));
+        Assert.Equal("false", cut.Find(".events-page").GetAttribute("aria-busy"));
     }
 
     private IRenderedComponent<CascadingAuthenticationState> RenderAuthenticatedHome(MeDto me)
@@ -369,7 +369,7 @@ public class RepairBWebComponentTests : BunitContext
         private readonly TaskCompletionSource _importStarted = new();
         private readonly TaskCompletionSource _importCompleted = new();
 
-        /// <summary>Gets the number of confirmed-slot import requests.</summary>
+        /// <summary>Gets the number of event import requests.</summary>
         public int ImportRequestCount { get; private set; }
 
         /// <summary>Completes when the first import request reaches the transport.</summary>
@@ -385,27 +385,27 @@ public class RepairBWebComponentTests : BunitContext
             ImportRequestCount++;
             _importStarted.TrySetResult();
             await _importCompleted.Task.WaitAsync(cancellationToken);
-            return Json(new SlotImportOutcomeDto(true, 1, []));
+            return Json(new EventImportOutcomeDto(true, 1, []));
         }
     }
 
     /// <summary>
-    /// The page lists confirmed slots on init. These import tests care only about the import card,
-    /// so the slot list is served from its own always-empty handler rather than the queued one.
+    /// The page lists events on init. These import tests care only about the import card,
+    /// so the event list is served from its own always-empty handler rather than the queued one.
     /// </summary>
-    private void GivenNoConfirmedSlots() =>
-        Services.AddSingleton(new SlotsClient(new HttpClient(new EmptySlotOperationsHandler())
+    private void GivenNoEvents() =>
+        Services.AddSingleton(new EventsClient(new HttpClient(new EmptyEventOperationsHandler())
         {
             BaseAddress = new Uri("https://api.example.com"),
         }));
 
-    private sealed class EmptySlotOperationsHandler : HttpMessageHandler
+    private sealed class EmptyEventOperationsHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(new SlotOperationsDto([]), options: CamelCase),
+                Content = JsonContent.Create(new EventOperationsDto([]), options: CamelCase),
             });
     }
 }

@@ -40,7 +40,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
     Console.Error.WriteLine(
         "   --reanchor [yyyy-MM-dd] resolves every day offset against the given date");
     Console.Error.WriteLine(
-        "   (default: today at head office) instead of the file anchor, without editing");
+        "   (default: today at transitional location) instead of the file anchor, without editing");
     Console.Error.WriteLine(
         "   demo-seed.json. Use it when the file anchor has gone stale and proposals");
     Console.Error.WriteLine(
@@ -72,13 +72,13 @@ try
     {
         // The persistence interceptor still needs IClock, even for migration-only context creation.
         services.AddEventBookingPersistence(connectionString);
-        services.AddSingleton(new HeadOfficeOptions("Europe/London"));
+        services.AddSingleton(new TransitionalLocationOptions("Europe/London"));
         services.AddSingleton<IClock, SystemClock>();
     }
     else
     {
         var email = DemoEmailOptions.From(Environment.GetEnvironmentVariable);
-        services.AddEventBookingInfrastructure(connectionString, email.HeadOffice, email.Tokens);
+        services.AddEventBookingInfrastructure(connectionString, email.TransitionalLocation, email.Tokens);
         services.AddEventBookingApplication(email.Portal);
         services.AddLocalEmailTransport(email.Sender, email.Smtp);
         services.AddScoped<DemoSeeder>();
@@ -138,7 +138,7 @@ try
     {
         reanchorDate ??= scope.ServiceProvider
             .GetRequiredService<IClock>()
-            .TodayAtHeadOffice;
+            .TodayAtTransitionalLocation;
         DemoSeedSpec.OverrideAnchor(reanchorDate.Value);
         Console.WriteLine($"[seed] Reanchored to {reanchorDate:yyyy-MM-dd}.");
     }
@@ -162,10 +162,10 @@ try
         $"{(reseed ? "Reseed complete (database was cleared): " : "Seed complete: ")}" +
         $"{summary.IdentitiesEnsured} identities, " +
         $"{summary.ProfilesEnsured} profiles, " +
-        $"{summary.AgreedSlotsImported} agreed slots, " +
+        $"{summary.AgreedEventsImported} agreed events, " +
         $"{summary.ProposalsEnsured} proposals, " +
         $"{summary.AcceptancesApplied} acceptances, " +
-        $"{summary.CandidatesCreated} candidates; " +
+        $"{summary.AttendeesCreated} attendees; " +
         $"{invitationEmailsSent} invitation emails sent or retried.");
     return 0;
 }

@@ -148,13 +148,13 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("AttendeeId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("attendee_id");
 
-                    b.Property<Guid>("ConfirmedSlotId")
+                    b.Property<Guid>("EventId")
                         .HasColumnType("uuid")
-                        .HasColumnName("confirmed_slot_id");
+                        .HasColumnName("event_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -179,14 +179,14 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.HasIndex("ManageTokenHash")
                         .IsUnique();
 
-                    b.HasIndex("CandidateId", "Status");
+                    b.HasIndex("AttendeeId", "Status");
 
-                    b.HasIndex("ConfirmedSlotId", "Status");
+                    b.HasIndex("EventId", "Status");
 
                     b.ToTable("booking", (string)null);
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Candidates.Candidate", b =>
+            modelBuilder.Entity("EventBooking.Domain.Attendees.Attendee", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -216,22 +216,22 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("candidate", (string)null);
+                    b.ToTable("attendee", (string)null);
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Candidates.CandidateRequirement", b =>
+            modelBuilder.Entity("EventBooking.Domain.Attendees.AttendeeRequirement", b =>
                 {
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("AttendeeId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("attendee_id");
 
                     b.Property<Guid>("AppointmentTypeId")
                         .HasColumnType("uuid")
                         .HasColumnName("appointment_type_id");
 
-                    b.HasKey("CandidateId", "AppointmentTypeId");
+                    b.HasKey("AttendeeId", "AppointmentTypeId");
 
-                    b.ToTable("candidate_requirement", (string)null);
+                    b.ToTable("attendee_requirement", (string)null);
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Invites.Invite", b =>
@@ -241,9 +241,9 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("AttendeeId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("attendee_id");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
@@ -265,7 +265,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CandidateId");
+                    b.HasIndex("AttendeeId");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
@@ -281,11 +281,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("invite_id");
 
-                    b.Property<Guid>("ConfirmedSlotId")
+                    b.Property<Guid>("EventId")
                         .HasColumnType("uuid")
-                        .HasColumnName("confirmed_slot_id");
+                        .HasColumnName("event_id");
 
-                    b.HasKey("InviteId", "ConfirmedSlotId");
+                    b.HasKey("InviteId", "EventId");
 
                     b.ToTable("invite_option", (string)null);
                 });
@@ -297,9 +297,9 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("CandidateId")
+                    b.Property<Guid>("AttendeeId")
                         .HasColumnType("uuid")
-                        .HasColumnName("candidate_id");
+                        .HasColumnName("attendee_id");
 
                     b.Property<DateTimeOffset>("SentAt")
                         .HasColumnType("timestamp with time zone")
@@ -315,7 +315,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CandidateId");
+                    b.HasIndex("AttendeeId");
 
                     b.ToTable("email_log", (string)null);
                 });
@@ -347,7 +347,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.ConfirmedSlot", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.Event", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -369,10 +369,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("confirmed_slot", (string)null);
+                    b.ToTable("event", (string)null);
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.ProposalAcceptance", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.ProposalAcceptance", b =>
                 {
                     b.Property<Guid>("ProposalId")
                         .HasColumnType("uuid")
@@ -395,11 +395,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.ToTable("proposal_acceptance", (string)null);
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.SlotCapacity", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.EventCapacity", b =>
                 {
-                    b.Property<Guid>("ConfirmedSlotId")
+                    b.Property<Guid>("EventId")
                         .HasColumnType("uuid")
-                        .HasColumnName("confirmed_slot_id");
+                        .HasColumnName("event_id");
 
                     b.Property<Guid>("AppointmentTypeId")
                         .HasColumnType("uuid")
@@ -413,15 +413,15 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("total_headcount");
 
-                    b.HasKey("ConfirmedSlotId", "AppointmentTypeId");
+                    b.HasKey("EventId", "AppointmentTypeId");
 
-                    b.ToTable("slot_capacity", null, t =>
+                    b.ToTable("event_capacity", null, t =>
                         {
-                            t.HasCheckConstraint("ck_slot_capacity_within_bounds", "remaining_capacity >= 0 AND remaining_capacity <= total_headcount");
+                            t.HasCheckConstraint("ck_event_capacity_within_bounds", "remaining_capacity >= 0 AND remaining_capacity <= total_headcount");
                         });
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.SlotProposal", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.EventProposal", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -440,14 +440,14 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("slot_proposal", (string)null);
+                    b.ToTable("event_proposal", (string)null);
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Candidates.CandidateRequirement", b =>
+            modelBuilder.Entity("EventBooking.Domain.Attendees.AttendeeRequirement", b =>
                 {
-                    b.HasOne("EventBooking.Domain.Candidates.Candidate", null)
+                    b.HasOne("EventBooking.Domain.Attendees.Attendee", null)
                         .WithMany("Requirements")
-                        .HasForeignKey("CandidateId")
+                        .HasForeignKey("AttendeeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -461,11 +461,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.ConfirmedSlot", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.Event", b =>
                 {
-                    b.OwnsOne("EventBooking.Domain.Slots.SlotWindow", "Window", b1 =>
+                    b.OwnsOne("EventBooking.Domain.Events.EventWindow", "Window", b1 =>
                         {
-                            b1.Property<Guid>("ConfirmedSlotId")
+                            b1.Property<Guid>("EventId")
                                 .HasColumnType("uuid");
 
                             b1.Property<DateOnly>("Date")
@@ -476,41 +476,41 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                                 .HasColumnType("time without time zone")
                                 .HasColumnName("start_time");
 
-                            b1.HasKey("ConfirmedSlotId");
+                            b1.HasKey("EventId");
 
-                            b1.ToTable("confirmed_slot");
+                            b1.ToTable("event");
 
                             b1.WithOwner()
-                                .HasForeignKey("ConfirmedSlotId");
+                                .HasForeignKey("EventId");
                         });
 
                     b.Navigation("Window")
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.ProposalAcceptance", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.ProposalAcceptance", b =>
                 {
-                    b.HasOne("EventBooking.Domain.Slots.SlotProposal", null)
+                    b.HasOne("EventBooking.Domain.Events.EventProposal", null)
                         .WithMany("Acceptances")
                         .HasForeignKey("ProposalId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.SlotCapacity", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.EventCapacity", b =>
                 {
-                    b.HasOne("EventBooking.Domain.Slots.ConfirmedSlot", null)
+                    b.HasOne("EventBooking.Domain.Events.Event", null)
                         .WithMany("Capacities")
-                        .HasForeignKey("ConfirmedSlotId")
+                        .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.SlotProposal", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.EventProposal", b =>
                 {
-                    b.OwnsOne("EventBooking.Domain.Slots.SlotWindow", "Window", b1 =>
+                    b.OwnsOne("EventBooking.Domain.Events.EventWindow", "Window", b1 =>
                         {
-                            b1.Property<Guid>("SlotProposalId")
+                            b1.Property<Guid>("EventProposalId")
                                 .HasColumnType("uuid");
 
                             b1.Property<DateOnly>("Date")
@@ -521,19 +521,19 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                                 .HasColumnType("time without time zone")
                                 .HasColumnName("start_time");
 
-                            b1.HasKey("SlotProposalId");
+                            b1.HasKey("EventProposalId");
 
-                            b1.ToTable("slot_proposal");
+                            b1.ToTable("event_proposal");
 
                             b1.WithOwner()
-                                .HasForeignKey("SlotProposalId");
+                                .HasForeignKey("EventProposalId");
                         });
 
                     b.Navigation("Window")
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Candidates.Candidate", b =>
+            modelBuilder.Entity("EventBooking.Domain.Attendees.Attendee", b =>
                 {
                     b.Navigation("Requirements");
                 });
@@ -543,12 +543,12 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.Navigation("Options");
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.ConfirmedSlot", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.Event", b =>
                 {
                     b.Navigation("Capacities");
                 });
 
-            modelBuilder.Entity("EventBooking.Domain.Slots.SlotProposal", b =>
+            modelBuilder.Entity("EventBooking.Domain.Events.EventProposal", b =>
                 {
                     b.Navigation("Acceptances");
                 });

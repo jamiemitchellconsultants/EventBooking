@@ -15,11 +15,13 @@ public sealed class StaffIdentityMcpTests(McpFactory factory)
     {
         var originalStaffUserId = factory.SignedInAs;
         var originalStaffIdClaim = factory.StaffIdClaim;
+        var originalRolesClaim = factory.RolesClaim;
         var staffUserId = Guid.NewGuid();
         try
         {
             factory.SignedInAs = staffUserId;
             factory.StaffIdClaim = "u234567";
+            factory.RolesClaim = [];
 
             var response = await PostToolsListAsync();
 
@@ -31,6 +33,7 @@ public sealed class StaffIdentityMcpTests(McpFactory factory)
         {
             factory.SignedInAs = originalStaffUserId;
             factory.StaffIdClaim = originalStaffIdClaim;
+            factory.RolesClaim = originalRolesClaim;
         }
     }
 

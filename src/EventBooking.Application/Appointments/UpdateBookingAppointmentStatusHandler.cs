@@ -5,7 +5,7 @@ using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Appointments;
 
@@ -29,7 +29,7 @@ public sealed record BookingAppointmentUpdateView
     public required Guid BookingAppointmentId { get; init; }
     /// <summary>Gets this appointment's current independent operational status.</summary>
     public required BookingAppointmentStatus Status { get; init; }
-    /// <summary>Gets when staff checked the candidate in, or null until check-in.</summary>
+    /// <summary>Gets when staff checked the attendee in, or null until check-in.</summary>
     public required DateTimeOffset? CheckedInAt { get; init; }
     /// <summary>Gets when staff recorded completion or no-show, or null before an outcome.</summary>
     public required DateTimeOffset? OutcomeAt { get; init; }
@@ -41,9 +41,9 @@ public sealed record BookingAppointmentUpdateView
 /// <param name="access">The access.</param>
 /// <param name="appointments">The appointments.</param>
 /// <param name="bookings">The bookings.</param>
-/// <param name="candidates">The candidates.</param>
+/// <param name="attendees">The attendees.</param>
 /// <param name="invites">The invites.</param>
-/// <param name="slots">The slots.</param>
+/// <param name="events">The events.</param>
 /// <param name="outcomes">The outcomes.</param>
 /// <param name="audit">The audit.</param>
 /// <param name="unitOfWork">The unit of work.</param>
@@ -52,9 +52,9 @@ public sealed class UpdateBookingAppointmentStatusHandler(
     IStaffAccessAuthorizer access,
     IBookingAppointmentRepository appointments,
     IBookingRepository bookings,
-    ICandidateRepository candidates,
+    IAttendeeRepository attendees,
     IInviteRepository invites,
-    IConfirmedSlotRepository slots,
+    IEventRepository events,
     RecoveryBookingOutcomeCoordinator outcomes,
     IAuditLogger audit,
     IUnitOfWork unitOfWork,
@@ -101,38 +101,38 @@ public sealed class UpdateBookingAppointmentStatusHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        // Candidate-first lifecycle order: Candidate, ordered pending Invites, original
-        // Booking, addressed Booking, Confirmed Slot, then ordered Booking Appointments.
+        // Attendee-first lifecycle order: Attendee, ordered pending Invites, original
+        // Booking, addressed Booking, Confirmed Event, then ordered Booking Appointments.
         // The locator above only established this order; every relationship is re-read here.
-        var candidate = await candidates.LockForUpdateAsync(locator.CandidateId, cancellationToken);
-        var pending = await invites.LockPendingListForCandidateAsync(locator.CandidateId, cancellationToken);
+        var attendee = await attendees.LockForUpdateAsync(locator.AttendeeId, cancellationToken);
+        var pending = await invites.LockPendingListForAttendeeAsync(locator.AttendeeId, cancellationToken);
         var original = await bookings.LockForUpdateAsync(locator.OriginalBookingId, cancellationToken);
         var booking = await bookings.LockForUpdateAsync(locator.BookingId, cancellationToken);
-        var slot = await slots.LockForUpdateAsync(locator.ConfirmedSlotId, cancellationToken);
+        var eventItem = await events.LockForUpdateAsync(locator.EventId, cancellationToken);
         var lockedAppointments = await appointments.LockForBookingAsync(
             locator.BookingId, cancellationToken);
         var appointment = lockedAppointments.SingleOrDefault(value =>
             value.Id == command.BookingAppointmentId && value.AppointmentTypeId == appointmentTypeId);
 
-        if (candidate is null || original is null || booking is null || appointment is null || slot is null)
+        if (attendee is null || original is null || booking is null || appointment is null || eventItem is null)
         {
             return Result<BookingAppointmentUpdateView>.Failure(MissingAppointment);
         }
 
-        if (booking.CandidateId != candidate.Id
-            || original.CandidateId != candidate.Id
+        if (booking.AttendeeId != attendee.Id
+            || original.AttendeeId != attendee.Id
             || appointment.BookingId != booking.Id
-            || booking.ConfirmedSlotId != slot.Id
+            || booking.EventId != eventItem.Id
             || (booking.IsOriginal ? booking.Id != original.Id : booking.RecoveryOfBookingId != original.Id))
         {
             return Result<BookingAppointmentUpdateView>.Failure(
                 Error.Conflict("The booking appointment no longer matches its active requirement."));
         }
 
-        if (booking.Status == BookingStatus.Cancelled || slot.Status != ConfirmedSlotStatus.Active)
+        if (booking.Status == BookingStatus.Cancelled || eventItem.Status != EventStatus.Active)
         {
             return Result<BookingAppointmentUpdateView>.Failure(
-                Error.Conflict("Cancelled bookings and slots cannot be updated."));
+                Error.Conflict("Cancelled bookings and events cannot be updated."));
         }
 
         if (appointment.Status == command.Status)
@@ -160,12 +160,12 @@ public sealed class UpdateBookingAppointmentStatusHandler(
                 "A later recovery covers this appointment type. Cancel the recovery first, then correct the no-show."));
         }
 
-        var localNow = clock.NowAtHeadOffice;
+        var localNow = clock.NowAtTransitionalLocation;
         var localDate = DateOnly.FromDateTime(localNow.DateTime);
         var localTime = TimeOnly.FromDateTime(localNow.DateTime);
-        var checkInAllowed = slot.Window.Date == localDate;
-        var noShowAllowed = slot.Window.Date < localDate
-            || (slot.Window.Date == localDate && localTime >= slot.Window.EndTime);
+        var checkInAllowed = eventItem.Window.Date == localDate;
+        var noShowAllowed = eventItem.Window.Date < localDate
+            || (eventItem.Window.Date == localDate && localTime >= eventItem.Window.EndTime);
         var previous = appointment.Status;
 
         try
@@ -204,7 +204,7 @@ public sealed class UpdateBookingAppointmentStatusHandler(
             ActionFor(previous, appointment.Status),
             ActorType.Staff,
             command.StaffUserId.ToString(),
-            $"status:{previous}->{appointment.Status};appointmentTypeId:{appointmentTypeId};confirmedSlotId:{slot.Id}"
+            $"status:{previous}->{appointment.Status};appointmentTypeId:{appointmentTypeId};eventId:{eventItem.Id}"
                 + (reopened ? $";booking:{BookingStatus.Concluded}->{BookingStatus.Active}" : null));
 
         if (changed && booking.Status == BookingStatus.Concluded)
@@ -215,7 +215,7 @@ public sealed class UpdateBookingAppointmentStatusHandler(
                 AuditAction.RecoveryBookingConcluded,
                 ActorType.Staff,
                 command.StaffUserId.ToString(),
-                $"root {booking.RecoveryOfBookingId} {slot.Window}");
+                $"root {booking.RecoveryOfBookingId} {eventItem.Window}");
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

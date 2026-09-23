@@ -37,17 +37,17 @@ public sealed record AuditSearchPageDto(
 
 public sealed class AuditClient(HttpClient http)
 {
-    public async Task<ApiOutcome<List<AuditRowDto>>> ForSlotAsync(
-        Guid slotId, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<List<AuditRowDto>>> ForEventAsync(
+        Guid eventId, CancellationToken cancellationToken)
     {
-        using var response = await http.GetAsync($"/api/audit/slot/{slotId}", cancellationToken);
+        using var response = await http.GetAsync($"/api/audit/event/{eventId}", cancellationToken);
         return await ApiCall.ReadAsync<List<AuditRowDto>>(response, cancellationToken);
     }
 
-    public async Task<ApiOutcome<List<AuditRowDto>>> ForCandidateAsync(
-        Guid candidateId, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<List<AuditRowDto>>> ForAttendeeAsync(
+        Guid attendeeId, CancellationToken cancellationToken)
     {
-        using var response = await http.GetAsync($"/api/audit/candidate/{candidateId}", cancellationToken);
+        using var response = await http.GetAsync($"/api/audit/attendee/{attendeeId}", cancellationToken);
         return await ApiCall.ReadAsync<List<AuditRowDto>>(response, cancellationToken);
     }
 

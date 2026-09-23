@@ -81,20 +81,20 @@ public sealed record MeResourceResponse(
         };
         if (roles.Contains("Coordinator") || roles.Contains("Admin"))
         {
-            links["candidates"] = new("/api/candidates", "GET", "listCandidates");
+            links["attendees"] = new("/api/attendees", "GET", "listAttendees");
             links["dashboards"] = new("/api/dashboards", "GET", "getDashboards");
             links["audit"] = new("/api/audit/search", "GET", "searchAudit");
         }
 
         if (roles.Contains("Manager"))
         {
-            links["slotBoard"] = new("/api/slots/board", "GET", "getSlotBoard");
-            links["slotOperations"] = new("/api/slots/operations", "GET", "getSlotOperations");
+            links["eventBoard"] = new("/api/events/board", "GET", "getEventBoard");
+            links["eventOperations"] = new("/api/events/operations", "GET", "getEventOperations");
         }
 
         if (roles.Contains("AppointmentStaff") || roles.Contains("Manager"))
         {
-            links["appointmentSlots"] = new("/api/appointment-workspace/slots", "GET", "listAppointmentSlots");
+            links["appointmentEvents"] = new("/api/appointment-workspace/events", "GET", "listAppointmentEvents");
         }
 
         if (roles.Contains("Admin"))

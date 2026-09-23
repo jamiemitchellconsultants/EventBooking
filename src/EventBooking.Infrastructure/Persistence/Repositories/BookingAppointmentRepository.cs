@@ -30,10 +30,10 @@ public sealed class BookingAppointmentRepository(EventBookingDbContext context)
                 value => value.BookingId,
                 booking => booking.Id,
                 (value, booking) => new BookingAppointmentLocator(
-                    booking.CandidateId,
+                    booking.AttendeeId,
                     booking.RecoveryOfBookingId ?? booking.Id,
                     booking.Id,
-                    booking.ConfirmedSlotId,
+                    booking.EventId,
                     value.AppointmentTypeId))
             .SingleOrDefaultAsync(cancellationToken);
 

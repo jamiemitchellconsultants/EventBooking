@@ -1,7 +1,7 @@
-/* Design system for the EventBooking staff and candidate interfaces.
+/* Design system for the EventBooking staff and attendee interfaces.
    Every component class here is global on purpose: Blazor scoped CSS cannot reach a
    child component, so shell, table, button and banner rules held per page left shared
-   components (AuditHistory, CandidateLayout) unstyled. Page .razor.css files now carry
+   components (AuditHistory, AttendeeLayout) unstyled. Page .razor.css files now carry
    only layout that is genuinely local to one page. */
 
 :root {
@@ -840,7 +840,7 @@ tbody tr:last-child td {
     padding: 0 10px;
 }
 
-.candidate-status,
+.attendee-status,
 .status-expected,
 .status-checkedin,
 .status-completed,

@@ -34,9 +34,9 @@ public sealed class GetAuditSearchHandler(
     IAuditQueries queries,
     IStaffAccessAuthorizer access)
 {
-    private static readonly IReadOnlyList<string> CandidateBucket =
+    private static readonly IReadOnlyList<string> AttendeeBucket =
     [
-        AuditEntityTypes.Candidate,
+        AuditEntityTypes.Attendee,
         AuditEntityTypes.Invite,
         AuditEntityTypes.Booking,
         AuditEntityTypes.BookingAppointment
@@ -44,8 +44,8 @@ public sealed class GetAuditSearchHandler(
 
     private static readonly IReadOnlyList<string> OperationalBucket =
     [
-        AuditEntityTypes.SlotProposal,
-        AuditEntityTypes.ConfirmedSlot,
+        AuditEntityTypes.EventProposal,
+        AuditEntityTypes.Event,
         AuditEntityTypes.StaffAccessProfile
     ];
 
@@ -57,20 +57,20 @@ public sealed class GetAuditSearchHandler(
         GetAuditSearchQuery query,
         CancellationToken cancellationToken)
     {
-        var maySeeCandidates = (await access.AuthorizeAsync(
-            query.StaffUserId, StaffCapability.ViewCandidateAudit, null, cancellationToken)).IsSuccess;
+        var maySeeAttendees = (await access.AuthorizeAsync(
+            query.StaffUserId, StaffCapability.ViewAttendeeAudit, null, cancellationToken)).IsSuccess;
         var maySeeOperations = (await access.AuthorizeAsync(
-            query.StaffUserId, StaffCapability.ViewSlotAudit, null, cancellationToken)).IsSuccess;
+            query.StaffUserId, StaffCapability.ViewEventAudit, null, cancellationToken)).IsSuccess;
 
-        if (!maySeeCandidates && !maySeeOperations)
+        if (!maySeeAttendees && !maySeeOperations)
         {
             return Result<AuditSearchPage>.Failure(Error.Forbidden("Search requires audit access."));
         }
 
-        IReadOnlyList<string> allowed = (maySeeCandidates, maySeeOperations) switch
+        IReadOnlyList<string> allowed = (maySeeAttendees, maySeeOperations) switch
         {
             (true, true) => AuditEntityTypes.All,
-            (true, false) => CandidateBucket,
+            (true, false) => AttendeeBucket,
             _ => OperationalBucket,
         };
 

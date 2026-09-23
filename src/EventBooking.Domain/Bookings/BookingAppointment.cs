@@ -22,7 +22,7 @@ public sealed class BookingAppointment
     /// <summary>Gets this appointment's independent operational status.</summary>
     public BookingAppointmentStatus Status { get; private set; }
 
-    /// <summary>Gets when staff checked the candidate in, or null until check-in.</summary>
+    /// <summary>Gets when staff checked the attendee in, or null until check-in.</summary>
     public DateTimeOffset? CheckedInAt { get; private set; }
 
     /// <summary>Gets when staff recorded completion or no-show, or null before an outcome.</summary>
@@ -62,8 +62,8 @@ public sealed class BookingAppointment
     /// <param name="target">The requested operational status.</param>
     /// <param name="staffUserId">The authenticated staff identity making the request.</param>
     /// <param name="changedAt">The UTC instant supplied by the application clock.</param>
-    /// <param name="checkInAllowed">Whether the slot is on the current head-office date.</param>
-    /// <param name="noShowAllowed">Whether the slot's four-hour window has ended.</param>
+    /// <param name="checkInAllowed">Whether the eventItem is on the current transitional-location date.</param>
+    /// <param name="noShowAllowed">Whether the event's four-hour window has ended.</param>
     /// <returns><see langword="true"/> for a real transition; otherwise <see langword="false"/>.</returns>
     public bool TransitionTo(
         BookingAppointmentStatus target,
@@ -84,7 +84,7 @@ public sealed class BookingAppointment
         switch (Status, target)
         {
             case (BookingAppointmentStatus.Expected, BookingAppointmentStatus.CheckedIn):
-                Guard.Against(!checkInAllowed, "Check-in is available only on the confirmed-slot date.");
+                Guard.Against(!checkInAllowed, "Check-in is available only on the event date.");
                 CheckedInAt = changedAt;
                 OutcomeAt = null;
                 break;
@@ -94,7 +94,7 @@ public sealed class BookingAppointment
                 break;
 
             case (BookingAppointmentStatus.Expected, BookingAppointmentStatus.NoShow):
-                Guard.Against(!noShowAllowed, "No-show is available only after the slot window ends.");
+                Guard.Against(!noShowAllowed, "No-show is available only after the event window ends.");
                 CheckedInAt = null;
                 OutcomeAt = changedAt;
                 break;

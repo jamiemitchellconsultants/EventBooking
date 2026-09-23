@@ -9,7 +9,7 @@ namespace EventBooking.Application.Tests.Dashboards;
 
 public class GetAuditSearchHandlerTests
 {
-    private sealed class FakeAuthorizer(bool candidate, bool slot) : IStaffAccessAuthorizer
+    private sealed class FakeAuthorizer(bool attendee, bool eventItem) : IStaffAccessAuthorizer
     {
         public Task<Result<StaffAccessContext>> AuthorizeAsync(
             Guid staffUserId,
@@ -17,7 +17,7 @@ public class GetAuditSearchHandlerTests
             Guid? requiredAppointmentTypeId,
             CancellationToken cancellationToken)
         {
-            var granted = capability == StaffCapability.ViewCandidateAudit ? candidate : slot;
+            var granted = capability == StaffCapability.ViewAttendeeAudit ? attendee : eventItem;
             return Task.FromResult(granted
                 ? Result<StaffAccessContext>.Success(
                     new StaffAccessContext(staffUserId, new HashSet<Role>(), null))
@@ -34,7 +34,7 @@ public class GetAuditSearchHandlerTests
         public Task<IReadOnlyList<AuditHistoryRow>> ForEntityAsync(string e, Guid id, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<AuditHistoryRow>>([]);
 
-        public Task<IReadOnlyList<AuditHistoryRow>> ForCandidateAsync(Guid id, CancellationToken ct) =>
+        public Task<IReadOnlyList<AuditHistoryRow>> ForAttendeeAsync(Guid id, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<AuditHistoryRow>>([]);
 
         public Task<AuditSearchPage> SearchAsync(AuditSearchFilter filter, CancellationToken ct)
@@ -59,7 +59,7 @@ public class GetAuditSearchHandlerTests
     }
 
     [Fact]
-    public async Task SlotOnlyCallerSeesOperationalBucketOnly()
+    public async Task EventOnlyCallerSeesOperationalBucketOnly()
     {
         var queries = new SpyQueries();
         var handler = new GetAuditSearchHandler(queries, new FakeAuthorizer(false, true));
@@ -67,7 +67,7 @@ public class GetAuditSearchHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(1, queries.Calls);
         Assert.Equal(
-            [AuditEntityTypes.SlotProposal, AuditEntityTypes.ConfirmedSlot, AuditEntityTypes.StaffAccessProfile],
+            [AuditEntityTypes.EventProposal, AuditEntityTypes.Event, AuditEntityTypes.StaffAccessProfile],
             queries.LastFilter!.AllowedEntityTypes);
     }
 
@@ -96,13 +96,13 @@ public class GetAuditSearchHandlerTests
     {
         var queries = new SpyQueries();
         var handler = new GetAuditSearchHandler(queries, new FakeAuthorizer(false, true));
-        var result = await handler.HandleAsync(Query(AuditEntityTypes.ConfirmedSlot), CancellationToken.None);
+        var result = await handler.HandleAsync(Query(AuditEntityTypes.Event), CancellationToken.None);
         Assert.True(result.IsSuccess);
-        Assert.Equal(AuditEntityTypes.ConfirmedSlot, queries.LastFilter!.EntityType);
+        Assert.Equal(AuditEntityTypes.Event, queries.LastFilter!.EntityType);
     }
 
     [Fact]
-    public async Task CandidateOnlyCallerSeesCandidateBucketOnly()
+    public async Task AttendeeOnlyCallerSeesAttendeeBucketOnly()
     {
         var queries = new SpyQueries();
         var handler = new GetAuditSearchHandler(queries, new FakeAuthorizer(true, false));
@@ -110,7 +110,7 @@ public class GetAuditSearchHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(
             [
-                AuditEntityTypes.Candidate,
+                AuditEntityTypes.Attendee,
                 AuditEntityTypes.Invite,
                 AuditEntityTypes.Booking,
                 AuditEntityTypes.BookingAppointment

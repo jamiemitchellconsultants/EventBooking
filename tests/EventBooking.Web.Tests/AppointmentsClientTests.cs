@@ -9,47 +9,47 @@ namespace EventBooking.Web.Tests;
 /// <summary>Verifies the browser client uses only the three minimum-data workspace routes.</summary>
 public sealed class AppointmentsClientTests
 {
-    /// <summary>Verifies slot-list retrieval and deserialization.</summary>
+    /// <summary>Verifies event-list retrieval and deserialization.</summary>
     [Fact]
-    public async Task ListSlotsGetsTheWorkspaceCollection()
+    public async Task ListEventsGetsTheWorkspaceCollection()
     {
-        var (client, handler) = Given(JsonContent.Create(new AppointmentWorkspaceSlotListDto
+        var (client, handler) = Given(JsonContent.Create(new AppointmentWorkspaceEventListDto
         {
             AppointmentTypeName = "Uniform Fitting",
-            Slots = [],
+            Events = [],
         }));
 
-        var result = await client.ListSlotsAsync(CancellationToken.None);
+        var result = await client.ListEventsAsync(CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Uniform Fitting", result.Value!.AppointmentTypeName);
         Assert.Equal(HttpMethod.Get, handler.Request!.Method);
-        Assert.Equal("/api/appointment-workspace/slots", handler.Request.RequestUri!.AbsolutePath);
+        Assert.Equal("/api/appointment-workspace/events", handler.Request.RequestUri!.AbsolutePath);
     }
 
-    /// <summary>Verifies selected-slot retrieval targets only its route identifier.</summary>
+    /// <summary>Verifies selected-event retrieval targets only its route identifier.</summary>
     [Fact]
-    public async Task GetSlotUsesTheConfirmedSlotRoute()
+    public async Task GetEventUsesTheEventRoute()
     {
-        var slotId = Guid.NewGuid();
-        var (client, handler) = Given(JsonContent.Create(new AppointmentSlotDetailDto
+        var eventId = Guid.NewGuid();
+        var (client, handler) = Given(JsonContent.Create(new AppointmentEventDetailDto
         {
             AppointmentTypeName = "Uniform Fitting",
-            ConfirmedSlotId = slotId,
+            EventId = eventId,
             Date = new DateOnly(2026, 9, 7),
             StartTime = new TimeOnly(9, 0),
             EndTime = new TimeOnly(13, 0),
             Appointments = [],
         }));
 
-        Assert.True((await client.GetSlotAsync(slotId, CancellationToken.None)).IsSuccess);
+        Assert.True((await client.GetEventAsync(eventId, CancellationToken.None)).IsSuccess);
         Assert.Equal(HttpMethod.Get, handler.Request!.Method);
         Assert.Equal(
-            $"/api/appointment-workspace/slots/{slotId}",
+            $"/api/appointment-workspace/events/{eventId}",
             handler.Request.RequestUri!.AbsolutePath);
     }
 
-    /// <summary>Verifies updates send status and version without scope or candidate identifiers.</summary>
+    /// <summary>Verifies updates send status and version without scope or attendee identifiers.</summary>
     [Fact]
     public async Task UpdateSendsOnlyStatusAndExpectedVersion()
     {
@@ -75,7 +75,7 @@ public sealed class AppointmentsClientTests
         Assert.Contains("\"status\":\"CheckedIn\"", body);
         Assert.Contains("\"expectedVersion\":1", body);
         Assert.DoesNotContain("appointmentType", body, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("candidate", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("attendee", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("bookingId", body, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -102,8 +102,8 @@ public sealed class AppointmentsClientTests
     [Fact]
     public async Task GetRosterReturnsCsvContentAndFilename()
     {
-        var slotId = Guid.NewGuid();
-        var csv = "Candidate Name,Candidate Email,Appointment Type,Status,Checked In At,Outcome At\n";
+        var eventId = Guid.NewGuid();
+        var csv = "Attendee Name,Attendee Email,Appointment Type,Status,Checked In At,Outcome At\n";
         var content = new StringContent(csv, Encoding.UTF8, "text/csv");
         content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment")
         {
@@ -111,14 +111,14 @@ public sealed class AppointmentsClientTests
         };
         var (client, handler) = Given(content);
 
-        var result = await client.GetRosterAsync(slotId, CancellationToken.None);
+        var result = await client.GetRosterAsync(eventId, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(csv, result.Value!.Content);
         Assert.Equal("roster-medical-check-up-2026-09-15-0930.csv", result.Value.FileName);
         Assert.Equal(HttpMethod.Get, handler.Request!.Method);
         Assert.Equal(
-            $"/api/appointment-workspace/slots/{slotId}/roster",
+            $"/api/appointment-workspace/events/{eventId}/roster",
             handler.Request.RequestUri!.AbsolutePath);
     }
 
@@ -126,7 +126,7 @@ public sealed class AppointmentsClientTests
     [Fact]
     public async Task GetRosterUnwrapsAQuotedFilename()
     {
-        var content = new StringContent("Candidate Name\n", Encoding.UTF8, "text/csv");
+        var content = new StringContent("Attendee Name\n", Encoding.UTF8, "text/csv");
         content.Headers.TryAddWithoutValidation(
             "Content-Disposition", "attachment; filename=\"roster-uniform-fitting-2026-09-15-0930.csv\"");
         var (client, _) = Given(content);
@@ -141,7 +141,7 @@ public sealed class AppointmentsClientTests
     [Fact]
     public async Task GetRosterPrefersTheStarredFilename()
     {
-        var content = new StringContent("Candidate Name\n", Encoding.UTF8, "text/csv");
+        var content = new StringContent("Attendee Name\n", Encoding.UTF8, "text/csv");
         content.Headers.TryAddWithoutValidation(
             "Content-Disposition",
             "attachment; filename=fallback.csv; filename*=UTF-8''roster-drug-%26-alcohol-testing-2026-09-15-0930.csv");
@@ -157,7 +157,7 @@ public sealed class AppointmentsClientTests
     [Fact]
     public async Task GetRosterFallsBackToADefaultFilename()
     {
-        var (client, _) = Given(new StringContent("Candidate Name\n", Encoding.UTF8, "text/csv"));
+        var (client, _) = Given(new StringContent("Attendee Name\n", Encoding.UTF8, "text/csv"));
 
         var result = await client.GetRosterAsync(Guid.NewGuid(), CancellationToken.None);
 

@@ -29,40 +29,40 @@ public static class AppointmentWorkspaceEndpoints
         var group = app.MapGroup("/api/appointment-workspace")
             .RequireAuthorization(AuthenticationExtensions.StaffPolicy);
 
-        group.MapGet("/slots", async (
+        group.MapGet("/events", async (
             ICallerAccessor caller,
             GetAppointmentWorkspaceHandler handler,
             CancellationToken cancellationToken) =>
         {
-            var result = await handler.ListSlotsAsync(
+            var result = await handler.ListEventsAsync(
                 caller.RequireStaffUserId(), cancellationToken);
             return result.IsSuccess
-                ? Results.Ok(AppointmentWorkspaceSlotListResponse.From(result.Value))
+                ? Results.Ok(AppointmentWorkspaceEventListResponse.From(result.Value))
                 : result.ToResponse();
         })
-            .WithAgentMetadata("listAppointmentSlots")
+            .WithAgentMetadata("listAppointmentEvents")
             .Produces(200)
             .ProducesProblem(403);
 
-        group.MapGet("/slots/{confirmedSlotId:guid}", async (
-            Guid confirmedSlotId,
+        group.MapGet("/events/{eventId:guid}", async (
+            Guid eventId,
             ICallerAccessor caller,
             GetAppointmentWorkspaceHandler handler,
             CancellationToken cancellationToken) =>
         {
-            var result = await handler.GetSlotAsync(
-                caller.RequireStaffUserId(), confirmedSlotId, cancellationToken);
+            var result = await handler.GetEventAsync(
+                caller.RequireStaffUserId(), eventId, cancellationToken);
             return result.IsSuccess
-                ? Results.Ok(AppointmentSlotDetailResponse.From(result.Value))
+                ? Results.Ok(AppointmentEventDetailResponse.From(result.Value))
                 : result.ToResponse();
         })
-            .WithAgentMetadata("getAppointmentSlot")
+            .WithAgentMetadata("getAppointmentEvent")
             .Produces(200)
             .ProducesProblem(403)
             .ProducesProblem(404);
 
-        group.MapGet("/slots/{confirmedSlotId:guid}/roster", async (
-            Guid confirmedSlotId,
+        group.MapGet("/events/{eventId:guid}/roster", async (
+            Guid eventId,
             ICallerAccessor caller,
             GetAppointmentWorkspaceHandler handler,
             AppointmentRosterCsvFormatter formatter,
@@ -70,8 +70,8 @@ public static class AppointmentWorkspaceEndpoints
         {
             // The same read the JSON detail route performs, so authorization, scoping, and the
             // not-found-for-out-of-scope behaviour are identical by construction.
-            var result = await handler.GetSlotAsync(
-                caller.RequireStaffUserId(), confirmedSlotId, cancellationToken);
+            var result = await handler.GetEventAsync(
+                caller.RequireStaffUserId(), eventId, cancellationToken);
             if (result.IsFailure)
             {
                 return result.ToResponse();
@@ -134,16 +134,16 @@ public static class AppointmentWorkspaceEndpoints
 /// <summary>Counts scoped booking appointments in each operational state.</summary>
 public sealed record AppointmentStatusCountsResponse
 {
-    /// <summary>Gets candidates booked but not checked in for this appointment.</summary>
+    /// <summary>Gets attendees booked but not checked in for this appointment.</summary>
     public required int Expected { get; init; }
 
-    /// <summary>Gets candidates checked in for this appointment.</summary>
+    /// <summary>Gets attendees checked in for this appointment.</summary>
     public required int CheckedIn { get; init; }
 
     /// <summary>Gets required appointments completed after check-in.</summary>
     public required int Completed { get; init; }
 
-    /// <summary>Gets candidates recorded as not attending this required appointment.</summary>
+    /// <summary>Gets attendees recorded as not attending this required appointment.</summary>
     public required int NoShow { get; init; }
 
     internal static AppointmentStatusCountsResponse From(AppointmentStatusCounts counts) => new()
@@ -155,13 +155,13 @@ public sealed record AppointmentStatusCountsResponse
     };
 }
 
-/// <summary>Describes one selectable active slot without candidate rows.</summary>
-public sealed record AppointmentSlotSummaryResponse
+/// <summary>Describes one selectable active event without attendee rows.</summary>
+public sealed record AppointmentEventSummaryResponse
 {
-    /// <summary>Gets the confirmed slot identifier.</summary>
-    public required Guid ConfirmedSlotId { get; init; }
+    /// <summary>Gets the event identifier.</summary>
+    public required Guid EventId { get; init; }
 
-    /// <summary>Gets the slot's head-office calendar date.</summary>
+    /// <summary>Gets the event's transitional-location calendar date.</summary>
     public required DateOnly Date { get; init; }
 
     /// <summary>Gets the start of the shared four-hour window.</summary>
@@ -173,41 +173,41 @@ public sealed record AppointmentSlotSummaryResponse
     /// <summary>Gets scoped counts grouped by independent operational state.</summary>
     public required AppointmentStatusCountsResponse Counts { get; init; }
 
-    /// <summary>Gets the detail and roster affordances for the slot.</summary>
+    /// <summary>Gets the detail and roster affordances for the eventItem.</summary>
     [JsonPropertyName("_links")]
     public required IReadOnlyDictionary<string, ApiLink> Links { get; init; }
 
-    internal static AppointmentSlotSummaryResponse From(AppointmentSlotSummary summary) => new()
+    internal static AppointmentEventSummaryResponse From(AppointmentEventSummary summary) => new()
     {
-        ConfirmedSlotId = summary.ConfirmedSlotId,
+        EventId = summary.EventId,
         Date = summary.Date,
         StartTime = summary.StartTime,
         EndTime = summary.EndTime,
         Counts = AppointmentStatusCountsResponse.From(summary.Counts),
-        Links = StaffResourceLinks.ForAppointmentSlot(summary.ConfirmedSlotId),
+        Links = StaffResourceLinks.ForAppointmentEvent(summary.EventId),
     };
 }
 
-/// <summary>Returns the trusted appointment-type name and its selectable active slots.</summary>
-public sealed record AppointmentWorkspaceSlotListResponse
+/// <summary>Returns the trusted appointment-type name and its selectable active events.</summary>
+public sealed record AppointmentWorkspaceEventListResponse
 {
     /// <summary>Gets the fixed appointment-type name for the caller's trusted scope.</summary>
     public required string AppointmentTypeName { get; init; }
 
-    /// <summary>Gets current and upcoming active slots containing scoped active bookings.</summary>
-    public required IReadOnlyList<AppointmentSlotSummaryResponse> Slots { get; init; }
+    /// <summary>Gets current and upcoming active events containing scoped active bookings.</summary>
+    public required IReadOnlyList<AppointmentEventSummaryResponse> Events { get; init; }
 
     /// <summary>Gets the collection self affordance.</summary>
     [JsonPropertyName("_links")]
     public required IReadOnlyDictionary<string, ApiLink> Links { get; init; }
 
-    internal static AppointmentWorkspaceSlotListResponse From(AppointmentWorkspaceSlotList list) => new()
+    internal static AppointmentWorkspaceEventListResponse From(AppointmentWorkspaceEventList list) => new()
     {
         AppointmentTypeName = list.AppointmentTypeName,
-        Slots = list.Slots.Select(AppointmentSlotSummaryResponse.From).ToList(),
+        Events = list.Events.Select(AppointmentEventSummaryResponse.From).ToList(),
         Links = new Dictionary<string, ApiLink>
         {
-            ["self"] = new("/api/appointment-workspace/slots", "GET", "listAppointmentSlots"),
+            ["self"] = new("/api/appointment-workspace/events", "GET", "listAppointmentEvents"),
         },
     };
 }
@@ -218,16 +218,16 @@ public sealed record BookingAppointmentRowResponse
     /// <summary>Gets the stable booking-appointment command identifier.</summary>
     public required Guid BookingAppointmentId { get; init; }
 
-    /// <summary>Gets the candidate name used for primary human identification.</summary>
-    public required string CandidateName { get; init; }
+    /// <summary>Gets the attendee name used for primary human identification.</summary>
+    public required string AttendeeName { get; init; }
 
-    /// <summary>Gets the candidate email used for secondary human identification.</summary>
-    public required string CandidateEmail { get; init; }
+    /// <summary>Gets the attendee email used for secondary human identification.</summary>
+    public required string AttendeeEmail { get; init; }
 
     /// <summary>Gets this appointment's independent operational status name.</summary>
     public required string Status { get; init; }
 
-    /// <summary>Gets when staff checked the candidate in, or null until check-in.</summary>
+    /// <summary>Gets when staff checked the attendee in, or null until check-in.</summary>
     public DateTimeOffset? CheckedInAt { get; init; }
 
     /// <summary>Gets when staff recorded completion or no-show, or null before an outcome.</summary>
@@ -243,8 +243,8 @@ public sealed record BookingAppointmentRowResponse
     internal static BookingAppointmentRowResponse From(BookingAppointmentRow row) => new()
     {
         BookingAppointmentId = row.BookingAppointmentId,
-        CandidateName = row.CandidateName,
-        CandidateEmail = row.CandidateEmail,
+        AttendeeName = row.AttendeeName,
+        AttendeeEmail = row.AttendeeEmail,
         Status = row.Status.ToString(),
         CheckedInAt = row.CheckedInAt,
         OutcomeAt = row.OutcomeAt,
@@ -253,16 +253,16 @@ public sealed record BookingAppointmentRowResponse
     };
 }
 
-/// <summary>Returns one scoped active slot and only its minimum-data operational rows.</summary>
-public sealed record AppointmentSlotDetailResponse
+/// <summary>Returns one scoped active event and only its minimum-data operational rows.</summary>
+public sealed record AppointmentEventDetailResponse
 {
     /// <summary>Gets the fixed appointment-type name for the caller's trusted scope.</summary>
     public required string AppointmentTypeName { get; init; }
 
-    /// <summary>Gets the selected confirmed slot identifier.</summary>
-    public required Guid ConfirmedSlotId { get; init; }
+    /// <summary>Gets the selected event identifier.</summary>
+    public required Guid EventId { get; init; }
 
-    /// <summary>Gets the slot's head-office calendar date.</summary>
+    /// <summary>Gets the event's transitional-location calendar date.</summary>
     public required DateOnly Date { get; init; }
 
     /// <summary>Gets the start of the shared four-hour window.</summary>
@@ -278,18 +278,18 @@ public sealed record AppointmentSlotDetailResponse
     [JsonPropertyName("_links")]
     public required IReadOnlyDictionary<string, ApiLink> Links { get; init; }
 
-    internal static AppointmentSlotDetailResponse From(AppointmentSlotDetail detail) => new()
+    internal static AppointmentEventDetailResponse From(AppointmentEventDetail detail) => new()
     {
         AppointmentTypeName = detail.AppointmentTypeName,
-        ConfirmedSlotId = detail.ConfirmedSlotId,
+        EventId = detail.EventId,
         Date = detail.Date,
         StartTime = detail.StartTime,
         EndTime = detail.EndTime,
         Appointments = detail.Appointments.Select(BookingAppointmentRowResponse.From).ToList(),
         Links = new Dictionary<string, ApiLink>
         {
-            ["self"] = new($"/api/appointment-workspace/slots/{detail.ConfirmedSlotId}", "GET", "getAppointmentSlot"),
-            ["roster"] = new($"/api/appointment-workspace/slots/{detail.ConfirmedSlotId}/roster", "GET", "exportAppointmentRoster"),
+            ["self"] = new($"/api/appointment-workspace/events/{detail.EventId}", "GET", "getAppointmentEvent"),
+            ["roster"] = new($"/api/appointment-workspace/events/{detail.EventId}/roster", "GET", "exportAppointmentRoster"),
         },
     };
 }
@@ -303,7 +303,7 @@ public sealed record BookingAppointmentUpdateResponse
     /// <summary>Gets this appointment's current independent operational status name.</summary>
     public required string Status { get; init; }
 
-    /// <summary>Gets when staff checked the candidate in, or null until check-in.</summary>
+    /// <summary>Gets when staff checked the attendee in, or null until check-in.</summary>
     public DateTimeOffset? CheckedInAt { get; init; }
 
     /// <summary>Gets when staff recorded completion or no-show, or null before an outcome.</summary>

@@ -6,26 +6,26 @@ namespace EventBooking.Web.Services;
 /// <summary>Counts scoped booking appointments in each operational state.</summary>
 public sealed record AppointmentStatusCountsDto
 {
-    /// <summary>Gets candidates booked but not checked in for this appointment.</summary>
+    /// <summary>Gets attendees booked but not checked in for this appointment.</summary>
     public required int Expected { get; init; }
 
-    /// <summary>Gets candidates checked in for this appointment.</summary>
+    /// <summary>Gets attendees checked in for this appointment.</summary>
     public required int CheckedIn { get; init; }
 
     /// <summary>Gets required appointments completed after check-in.</summary>
     public required int Completed { get; init; }
 
-    /// <summary>Gets candidates recorded as not attending this required appointment.</summary>
+    /// <summary>Gets attendees recorded as not attending this required appointment.</summary>
     public required int NoShow { get; init; }
 }
 
-/// <summary>Describes one selectable active slot without candidate rows.</summary>
-public sealed record AppointmentSlotSummaryDto
+/// <summary>Describes one selectable active event without attendee rows.</summary>
+public sealed record AppointmentEventSummaryDto
 {
-    /// <summary>Gets the confirmed slot identifier.</summary>
-    public required Guid ConfirmedSlotId { get; init; }
+    /// <summary>Gets the event identifier.</summary>
+    public required Guid EventId { get; init; }
 
-    /// <summary>Gets the slot's head-office calendar date.</summary>
+    /// <summary>Gets the event's transitional-location calendar date.</summary>
     public required DateOnly Date { get; init; }
 
     /// <summary>Gets the start of the shared four-hour window.</summary>
@@ -38,14 +38,14 @@ public sealed record AppointmentSlotSummaryDto
     public required AppointmentStatusCountsDto Counts { get; init; }
 }
 
-/// <summary>Returns the trusted appointment-type name and its selectable active slots.</summary>
-public sealed record AppointmentWorkspaceSlotListDto
+/// <summary>Returns the trusted appointment-type name and its selectable active events.</summary>
+public sealed record AppointmentWorkspaceEventListDto
 {
     /// <summary>Gets the fixed appointment-type name for the caller's trusted scope.</summary>
     public required string AppointmentTypeName { get; init; }
 
-    /// <summary>Gets current and upcoming active slots containing scoped active bookings.</summary>
-    public required IReadOnlyList<AppointmentSlotSummaryDto> Slots { get; init; }
+    /// <summary>Gets current and upcoming active events containing scoped active bookings.</summary>
+    public required IReadOnlyList<AppointmentEventSummaryDto> Events { get; init; }
 }
 
 /// <summary>Contains only the fields needed to identify and conduct one booked appointment.</summary>
@@ -54,16 +54,16 @@ public sealed record BookingAppointmentRowDto
     /// <summary>Gets the stable booking-appointment command identifier.</summary>
     public required Guid BookingAppointmentId { get; init; }
 
-    /// <summary>Gets the candidate name used for primary human identification.</summary>
-    public required string CandidateName { get; init; }
+    /// <summary>Gets the attendee name used for primary human identification.</summary>
+    public required string AttendeeName { get; init; }
 
-    /// <summary>Gets the candidate email used for secondary human identification.</summary>
-    public required string CandidateEmail { get; init; }
+    /// <summary>Gets the attendee email used for secondary human identification.</summary>
+    public required string AttendeeEmail { get; init; }
 
     /// <summary>Gets this appointment's independent operational status name.</summary>
     public required string Status { get; init; }
 
-    /// <summary>Gets when staff checked the candidate in, or null until check-in.</summary>
+    /// <summary>Gets when staff checked the attendee in, or null until check-in.</summary>
     public DateTimeOffset? CheckedInAt { get; init; }
 
     /// <summary>Gets when staff recorded completion or no-show, or null before an outcome.</summary>
@@ -73,16 +73,16 @@ public sealed record BookingAppointmentRowDto
     public required long Version { get; init; }
 }
 
-/// <summary>Returns one scoped active slot and only its minimum-data operational rows.</summary>
-public sealed record AppointmentSlotDetailDto
+/// <summary>Returns one scoped active event and only its minimum-data operational rows.</summary>
+public sealed record AppointmentEventDetailDto
 {
     /// <summary>Gets the fixed appointment-type name for the caller's trusted scope.</summary>
     public required string AppointmentTypeName { get; init; }
 
-    /// <summary>Gets the selected confirmed slot identifier.</summary>
-    public required Guid ConfirmedSlotId { get; init; }
+    /// <summary>Gets the selected event identifier.</summary>
+    public required Guid EventId { get; init; }
 
-    /// <summary>Gets the slot's head-office calendar date.</summary>
+    /// <summary>Gets the event's transitional-location calendar date.</summary>
     public required DateOnly Date { get; init; }
 
     /// <summary>Gets the start of the shared four-hour window.</summary>
@@ -104,7 +104,7 @@ public sealed record BookingAppointmentUpdateDto
     /// <summary>Gets this appointment's current independent operational status name.</summary>
     public required string Status { get; init; }
 
-    /// <summary>Gets when staff checked the candidate in, or null until check-in.</summary>
+    /// <summary>Gets when staff checked the attendee in, or null until check-in.</summary>
     public DateTimeOffset? CheckedInAt { get; init; }
 
     /// <summary>Gets when staff recorded completion or no-show, or null before an outcome.</summary>
@@ -130,35 +130,35 @@ public sealed class AppointmentsClient(HttpClient http)
     /// <summary>Identifies a stale booking-appointment version that requires a detail refresh.</summary>
     public const string VersionConflictErrorCode = "appointment_version_conflict";
 
-    /// <summary>Gets the scoped current and upcoming slot list.</summary>
-    public async Task<ApiOutcome<AppointmentWorkspaceSlotListDto>> ListSlotsAsync(
+    /// <summary>Gets the scoped current and upcoming event list.</summary>
+    public async Task<ApiOutcome<AppointmentWorkspaceEventListDto>> ListEventsAsync(
         CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(
-            "/api/appointment-workspace/slots", cancellationToken);
-        return await ApiCall.ReadAsync<AppointmentWorkspaceSlotListDto>(response, cancellationToken);
+            "/api/appointment-workspace/events", cancellationToken);
+        return await ApiCall.ReadAsync<AppointmentWorkspaceEventListDto>(response, cancellationToken);
     }
 
-    /// <summary>Gets one selected slot's scoped operational rows.</summary>
-    public async Task<ApiOutcome<AppointmentSlotDetailDto>> GetSlotAsync(
-        Guid confirmedSlotId,
+    /// <summary>Gets one selected event's scoped operational rows.</summary>
+    public async Task<ApiOutcome<AppointmentEventDetailDto>> GetEventAsync(
+        Guid eventId,
         CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(
-            $"/api/appointment-workspace/slots/{confirmedSlotId}", cancellationToken);
-        return await ApiCall.ReadAsync<AppointmentSlotDetailDto>(response, cancellationToken);
+            $"/api/appointment-workspace/events/{eventId}", cancellationToken);
+        return await ApiCall.ReadAsync<AppointmentEventDetailDto>(response, cancellationToken);
     }
 
-    /// <summary>Downloads the scoped roster CSV for one selected slot.</summary>
-    /// <param name="confirmedSlotId">The selected slot identifier.</param>
+    /// <summary>Downloads the scoped roster CSV for one selected eventItem.</summary>
+    /// <param name="eventId">The selected event identifier.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <returns>Raw CSV content plus the server-suggested filename, or the parsed failure.</returns>
     public async Task<ApiOutcome<RosterCsvDownload>> GetRosterAsync(
-        Guid confirmedSlotId,
+        Guid eventId,
         CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(
-            $"/api/appointment-workspace/slots/{confirmedSlotId}/roster", cancellationToken);
+            $"/api/appointment-workspace/events/{eventId}/roster", cancellationToken);
         var outcome = await ApiCall.ReadTextWithHeaderAsync(
             response, "Content-Disposition", cancellationToken);
 

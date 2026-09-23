@@ -15,9 +15,9 @@ public sealed class TransactionOperationLog
 /// repository remains unavailable until its owning fake transaction commits, rolls back, or is
 /// disposed.
 /// </summary>
-public sealed class TransactionalSlotLockCoordinator
+public sealed class TransactionalEventLockCoordinator
 {
-    private readonly ConcurrentDictionary<Guid, SlotLock> _locks = new();
+    private readonly ConcurrentDictionary<Guid, EventLock> _locks = new();
     private readonly AsyncLocal<TransactionSession?> _currentSession = new();
 
     public TransactionSession BeginTransaction()
@@ -27,44 +27,44 @@ public sealed class TransactionalSlotLockCoordinator
         return session;
     }
 
-    public async Task AcquireAsync(Guid confirmedSlotId, CancellationToken cancellationToken)
+    public async Task AcquireAsync(Guid eventId, CancellationToken cancellationToken)
     {
         var session = _currentSession.Value
-            ?? throw new InvalidOperationException("A slot guard requires an active transaction.");
-        var slotLock = _locks.GetOrAdd(confirmedSlotId, _ => new SlotLock());
+            ?? throw new InvalidOperationException("A event guard requires an active transaction.");
+        var eventLock = _locks.GetOrAdd(eventId, _ => new EventLock());
 
-        if (!slotLock.Gate.Wait(0))
+        if (!eventLock.Gate.Wait(0))
         {
-            slotLock.Waiting.TrySetResult(true);
-            await slotLock.Gate.WaitAsync(cancellationToken);
+            eventLock.Waiting.TrySetResult(true);
+            await eventLock.Gate.WaitAsync(cancellationToken);
         }
 
-        session.Hold(slotLock);
-        slotLock.Held.TrySetResult(true);
+        session.Hold(eventLock);
+        eventLock.Held.TrySetResult(true);
     }
 
-    public Task WaitUntilHeldAsync(Guid confirmedSlotId) =>
-        _locks.GetOrAdd(confirmedSlotId, _ => new SlotLock()).Held.Task;
+    public Task WaitUntilHeldAsync(Guid eventId) =>
+        _locks.GetOrAdd(eventId, _ => new EventLock()).Held.Task;
 
-    public Task WaitUntilWaitingAsync(Guid confirmedSlotId) =>
-        _locks.GetOrAdd(confirmedSlotId, _ => new SlotLock()).Waiting.Task;
+    public Task WaitUntilWaitingAsync(Guid eventId) =>
+        _locks.GetOrAdd(eventId, _ => new EventLock()).Waiting.Task;
 
     public sealed class TransactionSession
     {
-        private readonly TransactionalSlotLockCoordinator _owner;
+        private readonly TransactionalEventLockCoordinator _owner;
         private readonly TransactionSession? _previous;
-        private readonly List<SlotLock> _held = [];
+        private readonly List<EventLock> _held = [];
         private bool _released;
 
         internal TransactionSession(
-            TransactionalSlotLockCoordinator owner,
+            TransactionalEventLockCoordinator owner,
             TransactionSession? previous)
         {
             _owner = owner;
             _previous = previous;
         }
 
-        internal void Hold(SlotLock slotLock) => _held.Add(slotLock);
+        internal void Hold(EventLock eventLock) => _held.Add(eventLock);
 
         public void Release()
         {
@@ -75,9 +75,9 @@ public sealed class TransactionalSlotLockCoordinator
 
             _released = true;
 
-            foreach (var slotLock in _held)
+            foreach (var eventLock in _held)
             {
-                slotLock.Gate.Release();
+                eventLock.Gate.Release();
             }
 
             if (_owner._currentSession.Value == this)
@@ -87,7 +87,7 @@ public sealed class TransactionalSlotLockCoordinator
         }
     }
 
-    internal sealed class SlotLock
+    internal sealed class EventLock
     {
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public TaskCompletionSource<bool> Held { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -97,7 +97,7 @@ public sealed class TransactionalSlotLockCoordinator
 
 public sealed class FakeUnitOfWork(
     TransactionOperationLog? operations = null,
-    TransactionalSlotLockCoordinator? locks = null) : IUnitOfWork
+    TransactionalEventLockCoordinator? locks = null) : IUnitOfWork
 {
     /// <summary>When true, the next commit throws after the transaction has been staged.</summary>
     public bool ThrowOnCommit { get; set; }
@@ -122,7 +122,7 @@ public sealed class FakeUnitOfWork(
 
     private sealed class Scope(
         FakeUnitOfWork owner,
-        TransactionalSlotLockCoordinator.TransactionSession? lockSession) : ITransactionScope
+        TransactionalEventLockCoordinator.TransactionSession? lockSession) : ITransactionScope
     {
         public Task CommitAsync(CancellationToken cancellationToken)
         {

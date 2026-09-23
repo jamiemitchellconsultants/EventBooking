@@ -1,7 +1,7 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Appointments;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence.Queries;
@@ -11,7 +11,7 @@ public sealed class AppointmentWorkspaceQueries(EventBookingDbContext context, I
     : IAppointmentWorkspaceQueries
 {
     /// <inheritdoc/>
-    public async Task<AppointmentWorkspaceSlotList> ListSlotsAsync(
+    public async Task<AppointmentWorkspaceEventList> ListEventsAsync(
         Guid appointmentTypeId,
         DateOnly onOrAfter,
         CancellationToken cancellationToken)
@@ -28,23 +28,23 @@ public sealed class AppointmentWorkspaceQueries(EventBookingDbContext context, I
             from appointment in context.BookingAppointments.AsNoTracking()
             join booking in context.Bookings.AsNoTracking()
                 on appointment.BookingId equals booking.Id
-            join slot in context.ConfirmedSlots.AsNoTracking()
-                on booking.ConfirmedSlotId equals slot.Id
+            join eventItem in context.Events.AsNoTracking()
+                on booking.EventId equals eventItem.Id
             where appointment.AppointmentTypeId == appointmentTypeId
                 && booking.Status == BookingStatus.Active
-                && slot.Status == ConfirmedSlotStatus.Active
-                && slot.Window.Date >= earliest
+                && eventItem.Status == EventStatus.Active
+                && eventItem.Window.Date >= earliest
             group appointment by new
             {
-                slot.Id,
-                slot.Window.Date,
-                slot.Window.StartTime,
+                eventItem.Id,
+                eventItem.Window.Date,
+                eventItem.Window.StartTime,
             }
             into values
             orderby values.Key.Date, values.Key.StartTime, values.Key.Id
             select new
             {
-                ConfirmedSlotId = values.Key.Id,
+                EventId = values.Key.Id,
                 values.Key.Date,
                 values.Key.StartTime,
                 Expected = values.Count(value => value.Status == BookingAppointmentStatus.Expected),
@@ -53,12 +53,12 @@ public sealed class AppointmentWorkspaceQueries(EventBookingDbContext context, I
                 NoShow = values.Count(value => value.Status == BookingAppointmentStatus.NoShow),
             }).ToListAsync(cancellationToken);
 
-        return new AppointmentWorkspaceSlotList
+        return new AppointmentWorkspaceEventList
         {
             AppointmentTypeName = appointmentTypeName,
-            Slots = grouped.Select(value => new AppointmentSlotSummary
+            Events = grouped.Select(value => new AppointmentEventSummary
             {
-                ConfirmedSlotId = value.ConfirmedSlotId,
+                EventId = value.EventId,
                 Date = value.Date,
                 StartTime = value.StartTime,
                 EndTime = value.StartTime.AddHours(4),
@@ -74,31 +74,31 @@ public sealed class AppointmentWorkspaceQueries(EventBookingDbContext context, I
     }
 
     /// <inheritdoc/>
-    public async Task<AppointmentSlotDetail?> GetSlotAsync(
+    public async Task<AppointmentEventDetail?> GetEventAsync(
         Guid appointmentTypeId,
-        Guid confirmedSlotId,
+        Guid eventId,
         CancellationToken cancellationToken)
     {
-        var earliest = clock.TodayAtHeadOffice.AddDays(-AppointmentWorkspaceAllowance.RecentPastDays);
+        var earliest = clock.TodayAtTransitionalLocation.AddDays(-AppointmentWorkspaceAllowance.RecentPastDays);
         var header = await (
             from appointment in context.BookingAppointments.AsNoTracking()
             join booking in context.Bookings.AsNoTracking()
                 on appointment.BookingId equals booking.Id
-            join slot in context.ConfirmedSlots.AsNoTracking()
-                on booking.ConfirmedSlotId equals slot.Id
+            join eventItem in context.Events.AsNoTracking()
+                on booking.EventId equals eventItem.Id
             join appointmentType in context.AppointmentTypes.AsNoTracking()
                 on appointment.AppointmentTypeId equals appointmentType.Id
             where appointment.AppointmentTypeId == appointmentTypeId
-                && slot.Id == confirmedSlotId
+                && eventItem.Id == eventId
                 && booking.Status == BookingStatus.Active
-                && slot.Status == ConfirmedSlotStatus.Active
-                && slot.Window.Date >= earliest
+                && eventItem.Status == EventStatus.Active
+                && eventItem.Window.Date >= earliest
             select new
             {
                 AppointmentTypeName = appointmentType.Name,
-                ConfirmedSlotId = slot.Id,
-                slot.Window.Date,
-                slot.Window.StartTime,
+                EventId = eventItem.Id,
+                eventItem.Window.Date,
+                eventItem.Window.StartTime,
             }).FirstOrDefaultAsync(cancellationToken);
 
         if (header is null)
@@ -110,30 +110,30 @@ public sealed class AppointmentWorkspaceQueries(EventBookingDbContext context, I
             from appointment in context.BookingAppointments.AsNoTracking()
             join booking in context.Bookings.AsNoTracking()
                 on appointment.BookingId equals booking.Id
-            join slot in context.ConfirmedSlots.AsNoTracking()
-                on booking.ConfirmedSlotId equals slot.Id
-            join candidate in context.Candidates.AsNoTracking()
-                on booking.CandidateId equals candidate.Id
+            join eventItem in context.Events.AsNoTracking()
+                on booking.EventId equals eventItem.Id
+            join attendee in context.Attendees.AsNoTracking()
+                on booking.AttendeeId equals attendee.Id
             where appointment.AppointmentTypeId == appointmentTypeId
-                && slot.Id == confirmedSlotId
+                && eventItem.Id == eventId
                 && booking.Status == BookingStatus.Active
-                && slot.Status == ConfirmedSlotStatus.Active
-            orderby candidate.Name, candidate.Email, appointment.Id
+                && eventItem.Status == EventStatus.Active
+            orderby attendee.Name, attendee.Email, appointment.Id
             select new BookingAppointmentRow
             {
                 BookingAppointmentId = appointment.Id,
-                CandidateName = candidate.Name,
-                CandidateEmail = candidate.Email,
+                AttendeeName = attendee.Name,
+                AttendeeEmail = attendee.Email,
                 Status = appointment.Status,
                 CheckedInAt = appointment.CheckedInAt,
                 OutcomeAt = appointment.OutcomeAt,
                 Version = appointment.Version,
             }).ToListAsync(cancellationToken);
 
-        return new AppointmentSlotDetail
+        return new AppointmentEventDetail
         {
             AppointmentTypeName = header.AppointmentTypeName,
-            ConfirmedSlotId = header.ConfirmedSlotId,
+            EventId = header.EventId,
             Date = header.Date,
             StartTime = header.StartTime,
             EndTime = header.StartTime.AddHours(4),

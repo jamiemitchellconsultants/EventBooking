@@ -4,50 +4,50 @@ using EventBooking.Application.Common;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Fakes;
 
 /// <summary>Provides proposal state for application tests without database locking.</summary>
-public sealed class InMemorySlotProposalRepository : ISlotProposalRepository
+public sealed class InMemoryEventProposalRepository : IEventProposalRepository
 {
-    public List<SlotProposal> Items { get; } = [];
+    public List<EventProposal> Items { get; } = [];
 
-    public Task<SlotProposal?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+    public Task<EventProposal?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(p => p.Id == id));
 
     /// <summary>Returns the in-memory proposal because this test double has no database row lock.</summary>
-    public Task<SlotProposal?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+    public Task<EventProposal?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(p => p.Id == id));
 
-    public Task<IReadOnlyList<SlotProposal>> ListOpenAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<SlotProposal>>(
-            Items.Where(p => p.Status == SlotProposalStatus.Open).ToList());
+    public Task<IReadOnlyList<EventProposal>> ListOpenAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EventProposal>>(
+            Items.Where(p => p.Status == EventProposalStatus.Open).ToList());
 
-    public void Add(SlotProposal proposal) => Items.Add(proposal);
+    public void Add(EventProposal proposal) => Items.Add(proposal);
 }
 
-public sealed class InMemoryConfirmedSlotRepository(
+public sealed class InMemoryEventRepository(
     TransactionOperationLog? operations = null,
-    TransactionalSlotLockCoordinator? locks = null)
-    : IConfirmedSlotRepository
+    TransactionalEventLockCoordinator? locks = null)
+    : IEventRepository
 {
-    public List<ConfirmedSlot> Items { get; } = [];
+    public List<Event> Items { get; } = [];
 
-    public Task<ConfirmedSlot?> GetAsync(Guid id, CancellationToken cancellationToken)
+    public Task<Event?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
-        operations?.Record("slot-reloaded");
+        operations?.Record("event-reloaded");
         return Task.FromResult(Items.SingleOrDefault(s => s.Id == id));
     }
 
-    public async Task<ConfirmedSlot?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<Event?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
-        operations?.Record("slot-guard-locked");
+        operations?.Record("event-guard-locked");
         if (locks is not null)
         {
             await locks.AcquireAsync(id, cancellationToken);
@@ -56,134 +56,134 @@ public sealed class InMemoryConfirmedSlotRepository(
         return Items.SingleOrDefault(s => s.Id == id);
     }
 
-    public Task<IReadOnlyList<ConfirmedSlot>> ListActiveAsync(
+    public Task<IReadOnlyList<Event>> ListActiveAsync(
         DateOnly onOrAfter, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<ConfirmedSlot>>(
+        Task.FromResult<IReadOnlyList<Event>>(
             Items
-                .Where(s => s.Status == ConfirmedSlotStatus.Active && s.Window.Date >= onOrAfter)
+                .Where(s => s.Status == EventStatus.Active && s.Window.Date >= onOrAfter)
                 .ToList());
 
-    public Task<IReadOnlyList<ConfirmedSlot>> ListAllAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<ConfirmedSlot>>(Items.ToList());
+    public Task<IReadOnlyList<Event>> ListAllAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Event>>(Items.ToList());
 
-    public void Add(ConfirmedSlot slot) => Items.Add(slot);
+    public void Add(Event eventItem) => Items.Add(eventItem);
 }
 
 /// <summary>
 /// There is nothing to lock in memory, so this simply hands back the same capacity objects the
-/// slot repository holds. The locking itself is proved against a real database in Task 67.
+/// event repository holds. The locking itself is proved against a real database in Task 67.
 /// </summary>
-public sealed class InMemorySlotCapacityRepository(
-    InMemoryConfirmedSlotRepository slots,
+public sealed class InMemoryEventCapacityRepository(
+    InMemoryEventRepository events,
     TransactionOperationLog? operations = null)
-    : ISlotCapacityRepository
+    : IEventCapacityRepository
 {
     public int LockCallCount { get; private set; }
 
-    public Task<IReadOnlyList<SlotCapacity>> LockForUpdateAsync(
-        Guid confirmedSlotId,
+    public Task<IReadOnlyList<EventCapacity>> LockForUpdateAsync(
+        Guid eventId,
         IReadOnlyCollection<Guid> appointmentTypeIds,
         CancellationToken cancellationToken)
     {
         operations?.Record("capacity-locked");
         LockCallCount++;
 
-        var slot = slots.Items.SingleOrDefault(s => s.Id == confirmedSlotId);
-        if (slot is null)
+        var eventItem = events.Items.SingleOrDefault(s => s.Id == eventId);
+        if (eventItem is null)
         {
-            return Task.FromResult<IReadOnlyList<SlotCapacity>>([]);
+            return Task.FromResult<IReadOnlyList<EventCapacity>>([]);
         }
 
         var locked = appointmentTypeIds
             .OrderBy(id => id)
-            .Select(slot.CapacityFor)
+            .Select(eventItem.CapacityFor)
             .ToList();
 
-        return Task.FromResult<IReadOnlyList<SlotCapacity>>(locked);
+        return Task.FromResult<IReadOnlyList<EventCapacity>>(locked);
     }
 }
 
-/// <summary>Provides candidate state and observable lifecycle-lock order for application tests.</summary>
-public sealed class InMemoryCandidateRepository(TransactionOperationLog? operations = null) : ICandidateRepository
+/// <summary>Provides attendee state and observable lifecycle-lock order for application tests.</summary>
+public sealed class InMemoryAttendeeRepository(TransactionOperationLog? operations = null) : IAttendeeRepository
 {
-    public List<Candidate> Items { get; } = [];
+    public List<Attendee> Items { get; } = [];
 
-    public Task<Candidate?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+    public Task<Attendee?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(c => c.Id == id));
 
-    /// <summary>Returns the in-memory candidate because this test double has no database row lock.</summary>
-    public Task<Candidate?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>Returns the in-memory attendee because this test double has no database row lock.</summary>
+    public Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
-        operations?.Record("candidate-locked");
+        operations?.Record("attendee-locked");
         return Task.FromResult(Items.SingleOrDefault(c => c.Id == id));
     }
 
-    public Task<Candidate?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
+    public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
         Task.FromResult(
             Items.SingleOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase)));
 
-    public Task<IReadOnlyList<Candidate>> ListAsync(
-        CandidateStatus? status, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Candidate>>(
+    public Task<IReadOnlyList<Attendee>> ListAsync(
+        AttendeeStatus? status, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Attendee>>(
             Items.Where(c => status is null || c.Status == status).ToList());
 
-    public void Add(Candidate candidate) => Items.Add(candidate);
+    public void Add(Attendee attendee) => Items.Add(attendee);
 
-    public void Remove(Candidate candidate) => Items.Remove(candidate);
+    public void Remove(Attendee attendee) => Items.Remove(attendee);
 }
 
-/// <summary>Provides a controllable candidate read barrier for concurrency interleaving tests.</summary>
-public sealed class BlockingCandidateRepository : ICandidateRepository
+/// <summary>Provides a controllable attendee read barrier for concurrency interleaving tests.</summary>
+public sealed class BlockingAttendeeRepository : IAttendeeRepository
 {
-    private Guid? _blockedCandidateId;
+    private Guid? _blockedAttendeeId;
     private TaskCompletionSource<bool>? _blocked;
     private TaskCompletionSource<bool>? _release;
 
-    public List<Candidate> Items { get; } = [];
+    public List<Attendee> Items { get; } = [];
 
-    public void BlockNextGetFor(Guid candidateId)
+    public void BlockNextGetFor(Guid attendeeId)
     {
-        _blockedCandidateId = candidateId;
+        _blockedAttendeeId = attendeeId;
         _blocked = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     public Task WaitUntilBlockedAsync() =>
-        _blocked?.Task ?? throw new InvalidOperationException("No candidate get is configured to block.");
+        _blocked?.Task ?? throw new InvalidOperationException("No attendee get is configured to block.");
 
     public void ReleaseBlockedGet() =>
-        (_release ?? throw new InvalidOperationException("No candidate get is configured to block."))
+        (_release ?? throw new InvalidOperationException("No attendee get is configured to block."))
         .TrySetResult(true);
 
-    public async Task<Candidate?> GetAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<Attendee?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
-        if (_blockedCandidateId == id)
+        if (_blockedAttendeeId == id)
         {
             _blocked!.TrySetResult(true);
             await _release!.Task.WaitAsync(cancellationToken);
-            _blockedCandidateId = null;
+            _blockedAttendeeId = null;
         }
 
         return Items.SingleOrDefault(c => c.Id == id);
     }
 
     /// <summary>Uses the same controlled read as the lock operation in this in-memory test double.</summary>
-    public Task<Candidate?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+    public Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
         GetAsync(id, cancellationToken);
 
-    public Task<Candidate?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
+    public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
         Task.FromResult(
             Items.SingleOrDefault(c => string.Equals(c.Email, email, StringComparison.OrdinalIgnoreCase)));
 
-    public Task<IReadOnlyList<Candidate>> ListAsync(
-        CandidateStatus? status,
+    public Task<IReadOnlyList<Attendee>> ListAsync(
+        AttendeeStatus? status,
         CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Candidate>>(
+        Task.FromResult<IReadOnlyList<Attendee>>(
             Items.Where(c => status is null || c.Status == status).ToList());
 
-    public void Add(Candidate candidate) => Items.Add(candidate);
+    public void Add(Attendee attendee) => Items.Add(attendee);
 
-    public void Remove(Candidate candidate) => Items.Remove(candidate);
+    public void Remove(Attendee attendee) => Items.Remove(attendee);
 }
 
 /// <summary>Provides invite state and observable invite-lock order for application tests.</summary>
@@ -210,21 +210,21 @@ public sealed class InMemoryInviteRepository(TransactionOperationLog? operations
     }
 
     /// <summary>Returns the current pending in-memory invite because this double has no row lock.</summary>
-    public Task<Invite?> LockPendingForCandidateAsync(Guid candidateId, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(i => i.CandidateId == candidateId
+    public Task<Invite?> LockPendingForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(i => i.AttendeeId == attendeeId
             && i.Status == InviteStatus.Pending));
 
-    public Task<Invite?> GetPendingForCandidateAsync(Guid candidateId, CancellationToken cancellationToken) =>
+    public Task<Invite?> GetPendingForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
         Task.FromResult(
-            Items.SingleOrDefault(i => i.CandidateId == candidateId && i.Status == InviteStatus.Pending));
+            Items.SingleOrDefault(i => i.AttendeeId == attendeeId && i.Status == InviteStatus.Pending));
 
     /// <summary>Returns the current pending in-memory invite because this double has no row lock.</summary>
-    public Task<Invite?> LockPendingInitialForCandidateAsync(
-        Guid candidateId,
+    public Task<Invite?> LockPendingInitialForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken)
     {
         operations?.Record("initial-invite-locked");
-        return Task.FromResult(Items.SingleOrDefault(i => i.CandidateId == candidateId
+        return Task.FromResult(Items.SingleOrDefault(i => i.AttendeeId == attendeeId
             && i.Status == InviteStatus.Pending));
     }
 
@@ -234,14 +234,14 @@ public sealed class InMemoryInviteRepository(TransactionOperationLog? operations
             Items.Where(i => i.Status == InviteStatus.Pending && i.ExpiresAt <= asAt).ToList());
 
     /// <summary>Returns every pending in-memory invite ordered by ID for lock-order tests.</summary>
-    public Task<IReadOnlyList<Invite>> LockPendingListForCandidateAsync(
-        Guid candidateId,
+    public Task<IReadOnlyList<Invite>> LockPendingListForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken)
     {
         operations?.Record("pending-invites-locked");
         return Task.FromResult<IReadOnlyList<Invite>>(
             Items
-                .Where(i => i.CandidateId == candidateId && i.Status == InviteStatus.Pending)
+                .Where(i => i.AttendeeId == attendeeId && i.Status == InviteStatus.Pending)
                 .OrderBy(i => i.Id)
                 .ToList());
     }
@@ -268,20 +268,20 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
         string manageTokenHash, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash));
 
-    public Task<Guid?> GetConfirmedSlotIdByManageTokenHashAsync(
+    public Task<Guid?> GetEventIdByManageTokenHashAsync(
         string manageTokenHash,
         CancellationToken cancellationToken)
     {
-        operations?.Record("booking-slot-located");
+        operations?.Record("booking-event-located");
         return Task.FromResult(
-            Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.ConfirmedSlotId);
+            Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.EventId);
     }
 
-    /// <summary>Returns the candidate identifier associated with the supplied test manage token.</summary>
-    public Task<Guid?> GetCandidateIdByManageTokenHashAsync(
+    /// <summary>Returns the attendee identifier associated with the supplied test manage token.</summary>
+    public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
         string manageTokenHash,
         CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.CandidateId);
+        Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.AttendeeId);
 
     public Task<Booking?> LockByManageTokenHashForUpdateAsync(
         string manageTokenHash,
@@ -292,59 +292,59 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
     }
 
     /// <inheritdoc/>
-    public Task<Booking?> LockByIdForCandidateAsync(
+    public Task<Booking?> LockByIdForAttendeeAsync(
         Guid bookingId,
-        Guid candidateId,
+        Guid attendeeId,
         CancellationToken cancellationToken)
     {
         operations?.Record("booking-locked");
         return Task.FromResult(
-            Items.SingleOrDefault(b => b.Id == bookingId && b.CandidateId == candidateId));
+            Items.SingleOrDefault(b => b.Id == bookingId && b.AttendeeId == attendeeId));
     }
 
-    /// <summary>Returns the candidate's active in-memory booking because this double has no row lock.</summary>
-    public Task<Booking?> LockActiveForCandidateAsync(Guid candidateId, CancellationToken cancellationToken)
+    /// <summary>Returns the attendee's active in-memory booking because this double has no row lock.</summary>
+    public Task<Booking?> LockActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken)
     {
         operations?.Record("active-booking-locked");
-        return Task.FromResult(Items.SingleOrDefault(b => b.CandidateId == candidateId
+        return Task.FromResult(Items.SingleOrDefault(b => b.AttendeeId == attendeeId
             && b.Status == BookingStatus.Active));
     }
 
-    public Task<Booking?> GetActiveForCandidateAsync(Guid candidateId, CancellationToken cancellationToken) =>
+    public Task<Booking?> GetActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
         Task.FromResult(
-            Items.SingleOrDefault(b => b.CandidateId == candidateId && b.Status == BookingStatus.Active));
+            Items.SingleOrDefault(b => b.AttendeeId == attendeeId && b.Status == BookingStatus.Active));
 
-    /// <summary>Returns the candidate's active in-memory booking because this double has no row lock.</summary>
-    public Task<Booking?> LockActiveOriginalForCandidateAsync(
-        Guid candidateId,
+    /// <summary>Returns the attendee's active in-memory booking because this double has no row lock.</summary>
+    public Task<Booking?> LockActiveOriginalForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken)
     {
         operations?.Record("original-booking-locked");
-        return Task.FromResult(Items.SingleOrDefault(b => b.CandidateId == candidateId
+        return Task.FromResult(Items.SingleOrDefault(b => b.AttendeeId == attendeeId
             && b.Status == BookingStatus.Active
             && b.RecoveryOfBookingId is null));
     }
 
-    /// <summary>Returns candidate identifiers for active in-memory bookings on one slot.</summary>
-    public Task<IReadOnlyList<Guid>> ListActiveCandidateIdsForSlotAsync(
-        Guid confirmedSlotId,
+    /// <summary>Returns attendee identifiers for active in-memory bookings on one eventItem.</summary>
+    public Task<IReadOnlyList<Guid>> ListActiveAttendeeIdsForEventAsync(
+        Guid eventId,
         CancellationToken cancellationToken)
     {
-        operations?.Record("active-candidate-ids-snapshotted");
+        operations?.Record("active-attendee-ids-snapshotted");
         return Task.FromResult<IReadOnlyList<Guid>>(
             Items
-                .Where(b => b.ConfirmedSlotId == confirmedSlotId && b.Status == BookingStatus.Active)
-                .Select(b => b.CandidateId)
+                .Where(b => b.EventId == eventId && b.Status == BookingStatus.Active)
+                .Select(b => b.AttendeeId)
                 .ToList());
     }
 
-    public Task<IReadOnlyList<Booking>> ListActiveForSlotAsync(
-        Guid confirmedSlotId, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<Booking>> ListActiveForEventAsync(
+        Guid eventId, CancellationToken cancellationToken)
     {
         operations?.Record("active-bookings-listed");
         return Task.FromResult<IReadOnlyList<Booking>>(
             Items
-                .Where(b => b.ConfirmedSlotId == confirmedSlotId && b.Status == BookingStatus.Active)
+                .Where(b => b.EventId == eventId && b.Status == BookingStatus.Active)
                 .ToList());
     }
 
@@ -372,18 +372,18 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
     public void Add(Booking booking) => Items.Add(booking);
 }
 
-/// <summary>Provides Employee Group reference data with identifier and code lookups.</summary>
-public sealed class InMemoryEmployeeGroupRepository : IEmployeeGroupRepository
+/// <summary>Provides Attendee Group reference data with identifier and code lookups.</summary>
+public sealed class InMemoryAttendeeGroupRepository : IAttendeeGroupRepository
 {
     /// <summary>Gets the mutable reference-data collection.</summary>
-    public List<EmployeeGroup> Items { get; } = [];
+    public List<AttendeeGroup> Items { get; } = [];
 
     /// <summary>Gets a group by stable identifier.</summary>
-    public Task<EmployeeGroup?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+    public Task<AttendeeGroup?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
 
     /// <summary>Gets a group from a trimmed case-insensitive canonical-code input.</summary>
-    public Task<EmployeeGroup?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+    public Task<AttendeeGroup?> GetByCodeAsync(string code, CancellationToken cancellationToken)
     {
         var normalized = code.Trim().ToUpperInvariant();
         return Task.FromResult(
@@ -391,8 +391,8 @@ public sealed class InMemoryEmployeeGroupRepository : IEmployeeGroupRepository
     }
 
     /// <summary>Lists active mapped groups ordered by display name.</summary>
-    public Task<IReadOnlyList<EmployeeGroup>> ListActiveAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<EmployeeGroup>>(
+    public Task<IReadOnlyList<AttendeeGroup>> ListActiveAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AttendeeGroup>>(
             Items
                 .Where(group => group.IsActive && group.Requirements.Count > 0)
                 .OrderBy(group => group.Name)
@@ -522,10 +522,10 @@ public sealed class InMemoryBookingAppointmentRepository(
 
         var booking = bookings.Items.Single(value => value.Id == item.BookingId);
         return Task.FromResult<BookingAppointmentLocator?>(new BookingAppointmentLocator(
-            booking.CandidateId,
+            booking.AttendeeId,
             booking.RecoveryOfBookingId ?? booking.Id,
             booking.Id,
-            booking.ConfirmedSlotId,
+            booking.EventId,
             item.AppointmentTypeId));
     }
 
@@ -590,23 +590,23 @@ public sealed class InMemoryEmailDeliveryRepository : IEmailDeliveryRepository
         Task.FromResult(Items.SingleOrDefault(delivery => delivery.Id == id));
 
     /// <inheritdoc />
-    public Task<EmailLog?> LockLatestForCandidateAsync(
-        Guid candidateId,
+    public Task<EmailLog?> LockLatestForAttendeeAsync(
+        Guid attendeeId,
         CancellationToken cancellationToken) =>
         Task.FromResult(Items
-            .Where(delivery => delivery.CandidateId == candidateId)
+            .Where(delivery => delivery.AttendeeId == attendeeId)
             .OrderBy(delivery => delivery.Status is EmailStatus.Failed or EmailStatus.Pending ? 0 : 1)
             .ThenByDescending(delivery => delivery.SentAt)
             .ThenByDescending(delivery => delivery.Id)
             .FirstOrDefault());
 
     /// <inheritdoc />
-    public Task<EmailLog?> GetLatestForCandidateAsync(
-        Guid candidateId,
+    public Task<EmailLog?> GetLatestForAttendeeAsync(
+        Guid attendeeId,
         EmailTemplate template,
         CancellationToken cancellationToken) =>
         Task.FromResult(Items
-            .Where(delivery => delivery.CandidateId == candidateId && delivery.TemplateName == template)
+            .Where(delivery => delivery.AttendeeId == attendeeId && delivery.TemplateName == template)
             .OrderBy(delivery => delivery.Status is EmailStatus.Failed or EmailStatus.Pending ? 0 : 1)
             .ThenByDescending(delivery => delivery.SentAt)
             .ThenByDescending(delivery => delivery.Id)

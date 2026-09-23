@@ -63,8 +63,8 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
         }
 
         var scopedCapability = capability is
-            StaffCapability.ManageSlotNegotiation or
-            StaffCapability.ViewSlotOperations or
+            StaffCapability.ManageEventNegotiation or
+            StaffCapability.ViewEventOperations or
             StaffCapability.ConductAppointments;
 
         if (scopedCapability
@@ -92,12 +92,12 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
 
     private static bool IsAllowed(bool isAdmin, bool isCoordinator, bool isManager, bool isAppointmentStaff, StaffCapability capability)
     {
-        // Explicit candidate-data deny for Admin is retained even though valid profiles make Admin
+        // Explicit attendee-data deny for Admin is retained even though valid profiles make Admin
         // exclusive. It fails closed if invalid data reaches this method in a future refactor.
         if (isAdmin && capability is
-            StaffCapability.ManageCandidates or
-            StaffCapability.ViewCandidateDashboards or
-            StaffCapability.ViewCandidateAudit)
+            StaffCapability.ManageAttendees or
+            StaffCapability.ViewAttendeeDashboards or
+            StaffCapability.ViewAttendeeAudit)
         {
             return false;
         }
@@ -106,15 +106,15 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
         {
             StaffCapability.ManageSettings => isAdmin,
             StaffCapability.ManageStaffAccess => isAdmin,
-            StaffCapability.ImportConfirmedSlots => isAdmin || isCoordinator,
-            StaffCapability.ManageCandidates => isCoordinator,
-            StaffCapability.ViewCandidateDashboards => isCoordinator,
-            StaffCapability.ViewCandidateAudit => isCoordinator,
-            StaffCapability.ViewSlotAudit => isAdmin || isCoordinator,
-            StaffCapability.ManageSlotNegotiation => isManager,
-            StaffCapability.ViewSlotOperations =>
+            StaffCapability.ImportEvents => isAdmin || isCoordinator,
+            StaffCapability.ManageAttendees => isCoordinator,
+            StaffCapability.ViewAttendeeDashboards => isCoordinator,
+            StaffCapability.ViewAttendeeAudit => isCoordinator,
+            StaffCapability.ViewEventAudit => isAdmin || isCoordinator,
+            StaffCapability.ManageEventNegotiation => isManager,
+            StaffCapability.ViewEventOperations =>
                 isAdmin || isCoordinator || isManager || isAppointmentStaff,
-            StaffCapability.CancelConfirmedSlot =>
+            StaffCapability.CancelEvent =>
                 isAdmin || isCoordinator || isManager,
             StaffCapability.ConductAppointments => isManager || isAppointmentStaff,
             _ => false,

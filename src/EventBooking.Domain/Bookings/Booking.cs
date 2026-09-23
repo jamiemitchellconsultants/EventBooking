@@ -15,11 +15,11 @@ public sealed class Booking
     /// <summary>Defines id for the current use case.</summary>
     public Guid Id { get; private set; }
 
-    /// <summary>Defines candidate id for the current use case.</summary>
-    public Guid CandidateId { get; private set; }
+    /// <summary>Defines attendee id for the current use case.</summary>
+    public Guid AttendeeId { get; private set; }
 
-    /// <summary>Defines confirmed slot id for the current use case.</summary>
-    public Guid ConfirmedSlotId { get; private set; }
+    /// <summary>Defines event id for the current use case.</summary>
+    public Guid EventId { get; private set; }
 
     /// <summary>Defines invite id for the current use case.</summary>
     public Guid InviteId { get; private set; }
@@ -50,13 +50,13 @@ public sealed class Booking
     /// <summary>Defines create for the current use case.</summary>
     /// <param name="id">The id.</param>
     /// <param name="invite">The invite.</param>
-    /// <param name="confirmedSlotId">The confirmed slot id.</param>
+    /// <param name="eventId">The event id.</param>
     /// <param name="manageTokenHash">The manage token hash.</param>
     /// <param name="createdAt">The created at.</param>
     public static Booking Create(
         Guid id,
         Invite invite,
-        Guid confirmedSlotId,
+        Guid eventId,
         string? manageTokenHash,
         DateTimeOffset createdAt)
     {
@@ -64,14 +64,14 @@ public sealed class Booking
         Guard.Against(invite is null, "invite must be supplied.");
         Guard.Against(invite!.Status != InviteStatus.Pending, "This invite can no longer be used.");
         Guard.Against(
-            !invite.Offers(confirmedSlotId),
-            "The chosen slot is not one of this invite's options.");
+            !invite.Offers(eventId),
+            "The chosen eventItem is not one of this invite's options.");
 
         return new Booking
         {
             Id = id,
-            CandidateId = invite.CandidateId,
-            ConfirmedSlotId = confirmedSlotId,
+            AttendeeId = invite.AttendeeId,
+            EventId = eventId,
             InviteId = invite.Id,
             CreatedAt = createdAt,
             Status = BookingStatus.Active,
@@ -90,7 +90,7 @@ public sealed class Booking
     /// <param name="id">The stable recovery booking identifier.</param>
     /// <param name="recoveryInvite">The pending recovery invite issued for the original Booking.</param>
     /// <param name="originalBooking">The active original journey root being recovered.</param>
-    /// <param name="confirmedSlotId">The recovery slot offered by the invite.</param>
+    /// <param name="eventId">The recovery event offered by the invite.</param>
     /// <param name="manageTokenHash">The management-link hash for the recovery booking.</param>
     /// <param name="createdAt">When the recovery booking is created.</param>
     /// <returns>An active recovery Booking pointing at the original root.</returns>
@@ -98,7 +98,7 @@ public sealed class Booking
         Guid id,
         Invite recoveryInvite,
         Booking originalBooking,
-        Guid confirmedSlotId,
+        Guid eventId,
         string? manageTokenHash,
         DateTimeOffset createdAt)
     {
@@ -113,20 +113,20 @@ public sealed class Booking
             recoveryInvite!.RecoveryOfBookingId != originalBooking.Id,
             "The recovery invite must point at the supplied original booking.");
         Guard.Against(
-            recoveryInvite.CandidateId != originalBooking.CandidateId,
-            "The recovery invite must belong to the original booking candidate.");
+            recoveryInvite.AttendeeId != originalBooking.AttendeeId,
+            "The recovery invite must belong to the original booking attendee.");
         Guard.Against(
             recoveryInvite.Status != InviteStatus.Pending,
             "This invite can no longer be used.");
         Guard.Against(
-            !recoveryInvite.Offers(confirmedSlotId),
-            "The chosen slot is not one of this invite's options.");
+            !recoveryInvite.Offers(eventId),
+            "The chosen eventItem is not one of this invite's options.");
 
         return new Booking
         {
             Id = id,
-            CandidateId = originalBooking.CandidateId,
-            ConfirmedSlotId = confirmedSlotId,
+            AttendeeId = originalBooking.AttendeeId,
+            EventId = eventId,
             InviteId = recoveryInvite.Id,
             CreatedAt = createdAt,
             Status = BookingStatus.Active,

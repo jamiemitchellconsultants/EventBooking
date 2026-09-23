@@ -17,7 +17,7 @@ public sealed record RecoveryAttempt(
 public sealed class RecoveryRequirementSelector
 {
     /// <summary>Returns every current type whose latest attempt is NoShow and none is Completed.</summary>
-    /// <param name="currentRequirementTypeIds">The candidate's current derived requirement set.</param>
+    /// <param name="currentRequirementTypeIds">The attendee's current derived requirement set.</param>
     /// <param name="attempts">Non-cancelled attempts across the journey, in any order.</param>
     /// <param name="typesAlreadyPendingRecovery">Types a pending recovery already covers.</param>
     /// <returns>The recoverable type identifiers in stable order.</returns>

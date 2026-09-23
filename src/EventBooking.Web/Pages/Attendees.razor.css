@@ -1,0 +1,139 @@
+.attendees-toolbar {
+    align-items: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.attendees-toolbar .field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.search-field input {
+    min-width: 240px;
+}
+
+/* The real file input is visually hidden, so its focus has to show on the label. */
+.upload-button:focus-within {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+/* The first row is an inline "new attendee" form, not data. */
+.attendee-add-row td {
+    background: var(--surface-sunken);
+}
+
+.attendee-edit-row td {
+    background: var(--accent-soft);
+}
+
+/* These rows mix single-line cells with the group select's extra chip-row beneath it;
+   middle-aligning (the table default) would centre the shorter cells against that taller
+   one and throw their inputs out of line with the select. */
+.attendee-add-row td,
+.attendee-edit-row td {
+    vertical-align: top;
+}
+
+td input,
+.group-select {
+    width: 100%;
+}
+
+.group-preview {
+    margin-top: 6px;
+    min-height: 22px;
+}
+
+.invite-help {
+    color: var(--sub);
+    display: block;
+    font-size: 0.6875rem;
+    margin-top: 4px;
+}
+
+.readiness-badge {
+    white-space: nowrap;
+}
+
+.readiness-detail {
+    background: var(--surface-sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.75rem;
+    gap: 6px;
+    margin-top: 6px;
+    max-width: 240px;
+    padding: 8px 10px;
+}
+
+.readiness-types {
+    margin: 0 0 0 16px;
+    padding: 0;
+}
+
+.readiness-loading {
+    color: var(--sub);
+    font-size: 0.75rem;
+}
+
+.readiness-error,
+.recovery-error {
+    color: var(--error-ink);
+    display: block;
+    font-size: 0.75rem;
+}
+
+.recovery-outcome {
+    color: var(--success-ink);
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.import-errors {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+}
+
+.import-errors li {
+    border-top: 1px dashed currentcolor;
+    padding: 6px 0 0;
+}
+
+@media (max-width: 760px) {
+    .attendees-toolbar {
+        align-items: stretch;
+    }
+
+    .search-field {
+        flex: 1 1 100%;
+    }
+
+    .search-field input {
+        min-width: 0;
+    }
+
+    .readiness-detail {
+        max-width: none;
+    }
+
+    .attendee-add-row td,
+    .attendee-edit-row td {
+        background: none;
+    }
+
+    .attendee-add-row,
+    .attendee-edit-row {
+        background: var(--surface-sunken);
+    }
+}

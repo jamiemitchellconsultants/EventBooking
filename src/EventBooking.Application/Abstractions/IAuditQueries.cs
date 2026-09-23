@@ -5,7 +5,7 @@ namespace EventBooking.Application.Abstractions;
 /// <param name="EntityType">The audited entity type the row describes.</param>
 /// <param name="EntityId">The identifier of the audited entity instance.</param>
 /// <param name="Action">The recorded audit action name.</param>
-/// <param name="ActorType">Who caused the change: staff, candidate token, or system.</param>
+/// <param name="ActorType">Who caused the change: staff, attendee token, or system.</param>
 /// <param name="ActorId">The actor identifier, or null for a system actor.</param>
 /// <param name="Details">Fixed identifiers, codes, and statuses only; never personal data.</param>
 public sealed record AuditHistoryRow(
@@ -56,13 +56,13 @@ public interface IAuditQueries
         string entityType, Guid entityId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Every entry recorded against the candidate record itself and against their invites, bookings,
-    /// and booking appointments, newest first. The caller must already hold candidate-audit access.
+    /// Every entry recorded against the attendee record itself and against their invites, bookings,
+    /// and booking appointments, newest first. The caller must already hold attendee-audit access.
     /// </summary>
-    /// <param name="candidateId">The candidate id.</param>
+    /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    Task<IReadOnlyList<AuditHistoryRow>> ForCandidateAsync(
-        Guid candidateId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AuditHistoryRow>> ForAttendeeAsync(
+        Guid attendeeId, CancellationToken cancellationToken);
 
     /// <summary>Cross-cutting newest-first keyset-paginated search over the audit log.</summary>
     /// <param name="filter">The filter.</param>

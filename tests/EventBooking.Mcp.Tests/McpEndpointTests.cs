@@ -12,18 +12,18 @@ public sealed class McpEndpointTests(McpFactory factory)
 {
     private static readonly string[] ExpectedTools =
     [
-        "propose_slot", "accept_proposal", "withdraw_acceptance", "withdraw_proposal",
-        "slot_board", "adjust_slot_capacity", "cancel_confirmed_slot", "import_confirmed_slots",
-        "list_candidates", "create_candidate", "update_candidate", "delete_candidate",
-        "list_employee_groups",
-        "import_candidates", "trigger_invite", "retry_candidate_email",
-        "start_recovery_invite", "cancel_recovery_invite", "list_candidate_bookings",
-        "cancel_candidate_booking", "get_candidate_readiness",
+        "propose_event", "accept_proposal", "withdraw_acceptance", "withdraw_proposal",
+        "event_board", "adjust_event_capacity", "cancel_event", "import_events",
+        "list_attendees", "create_attendee", "update_attendee", "delete_attendee",
+        "list_attendee_groups",
+        "import_attendees", "trigger_invite", "retry_attendee_email",
+        "start_recovery_invite", "cancel_recovery_invite", "list_attendee_bookings",
+        "cancel_attendee_booking", "get_attendee_readiness",
         "get_settings", "update_settings", "list_staff_access", "replace_staff_access_scope",
         "clear_staff_access_scope", "get_my_access",
-        "get_dashboards", "slot_audit_history", "candidate_audit_history", "search_audit",
-        "appointment_slots", "appointment_slot_detail", "export_appointment_roster", "update_appointment_status",
-        "get_slot_operations",
+        "get_dashboards", "event_audit_history", "attendee_audit_history", "search_audit",
+        "appointment_events", "appointment_event_detail", "export_appointment_roster", "update_appointment_status",
+        "get_event_operations",
     ];
 
     /// <summary>Anonymous MCP requests are refused before any tool runs.</summary>
@@ -149,7 +149,7 @@ public sealed class McpEndpointTests(McpFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
 
         var payload = await CallToolAsync(
-            "propose_slot", new { date = "2026-10-01", startTime = "09:00" });
+            "propose_event", new { date = "2026-10-01", startTime = "09:00" });
 
         Assert.True(IsToolError(payload));
     }

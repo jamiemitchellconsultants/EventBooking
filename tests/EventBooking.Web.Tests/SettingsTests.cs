@@ -34,7 +34,7 @@ public class SettingsTests : BunitContext
         cut.WaitForAssertion(() => Assert.Contains("Drug & Alcohol Testing", cut.Find("table").TextContent));
         Assert.Contains("System settings", cut.Markup);
         Assert.DoesNotContain("Assign manager", cut.Markup);
-        Assert.DoesNotContain("Import Confirmed Slots", cut.Markup);
+        Assert.DoesNotContain("Import Confirmed Events", cut.Markup);
         Assert.Single(handler.Requests);
         Assert.Equal("/api/admin/settings", handler.Requests[0].RequestUri!.AbsolutePath);
     }

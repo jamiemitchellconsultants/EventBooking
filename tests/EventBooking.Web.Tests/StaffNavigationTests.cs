@@ -8,14 +8,14 @@ public class StaffNavigationTests
     /// <summary>Gets every valid role shape with its exact expected link union.</summary>
     public static TheoryData<string[], string[]> EveryValidShape => new()
     {
-        { ["Admin"], ["/settings", "/staff-access", "/confirmed-slots", "/audit"] },
-        { ["Coordinator"], ["/candidates", "/dashboards", "/confirmed-slots", "/audit"] },
-        { ["Manager"], ["/slots", "/appointments"] },
+        { ["Admin"], ["/settings", "/staff-access", "/events/operations", "/audit"] },
+        { ["Coordinator"], ["/attendees", "/dashboards", "/events/operations", "/audit"] },
+        { ["Manager"], ["/events/negotiate", "/appointments"] },
         { ["AppointmentStaff"], ["/appointments"] },
-        { ["Manager", "Coordinator"], ["/slots", "/appointments", "/candidates", "/dashboards", "/confirmed-slots", "/audit"] },
-        { ["Coordinator", "AppointmentStaff"], ["/appointments", "/candidates", "/dashboards", "/confirmed-slots", "/audit"] },
-        { ["Manager", "AppointmentStaff"], ["/slots", "/appointments"] },
-        { ["Manager", "Coordinator", "AppointmentStaff"], ["/slots", "/appointments", "/candidates", "/dashboards", "/confirmed-slots", "/audit"] },
+        { ["Manager", "Coordinator"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit"] },
+        { ["Coordinator", "AppointmentStaff"], ["/appointments", "/attendees", "/dashboards", "/events/operations", "/audit"] },
+        { ["Manager", "AppointmentStaff"], ["/events/negotiate", "/appointments"] },
+        { ["Manager", "Coordinator", "AppointmentStaff"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit"] },
     };
 
     /// <summary>Verifies every valid profile shape receives its exact link union.</summary>
@@ -35,16 +35,16 @@ public class StaffNavigationTests
         Assert.Equal(expectedRoutes, links.Select(link => link.Href));
     }
 
-    /// <summary>Verifies administrators keep only administrative and slot-only links.</summary>
+    /// <summary>Verifies administrators keep only administrative and event-only links.</summary>
     [Fact]
-    public void AdminHasOnlyAdministrativeAndSlotOnlyLinks()
+    public void AdminHasOnlyAdministrativeAndEventOnlyLinks()
     {
         var links = StaffNavigation.LinksFor(new MeDto(["Admin"], null, null));
 
         Assert.Equal(
-            ["/settings", "/staff-access", "/confirmed-slots", "/audit"],
+            ["/settings", "/staff-access", "/events/operations", "/audit"],
             links.Select(link => link.Href));
-        Assert.DoesNotContain(links, link => link.Href is "/candidates" or "/dashboards");
+        Assert.DoesNotContain(links, link => link.Href is "/attendees" or "/dashboards");
     }
 
     /// <summary>Verifies the Staff access link describes scope assignment, since roles come from the identity provider.</summary>
@@ -67,7 +67,7 @@ public class StaffNavigationTests
             "Medical Check-up"));
 
         Assert.Equal(
-            ["/slots", "/appointments", "/candidates", "/dashboards", "/confirmed-slots", "/audit"],
+            ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit"],
             links.Select(link => link.Href));
         Assert.Equal(links.Count, links.Select(link => link.Href).Distinct().Count());
     }

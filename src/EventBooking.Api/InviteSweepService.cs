@@ -3,8 +3,8 @@ using EventBooking.Application.Invites;
 namespace EventBooking.Api;
 
 /// <summary>
-/// Runs the invite expiry sweep hourly. Expiry cannot wait for a candidate to open a link — the
-/// whole point is the candidates who never do.
+/// Runs the invite expiry sweep hourly. Expiry cannot wait for a attendee to open a link — the
+/// whole point is the attendees who never do.
 /// </summary>
 public sealed class InviteSweepService(
     IServiceScopeFactory scopes,

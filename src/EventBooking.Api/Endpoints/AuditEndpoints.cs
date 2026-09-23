@@ -15,7 +15,7 @@ public static class AuditEndpoints
         var group = app.MapGroup("/api/audit")
             .RequireAuthorization(AuthenticationExtensions.StaffPolicy);
 
-        group.MapGet("/slot/{id:guid}", async (
+        group.MapGet("/event/{id:guid}", async (
             Guid id,
             ICallerAccessor caller,
             GetAuditHistoryHandler handler,
@@ -23,18 +23,18 @@ public static class AuditEndpoints
         {
             var result = await handler.HandleAsync(
                 new GetAuditHistoryQuery(
-                    caller.RequireStaffUserId(), AuditEntityTypes.ConfirmedSlot, id),
+                    caller.RequireStaffUserId(), AuditEntityTypes.Event, id),
                 cancellationToken);
             return result.IsSuccess
                 ? Results.Ok(result.Value.Select(AuditHistoryResourceResponse.From).ToList())
                 : result.ToResponse();
         })
-            .WithAgentMetadata("getSlotAuditHistory")
+            .WithAgentMetadata("getEventAuditHistory")
             .Produces(200)
             .ProducesProblem(403)
             .ProducesProblem(404);
 
-        group.MapGet("/candidate/{id:guid}", async (
+        group.MapGet("/attendee/{id:guid}", async (
             Guid id,
             ICallerAccessor caller,
             GetAuditHistoryHandler handler,
@@ -46,7 +46,7 @@ public static class AuditEndpoints
                 ? Results.Ok(result.Value.Select(AuditHistoryResourceResponse.From).ToList())
                 : result.ToResponse();
         })
-            .WithAgentMetadata("getCandidateAuditHistory")
+            .WithAgentMetadata("getAttendeeAuditHistory")
             .Produces(200)
             .ProducesProblem(403)
             .ProducesProblem(404);

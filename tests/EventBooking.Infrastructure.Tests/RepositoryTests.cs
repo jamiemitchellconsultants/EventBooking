@@ -1,7 +1,7 @@
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,27 +11,27 @@ namespace EventBooking.Infrastructure.Tests;
 public class RepositoryTests(PostgresFixture fixture)
 {
     [Fact]
-    public async Task ActiveSlotsAreFilteredByStatusAndDate()
+    public async Task ActiveEventsAreFilteredByStatusAndDate()
     {
         await fixture.ResetAsync();
 
         await using (var write = fixture.NewContext())
         {
-            write.SlotProposals.Add(ProposalOn(new DateOnly(2026, 9, 1), out var pastSlot));
-            write.ConfirmedSlots.Add(pastSlot);
+            write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 1), out var pastEvent));
+            write.Events.Add(pastEvent);
 
-            write.SlotProposals.Add(ProposalOn(new DateOnly(2026, 9, 20), out var cancelled));
+            write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 20), out var cancelled));
             cancelled.Cancel();
-            write.ConfirmedSlots.Add(cancelled);
+            write.Events.Add(cancelled);
 
-            write.SlotProposals.Add(ProposalOn(new DateOnly(2026, 9, 21), out var live));
-            write.ConfirmedSlots.Add(live);
+            write.EventProposals.Add(ProposalOn(new DateOnly(2026, 9, 21), out var live));
+            write.Events.Add(live);
 
             await write.SaveChangesAsync();
         }
 
         await using var read = fixture.NewContext();
-        var repository = new ConfirmedSlotRepository(read);
+        var repository = new EventRepository(read);
 
         var result = await repository.ListActiveAsync(new DateOnly(2026, 9, 3), CancellationToken.None);
 
@@ -41,21 +41,21 @@ public class RepositoryTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ACandidateIsFoundByEmailWithTheirRequirements()
+    public async Task AAttendeeIsFoundByEmailWithTheirRequirements()
     {
         await fixture.ResetAsync();
 
         await using (var write = fixture.NewContext())
         {
-            var pilots = write.EmployeeGroups.Include(g => g.Requirements).Single(g => g.Id == EmployeeGroupIds.Pilots);
-            var candidate = Candidate.Create(
+            var pilots = write.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+            var attendee = Attendee.Create(
                 Guid.NewGuid(), "Amara Novak", "a.novak@mail.com", pilots);
-            write.Candidates.Add(candidate);
+            write.Attendees.Add(attendee);
             await write.SaveChangesAsync();
         }
 
         await using var read = fixture.NewContext();
-        var found = await new CandidateRepository(read)
+        var found = await new AttendeeRepository(read)
             .GetByEmailAsync("a.novak@mail.com", CancellationToken.None);
 
         Assert.NotNull(found);
@@ -74,15 +74,15 @@ public class RepositoryTests(PostgresFixture fixture)
         Assert.Equal(4, settings.InviteExpiryDays);
     }
 
-    private static SlotProposal ProposalOn(DateOnly date, out ConfirmedSlot slot)
+    private static EventProposal ProposalOn(DateOnly date, out Event eventItem)
     {
-        var proposal = SlotProposal.Create(
-            Guid.NewGuid(), new SlotWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
+        var proposal = EventProposal.Create(
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(9, 0)), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
 
-        slot = ConfirmedSlot.CreateFrom(Guid.NewGuid(), proposal);
+        eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
         return proposal;
     }
 }

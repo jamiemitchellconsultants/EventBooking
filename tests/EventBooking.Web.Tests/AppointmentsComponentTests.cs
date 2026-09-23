@@ -15,23 +15,23 @@ public sealed class AppointmentsComponentTests : BunitContext
 {
     private static readonly DateTimeOffset OperationalNow =
         new(2026, 9, 7, 14, 0, 0, TimeSpan.Zero);
-    private static readonly Guid FirstSlotId =
+    private static readonly Guid FirstEventId =
         Guid.Parse("11111111-1111-1111-1111-111111111111");
-    private static readonly Guid SecondSlotId =
+    private static readonly Guid SecondEventId =
         Guid.Parse("33333333-3333-3333-3333-333333333333");
-    private static readonly Guid ThirdSlotId =
+    private static readonly Guid ThirdEventId =
         Guid.Parse("44444444-4444-4444-4444-444444444444");
     private static readonly JsonSerializerOptions CamelCase = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    /// <summary>Verifies the page shows scoped rows and no candidate-administration surface.</summary>
+    /// <summary>Verifies the page shows scoped rows and no attendee-administration surface.</summary>
     [Fact]
-    public void CurrentSlotShowsOnlyLifecycleControls()
+    public void CurrentEventShowsOnlyLifecycleControls()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("Expected")));
 
         var cut = Render<Appointments>();
@@ -42,7 +42,7 @@ public sealed class AppointmentsComponentTests : BunitContext
             Assert.Contains("Alex Morgan", cut.Markup);
             Assert.Contains("alex@example.com", cut.Markup);
             Assert.Contains("Check in", cut.Markup);
-            Assert.DoesNotContain("Edit candidate", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Edit attendee", cut.Markup, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Invite", cut.Markup, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Requirements", cut.Markup, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Capacity", cut.Markup, StringComparison.OrdinalIgnoreCase);
@@ -55,7 +55,7 @@ public sealed class AppointmentsComponentTests : BunitContext
     public async Task NoShowRequiresConfirmationBeforeCallingTheApi()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("Expected")));
         handler.Enqueue(Ok(Update("NoShow", 2)));
         var cut = Render<Appointments>();
@@ -73,10 +73,10 @@ public sealed class AppointmentsComponentTests : BunitContext
 
     /// <summary>Verifies a stale-version conflict refreshes state without replaying the stale request.</summary>
     [Fact]
-    public async Task StaleVersionConflictRefreshesTheSelectedSlotOnce()
+    public async Task StaleVersionConflictRefreshesTheSelectedEventOnce()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("CheckedIn")));
         handler.Enqueue(Problem(
             HttpStatusCode.Conflict,
@@ -102,7 +102,7 @@ public sealed class AppointmentsComponentTests : BunitContext
     public async Task StaleVersionRefreshFailureKeepsTheRefreshError()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("CheckedIn")));
         handler.Enqueue(Problem(
             HttpStatusCode.Conflict,
@@ -110,7 +110,7 @@ public sealed class AppointmentsComponentTests : BunitContext
             "appointment_version_conflict"));
         handler.Enqueue(Problem(
             HttpStatusCode.NotFound,
-            "No such appointment workspace slot.",
+            "No such appointment workspace eventItem.",
             "not_found"));
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.Contains("Complete", cut.Markup));
@@ -118,7 +118,7 @@ public sealed class AppointmentsComponentTests : BunitContext
         await cut.InvokeAsync(() => cut.Find("button[data-action=complete]").Click());
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("No such appointment workspace slot.", cut.Markup));
+            Assert.Contains("No such appointment workspace eventItem.", cut.Markup));
         Assert.DoesNotContain("row has been refreshed", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("another staff member changed", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(4, handler.Requests.Count);
@@ -130,12 +130,12 @@ public sealed class AppointmentsComponentTests : BunitContext
         "Expected",
         "no-show",
         true,
-        "No-show can only be recorded after the confirmed-slot window has ended.")]
+        "No-show can only be recorded after the event window has ended.")]
     [InlineData(
         "CheckedIn",
         "complete",
         false,
-        "Cancelled bookings and slots cannot be updated.")]
+        "Cancelled bookings and events cannot be updated.")]
     public async Task BusinessRuleConflictKeepsItsMessageWithoutRefreshing(
         string initialStatus,
         string action,
@@ -143,7 +143,7 @@ public sealed class AppointmentsComponentTests : BunitContext
         string message)
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail(initialStatus)));
         handler.Enqueue(Problem(HttpStatusCode.Conflict, message));
         var cut = Render<Appointments>();
@@ -160,19 +160,19 @@ public sealed class AppointmentsComponentTests : BunitContext
         Assert.Equal(3, handler.Requests.Count);
     }
 
-    /// <summary>Verifies future slots explain unavailable check-in without enabling it.</summary>
+    /// <summary>Verifies future events explain unavailable check-in without enabling it.</summary>
     [Fact]
-    public void FutureSlotDisablesCheckInWithExplanation()
+    public void FutureEventDisablesCheckInWithExplanation()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(FutureSlotList()));
+        handler.Enqueue(Ok(FutureEventList()));
         handler.Enqueue(Ok(FutureDetail("Expected")));
 
         var cut = Render<Appointments>();
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Check-in opens on the confirmed-slot date.", cut.Markup);
+            Assert.Contains("Check-in opens on the event date.", cut.Markup);
             Assert.True(cut.Find("button[data-action=check-in]").HasAttribute("disabled"));
         });
     }
@@ -186,7 +186,7 @@ public sealed class AppointmentsComponentTests : BunitContext
     public void SettledRowsOfferOnlyTheirPermittedActions(string status, string expectedLabel)
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail(status)));
 
         var cut = Render<Appointments>();
@@ -194,33 +194,33 @@ public sealed class AppointmentsComponentTests : BunitContext
         cut.WaitForAssertion(() => Assert.Contains(expectedLabel, cut.Markup));
     }
 
-    /// <summary>Verifies an empty workspace explains that no slots are available.</summary>
+    /// <summary>Verifies an empty workspace explains that no events are available.</summary>
     [Fact]
-    public void EmptySlotListShowsNoSlotsMessage()
+    public void EmptyEventListShowsNoEventsMessage()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(new AppointmentWorkspaceSlotListDto
+        handler.Enqueue(Ok(new AppointmentWorkspaceEventListDto
         {
             AppointmentTypeName = "Uniform Fitting",
-            Slots = [],
+            Events = [],
         }));
 
         var cut = Render<Appointments>();
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("No current or upcoming appointment slots.", cut.Markup));
+            Assert.Contains("No current or upcoming appointment events.", cut.Markup));
     }
 
-    /// <summary>Verifies a slot without scoped rows explains the empty selection.</summary>
+    /// <summary>Verifies a event without scoped rows explains the empty selection.</summary>
     [Fact]
-    public void EmptySelectedSlotShowsNoAppointmentsMessage()
+    public void EmptySelectedEventShowsNoAppointmentsMessage()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
-        handler.Enqueue(Ok(new AppointmentSlotDetailDto
+        handler.Enqueue(Ok(EventList()));
+        handler.Enqueue(Ok(new AppointmentEventDetailDto
         {
             AppointmentTypeName = "Uniform Fitting",
-            ConfirmedSlotId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            EventId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
             Date = new DateOnly(2026, 9, 7),
             StartTime = new TimeOnly(9, 0),
             EndTime = new TimeOnly(13, 0),
@@ -231,12 +231,12 @@ public sealed class AppointmentsComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
             Assert.Contains(
-                "No candidates require this appointment in the selected slot.", cut.Markup));
+                "No attendees require this appointment in the selected eventItem.", cut.Markup));
     }
 
     /// <summary>Verifies a forbidden workspace keeps its safe denial message.</summary>
     [Fact]
-    public void ForbiddenSlotListShowsTheDenialMessage()
+    public void ForbiddenEventListShowsTheDenialMessage()
     {
         var handler = GivenClient();
         handler.Enqueue(Problem(HttpStatusCode.Forbidden, "You do not have permission to do that."));
@@ -261,13 +261,13 @@ public sealed class AppointmentsComponentTests : BunitContext
             Assert.Contains("Something went wrong. Please try again.", cut.Markup));
     }
 
-    /// <summary>Verifies changing slots immediately removes actions belonging to the old slot.</summary>
+    /// <summary>Verifies changing events immediately removes actions belonging to the old eventItem.</summary>
     [Fact]
-    public async Task SlotSwitchHidesPreviousRowsWhileNewDetailLoads()
+    public async Task EventSwitchHidesPreviousRowsWhileNewDetailLoads()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotListFor(FirstSlotId, SecondSlotId)));
-        handler.Enqueue(Ok(DetailFor(FirstSlotId, "Alex Morgan")));
+        handler.Enqueue(Ok(EventListFor(FirstEventId, SecondEventId)));
+        handler.Enqueue(Ok(DetailFor(FirstEventId, "Alex Morgan")));
         var pendingDetail = handler.EnqueuePending();
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.Contains("Alex Morgan", cut.Markup));
@@ -275,13 +275,13 @@ public sealed class AppointmentsComponentTests : BunitContext
         Assert.NotEmpty(cut.FindAll("[role=alertdialog]"));
 
         var switchTask = cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(SecondSlotId.ToString()));
+            cut.Find("select[name=event]").Change(SecondEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal(3, handler.Requests.Count));
 
         var markupWhileLoading = cut.Markup;
         var actionCountWhileLoading = cut.FindAll("button[data-action]").Count;
         var confirmationCountWhileLoading = cut.FindAll("[role=alertdialog]").Count;
-        pendingDetail.SetResult(Ok(DetailFor(SecondSlotId, "Blair Scott")));
+        pendingDetail.SetResult(Ok(DetailFor(SecondEventId, "Blair Scott")));
         await switchTask;
 
         Assert.DoesNotContain("Alex Morgan", markupWhileLoading);
@@ -291,56 +291,56 @@ public sealed class AppointmentsComponentTests : BunitContext
         cut.WaitForAssertion(() => Assert.Contains("Blair Scott", cut.Markup));
     }
 
-    /// <summary>Verifies a failed slot load cannot leave the previous slot actionable.</summary>
+    /// <summary>Verifies a failed event load cannot leave the previous event actionable.</summary>
     [Fact]
-    public async Task FailedSlotSwitchDoesNotRestorePreviousRows()
+    public async Task FailedEventSwitchDoesNotRestorePreviousRows()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotListFor(FirstSlotId, SecondSlotId)));
-        handler.Enqueue(Ok(DetailFor(FirstSlotId, "Alex Morgan")));
+        handler.Enqueue(Ok(EventListFor(FirstEventId, SecondEventId)));
+        handler.Enqueue(Ok(DetailFor(FirstEventId, "Alex Morgan")));
         handler.Enqueue(Problem(
             HttpStatusCode.InternalServerError,
-            "The selected slot could not be loaded."));
+            "The selected event could not be loaded."));
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.Contains("Alex Morgan", cut.Markup));
 
         await cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(SecondSlotId.ToString()));
+            cut.Find("select[name=event]").Change(SecondEventId.ToString()));
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("The selected slot could not be loaded.", cut.Markup);
+            Assert.Contains("The selected event could not be loaded.", cut.Markup);
             Assert.DoesNotContain("Alex Morgan", cut.Markup);
             Assert.Empty(cut.FindAll("button[data-action]"));
         });
     }
 
-    /// <summary>Verifies an obsolete response cannot replace the latest selected slot detail.</summary>
+    /// <summary>Verifies an obsolete response cannot replace the latest selected event detail.</summary>
     [Fact]
-    public async Task RapidSlotSwitchIgnoresOutOfOrderResponses()
+    public async Task RapidEventSwitchIgnoresOutOfOrderResponses()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotListFor(FirstSlotId, SecondSlotId, ThirdSlotId)));
-        handler.Enqueue(Ok(DetailFor(FirstSlotId, "Alex Morgan")));
+        handler.Enqueue(Ok(EventListFor(FirstEventId, SecondEventId, ThirdEventId)));
+        handler.Enqueue(Ok(DetailFor(FirstEventId, "Alex Morgan")));
         var secondDetail = handler.EnqueuePending();
         var thirdDetail = handler.EnqueuePending();
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.Contains("Alex Morgan", cut.Markup));
 
         var secondSwitch = cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(SecondSlotId.ToString()));
+            cut.Find("select[name=event]").Change(SecondEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal(3, handler.Requests.Count));
 
         var thirdSwitch = cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(ThirdSlotId.ToString()));
+            cut.Find("select[name=event]").Change(ThirdEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal(4, handler.Requests.Count));
 
-        thirdDetail.SetResult(Ok(DetailFor(ThirdSlotId, "Casey Patel")));
+        thirdDetail.SetResult(Ok(DetailFor(ThirdEventId, "Casey Patel")));
         await thirdSwitch;
         cut.WaitForAssertion(() => Assert.Contains("Casey Patel", cut.Markup));
 
         var renderCountBeforeObsoleteResponse = cut.RenderCount;
-        secondDetail.SetResult(Ok(DetailFor(SecondSlotId, "Blair Scott")));
+        secondDetail.SetResult(Ok(DetailFor(SecondEventId, "Blair Scott")));
         await secondSwitch;
         cut.WaitForAssertion(() =>
             Assert.True(cut.RenderCount > renderCountBeforeObsoleteResponse));
@@ -352,13 +352,13 @@ public sealed class AppointmentsComponentTests : BunitContext
         });
     }
 
-    /// <summary>Verifies a previous slot's status response cannot change the current slot UI.</summary>
+    /// <summary>Verifies a previous event's status response cannot change the current event UI.</summary>
     [Fact]
-    public async Task StatusResponseFromPreviousSlotDoesNotMutateCurrentSlot()
+    public async Task StatusResponseFromPreviousEventDoesNotMutateCurrentEvent()
     {
         var handler = GivenClient();
-        var firstDetail = DetailFor(FirstSlotId, "Alex Morgan");
-        handler.Enqueue(Ok(SlotListFor(FirstSlotId, SecondSlotId)));
+        var firstDetail = DetailFor(FirstEventId, "Alex Morgan");
+        handler.Enqueue(Ok(EventListFor(FirstEventId, SecondEventId)));
         handler.Enqueue(Ok(firstDetail));
         var pendingUpdate = handler.EnqueuePending();
         var pendingDetail = handler.EnqueuePending();
@@ -369,9 +369,9 @@ public sealed class AppointmentsComponentTests : BunitContext
         cut.WaitForAssertion(() => Assert.Equal(HttpMethod.Put, handler.Requests[2].Method));
 
         await cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(SecondSlotId.ToString()));
+            cut.Find("select[name=event]").Change(SecondEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal(4, handler.Requests.Count));
-        pendingDetail.SetResult(Ok(DetailFor(SecondSlotId, "Blair Scott")));
+        pendingDetail.SetResult(Ok(DetailFor(SecondEventId, "Blair Scott")));
         cut.WaitForAssertion(() => Assert.Contains("Blair Scott", cut.Markup));
 
         var renderCountBeforePreviousUpdate = cut.RenderCount;
@@ -388,27 +388,27 @@ public sealed class AppointmentsComponentTests : BunitContext
         Assert.DoesNotContain("Check-in recorded for Alex Morgan", cut.Markup);
     }
 
-    /// <summary>Verifies an obsolete response cannot end a newer slot's loading state.</summary>
+    /// <summary>Verifies an obsolete response cannot end a newer event's loading state.</summary>
     [Fact]
-    public async Task ObsoleteSlotResponseDoesNotEndLatestLoadingState()
+    public async Task ObsoleteEventResponseDoesNotEndLatestLoadingState()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotListFor(FirstSlotId, SecondSlotId, ThirdSlotId)));
-        handler.Enqueue(Ok(DetailFor(FirstSlotId, "Alex Morgan")));
+        handler.Enqueue(Ok(EventListFor(FirstEventId, SecondEventId, ThirdEventId)));
+        handler.Enqueue(Ok(DetailFor(FirstEventId, "Alex Morgan")));
         var secondDetail = handler.EnqueuePending();
         var thirdDetail = handler.EnqueuePending();
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.Contains("Alex Morgan", cut.Markup));
 
         await cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(SecondSlotId.ToString()));
+            cut.Find("select[name=event]").Change(SecondEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal(3, handler.Requests.Count));
         await cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(ThirdSlotId.ToString()));
+            cut.Find("select[name=event]").Change(ThirdEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal(4, handler.Requests.Count));
 
         var renderCountBeforeObsoleteResponse = cut.RenderCount;
-        secondDetail.SetResult(Ok(DetailFor(SecondSlotId, "Blair Scott")));
+        secondDetail.SetResult(Ok(DetailFor(SecondEventId, "Blair Scott")));
         cut.WaitForAssertion(() =>
             Assert.True(cut.RenderCount > renderCountBeforeObsoleteResponse));
 
@@ -416,23 +416,23 @@ public sealed class AppointmentsComponentTests : BunitContext
         Assert.DoesNotContain("Blair Scott", cut.Markup);
         Assert.Empty(cut.FindAll("button[data-action]"));
 
-        thirdDetail.SetResult(Ok(DetailFor(ThirdSlotId, "Casey Patel")));
+        thirdDetail.SetResult(Ok(DetailFor(ThirdEventId, "Casey Patel")));
         cut.WaitForAssertion(() => Assert.Contains("Casey Patel", cut.Markup));
     }
 
-    /// <summary>Verifies an obsolete conflict refresh cannot report success under a newer slot.</summary>
+    /// <summary>Verifies an obsolete conflict refresh cannot report success under a newer eventItem.</summary>
     [Fact]
-    public async Task ConflictRefreshFromPreviousSlotDoesNotReportSuccessInCurrentSlot()
+    public async Task ConflictRefreshFromPreviousEventDoesNotReportSuccessInCurrentEvent()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotListFor(FirstSlotId, SecondSlotId)));
+        handler.Enqueue(Ok(EventListFor(FirstEventId, SecondEventId)));
         handler.Enqueue(Ok(Detail("CheckedIn")));
         handler.Enqueue(Problem(
             HttpStatusCode.Conflict,
             "This appointment changed. Refresh and try again.",
             "appointment_version_conflict"));
         var pendingConflictRefresh = handler.EnqueuePending();
-        handler.Enqueue(Ok(DetailFor(SecondSlotId, "Blair Scott")));
+        handler.Enqueue(Ok(DetailFor(SecondEventId, "Blair Scott")));
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.Contains("Complete", cut.Markup));
 
@@ -440,7 +440,7 @@ public sealed class AppointmentsComponentTests : BunitContext
         cut.WaitForAssertion(() => Assert.Equal(4, handler.Requests.Count));
 
         await cut.InvokeAsync(() =>
-            cut.Find("select[name=confirmed-slot]").Change(SecondSlotId.ToString()));
+            cut.Find("select[name=event]").Change(SecondEventId.ToString()));
         cut.WaitForAssertion(() => Assert.Contains("Blair Scott", cut.Markup));
 
         var renderCountBeforeObsoleteRefresh = cut.RenderCount;
@@ -460,19 +460,19 @@ public sealed class AppointmentsComponentTests : BunitContext
         {
             BaseAddress = new Uri("https://api.example.com"),
         }));
-        Services.AddSingleton(new HeadOfficePageClock(
+        Services.AddSingleton(new TransitionalLocationPageClock(
             "Europe/London", () => OperationalNow));
         return handler;
     }
 
-    private static AppointmentWorkspaceSlotListDto SlotList() => new()
+    private static AppointmentWorkspaceEventListDto EventList() => new()
     {
         AppointmentTypeName = "Uniform Fitting",
-        Slots =
+        Events =
         [
-            new AppointmentSlotSummaryDto
+            new AppointmentEventSummaryDto
             {
-                ConfirmedSlotId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                EventId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
                 Date = new DateOnly(2026, 9, 7),
                 StartTime = new TimeOnly(9, 0),
                 EndTime = new TimeOnly(13, 0),
@@ -484,12 +484,12 @@ public sealed class AppointmentsComponentTests : BunitContext
         ],
     };
 
-    private static AppointmentWorkspaceSlotListDto SlotListFor(params Guid[] slotIds) => new()
+    private static AppointmentWorkspaceEventListDto EventListFor(params Guid[] eventIds) => new()
     {
         AppointmentTypeName = "Uniform Fitting",
-        Slots = slotIds.Select((slotId, index) => new AppointmentSlotSummaryDto
+        Events = eventIds.Select((eventId, index) => new AppointmentEventSummaryDto
         {
-            ConfirmedSlotId = slotId,
+            EventId = eventId,
             Date = new DateOnly(2026, 9, 7),
             StartTime = new TimeOnly(9 + index, 0),
             EndTime = new TimeOnly(13 + index, 0),
@@ -503,10 +503,10 @@ public sealed class AppointmentsComponentTests : BunitContext
         }).ToList(),
     };
 
-    private static AppointmentSlotDetailDto DetailFor(Guid slotId, string candidateName) => new()
+    private static AppointmentEventDetailDto DetailFor(Guid eventId, string attendeeName) => new()
     {
         AppointmentTypeName = "Uniform Fitting",
-        ConfirmedSlotId = slotId,
+        EventId = eventId,
         Date = new DateOnly(2026, 9, 7),
         StartTime = new TimeOnly(9, 0),
         EndTime = new TimeOnly(13, 0),
@@ -515,8 +515,8 @@ public sealed class AppointmentsComponentTests : BunitContext
             new BookingAppointmentRowDto
             {
                 BookingAppointmentId = Guid.NewGuid(),
-                CandidateName = candidateName,
-                CandidateEmail = $"{candidateName.Replace(" ", ".").ToLowerInvariant()}@example.com",
+                AttendeeName = attendeeName,
+                AttendeeEmail = $"{attendeeName.Replace(" ", ".").ToLowerInvariant()}@example.com",
                 Status = "Expected",
                 CheckedInAt = null,
                 OutcomeAt = null,
@@ -525,10 +525,10 @@ public sealed class AppointmentsComponentTests : BunitContext
         ],
     };
 
-    private static AppointmentSlotDetailDto Detail(string status) => new()
+    private static AppointmentEventDetailDto Detail(string status) => new()
     {
         AppointmentTypeName = "Uniform Fitting",
-        ConfirmedSlotId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+        EventId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
         Date = new DateOnly(2026, 9, 7),
         StartTime = new TimeOnly(9, 0),
         EndTime = new TimeOnly(13, 0),
@@ -537,21 +537,21 @@ public sealed class AppointmentsComponentTests : BunitContext
             new BookingAppointmentRowDto
             {
                 BookingAppointmentId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                CandidateName = "Alex Morgan", CandidateEmail = "alex@example.com",
+                AttendeeName = "Alex Morgan", AttendeeEmail = "alex@example.com",
                 Status = status, CheckedInAt = status == "Expected" ? null : DateTimeOffset.UtcNow,
                 OutcomeAt = status == "Completed" ? DateTimeOffset.UtcNow : null, Version = 1,
             },
         ],
     };
 
-    private static AppointmentWorkspaceSlotListDto FutureSlotList() => new()
+    private static AppointmentWorkspaceEventListDto FutureEventList() => new()
     {
         AppointmentTypeName = "Uniform Fitting",
-        Slots =
+        Events =
         [
-            new AppointmentSlotSummaryDto
+            new AppointmentEventSummaryDto
             {
-                ConfirmedSlotId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                EventId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
                 Date = new DateOnly(2026, 9, 8),
                 StartTime = new TimeOnly(9, 0),
                 EndTime = new TimeOnly(13, 0),
@@ -563,10 +563,10 @@ public sealed class AppointmentsComponentTests : BunitContext
         ],
     };
 
-    private static AppointmentSlotDetailDto FutureDetail(string status) => new()
+    private static AppointmentEventDetailDto FutureDetail(string status) => new()
     {
         AppointmentTypeName = "Uniform Fitting",
-        ConfirmedSlotId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+        EventId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
         Date = new DateOnly(2026, 9, 8),
         StartTime = new TimeOnly(9, 0),
         EndTime = new TimeOnly(13, 0),
@@ -575,7 +575,7 @@ public sealed class AppointmentsComponentTests : BunitContext
             new BookingAppointmentRowDto
             {
                 BookingAppointmentId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                CandidateName = "Alex Morgan", CandidateEmail = "alex@example.com",
+                AttendeeName = "Alex Morgan", AttendeeEmail = "alex@example.com",
                 Status = status, CheckedInAt = null,
                 OutcomeAt = null, Version = 1,
             },
@@ -605,9 +605,9 @@ public sealed class AppointmentsComponentTests : BunitContext
     [Fact]
     public async Task DownloadRosterSuccessInvokesInteropWithFilenameAndContent()
     {
-        const string CsvBody = "Candidate Name,Candidate Email,Appointment Type,Status,Checked In At,Outcome At\n";
+        const string CsvBody = "Attendee Name,Attendee Email,Appointment Type,Status,Checked In At,Outcome At\n";
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("Expected")));
         handler.Enqueue(Csv(CsvBody, "roster-uniform-fitting-2026-09-07-0900.csv"));
         var save = JSInterop.SetupVoid("saveTextFile", _ => true);
@@ -630,7 +630,7 @@ public sealed class AppointmentsComponentTests : BunitContext
     public async Task DownloadRosterButtonIsDisabledWhileTheRequestIsInFlight()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("Expected")));
         var pending = handler.EnqueuePending();
         var save = JSInterop.SetupVoid("saveTextFile", _ => true);
@@ -645,7 +645,7 @@ public sealed class AppointmentsComponentTests : BunitContext
             cut.Find("button[data-testid=download-roster]").HasAttribute("disabled");
         Assert.Contains(handler.Requests, request => request.Path.EndsWith("/roster", StringComparison.Ordinal));
 
-        pending.SetResult(Csv("Candidate Name\n", "roster-uniform-fitting-2026-09-07-0900.csv"));
+        pending.SetResult(Csv("Attendee Name\n", "roster-uniform-fitting-2026-09-07-0900.csv"));
         await click;
         // The interop call only completes once the test releases it, so the button stays disabled
         // until then; releasing it is what lets the handler run to completion.
@@ -661,7 +661,7 @@ public sealed class AppointmentsComponentTests : BunitContext
     public async Task DownloadRosterFailureShowsTheExistingErrorState()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(SlotList()));
+        handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("Expected")));
         handler.Enqueue(Problem(HttpStatusCode.Forbidden, "Denied.", "forbidden"));
         var save = JSInterop.SetupVoid("saveTextFile", _ => true);
@@ -678,15 +678,15 @@ public sealed class AppointmentsComponentTests : BunitContext
         Assert.Single(cut.FindAll("p.banner.error[role=alert]"));
     }
 
-    /// <summary>Verifies the download button only appears once a slot's roster is on screen.</summary>
+    /// <summary>Verifies the download button only appears once a event's roster is on screen.</summary>
     [Fact]
-    public void DownloadRosterButtonIsAbsentBeforeASlotIsSelected()
+    public void DownloadRosterButtonIsAbsentBeforeAEventIsSelected()
     {
         var handler = GivenClient();
-        handler.Enqueue(Ok(new AppointmentWorkspaceSlotListDto
+        handler.Enqueue(Ok(new AppointmentWorkspaceEventListDto
         {
             AppointmentTypeName = "Uniform Fitting",
-            Slots = [],
+            Events = [],
         }));
 
         var cut = Render<Appointments>();

@@ -6,7 +6,7 @@ using EventBooking.Domain.Audit;
 
 namespace EventBooking.Application.Dashboards;
 
-/// <summary>A null entity type means "this candidate's whole history".</summary>
+/// <summary>A null entity type means "this attendee's whole history".</summary>
 /// <param name="StaffUserId">The staff user id.</param>
 /// <param name="EntityType">The entity type.</param>
 /// <param name="EntityId">The entity id.</param>
@@ -26,9 +26,9 @@ public sealed class GetAuditHistoryHandler(
         GetAuditHistoryQuery query,
         CancellationToken cancellationToken)
     {
-        var capability = query.EntityType == AuditEntityTypes.ConfirmedSlot
-            ? StaffCapability.ViewSlotAudit
-            : StaffCapability.ViewCandidateAudit;
+        var capability = query.EntityType == AuditEntityTypes.Event
+            ? StaffCapability.ViewEventAudit
+            : StaffCapability.ViewAttendeeAudit;
         var authorized = await access.AuthorizeAsync(
             query.StaffUserId, capability, null, cancellationToken);
         if (authorized.IsFailure)
@@ -39,7 +39,7 @@ public sealed class GetAuditHistoryHandler(
         if (query.EntityType is null)
         {
             return Result<IReadOnlyList<AuditHistoryRow>>.Success(
-                await queries.ForCandidateAsync(query.EntityId, cancellationToken));
+                await queries.ForAttendeeAsync(query.EntityId, cancellationToken));
         }
 
         if (!AuditEntityTypes.All.Contains(query.EntityType))

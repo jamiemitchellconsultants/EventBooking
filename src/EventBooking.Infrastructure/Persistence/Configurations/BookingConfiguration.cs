@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EventBooking.Infrastructure.Persistence.Configurations;
 
-/// <summary>Maps booking persistence and its one-active-booking-per-candidate backstop.</summary>
+/// <summary>Maps booking persistence and its one-active-booking-per-attendee backstop.</summary>
 public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
 {
     /// <summary>Configures booking columns and the filtered active-booking index.</summary>
@@ -19,8 +19,8 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Ignore(b => b.IsOriginal);
 
         builder.Property(b => b.Id).HasColumnName("id");
-        builder.Property(b => b.CandidateId).HasColumnName("candidate_id");
-        builder.Property(b => b.ConfirmedSlotId).HasColumnName("confirmed_slot_id");
+        builder.Property(b => b.AttendeeId).HasColumnName("attendee_id");
+        builder.Property(b => b.EventId).HasColumnName("event_id");
         builder.Property(b => b.InviteId).HasColumnName("invite_id");
         builder.Property(b => b.CreatedAt).HasColumnName("created_at");
         builder.Property(b => b.Status).HasColumnName("status").HasConversion<int>();
@@ -37,11 +37,11 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(b => b.ManageTokenHash).IsUnique();
-        builder.HasIndex(b => new { b.ConfirmedSlotId, b.Status });
-        builder.HasIndex(b => new { b.CandidateId, b.Status });
+        builder.HasIndex(b => new { b.EventId, b.Status });
+        builder.HasIndex(b => new { b.AttendeeId, b.Status });
         builder.HasIndex(b => b.RecoveryOfBookingId);
-        builder.HasIndex(b => b.CandidateId)
-            .HasDatabaseName("ux_booking_active_original_candidate")
+        builder.HasIndex(b => b.AttendeeId)
+            .HasDatabaseName("ux_booking_active_original_attendee")
             .HasFilter("status = 1 AND recovery_of_booking_id IS NULL")
             .IsUnique();
         builder.HasIndex(b => b.RecoveryOfBookingId)

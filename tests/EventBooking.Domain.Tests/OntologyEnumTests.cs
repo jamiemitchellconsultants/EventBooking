@@ -1,10 +1,10 @@
 using EventBooking.Domain.Access;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 
 namespace EventBooking.Domain.Tests;
 
@@ -23,9 +23,9 @@ public class OntologyEnumTests
             Enum.GetNames<Role>());
     }
 
-    /// <summary>Checks the candidate lifecycle vocabulary against the ontology.</summary>
+    /// <summary>Checks the attendee lifecycle vocabulary against the ontology.</summary>
     [Fact]
-    public void CandidateStatusMatchesTheOntology()
+    public void AttendeeStatusMatchesTheOntology()
     {
         Assert.Equal(
             new[]
@@ -33,21 +33,21 @@ public class OntologyEnumTests
                 "NotYetInvited", "AwaitingAvailability", "Invited", "Booked",
                 "NoResponseNeedsFollowUp",
             },
-            Enum.GetNames<CandidateStatus>());
+            Enum.GetNames<AttendeeStatus>());
     }
 
-    /// <summary>Checks the slot-proposal vocabulary against the ontology.</summary>
+    /// <summary>Checks the event-proposal vocabulary against the ontology.</summary>
     [Fact]
-    public void SlotProposalStatusMatchesTheOntology()
+    public void EventProposalStatusMatchesTheOntology()
     {
-        Assert.Equal(new[] { "Open", "Withdrawn", "Confirmed" }, Enum.GetNames<SlotProposalStatus>());
+        Assert.Equal(new[] { "Open", "Withdrawn", "Confirmed" }, Enum.GetNames<EventProposalStatus>());
     }
 
-    /// <summary>Checks the confirmed-slot vocabulary against the ontology.</summary>
+    /// <summary>Checks the event vocabulary against the ontology.</summary>
     [Fact]
-    public void ConfirmedSlotStatusMatchesTheOntology()
+    public void EventStatusMatchesTheOntology()
     {
-        Assert.Equal(new[] { "Active", "Cancelled" }, Enum.GetNames<ConfirmedSlotStatus>());
+        Assert.Equal(new[] { "Active", "Cancelled" }, Enum.GetNames<EventStatus>());
     }
 
     /// <summary>Checks the invite vocabulary against the ontology.</summary>
@@ -68,7 +68,7 @@ public class OntologyEnumTests
     [Fact]
     public void ActorTypeMatchesTheOntology()
     {
-        Assert.Equal(new[] { "Staff", "CandidateToken", "System" }, Enum.GetNames<ActorType>());
+        Assert.Equal(new[] { "Staff", "AttendeeToken", "System" }, Enum.GetNames<ActorType>());
     }
 
     /// <summary>Checks the audit action vocabulary against the ontology.</summary>
@@ -79,16 +79,16 @@ public class OntologyEnumTests
             new[]
             {
                 "ProposalCreated", "ProposalWithdrawn", "AcceptanceRecorded", "AcceptanceWithdrawn",
-                "SlotConfirmed", "SlotCancelled", "CapacityDecremented", "CapacityIncremented",
+                "EventConfirmed", "EventCancelled", "CapacityDecremented", "CapacityIncremented",
                 "InviteCreated", "InviteSent", "InviteExpired", "InviteOptionReplaced",
-                "BookingCreated", "BookingCancelled", "CapacityAdjusted", "SlotImported",
+                "BookingCreated", "BookingCancelled", "CapacityAdjusted", "EventImported",
                 "StaffAccessChanged", "StaffAccessRemoved",
                 "AppointmentCheckedIn", "AppointmentCompleted",
                 "AppointmentMarkedNoShow", "AppointmentStatusCorrected",
-                "EmployeeGroupAssigned", "EmployeeGroupChanged",
+                "AttendeeGroupAssigned", "AttendeeGroupReassigned",
                 "RecoveryInviteCreated", "RecoveryInviteCancelled",
                 "RecoveryBookingCreated", "RecoveryBookingConcluded", "StaffRolesSynced",
-                "CandidateDeleted",
+                "AttendeeDeleted",
             },
             Enum.GetNames<AuditAction>());
     }
@@ -109,8 +109,8 @@ public class OntologyEnumTests
         Assert.Equal(
             new[]
             {
-                "CandidateInvite", "BookingConfirmation", "SlotCancelledRebookingNeeded",
-                "CandidateReinvite",
+                "AttendeeInvite", "BookingConfirmation", "EventCancelledRebookingNeeded",
+                "AttendeeReinvite",
             },
             Enum.GetNames<EmailTemplate>());
     }
@@ -128,9 +128,9 @@ public class OntologyEnumTests
     {
         // A zero member would be indistinguishable from an unset integer column.
         Assert.DoesNotContain(0, Enum.GetValues<Role>().Cast<int>());
-        Assert.DoesNotContain(0, Enum.GetValues<CandidateStatus>().Cast<int>());
-        Assert.DoesNotContain(0, Enum.GetValues<SlotProposalStatus>().Cast<int>());
-        Assert.DoesNotContain(0, Enum.GetValues<ConfirmedSlotStatus>().Cast<int>());
+        Assert.DoesNotContain(0, Enum.GetValues<AttendeeStatus>().Cast<int>());
+        Assert.DoesNotContain(0, Enum.GetValues<EventProposalStatus>().Cast<int>());
+        Assert.DoesNotContain(0, Enum.GetValues<EventStatus>().Cast<int>());
         Assert.DoesNotContain(0, Enum.GetValues<InviteStatus>().Cast<int>());
         Assert.DoesNotContain(0, Enum.GetValues<BookingStatus>().Cast<int>());
         Assert.DoesNotContain(0, Enum.GetValues<BookingAppointmentStatus>().Cast<int>());

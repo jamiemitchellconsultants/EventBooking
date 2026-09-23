@@ -25,7 +25,7 @@ public sealed class AuditLog
     /// <summary>Defines actor type for the current use case.</summary>
     public ActorType ActorType { get; private set; }
 
-    /// <summary>The Entra object id for staff, the invite or booking id for a candidate token,
+    /// <summary>The Entra object id for staff, the invite or booking id for a attendee token,
     /// null for the system.</summary>
     public string? ActorId { get; private set; }
 

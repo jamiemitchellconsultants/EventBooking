@@ -31,7 +31,7 @@ public class AuditPageTests : BunitContext
 
     private static AuditRowDto Row(string action, Guid? id = null) => new(
         new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero),
-        "ConfirmedSlot",
+        "Event",
         id ?? Guid.NewGuid(),
         action,
         "Staff",
@@ -56,7 +56,7 @@ public class AuditPageTests : BunitContext
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
         Services.AddSingleton(new AuditClient(http));
         Services.AddSingleton(new MeClient(http));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
         return handler;
     }
 
@@ -84,31 +84,31 @@ public class AuditPageTests : BunitContext
     public void TheNewestPageIsLoadedOnArrival()
     {
         var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotConfirmed")], null));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], null));
         Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
 
-        cut.WaitForAssertion(() => Assert.Contains("SlotConfirmed details", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("EventConfirmed details", cut.Markup));
     }
 
     [Fact]
     public void LoadMoreAppendsRatherThanReplaces()
     {
         var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotConfirmed")], "cursor-1"));
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotCancelled")], null));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], "cursor-1"));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventCancelled")], null));
         var handler = Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
-        cut.WaitForAssertion(() => Assert.Contains("SlotConfirmed details", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("EventConfirmed details", cut.Markup));
 
         cut.Find("#audit-load-more").Click();
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("SlotConfirmed details", cut.Markup);
-            Assert.Contains("SlotCancelled details", cut.Markup);
+            Assert.Contains("EventConfirmed details", cut.Markup);
+            Assert.Contains("EventCancelled details", cut.Markup);
         });
         Assert.Contains(handler.Requests, uri => uri.Query.Contains("cursor=cursor-1"));
     }
@@ -117,12 +117,12 @@ public class AuditPageTests : BunitContext
     public void LoadMoreIsHiddenWhenThePageIsExhausted()
     {
         var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotConfirmed")], null));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], null));
         Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
 
-        cut.WaitForAssertion(() => Assert.Contains("SlotConfirmed details", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("EventConfirmed details", cut.Markup));
         Assert.Empty(cut.FindAll("#audit-load-more"));
     }
 
@@ -130,19 +130,19 @@ public class AuditPageTests : BunitContext
     public void SearchingAgainReplacesThePreviousResults()
     {
         var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotConfirmed")], null));
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotCancelled")], null));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], null));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventCancelled")], null));
         Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
-        cut.WaitForAssertion(() => Assert.Contains("SlotConfirmed details", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("EventConfirmed details", cut.Markup));
 
         cut.Find("#audit-search").Click();
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("SlotCancelled details", cut.Markup);
-            Assert.DoesNotContain("SlotConfirmed details", cut.Markup);
+            Assert.Contains("EventCancelled details", cut.Markup);
+            Assert.DoesNotContain("EventConfirmed details", cut.Markup);
         });
     }
 
@@ -159,7 +159,7 @@ public class AuditPageTests : BunitContext
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
         Services.AddSingleton(new AuditClient(http));
         Services.AddSingleton(new MeClient(http));
-        Services.AddSingleton(new HeadOfficeTimePresentation("Europe/London"));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
         var cut = Render<Audit>();
 
@@ -169,7 +169,7 @@ public class AuditPageTests : BunitContext
     public void ActionButtonsUseTheSharedButtonStyles()
     {
         var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("SlotConfirmed")], "cursor-1"));
+        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], "cursor-1"));
         Given(["Admin"], pages);
 
         var cut = Render<Audit>();

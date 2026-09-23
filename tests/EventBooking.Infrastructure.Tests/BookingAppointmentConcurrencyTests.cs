@@ -6,11 +6,11 @@ using EventBooking.Application.Notifications;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Candidates;
-using EventBooking.Domain.EmployeeGroups;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Slots;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Repositories;
@@ -37,23 +37,23 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         {
             seed.StaffAccessProfiles.Add(StaffAccessProfile.Create(
                 staff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
-            var pilots = seed.EmployeeGroups.Include(g => g.Requirements).Single(g => g.Id == EmployeeGroupIds.Pilots);
-            var candidate = Candidate.Create(
+            var pilots = seed.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+            var attendee = Attendee.Create(
                 Guid.NewGuid(), "Amara Novak", "amara@example.com", pilots);
-            var slot = ConfirmedSlot.CreateImported(
+            var eventItem = Event.CreateImported(
                 Guid.NewGuid(),
-                new SlotWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
             var invite = Invite.CreateInitial(
-                Guid.NewGuid(), candidate.Id, "invite-token", now.AddDays(1),
-                [slot.Id, Guid.NewGuid(), Guid.NewGuid()], candidate.RequiredAppointmentTypeIds, 0);
+                Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
+                [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()], attendee.RequiredAppointmentTypeIds, 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, slot.Id, "manage-token", now.AddDays(-1));
+                Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);
             appointmentId = appointment.Id;
-            seed.Candidates.Add(candidate);
-            seed.ConfirmedSlots.Add(slot);
+            seed.Attendees.Add(attendee);
+            seed.Events.Add(eventItem);
             seed.Bookings.Add(booking);
             seed.BookingAppointments.Add(appointment);
             await seed.SaveChangesAsync();
@@ -86,9 +86,9 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
                 new BookingAppointmentRepository(context),
                 new BookingRepository(context),
-                new CandidateRepository(context),
+                new AttendeeRepository(context),
                 new InviteRepository(context),
-                new ConfirmedSlotRepository(context),
+                new EventRepository(context),
                 new RecoveryBookingOutcomeCoordinator(),
                 new EfAuditLogger(context, new FixedClock(now)),
                 new UnitOfWork(context),
@@ -117,11 +117,11 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         var now = new DateTimeOffset(2026, 9, 7, 14, 0, 0, TimeSpan.Zero);
         var coordinator = Guid.NewGuid();
         var appointmentStaff = Guid.NewGuid();
-        Guid candidateId;
+        Guid attendeeId;
         Guid appointmentId;
 
         var ids = await GivenCorrectionRaceAsync(now, coordinator, appointmentStaff);
-        candidateId = ids.CandidateId;
+        attendeeId = ids.AttendeeId;
         appointmentId = ids.AppointmentId;
 
         var correctTask = CorrectAsync();
@@ -135,7 +135,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         await using var read = fixture.NewContext();
         var stored = await read.BookingAppointments.AsNoTracking().SingleAsync();
         var pendingRecovery = await read.Invites.AnyAsync(invite =>
-            invite.CandidateId == candidateId
+            invite.AttendeeId == attendeeId
             && invite.Status == InviteStatus.Pending
             && invite.RecoveryOfBookingId != null);
         Assert.False(pendingRecovery && stored.Status == BookingAppointmentStatus.Expected);
@@ -165,9 +165,9 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
                 new BookingAppointmentRepository(context),
                 new BookingRepository(context),
-                new CandidateRepository(context),
+                new AttendeeRepository(context),
                 new InviteRepository(context),
-                new ConfirmedSlotRepository(context),
+                new EventRepository(context),
                 new RecoveryBookingOutcomeCoordinator(),
                 new EfAuditLogger(context, new FixedClock(now)),
                 new UnitOfWork(context),
@@ -191,33 +191,33 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var audit = new EfAuditLogger(context, clock);
             var tokens = new HmacTokenService(
                 new TokenOptions("a-correction-race-signing-key-long-enough"));
-            var slots = new ConfirmedSlotRepository(context);
+            var events = new EventRepository(context);
             var deliveries = new EmailDeliveryService(
                 new EmailDeliveryRepository(context), new SilentSender(), unitOfWork, clock,
                 NullLogger<EmailDeliveryService>.Instance);
             var issuer = new InviteIssuer(
                 new InviteRepository(context),
-                new EmployeeGroupRepository(context),
-                new EligibleSlotFinder(slots, clock),
+                new AttendeeGroupRepository(context),
+                new EligibleEventFinder(events, clock),
                 new SystemSettingsRepository(context),
                 tokens,
                 deliveries,
                 audit,
                 clock,
-                new CandidatePortalOptions(
+                new AttendeePortalOptions(
                     "https://booking.example.com", "HQ", "recruitment@example.com"));
             var handler = new StartRecoveryHandler(
-                new CandidateRepository(context),
+                new AttendeeRepository(context),
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
                 new InviteRepository(context),
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
                 issuer,
-                new EligibleSlotFinder(slots, clock),
+                new EligibleEventFinder(events, clock),
                 deliveries,
                 unitOfWork);
             return await handler.HandleAsync(
-                new StartRecoveryCommand(coordinator, candidateId), CancellationToken.None);
+                new StartRecoveryCommand(coordinator, attendeeId), CancellationToken.None);
         }
     }
 
@@ -232,15 +232,15 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         var now = new DateTimeOffset(2026, 9, 7, 14, 0, 0, TimeSpan.Zero);
         var coordinator = Guid.NewGuid();
         var appointmentStaff = Guid.NewGuid();
-        Guid candidateId;
+        Guid attendeeId;
         Guid appointmentId;
 
         var ids = await GivenCorrectionRaceAsync(now, coordinator, appointmentStaff);
-        candidateId = ids.CandidateId;
+        attendeeId = ids.AttendeeId;
         appointmentId = ids.AppointmentId;
 
         await using var issueContext = fixture.NewContext();
-        var issueResult = await IssueAsync(issueContext, now, coordinator, candidateId);
+        var issueResult = await IssueAsync(issueContext, now, coordinator, attendeeId);
         Assert.True(issueResult.IsSuccess);
 
         await using var correctContext = fixture.NewContext();
@@ -255,7 +255,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         var stored = await read.BookingAppointments.AsNoTracking().SingleAsync();
         Assert.Equal(BookingAppointmentStatus.NoShow, stored.Status);
         Assert.True(await read.Invites.AnyAsync(invite =>
-            invite.CandidateId == candidateId
+            invite.AttendeeId == attendeeId
             && invite.Status == InviteStatus.Pending
             && invite.RecoveryOfBookingId != null));
 
@@ -269,9 +269,9 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
                 new BookingAppointmentRepository(context),
                 new BookingRepository(context),
-                new CandidateRepository(context),
+                new AttendeeRepository(context),
                 new InviteRepository(context),
-                new ConfirmedSlotRepository(context),
+                new EventRepository(context),
                 new RecoveryBookingOutcomeCoordinator(),
                 new EfAuditLogger(context, new FixedClock(at)),
                 new UnitOfWork(context),
@@ -291,49 +291,49 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             EventBookingDbContext context,
             DateTimeOffset at,
             Guid staff,
-            Guid candidate)
+            Guid attendee)
         {
             var clock = new FixedClock(at);
             var unitOfWork = new UnitOfWork(context);
             var audit = new EfAuditLogger(context, clock);
             var tokens = new HmacTokenService(
                 new TokenOptions("a-correction-race-signing-key-long-enough"));
-            var slots = new ConfirmedSlotRepository(context);
+            var events = new EventRepository(context);
             var deliveries = new EmailDeliveryService(
                 new EmailDeliveryRepository(context), new SilentSender(), unitOfWork, clock,
                 NullLogger<EmailDeliveryService>.Instance);
             var issuer = new InviteIssuer(
                 new InviteRepository(context),
-                new EmployeeGroupRepository(context),
-                new EligibleSlotFinder(slots, clock),
+                new AttendeeGroupRepository(context),
+                new EligibleEventFinder(events, clock),
                 new SystemSettingsRepository(context),
                 tokens,
                 deliveries,
                 audit,
                 clock,
-                new CandidatePortalOptions(
+                new AttendeePortalOptions(
                     "https://booking.example.com", "HQ", "recruitment@example.com"));
             var handler = new StartRecoveryHandler(
-                new CandidateRepository(context),
+                new AttendeeRepository(context),
                 new StaffAccessAuthorizer(new StaffAccessProfileRepository(context)),
                 new InviteRepository(context),
                 new BookingRepository(context),
                 new BookingAppointmentRepository(context),
                 issuer,
-                new EligibleSlotFinder(slots, clock),
+                new EligibleEventFinder(events, clock),
                 deliveries,
                 unitOfWork);
             return await handler.HandleAsync(
-                new StartRecoveryCommand(staff, candidate), CancellationToken.None);
+                new StartRecoveryCommand(staff, attendee), CancellationToken.None);
         }
     }
 
-    private async Task<(Guid CandidateId, Guid AppointmentId)> GivenCorrectionRaceAsync(
+    private async Task<(Guid AttendeeId, Guid AppointmentId)> GivenCorrectionRaceAsync(
         DateTimeOffset now,
         Guid coordinator,
         Guid appointmentStaff)
     {
-        Guid candidateId;
+        Guid attendeeId;
         Guid appointmentId;
 
         await using (var seed = fixture.NewContext())
@@ -342,47 +342,47 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 coordinator, [Role.Coordinator], null));
             seed.StaffAccessProfiles.Add(StaffAccessProfile.Create(
                 appointmentStaff, [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting));
-            var group = EmployeeGroup.Define(
+            var group = AttendeeGroup.Define(
                 Guid.NewGuid(), $"DAT_ONLY_{Guid.NewGuid():N}".ToUpperInvariant(), "DAT only", true,
                 [AppointmentTypeIds.DrugAndAlcoholTesting]);
-            var candidate = Candidate.Create(
+            var attendee = Attendee.Create(
                 Guid.NewGuid(), "Amara Novak", "amara@example.com", group);
-            candidate.MarkInvited();
-            candidate.MarkBooked();
-            candidateId = candidate.Id;
-            var pastSlot = ConfirmedSlot.CreateImported(
+            attendee.MarkInvited();
+            attendee.MarkBooked();
+            attendeeId = attendee.Id;
+            var pastEvent = Event.CreateImported(
                 Guid.NewGuid(),
-                new SlotWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
             var invite = Invite.CreateInitial(
-                Guid.NewGuid(), candidate.Id, "invite-token", now.AddDays(1),
-                [pastSlot.Id, Guid.NewGuid(), Guid.NewGuid()],
-                candidate.RequiredAppointmentTypeIds, 0);
+                Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
+                [pastEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
+                attendee.RequiredAppointmentTypeIds, 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, pastSlot.Id, "manage-token", now.AddDays(-1));
+                Guid.NewGuid(), invite, pastEvent.Id, "manage-token", now.AddDays(-1));
             invite.MarkUsed();
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);
             appointment.TransitionTo(
                 BookingAppointmentStatus.NoShow, appointmentStaff, now, false, true);
             appointmentId = appointment.Id;
-            seed.Candidates.Add(candidate);
-            seed.ConfirmedSlots.Add(pastSlot);
+            seed.Attendees.Add(attendee);
+            seed.Events.Add(pastEvent);
             foreach (var day in new[] { 30, 31, 32 })
             {
-                seed.ConfirmedSlots.Add(ConfirmedSlot.CreateImported(
+                seed.Events.Add(Event.CreateImported(
                     Guid.NewGuid(),
-                    new SlotWindow(DateOnly.FromDateTime(now.DateTime).AddDays(day), new TimeOnly(9, 0)),
+                    new EventWindow(DateOnly.FromDateTime(now.DateTime).AddDays(day), new TimeOnly(9, 0)),
                     AppointmentTypeIds.All.ToDictionary(value => value, _ => 10)));
             }
 
             seed.Bookings.Add(booking);
             seed.BookingAppointments.Add(appointment);
-            seed.EmployeeGroups.Add(group);
+            seed.AttendeeGroups.Add(group);
             await seed.SaveChangesAsync();
         }
 
-        return (candidateId, appointmentId);
+        return (attendeeId, appointmentId);
     }
 
     private sealed class SilentSender : IEmailSender
@@ -397,13 +397,13 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         /// <inheritdoc/>
         public DateTimeOffset UtcNow => now;
         /// <inheritdoc/>
-        public DateTimeOffset NowAtHeadOffice => now;
+        public DateTimeOffset NowAtTransitionalLocation => now;
         /// <inheritdoc/>
-        public DateOnly TodayAtHeadOffice => DateOnly.FromDateTime(now.DateTime);
+        public DateOnly TodayAtTransitionalLocation => DateOnly.FromDateTime(now.DateTime);
         /// <inheritdoc/>
-        public DateOnly DateAtHeadOffice(DateTimeOffset instant) =>
+        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) =>
             DateOnly.FromDateTime(instant.DateTime);
 
-        public DateTimeOffset InstantAtHeadOffice(DateTimeOffset instant) => instant;
+        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) => instant;
     }
 }

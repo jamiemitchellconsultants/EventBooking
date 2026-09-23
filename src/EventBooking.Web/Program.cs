@@ -9,8 +9,8 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
     ?? throw new InvalidOperationException("ApiBaseUrl is not configured.");
-var headOfficeTimeZoneId = builder.Configuration["HeadOfficeTimeZoneId"]
-    ?? throw new InvalidOperationException("HeadOfficeTimeZoneId is not configured.");
+var transitionalLocationTimeZoneId = builder.Configuration["TransitionalLocationTimeZoneId"]
+    ?? throw new InvalidOperationException("TransitionalLocationTimeZoneId is not configured.");
 
 string[] tokenScopes;
 var authority = builder.Configuration["Auth:Local:Authority"]
@@ -44,19 +44,19 @@ builder.Services.AddScoped(sp =>
     return new HttpClient(handler) { BaseAddress = new Uri(apiBaseUrl) };
 });
 
-builder.Services.AddScoped<EventBooking.Web.Services.SlotsClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.CandidatesClient>();
+builder.Services.AddScoped<EventBooking.Web.Services.EventsClient>();
+builder.Services.AddScoped<EventBooking.Web.Services.AttendeesClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.AdminClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.StaffAccessClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.ConfirmedSlotsClient>();
+builder.Services.AddScoped<EventBooking.Web.Services.EventOperationsClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.DashboardsClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.AuditClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.MeClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.AppointmentsClient>();
-builder.Services.AddSingleton(new EventBooking.Web.Services.HeadOfficeTimePresentation(headOfficeTimeZoneId));
-builder.Services.AddSingleton(new EventBooking.Web.Services.HeadOfficePageClock(headOfficeTimeZoneId));
+builder.Services.AddSingleton(new EventBooking.Web.Services.TransitionalLocationTimePresentation(transitionalLocationTimeZoneId));
+builder.Services.AddSingleton(new EventBooking.Web.Services.TransitionalLocationPageClock(transitionalLocationTimeZoneId));
 
-// Candidates authorise with the single-use token in their URL. This plain named client must never
+// Attendees authorise with the single-use token in their URL. This plain named client must never
 // use AuthorizationMessageHandler, which would attach a staff access token and start sign-in.
 builder.Services.AddHttpClient(EventBooking.Web.Services.BookingClient.ClientName, client =>
 {
@@ -64,7 +64,7 @@ builder.Services.AddHttpClient(EventBooking.Web.Services.BookingClient.ClientNam
 });
 builder.Services.AddScoped(sp => new EventBooking.Web.Services.BookingClient(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient(EventBooking.Web.Services.BookingClient.ClientName)));
-builder.Services.AddSingleton(new EventBooking.Web.Services.CandidatePageOptions(
+builder.Services.AddSingleton(new EventBooking.Web.Services.AttendeePageOptions(
     builder.Configuration["CoordinatorContact"] ?? "the recruitment team"));
 
 await builder.Build().RunAsync();
