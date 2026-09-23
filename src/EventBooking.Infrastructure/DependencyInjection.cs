@@ -3,6 +3,7 @@ using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Persistence.Locking;
 using EventBooking.Infrastructure.Persistence.Queries;
 using EventBooking.Infrastructure.Persistence.Repositories;
 using EventBooking.Infrastructure.Time;
@@ -26,6 +27,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped(sp =>
             sp.GetRequiredService<IDbContextFactory<EventBookingDbContext>>().CreateDbContext());
 
+        // Scoped: one tracker per DbContext, because the order is a property of one connection's
+        // transaction, not of the process.
+        services.AddScoped<TransactionLocks>();
+        services.AddScoped<RowLocks>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
         services.AddScoped<ISystemSettingsRepository, SystemSettingsRepository>();
