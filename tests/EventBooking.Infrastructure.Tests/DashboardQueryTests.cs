@@ -242,14 +242,13 @@ public class DashboardQueryTests(PostgresFixture fixture)
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "invite-hash",
                 clock.UtcNow.AddDays(4),
                 [ProposalFixture.LocationId],
                 events.Select(s => s.Id),
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, events[0].Id, "booking-hash", clock.UtcNow);
+                Guid.NewGuid(), invite, events[0].Id, clock.UtcNow);
 
             write.Events.AddRange(events);
             write.Attendees.Add(attendee);
@@ -395,14 +394,13 @@ public class DashboardQueryTests(PostgresFixture fixture)
             var cancelledInvite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 actionableId,
-                "cancelled-invite-hash",
                 clock.UtcNow.AddDays(4),
                 [ProposalFixture.LocationId],
                 [cancelledEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
                 actionableAttendee.RequiredAppointmentTypeIds,
                 0);
             var cancelledBooking = Booking.Create(
-                cancelledBookingId, cancelledInvite, cancelledEvent.Id, "cancelled-booking-hash", clock.UtcNow);
+                cancelledBookingId, cancelledInvite, cancelledEvent.Id, clock.UtcNow);
             cancelledBooking.Cancel();
             write.Attendees.AddRange(actionableAttendee, staleAttendee);
             write.Events.Add(cancelledEvent);

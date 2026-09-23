@@ -120,12 +120,11 @@ public sealed class InviteIssuer(
             var configuration = await settings.GetAsync(cancellationToken);
 
             var inviteId = Guid.NewGuid();
-            var token = tokens.Issue(inviteId);
+            var token = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
 
             var invite = Invite.CreateInitial(
                 inviteId,
                 attendee.Id,
-                token.TokenHash,
                 clock.UtcNow.AddDays(configuration.InviteExpiryDays),
                 // The Coordinator cannot choose locations until Task 12 puts them on the command,
                 // so every invite is restricted to the transitional site.
@@ -149,7 +148,7 @@ public sealed class InviteIssuer(
                 attendee,
                 mapping,
                 options,
-                $"{portal.BaseUrl}/book/{token.Token}",
+                $"{portal.BaseUrl}/book/{token}",
                 isReinvite,
                 isRecovery: false);
 
@@ -209,13 +208,12 @@ public sealed class InviteIssuer(
             var configuration = await settings.GetAsync(cancellationToken);
 
             var inviteId = Guid.NewGuid();
-            var token = tokens.Issue(inviteId);
+            var token = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
 
             var invite = Invite.CreateRecovery(
                 inviteId,
                 attendee.Id,
                 rootBookingId,
-                token.TokenHash,
                 clock.UtcNow.AddDays(configuration.InviteExpiryDays),
                 TransitionalLocation.Id,
                 null,
@@ -242,7 +240,7 @@ public sealed class InviteIssuer(
                 attendee,
                 selectedTypeIds,
                 options,
-                $"{portal.BaseUrl}/book/{token.Token}",
+                $"{portal.BaseUrl}/book/{token}",
                 isReinvite: false,
                 isRecovery: true);
 

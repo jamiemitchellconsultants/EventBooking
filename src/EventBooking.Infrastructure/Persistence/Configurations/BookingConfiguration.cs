@@ -25,18 +25,13 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(b => b.CreatedAt).HasColumnName("created_at");
         builder.Property(b => b.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(b => b.RecoveryOfBookingId).HasColumnName("recovery_of_booking_id");
-        builder
-            .Property(b => b.ManageTokenHash)
-            .HasColumnName("manage_token_hash")
-            .HasMaxLength(200)
-            .IsRequired();
+        builder.Property(b => b.ManageTokenVersion).HasColumnName("manage_token_version");
 
         builder.HasOne<Booking>()
             .WithMany()
             .HasForeignKey(b => b.RecoveryOfBookingId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(b => b.ManageTokenHash).IsUnique();
         builder.HasIndex(b => new { b.EventId, b.Status });
         builder.HasIndex(b => new { b.AttendeeId, b.Status });
         builder.HasIndex(b => b.RecoveryOfBookingId);

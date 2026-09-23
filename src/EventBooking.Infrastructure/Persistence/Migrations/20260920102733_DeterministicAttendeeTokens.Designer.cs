@@ -3,6 +3,7 @@ using System;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace EventBooking.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(EventBookingDbContext))]
-    partial class EventBookingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260920102733_DeterministicAttendeeTokens")]
+    partial class DeterministicAttendeeTokens
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -872,6 +875,11 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                                 .HasColumnName("start_time");
 
                             b1.HasKey("EventProposalId");
+
+                            b1.HasIndex("Date", "StartTime")
+                                .IsUnique()
+                                .HasDatabaseName("ux_event_proposal_open_window")
+                                .HasFilter("status = 1");
 
                             b1.ToTable("event_proposal");
 

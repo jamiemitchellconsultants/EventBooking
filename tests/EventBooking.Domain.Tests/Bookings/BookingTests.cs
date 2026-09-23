@@ -17,7 +17,6 @@ public class BookingTests
         Invite.CreateInitial(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "invite-token-hash",
             Now.AddDays(4),
             [ProposalFixture.LocationId],
             [EventA, EventB, EventC],
@@ -25,7 +24,7 @@ public class BookingTests
             0);
 
     private static Booking NewBooking(Invite invite) =>
-        Booking.Create(Guid.NewGuid(), invite, EventB, "manage-token-hash", Now);
+        Booking.Create(Guid.NewGuid(), invite, EventB, Now);
 
     [Fact]
     public void ABookingCarriesTheAttendeeEventAndInvite()
@@ -39,7 +38,7 @@ public class BookingTests
         Assert.Equal(invite.Id, booking.InviteId);
         Assert.Equal(Now, booking.CreatedAt);
         Assert.Equal(BookingStatus.Active, booking.Status);
-        Assert.Equal("manage-token-hash", booking.ManageTokenHash);
+        Assert.Equal(Booking.InitialManageTokenVersion, booking.ManageTokenVersion);
     }
 
     [Fact]
@@ -48,7 +47,7 @@ public class BookingTests
         var invite = NewInvite();
 
         var ex = Assert.Throws<DomainException>(
-            () => Booking.Create(Guid.NewGuid(), invite, EventNotOffered, "manage-token-hash", Now));
+            () => Booking.Create(Guid.NewGuid(), invite, EventNotOffered, Now));
         Assert.Equal("The chosen eventItem is not one of this invite's options.", ex.Message);
     }
 
@@ -63,13 +62,23 @@ public class BookingTests
     }
 
     [Fact]
-    public void ABookingWithoutAManageTokenHashIsRejected()
+    public void RotatingAnActiveBookingsManageTokenMovesToTheNextVersion()
     {
-        var invite = NewInvite();
+        var booking = NewBooking(NewInvite());
 
-        var ex = Assert.Throws<DomainException>(
-            () => Booking.Create(Guid.NewGuid(), invite, EventB, " ", Now));
-        Assert.Equal("manageTokenHash must not be blank.", ex.Message);
+        booking.RotateManageToken();
+
+        Assert.Equal(Booking.InitialManageTokenVersion + 1, booking.ManageTokenVersion);
+    }
+
+    [Fact]
+    public void RotatingTheManageTokenOfACancelledBookingIsRejected()
+    {
+        var booking = NewBooking(NewInvite());
+        booking.Cancel();
+
+        var ex = Assert.Throws<DomainException>(booking.RotateManageToken);
+        Assert.Equal("Only an active booking token can be rotated.", ex.Message);
     }
 
     [Fact]

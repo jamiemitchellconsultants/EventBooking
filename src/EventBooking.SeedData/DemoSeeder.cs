@@ -519,7 +519,6 @@ public sealed class DemoSeeder(
                         SeedId(attendee.Email, "recovery:invite"),
                         attendee.Id,
                         originalBooking.Id,
-                        $"seed-recovery-{position}",
                         now.AddDays(7),
                         TransitionalLocation.Id,
                         null,
@@ -532,7 +531,6 @@ public sealed class DemoSeeder(
                         recoveryInvite,
                         originalBooking,
                         recoveryEventId,
-                        $"seed-recovery-manage-{position}",
                         now.AddMinutes(5));
                     recoveryInvite.MarkUsed();
                     database.Bookings.Add(recovery);
@@ -573,7 +571,6 @@ public sealed class DemoSeeder(
         var invite = Invite.CreateInitial(
             SeedId(attendee.Email, $"{tag}:invite"),
             attendee.Id,
-            $"seed-{tag}-{attendee.Email}",
             createdAt.AddDays(7),
             [TransitionalLocation.Id],
             [eventId, SeedId(attendee.Email, $"{tag}:spare1"), SeedId(attendee.Email, $"{tag}:spare2")],
@@ -584,7 +581,6 @@ public sealed class DemoSeeder(
             SeedId(attendee.Email, $"{tag}:booking"),
             invite,
             eventId,
-            $"seed-{tag}-manage-{attendee.Email}",
             createdAt);
         invite.MarkUsed();
         database.Bookings.Add(booking);

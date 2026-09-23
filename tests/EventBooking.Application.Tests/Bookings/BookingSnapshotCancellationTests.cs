@@ -34,13 +34,12 @@ public sealed class BookingSnapshotCancellationTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.MedicalCheckUp],
             0);
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, "manage", DateTimeOffset.UtcNow);
+        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, DateTimeOffset.UtcNow);
         var appointments = new InMemoryBookingAppointmentRepository(new InMemoryBookingRepository());
         appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.MedicalCheckUp));
@@ -81,13 +80,12 @@ public sealed class BookingSnapshotCancellationTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp],
             0);
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, "manage", DateTimeOffset.UtcNow);
+        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, DateTimeOffset.UtcNow);
         var bookings = new InMemoryBookingRepository();
         bookings.Add(booking);
         var appointments = new InMemoryBookingAppointmentRepository(bookings);

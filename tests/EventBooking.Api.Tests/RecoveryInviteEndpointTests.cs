@@ -199,14 +199,13 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            $"invite-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [bookedEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, bookedEvent.Id, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, bookedEvent.Id, DateTimeOffset.UtcNow);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.MedicalCheckUp);
         context.AddRange(bookedEvent);

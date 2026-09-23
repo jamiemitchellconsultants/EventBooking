@@ -131,13 +131,12 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
         attendee.MarkInvited(ProposalFixture.Now);
 
         var inviteId = Guid.NewGuid();
-        var issued = tokens.Issue(inviteId);
+        var issued = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
 
         // Every invite is real: the fallback events remain valid options if the contested one fills.
         var invite = Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            issued.TokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [eventId, .. _fallbackEventIds],
@@ -150,7 +149,7 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
         context.Invites.Add(invite);
         await context.SaveChangesAsync();
 
-        return issued.Token;
+        return issued;
     }
 
     public async Task<Result<ConfirmBookingOutcome>> ConfirmAsync(string token, Guid eventId)
@@ -235,12 +234,16 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
     /// </summary>
     public async Task<IReadOnlyList<Guid>> LiveOptionEventIdsAsync(string token)
     {
-        var tokenHash = _services.GetRequiredService<ITokenService>().Hash(token);
+        if (!_services.GetRequiredService<ITokenService>().TryRead(token, out var link)
+            || link.Purpose != TokenPurpose.Book)
+        {
+            throw new InvalidOperationException("The supplied book token does not verify.");
+        }
 
         await using var context = _fixture.NewContext();
         var invite = await context.Invites
             .Include(i => i.Options)
-            .SingleAsync(i => i.TokenHash == tokenHash);
+            .SingleAsync(i => i.Id == link.EntityId && i.TokenVersion == link.Version);
         if (invite.Status != InviteStatus.Pending)
         {
             throw new InvalidOperationException("Only a pending invite can retain live options.");

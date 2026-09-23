@@ -165,14 +165,13 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            $"invite-{attendee.Id}",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, eventItem.Id, $"manage-{attendee.Id}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventItem.Id, DateTimeOffset.UtcNow);
         if (cancelled)
         {
             booking.Cancel();

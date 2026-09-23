@@ -161,22 +161,6 @@ public sealed class InviteRepository(EventBookingDbContext context) : IInviteRep
             context.Invites.FromSqlInterpolated($"SELECT * FROM invite WHERE id = {id} FOR UPDATE"),
             cancellationToken);
 
-    public Task<Invite?> GetByTokenHashAsync(
-        string tokenHash,
-        CancellationToken cancellationToken) =>
-        context.Invites
-            .Include(i => i.Options)
-            .Include(i => i.Requirements)
-            .SingleOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
-
-    public async Task<Invite?> LockByTokenHashForUpdateAsync(
-        string tokenHash,
-        CancellationToken cancellationToken) =>
-        await LockAndLoadOptionsAsync(
-            context.Invites.FromSqlInterpolated(
-                $"SELECT * FROM invite WHERE token_hash = {tokenHash} FOR UPDATE"),
-            cancellationToken);
-
     /// <summary>Locks the attendee's current pending invite and loads its offered event IDs.</summary>
     public async Task<Invite?> LockPendingForAttendeeAsync(
         Guid attendeeId,
@@ -320,43 +304,20 @@ public sealed class BookingRepository(EventBookingDbContext context) : IBookingR
         return rows.SingleOrDefault();
     }
 
-    public Task<Booking?> GetByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
-        context.Bookings.SingleOrDefaultAsync(
-            b => b.ManageTokenHash == manageTokenHash,
-            cancellationToken);
-
-    public Task<Guid?> GetEventIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
+    public Task<Guid?> GetEventIdAsync(Guid id, CancellationToken cancellationToken) =>
         context.Bookings
             .AsNoTracking()
-            .Where(b => b.ManageTokenHash == manageTokenHash)
+            .Where(b => b.Id == id)
             .Select(b => (Guid?)b.EventId)
             .SingleOrDefaultAsync(cancellationToken);
 
     /// <summary>Reads only the attendee ID used to establish cancellation lock order.</summary>
-    public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
+    public Task<Guid?> GetAttendeeIdAsync(Guid id, CancellationToken cancellationToken) =>
         context.Bookings
             .AsNoTracking()
-            .Where(b => b.ManageTokenHash == manageTokenHash)
+            .Where(b => b.Id == id)
             .Select(b => (Guid?)b.AttendeeId)
             .SingleOrDefaultAsync(cancellationToken);
-
-    public async Task<Booking?> LockByManageTokenHashForUpdateAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken)
-    {
-        var rows = await context.Bookings
-            .FromSqlInterpolated(
-                $"SELECT * FROM booking WHERE manage_token_hash = {manageTokenHash} FOR UPDATE")
-            .ToListAsync(cancellationToken);
-
-        return rows.SingleOrDefault();
-    }
 
     /// <inheritdoc/>
     public async Task<Booking?> LockByIdForAttendeeAsync(

@@ -185,14 +185,13 @@ public sealed class BookingAppointmentPersistenceTests(PostgresFixture fixture)
         var invite = Domain.Invites.Invite.CreateInitial(
             Guid.NewGuid(),
             attendeeId,
-            "invite-token-hash",
             DateTimeOffset.UtcNow.AddDays(1),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             [AppointmentTypeIds.DrugAndAlcoholTesting],
             0);
         return Booking.Create(
-            Guid.NewGuid(), invite, eventId, "manage-token-hash", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventId, DateTimeOffset.UtcNow);
     }
 
     /// <summary>Creates a context against the supplied connection string.</summary>

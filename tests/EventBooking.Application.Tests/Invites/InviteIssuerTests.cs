@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Tests.Fakes;
@@ -111,10 +112,9 @@ public class InviteIssuerTests
         var result = await Issue();
 
         var invite = _invites.Items.Single();
-        var expected = _tokens.Issue(result.InviteId!.Value);
-        Assert.Equal(expected.TokenHash, invite.TokenHash);
-        Assert.DoesNotContain(expected.Token, invite.TokenHash);
-        Assert.Contains($"https://booking.example.com/book/{expected.Token}", _email.Sent.Single().TextBody);
+        var expected = _tokens.Issue(TokenPurpose.Book, result.InviteId!.Value, Invite.InitialTokenVersion);
+        Assert.Equal(Invite.InitialTokenVersion, invite.TokenVersion);
+        Assert.Contains($"https://booking.example.com/book/{expected}", _email.Sent.Single().TextBody);
     }
 
     [Fact]
@@ -140,7 +140,6 @@ public class InviteIssuerTests
         var old = Invite.CreateInitial(
             Guid.NewGuid(),
             _attendee.Id,
-            "old-hash",
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],

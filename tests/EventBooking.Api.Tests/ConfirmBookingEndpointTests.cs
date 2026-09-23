@@ -152,11 +152,10 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
-        var issued = tokens.Issue(inviteId);
+        var issued = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         context.Invites.Add(Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            issued.TokenHash,
             new DateTimeOffset(2030, 1, 20, 0, 0, 0, TimeSpan.Zero),
             [ProposalFixture.LocationId],
             offeredEventIds,
@@ -164,7 +163,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             0));
         await context.SaveChangesAsync();
 
-        return new InviteFixture(issued.Token, unofferedEventId);
+        return new InviteFixture(issued, unofferedEventId);
     }
 
     private sealed record InviteFixture(string Token, Guid UnofferedEventId);

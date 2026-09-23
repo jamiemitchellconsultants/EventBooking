@@ -155,11 +155,10 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         context.Attendees.Add(attendee);
 
         var inviteId = Guid.NewGuid();
-        var issued = tokens.Issue(inviteId);
+        var issued = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         context.Invites.Add(Invite.CreateInitial(
             inviteId,
             attendee.Id,
-            issued.TokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             eventIds,
@@ -167,7 +166,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
             0));
         await context.SaveChangesAsync();
 
-        return new AttendeeInviteFixture(issued.Token, attendee.Id, inviteId);
+        return new AttendeeInviteFixture(issued, attendee.Id, inviteId);
     }
 
     private async Task<CancellationState> ReadCancellationStateAsync(BookingFixture booking)

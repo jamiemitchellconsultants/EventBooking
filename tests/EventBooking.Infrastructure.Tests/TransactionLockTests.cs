@@ -99,11 +99,11 @@ public class TransactionLockTests(PostgresFixture fixture)
 
         await using var first = fixture.NewContext();
         await using var firstTransaction = await first.Database.BeginTransactionAsync();
-        Assert.NotNull(await new InviteRepository(first).LockByTokenHashForUpdateAsync(
-            scenario.InviteTokenHash, CancellationToken.None));
+        Assert.NotNull(await new InviteRepository(first).LockForUpdateAsync(
+            scenario.InviteId, CancellationToken.None));
 
         var waitingBackend = NewBarrier();
-        var secondLock = LockInviteAsync(scenario.InviteTokenHash, waitingBackend);
+        var secondLock = LockInviteAsync(scenario.InviteId, waitingBackend);
         var secondPid = await waitingBackend.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilBlockedOnDatabaseLockAsync(first, secondPid);
 
@@ -119,11 +119,11 @@ public class TransactionLockTests(PostgresFixture fixture)
 
         await using var first = fixture.NewContext();
         await using var firstTransaction = await first.Database.BeginTransactionAsync();
-        Assert.NotNull(await new BookingRepository(first).LockByManageTokenHashForUpdateAsync(
-            scenario.ManageTokenHash, CancellationToken.None));
+        Assert.NotNull(await new BookingRepository(first).LockForUpdateAsync(
+            scenario.BookingId, CancellationToken.None));
 
         var waitingBackend = NewBarrier();
-        var secondLock = LockBookingAsync(scenario.ManageTokenHash, waitingBackend);
+        var secondLock = LockBookingAsync(scenario.BookingId, waitingBackend);
         var secondPid = await waitingBackend.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await WaitUntilBlockedOnDatabaseLockAsync(first, secondPid);
 
@@ -146,15 +146,14 @@ public class TransactionLockTests(PostgresFixture fixture)
 
         if (eventItem!.Status == EventStatus.Active)
         {
-            var invite = await new InviteRepository(context).LockByTokenHashForUpdateAsync(
-                scenario.InviteTokenHash, CancellationToken.None);
+            var invite = await new InviteRepository(context).LockForUpdateAsync(
+                scenario.InviteId, CancellationToken.None);
             Assert.NotNull(invite);
 
             var booking = Booking.Create(
                 Guid.NewGuid(),
                 invite!,
                 scenario.EventId,
-                "confirmation-manage-hash",
                 DateTimeOffset.UtcNow);
             context.Bookings.Add(booking);
             await context.SaveChangesAsync();
@@ -172,8 +171,8 @@ public class TransactionLockTests(PostgresFixture fixture)
 
         // This lookup is intentionally preliminary and untracked. The booking is re-read under a
         // row lock only after this transaction acquires the shared event guard.
-        var eventId = await bookings.GetEventIdByManageTokenHashAsync(
-            scenario.ManageTokenHash, CancellationToken.None);
+        var eventId = await bookings.GetEventIdAsync(
+            scenario.BookingId, CancellationToken.None);
         Assert.Equal(scenario.EventId, eventId);
 
         await using var transaction = await context.Database.BeginTransactionAsync();
@@ -181,8 +180,8 @@ public class TransactionLockTests(PostgresFixture fixture)
 
         Assert.NotNull(await new EventRepository(context)
             .LockForUpdateAsync(eventId!.Value, CancellationToken.None));
-        var booking = await bookings.LockByManageTokenHashForUpdateAsync(
-            scenario.ManageTokenHash, CancellationToken.None);
+        var booking = await bookings.LockForUpdateAsync(
+            scenario.BookingId, CancellationToken.None);
         Assert.NotNull(booking);
 
         if (booking!.Status == BookingStatus.Active)
@@ -196,7 +195,7 @@ public class TransactionLockTests(PostgresFixture fixture)
     }
 
     private async Task<Guid> LockInviteAsync(
-        string tokenHash,
+        Guid inviteId,
         TaskCompletionSource<int> waitingBackend)
     {
         await using var context = fixture.NewContext();
@@ -204,13 +203,13 @@ public class TransactionLockTests(PostgresFixture fixture)
         waitingBackend.SetResult(await GetBackendPidAsync(context));
 
         var invite = await new InviteRepository(context)
-            .LockByTokenHashForUpdateAsync(tokenHash, CancellationToken.None);
+            .LockForUpdateAsync(inviteId, CancellationToken.None);
         await transaction.CommitAsync();
         return Assert.IsType<Invite>(invite).Id;
     }
 
     private async Task<Guid> LockBookingAsync(
-        string tokenHash,
+        Guid bookingId,
         TaskCompletionSource<int> waitingBackend)
     {
         await using var context = fixture.NewContext();
@@ -218,7 +217,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         waitingBackend.SetResult(await GetBackendPidAsync(context));
 
         var booking = await new BookingRepository(context)
-            .LockByManageTokenHashForUpdateAsync(tokenHash, CancellationToken.None);
+            .LockForUpdateAsync(bookingId, CancellationToken.None);
         await transaction.CommitAsync();
         return Assert.IsType<Booking>(booking).Id;
     }
@@ -262,12 +261,9 @@ public class TransactionLockTests(PostgresFixture fixture)
             ProposalFixture.Now);
         attendee.MarkInvited(ProposalFixture.Now);
 
-        const string inviteTokenHash = "invite-token-hash";
-        const string manageTokenHash = "manage-token-hash";
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            inviteTokenHash,
             DateTimeOffset.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             events.Select(s => s.Id),
@@ -278,7 +274,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         if (withBooking)
         {
             booking = Booking.Create(
-                Guid.NewGuid(), invite, events[0].Id, manageTokenHash, DateTimeOffset.UtcNow);
+                Guid.NewGuid(), invite, events[0].Id, DateTimeOffset.UtcNow);
             events[0].CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             invite.MarkUsed();
             attendee.MarkBooked(ProposalFixture.Now);
@@ -299,9 +295,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         return new Scenario(
             events[0].Id,
             invite.Id,
-            inviteTokenHash,
-            booking?.Id ?? Guid.Empty,
-            manageTokenHash);
+            booking?.Id ?? Guid.Empty);
     }
 
     private static async Task IncrementCapacityAsync(
@@ -362,7 +356,5 @@ public class TransactionLockTests(PostgresFixture fixture)
     private sealed record Scenario(
         Guid EventId,
         Guid InviteId,
-        string InviteTokenHash,
-        Guid BookingId,
-        string ManageTokenHash);
+        Guid BookingId);
 }

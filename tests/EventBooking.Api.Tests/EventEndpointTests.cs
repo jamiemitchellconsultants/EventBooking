@@ -176,14 +176,13 @@ public class EventEndpointTests(ApiFactory factory)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            $"hash-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, eventId, $"manage-{Guid.NewGuid():N}", DateTimeOffset.UtcNow);
+            Guid.NewGuid(), invite, eventId, DateTimeOffset.UtcNow);
         attendee.MarkInvited(ProposalFixture.Now);
         attendee.MarkBooked(ProposalFixture.Now);
 

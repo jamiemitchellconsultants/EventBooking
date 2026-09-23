@@ -111,7 +111,6 @@ public sealed class LateNoShowOutcomeTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "invite-token",
             now.AddDays(1),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
@@ -120,7 +119,7 @@ public sealed class LateNoShowOutcomeTests
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
+            Guid.NewGuid(), invite, eventItem.Id, now.AddDays(-1));
         var bookings = new InMemoryBookingRepository(operations);
         bookings.Add(booking);
         var appointment = BookingAppointment.Create(

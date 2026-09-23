@@ -67,7 +67,6 @@ public class AuditQueryTests(PostgresFixture fixture)
             write.Invites.Add(Invite.CreateInitial(
                 inviteId,
                 attendee.Id,
-                "hash",
                 Now.AddDays(4),
                 [ProposalFixture.LocationId],
                 [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()],
@@ -265,13 +264,12 @@ public class AuditQueryTests(PostgresFixture fixture)
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendeeId,
-            "hash",
             Now.AddDays(4),
             [ProposalFixture.LocationId],
             [eventId, Guid.NewGuid(), Guid.NewGuid()],
             attendee.RequiredAppointmentTypeIds,
             0);
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventId, "manage-token-hash", Now);
+        var booking = Booking.Create(Guid.NewGuid(), invite, eventId, Now);
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);
 

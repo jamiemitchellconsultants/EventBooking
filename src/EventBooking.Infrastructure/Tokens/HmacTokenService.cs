@@ -1,9 +1,13 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using EventBooking.Application.Abstractions;
 
 namespace EventBooking.Infrastructure.Tokens;
 
+/// <summary>
+/// base64url(purpose ‖ id ‖ version ‖ HMAC-SHA256(key, purpose ‖ id ‖ version)), per design 06.
+/// </summary>
 public sealed class HmacTokenService : ITokenService
 {
     private const int MinimumKeyLength = 32;
@@ -13,13 +17,16 @@ public sealed class HmacTokenService : ITokenService
     /// so it is rejected by value: anyone who can read this repository could forge tokens with it.
     /// </summary>
     private const string PlaceholderSigningKey = "replace-this-with-a-real-secret-of-at-least-32-characters";
-    private const int NonceBytes = 16;
-    private const int GuidLength = 32;
-    private const int NonceLength = 22;
+
+    private const int PurposeBytes = 1;
+    private const int IdentifierBytes = 16;
+    private const int VersionBytes = 4;
+    private const int PayloadBytes = PurposeBytes + IdentifierBytes + VersionBytes;
     private const int SignatureBytes = 32;
-    private const int SignatureLength = 43;
-    private const int PayloadLength = GuidLength + 1 + NonceLength;
-    private const int TokenLength = PayloadLength + 1 + SignatureLength;
+    private const int TokenBytes = PayloadBytes + SignatureBytes;
+
+    /// <summary>53 bytes encode to 71 unpadded base64url characters.</summary>
+    private const int TokenLength = 71;
 
     private readonly byte[] _key;
 
@@ -45,101 +52,108 @@ public sealed class HmacTokenService : ITokenService
         _key = Encoding.UTF8.GetBytes(options.SigningKey);
     }
 
-    public IssuedToken Issue(Guid entityId)
+    public string Issue(TokenPurpose purpose, Guid entityId, int version)
     {
-        var nonce = ToBase64Url(RandomNumberGenerator.GetBytes(NonceBytes));
-        var payload = $"{entityId:N}.{nonce}";
-        var token = $"{payload}.{Sign(payload)}";
+        ArgumentOutOfRangeException.ThrowIfLessThan(version, 1, nameof(version));
 
-        return new IssuedToken(token, Hash(token));
+        if (!Enum.IsDefined(purpose))
+        {
+            throw new ArgumentOutOfRangeException(nameof(purpose));
+        }
+
+        Span<byte> token = stackalloc byte[TokenBytes];
+        WritePayload(token, (byte)purpose, entityId, version);
+        HMACSHA256.HashData(_key, token[..PayloadBytes], token[PayloadBytes..]);
+
+        return ToBase64Url(token);
     }
 
-    public bool TryRead(string? token, out Guid entityId)
+    public bool TryRead(string? token, out TokenReference reference)
     {
-        entityId = Guid.Empty;
+        reference = default;
 
         if (token is null || token.Length != TokenLength)
         {
             return false;
         }
 
-        if (token[GuidLength] != '.' || token[PayloadLength] != '.')
+        Span<byte> decoded = stackalloc byte[TokenBytes];
+        if (!TryDecodeBase64Url(token, decoded))
         {
             return false;
         }
 
-        var identifier = token[..GuidLength];
-        if (!Guid.TryParseExact(identifier, "N", out var id) ||
-            !string.Equals(identifier, id.ToString("N"), StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (!TryDecodeBase64Url(token.AsSpan(GuidLength + 1, NonceLength), NonceBytes, out _) ||
-            !TryDecodeBase64Url(token.AsSpan(PayloadLength + 1, SignatureLength), SignatureBytes, out var supplied))
-        {
-            return false;
-        }
-
-        var expected = HMACSHA256.HashData(_key, Encoding.UTF8.GetBytes(token[..PayloadLength]));
+        Span<byte> expected = stackalloc byte[SignatureBytes];
+        HMACSHA256.HashData(_key, decoded[..PayloadBytes], expected);
 
         // Constant time: a timing difference here would leak how much of a guess was right.
-        if (!CryptographicOperations.FixedTimeEquals(expected, supplied))
+        if (!CryptographicOperations.FixedTimeEquals(expected, decoded[PayloadBytes..]))
         {
             return false;
         }
 
-        entityId = id;
+        var purpose = (TokenPurpose)decoded[0];
+        if (!Enum.IsDefined(purpose))
+        {
+            return false;
+        }
+
+        var version = BinaryPrimitives.ReadInt32BigEndian(
+            decoded.Slice(PurposeBytes + IdentifierBytes, VersionBytes));
+        if (version < 1)
+        {
+            return false;
+        }
+
+        reference = new TokenReference(
+            purpose,
+            new Guid(decoded.Slice(PurposeBytes, IdentifierBytes), bigEndian: true),
+            version);
         return true;
     }
 
-    public string Hash(string token) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
-
-    private string Sign(string payload) =>
-        ToBase64Url(HMACSHA256.HashData(_key, Encoding.UTF8.GetBytes(payload)));
-
-    /// <summary>Base64 with the two characters that are unsafe in a URL replaced, and no padding.</summary>
-    private static string ToBase64Url(byte[] value) =>
-        Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-    private static bool TryDecodeBase64Url(ReadOnlySpan<char> value, int expectedByteLength, out byte[] decoded)
+    private static void WritePayload(Span<byte> destination, byte purpose, Guid entityId, int version)
     {
-        decoded = Array.Empty<byte>();
-
-        if (!IsBase64Url(value))
-        {
-            return false;
-        }
-
-        try
-        {
-            var base64 = value.ToString().Replace('-', '+').Replace('_', '/');
-            base64 = base64.PadRight((base64.Length + 3) / 4 * 4, '=');
-            decoded = Convert.FromBase64String(base64);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        return decoded.Length == expectedByteLength &&
-            value.SequenceEqual(ToBase64Url(decoded).AsSpan());
+        destination[0] = purpose;
+        entityId.TryWriteBytes(destination.Slice(PurposeBytes, IdentifierBytes), bigEndian: true, out _);
+        BinaryPrimitives.WriteInt32BigEndian(
+            destination.Slice(PurposeBytes + IdentifierBytes, VersionBytes), version);
     }
 
-    private static bool IsBase64UrlCharacter(char value) =>
-        value is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_';
+    /// <summary>Base64 with the two characters that are unsafe in a URL replaced, and no padding.</summary>
+    private static string ToBase64Url(ReadOnlySpan<byte> value) =>
+        Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    private static bool IsBase64Url(ReadOnlySpan<char> value)
+    /// <summary>
+    /// Decodes only the canonical spelling. Base64 has several encodings of the same bytes once
+    /// padding bits are ignored, and accepting them would make one link answer to many URLs.
+    /// </summary>
+    private static bool TryDecodeBase64Url(string value, Span<byte> destination)
     {
-        foreach (var character in value)
+        Span<char> base64 = stackalloc char[TokenLength + 1];
+        for (var index = 0; index < value.Length; index++)
         {
-            if (!IsBase64UrlCharacter(character))
+            base64[index] = value[index] switch
+            {
+                '-' => '+',
+                '_' => '/',
+                var character when IsBase64UrlCharacter(character) => character,
+                _ => '\0',
+            };
+
+            if (base64[index] == '\0')
             {
                 return false;
             }
         }
 
-        return true;
+        base64[TokenLength] = '=';
+
+        return Convert.TryFromBase64Chars(base64, destination, out var written)
+            && written == TokenBytes
+            && string.Equals(ToBase64Url(destination), value, StringComparison.Ordinal);
     }
+
+    private static bool IsBase64UrlCharacter(char value) =>
+        value is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_';
 }

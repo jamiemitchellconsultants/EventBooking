@@ -9,6 +9,9 @@ public sealed class Invite
     /// <summary>Gets the number of event options every invite offers.</summary>
     public const int RequiredOptionCount = 3;
 
+    /// <summary>The version every freshly issued invite's book link is signed against.</summary>
+    public const int InitialTokenVersion = 1;
+
     /// <summary>The fewest locations an invite may be restricted to (design 08).</summary>
     public const int MinimumLocationCount = 1;
 
@@ -22,7 +25,6 @@ public sealed class Invite
     private Invite()
     {
         // Required by the persistence layer's constructor binding.
-        TokenHash = string.Empty;
     }
 
     /// <summary>Gets the invite identifier.</summary>
@@ -34,8 +36,11 @@ public sealed class Invite
     /// <summary>Gets the original Booking recovered by this Invite, or null for an initial Invite.</summary>
     public Guid? RecoveryOfBookingId { get; private set; }
 
-    /// <summary>The hash of the single-use token. The token itself is never stored.</summary>
-    public string TokenHash { get; private set; }
+    /// <summary>
+    /// The version the book link is signed against. Only the counter is stored; the token itself
+    /// is reproduced from it on demand and never written anywhere (design 06).
+    /// </summary>
+    public int TokenVersion { get; private set; } = InitialTokenVersion;
 
     /// <summary>Gets when the invite stops being usable.</summary>
     public DateTimeOffset ExpiresAt { get; private set; }
@@ -66,18 +71,16 @@ public sealed class Invite
     public IReadOnlyList<Guid> RequiredAppointmentTypeIds =>
         _requirements.Select(r => r.AppointmentTypeId).Order().ToList();
 
-    /// <summary>Replaces the persisted hash after issuing a fresh in-memory invite token.</summary>
-    /// <param name="tokenHash">The token hash.</param>
-    public void RotateTokenHash(string? tokenHash)
+    /// <summary>Revokes every outstanding book link for this invite by moving to the next version.</summary>
+    public void RotateToken()
     {
         EnsurePending("Only a pending invite token can be rotated.");
-        TokenHash = Guard.NotBlank(tokenHash, "tokenHash");
+        TokenVersion++;
     }
 
     /// <summary>Creates an initial invite snapshotting every current derived requirement.</summary>
     /// <param name="id">The id.</param>
     /// <param name="attendeeId">The attendee id.</param>
-    /// <param name="tokenHash">The token hash.</param>
     /// <param name="expiresAt">The expires at.</param>
     /// <param name="locationIds">The locations the Coordinator selected; 1 to 50, no duplicates.</param>
     /// <param name="eventIds">The event ids.</param>
@@ -86,14 +89,13 @@ public sealed class Invite
     public static Invite CreateInitial(
         Guid id,
         Guid attendeeId,
-        string? tokenHash,
         DateTimeOffset expiresAt,
         IEnumerable<Guid> locationIds,
         IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
         int retryCount) =>
         Create(
-            id, attendeeId, null, tokenHash, expiresAt,
+            id, attendeeId, null, expiresAt,
             DistinctLocations(locationIds), eventIds, appointmentTypeIds, retryCount);
 
     /// <summary>
@@ -103,13 +105,11 @@ public sealed class Invite
     /// </summary>
     /// <param name="id">The new invite's id.</param>
     /// <param name="originating">The invite being replaced.</param>
-    /// <param name="tokenHash">The new token hash.</param>
     /// <param name="expiresAt">When the new invite stops being usable.</param>
     /// <param name="eventIds">The freshly chosen event options.</param>
     public static Invite Reissue(
         Guid id,
         Invite originating,
-        string? tokenHash,
         DateTimeOffset expiresAt,
         IEnumerable<Guid> eventIds)
     {
@@ -119,7 +119,6 @@ public sealed class Invite
             id,
             originating.AttendeeId,
             originating.RecoveryOfBookingId,
-            tokenHash,
             expiresAt,
             originating.LocationIds,
             eventIds,
@@ -131,7 +130,6 @@ public sealed class Invite
     /// <param name="id">The id.</param>
     /// <param name="attendeeId">The attendee id.</param>
     /// <param name="recoveryOfBookingId">The recovery of booking id.</param>
-    /// <param name="tokenHash">The token hash.</param>
     /// <param name="expiresAt">The expires at.</param>
     /// <param name="originalLocationId">The location of the booking being recovered.</param>
     /// <param name="additionalLocationIds">Further locations the Coordinator opened up, or null.</param>
@@ -141,7 +139,6 @@ public sealed class Invite
         Guid id,
         Guid attendeeId,
         Guid recoveryOfBookingId,
-        string? tokenHash,
         DateTimeOffset expiresAt,
         Guid originalLocationId,
         IEnumerable<Guid>? additionalLocationIds,
@@ -163,7 +160,7 @@ public sealed class Invite
         }
 
         return Create(
-            id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt,
+            id, attendeeId, recoveryOfBookingId, expiresAt,
             Bounded(locations), eventIds, appointmentTypeIds, 0);
     }
 
@@ -223,7 +220,6 @@ public sealed class Invite
         Guid id,
         Guid attendeeId,
         Guid? recoveryOfBookingId,
-        string? tokenHash,
         DateTimeOffset expiresAt,
         IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
@@ -231,7 +227,7 @@ public sealed class Invite
         int retryCount)
     {
         var invite = CreateCore(
-            id, attendeeId, recoveryOfBookingId, tokenHash, expiresAt, locationIds, eventIds, retryCount);
+            id, attendeeId, recoveryOfBookingId, expiresAt, locationIds, eventIds, retryCount);
 
         var snapshot = appointmentTypeIds.ToList();
         Guard.Against(snapshot.Count == 0, "An invite must snapshot at least one appointment type.");
@@ -256,7 +252,6 @@ public sealed class Invite
         Guid id,
         Guid attendeeId,
         Guid? recoveryOfBookingId,
-        string? tokenHash,
         DateTimeOffset expiresAt,
         IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
@@ -278,7 +273,6 @@ public sealed class Invite
             Id = id,
             AttendeeId = attendeeId,
             RecoveryOfBookingId = recoveryOfBookingId,
-            TokenHash = Guard.NotBlank(tokenHash, "tokenHash"),
             ExpiresAt = expiresAt,
             Status = InviteStatus.Pending,
             RetryCount = Guard.NotNegative(retryCount, "retryCount"),

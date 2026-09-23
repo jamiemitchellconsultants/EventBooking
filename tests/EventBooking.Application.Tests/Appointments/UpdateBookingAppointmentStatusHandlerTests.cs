@@ -270,7 +270,6 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             Guid.NewGuid(),
             scenario.Attendee.Id,
             scenario.Booking.Id,
-            "pending-recovery",
             new DateTimeOffset(2026, 9, 9, 9, 0, 0, TimeSpan.Zero),
             ProposalFixture.LocationId,
             null,
@@ -380,7 +379,6 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             Guid.NewGuid(),
             scenario.Attendee.Id,
             scenario.Booking.Id,
-            $"recovery-{Guid.NewGuid():N}",
             recoveryCreatedAt.AddDays(2),
             ProposalFixture.LocationId,
             null,
@@ -388,8 +386,7 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         scenario.Invites.Add(recoveryInvite);
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, scenario.Booking, scenario.Event.Id,
-            $"manage-{Guid.NewGuid():N}", recoveryCreatedAt);
+            Guid.NewGuid(), recoveryInvite, scenario.Booking, scenario.Event.Id, recoveryCreatedAt);
         scenario.Bookings.Add(recovery);
         recoveryInvite.MarkUsed();
         var appointment = BookingAppointment.Create(
@@ -429,7 +426,6 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             attendee.Id,
-            "invite-token",
             now.AddDays(1),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
@@ -438,7 +434,7 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         var invites = new InMemoryInviteRepository(operations);
         invites.Add(invite);
         var booking = Booking.Create(
-            Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
+            Guid.NewGuid(), invite, eventItem.Id, now.AddDays(-1));
         var bookings = new InMemoryBookingRepository(operations);
         bookings.Add(booking);
         var appointment = BookingAppointment.Create(

@@ -36,13 +36,12 @@ public sealed class AttendeeReadinessQueryTests(PostgresFixture fixture)
             var initial = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "initial",
                 now.AddDays(1),
                 [ProposalFixture.LocationId],
                 [eventId, Guid.NewGuid(), Guid.NewGuid()],
                 [AppointmentTypeIds.MedicalCheckUp],
                 0);
-            var original = Booking.Create(Guid.NewGuid(), initial, eventId, "manage-original", now);
+            var original = Booking.Create(Guid.NewGuid(), initial, eventId, now);
             originalId = original.Id;
             write.Bookings.Add(original);
             var originalAttempt = BookingAppointment.Create(
@@ -54,14 +53,13 @@ public sealed class AttendeeReadinessQueryTests(PostgresFixture fixture)
                 Guid.NewGuid(),
                 attendee.Id,
                 original.Id,
-                "recovery",
                 now.AddDays(2),
                 ProposalFixture.LocationId,
                 null,
                 [recoveryEventId, Guid.NewGuid(), Guid.NewGuid()],
                 [AppointmentTypeIds.MedicalCheckUp]);
             var recovery = Booking.CreateRecovery(
-                Guid.NewGuid(), recoveryInvite, original, recoveryEventId, "manage-recovery", now.AddHours(1));
+                Guid.NewGuid(), recoveryInvite, original, recoveryEventId, now.AddHours(1));
             recovery.Conclude();
             write.Bookings.Add(recovery);
             var recoveryAttempt = BookingAppointment.Create(

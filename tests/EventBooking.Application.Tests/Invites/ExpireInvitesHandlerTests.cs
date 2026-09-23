@@ -186,7 +186,6 @@ public class ExpireInvitesHandlerTests
             Guid.NewGuid(),
             _attendee.Id,
             Guid.NewGuid(),
-            $"hash-{Guid.NewGuid():N}",
             _clock.UtcNow.AddDays(-1),
             ProposalFixture.LocationId,
             null,
@@ -211,7 +210,6 @@ public class ExpireInvitesHandlerTests
         _invites.Add(Invite.CreateInitial(
             Guid.NewGuid(),
             _attendee.Id,
-            $"hash-{Guid.NewGuid():N}",
             _clock.UtcNow.AddDays(expiresInDays),
             [ProposalFixture.LocationId],
             _events.Items.Take(3).Select(s => s.Id),

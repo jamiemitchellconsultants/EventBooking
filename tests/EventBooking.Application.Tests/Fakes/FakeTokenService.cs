@@ -1,33 +1,49 @@
-using System.Security.Cryptography;
-using System.Text;
 using EventBooking.Application.Abstractions;
 
 namespace EventBooking.Application.Tests.Fakes;
 
 /// <summary>
-/// A deterministic stand-in for the real HMAC service in Task 50. Tokens remain readable enough to
-/// recover their entity identifiers, while hashes model the opaque values persisted by the system.
+/// A readable stand-in for the HMAC service. It carries the same three values the real token
+/// carries — purpose, identifier and version — so a test can forge a stale or mismatched link
+/// without reproducing the signature.
 /// </summary>
 public sealed class FakeTokenService : ITokenService
 {
-    public IssuedToken Issue(Guid entityId)
-    {
-        var token = $"token-for-{entityId:N}";
-        return new IssuedToken(token, Hash(token));
-    }
+    public string Issue(TokenPurpose purpose, Guid entityId, int version) =>
+        $"{Prefix(purpose)}{entityId:N}-v{version}";
 
-    public bool TryRead(string? token, out Guid entityId)
+    public bool TryRead(string? token, out TokenReference reference)
     {
-        entityId = Guid.Empty;
+        reference = default;
 
-        if (token is null || !token.StartsWith("token-for-", StringComparison.Ordinal))
+        if (token is null)
         {
             return false;
         }
 
-        return Guid.TryParseExact(token["token-for-".Length..], "N", out entityId);
+        foreach (var purpose in Enum.GetValues<TokenPurpose>())
+        {
+            var prefix = Prefix(purpose);
+            if (!token.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var parts = token[prefix.Length..].Split("-v");
+            if (parts.Length != 2
+                || !Guid.TryParseExact(parts[0], "N", out var entityId)
+                || !int.TryParse(parts[1], out var version)
+                || version < 1)
+            {
+                return false;
+            }
+
+            reference = new TokenReference(purpose, entityId, version);
+            return true;
+        }
+
+        return false;
     }
 
-    public string Hash(string token) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    private static string Prefix(TokenPurpose purpose) => $"{purpose.ToString().ToLowerInvariant()}-token-for-";
 }

@@ -15,7 +15,7 @@ using System.Text;
 
 namespace EventBooking.Application.Tests.Notifications;
 
-/// <summary>Verifies template-aware retries, token rotation, and stale-state conflicts.</summary>
+/// <summary>Verifies template-aware retries, link reuse, and stale-state conflicts.</summary>
 public class RetryEmailHandlerTests
 {
     private static readonly Guid Coordinator =
@@ -34,7 +34,7 @@ public class RetryEmailHandlerTests
     private readonly InMemoryStaffAccessProfileRepository _roles = new();
     private readonly RecordingEmailSender _sender = new();
     private readonly RecordingAuditLogger _audit = new();
-    private readonly RotatingTokenService _tokens = new();
+    private readonly FakeTokenService _tokens = new();
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero));
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly Attendee _attendee;
@@ -59,16 +59,15 @@ public class RetryEmailHandlerTests
         AddEvent(14);
     }
 
-    /// <summary>Booking-confirmation retry rotates the management hash and sends the right template.</summary>
+    /// <summary>Booking-confirmation retry reuses the manage link and sends the right template.</summary>
     [Fact]
-    public async Task BookingConfirmationRetryRotatesTheManageHashAndUsesTheConfirmationTemplate()
+    public async Task BookingConfirmationRetryReusesTheManageLinkAndUsesTheConfirmationTemplate()
     {
         var inviteId = Guid.NewGuid();
-        var inviteToken = _tokens.Issue(inviteId);
+        var inviteToken = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            inviteToken.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -77,14 +76,14 @@ public class RetryEmailHandlerTests
         _invites.Add(invite);
         _attendee.MarkInvited(ProposalFixture.Now);
         var bookingId = Guid.NewGuid();
-        var manage = _tokens.Issue(bookingId);
-        var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, manage.TokenHash, _clock.UtcNow);
+        var manage = _tokens.Issue(TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
+        var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, _clock.UtcNow);
         _bookings.Add(booking);
         _appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
         invite.MarkUsed();
         _attendee.MarkBooked(ProposalFixture.Now);
-        var oldHash = booking.ManageTokenHash;
+        var issuedBefore = booking.ManageTokenVersion;
         AddFailedDelivery(EmailTemplate.BookingConfirmation, bookingId: bookingId);
 
         var result = await Handler().HandleAsync(
@@ -92,8 +91,8 @@ public class RetryEmailHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Sent", result.Value.DeliveryStatus);
-        Assert.NotEqual(oldHash, booking.ManageTokenHash);
-        Assert.Contains($"/manage/token-for-{booking.Id:N}-", _sender.LastOf(EmailTemplate.BookingConfirmation).TextBody);
+        Assert.Equal(issuedBefore, booking.ManageTokenVersion);
+        Assert.Contains($"/manage/{manage}", _sender.LastOf(EmailTemplate.BookingConfirmation).TextBody);
         Assert.Equal(EmailStatus.Resolved, _deliveries.Items[0].Status);
         Assert.Equal(EmailStatus.Sent, _deliveries.Items[1].Status);
         Assert.True(_deliveries.Items[1].SentAt > _deliveries.Items[0].SentAt);
@@ -133,16 +132,15 @@ public class RetryEmailHandlerTests
         Assert.Empty(_invites.Items);
     }
 
-    /// <summary>Invite retry rotates the pending invite hash and keeps the invite template.</summary>
+    /// <summary>Invite retry reuses the pending invite link and keeps the invite template.</summary>
     [Fact]
-    public async Task AttendeeInviteRetryRotatesThePendingInviteHash()
+    public async Task AttendeeInviteRetryReusesThePendingInviteLink()
     {
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -151,13 +149,14 @@ public class RetryEmailHandlerTests
         _invites.Add(invite);
         _attendee.MarkInvited(ProposalFixture.Now);
         AddFailedDelivery(EmailTemplate.AttendeeInvite, inviteId: invite.Id);
-        var oldHash = invite.TokenHash;
+        var versionBefore = invite.TokenVersion;
 
         var result = await Handler().HandleAsync(
             new RetryEmailCommand(Coordinator, _attendee.Id), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.NotEqual(oldHash, invite.TokenHash);
+        Assert.Equal(versionBefore, invite.TokenVersion);
+        Assert.Contains($"/book/{issued}", Assert.Single(_sender.Sent).TextBody);
         Assert.Equal(EmailTemplate.AttendeeInvite, Assert.Single(_sender.Sent).Template);
     }
 
@@ -166,11 +165,10 @@ public class RetryEmailHandlerTests
     public async Task AttendeeReinviteRetryUsesTheReminderTemplate()
     {
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -196,11 +194,10 @@ public class RetryEmailHandlerTests
         int reminderCount)
     {
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -224,11 +221,10 @@ public class RetryEmailHandlerTests
     public async Task PendingBookingConfirmationRetrySupersedesTheOutstandingAttempt()
     {
         var inviteId = Guid.NewGuid();
-        var inviteToken = _tokens.Issue(inviteId);
+        var inviteToken = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            inviteToken.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -237,8 +233,8 @@ public class RetryEmailHandlerTests
         _invites.Add(invite);
         _attendee.MarkInvited(ProposalFixture.Now);
         var bookingId = Guid.NewGuid();
-        var manage = _tokens.Issue(bookingId);
-        var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, manage.TokenHash, _clock.UtcNow);
+        var manage = _tokens.Issue(TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
+        var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, _clock.UtcNow);
         _bookings.Add(booking);
         _appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
@@ -388,11 +384,10 @@ public class RetryEmailHandlerTests
     public async Task RegeneratedBookingContentSurvivesAttendeeGroupChange()
     {
         var inviteId = Guid.NewGuid();
-        var inviteToken = _tokens.Issue(inviteId);
+        var inviteToken = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            inviteToken.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -401,8 +396,8 @@ public class RetryEmailHandlerTests
         _invites.Add(invite);
         _attendee.MarkInvited(ProposalFixture.Now);
         var bookingId = Guid.NewGuid();
-        var manage = _tokens.Issue(bookingId);
-        var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, manage.TokenHash, _clock.UtcNow);
+        var manage = _tokens.Issue(TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
+        var booking = Booking.Create(bookingId, invite, _events.Items[0].Id, _clock.UtcNow);
         _bookings.Add(booking);
         _appointments.Add(BookingAppointment.Create(
             Guid.NewGuid(), bookingId, AppointmentTypeIds.DrugAndAlcoholTesting));
@@ -428,11 +423,10 @@ public class RetryEmailHandlerTests
     public async Task TerminalInviteRetryCreatesNoReplacementDelivery()
     {
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
@@ -455,17 +449,16 @@ public class RetryEmailHandlerTests
     private Booking GivenCancelledBooking(Guid eventId)
     {
         var inviteId = Guid.NewGuid();
-        var issued = _tokens.Issue(inviteId);
+        var issued = _tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
         var invite = Invite.CreateInitial(
             inviteId,
             _attendee.Id,
-            issued.TokenHash,
             _clock.UtcNow.AddDays(4),
             [ProposalFixture.LocationId],
             _events.Items.Select(eventItem => eventItem.Id),
             _attendee.RequiredAppointmentTypeIds,
             0);
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventId, "hash", _clock.UtcNow);
+        var booking = Booking.Create(Guid.NewGuid(), invite, eventId, _clock.UtcNow);
         booking.Cancel();
         _bookings.Add(booking);
         _appointments.Add(BookingAppointment.Create(
@@ -586,28 +579,3 @@ public class RetryEmailHandlerTests
     }
 }
 
-/// <summary>Issues distinct deterministic test tokens so rotation is observable.</summary>
-internal sealed class RotatingTokenService : ITokenService
-{
-    private int _counter;
-
-    /// <inheritdoc />
-    public IssuedToken Issue(Guid entityId)
-    {
-        var token = $"token-for-{entityId:N}-{++_counter}";
-        return new IssuedToken(token, Hash(token));
-    }
-
-    /// <inheritdoc />
-    public bool TryRead(string? token, out Guid entityId)
-    {
-        entityId = Guid.Empty;
-        return token is not null
-            && token.StartsWith("token-for-", StringComparison.Ordinal)
-            && Guid.TryParseExact(token["token-for-".Length..].Split('-')[0], "N", out entityId);
-    }
-
-    /// <inheritdoc />
-    public string Hash(string token) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
-}

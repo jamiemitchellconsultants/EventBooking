@@ -51,14 +51,13 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "invite-token",
                 now.AddDays(1),
                 [ProposalFixture.LocationId],
                 [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, eventItem.Id, "manage-token", now.AddDays(-1));
+                Guid.NewGuid(), invite, eventItem.Id, now.AddDays(-1));
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);
             appointmentId = appointment.Id;
@@ -371,14 +370,13 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(),
                 attendee.Id,
-                "invite-token",
                 now.AddDays(1),
                 [ProposalFixture.LocationId],
                 [pastEvent.Id, Guid.NewGuid(), Guid.NewGuid()],
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var booking = Booking.Create(
-                Guid.NewGuid(), invite, pastEvent.Id, "manage-token", now.AddDays(-1));
+                Guid.NewGuid(), invite, pastEvent.Id, now.AddDays(-1));
             invite.MarkUsed();
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);

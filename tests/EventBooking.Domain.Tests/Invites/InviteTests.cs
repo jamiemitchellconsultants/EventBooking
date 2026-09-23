@@ -16,7 +16,6 @@ public class InviteTests
         Invite.CreateInitial(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "hash-of-the-token",
             Now.AddDays(4),
             [ProposalFixture.LocationId],
             [EventA, EventB, EventC],
@@ -33,7 +32,7 @@ public class InviteTests
         Assert.Equal(Invite.RequiredOptionCount, invite.Options.Count);
         Assert.Equal([EventA, EventB, EventC], invite.OfferedEventIds);
         Assert.Equal(0, invite.RetryCount);
-        Assert.Equal("hash-of-the-token", invite.TokenHash);
+        Assert.Equal(Invite.InitialTokenVersion, invite.TokenVersion);
     }
 
     [Fact]
@@ -55,7 +54,6 @@ public class InviteTests
             () => Invite.CreateInitial(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
-                "hash",
                 Now.AddDays(4),
                 [ProposalFixture.LocationId],
                 events,
@@ -71,7 +69,6 @@ public class InviteTests
             () => Invite.CreateInitial(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
-                "hash",
                 Now.AddDays(4),
                 [ProposalFixture.LocationId],
                 [EventA, EventA, EventB],
@@ -81,19 +78,23 @@ public class InviteTests
     }
 
     [Fact]
-    public void AnInviteWithoutATokenHashIsRejected()
+    public void RotatingAPendingInvitesTokenMovesToTheNextVersion()
     {
-        var ex = Assert.Throws<DomainException>(
-            () => Invite.CreateInitial(
-                Guid.NewGuid(),
-                Guid.NewGuid(),
-                "  ",
-                Now.AddDays(4),
-                [ProposalFixture.LocationId],
-                [EventA, EventB, EventC],
-                [AppointmentTypeIds.DrugAndAlcoholTesting],
-                0));
-        Assert.Equal("tokenHash must not be blank.", ex.Message);
+        var invite = NewInvite();
+
+        invite.RotateToken();
+
+        Assert.Equal(Invite.InitialTokenVersion + 1, invite.TokenVersion);
+    }
+
+    [Fact]
+    public void RotatingTheTokenOfAnInviteThatIsNoLongerPendingIsRejected()
+    {
+        var invite = NewInvite();
+        invite.MarkUsed();
+
+        var ex = Assert.Throws<DomainException>(invite.RotateToken);
+        Assert.Equal("Only a pending invite token can be rotated.", ex.Message);
     }
 
     [Fact]
@@ -103,7 +104,6 @@ public class InviteTests
             () => Invite.CreateInitial(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
-                "hash",
                 Now.AddDays(4),
                 [ProposalFixture.LocationId],
                 [EventA, EventB, EventC],

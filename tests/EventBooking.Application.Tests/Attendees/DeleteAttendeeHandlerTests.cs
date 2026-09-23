@@ -152,7 +152,6 @@ public class DeleteAttendeeHandlerTests
             Guid.NewGuid(),
             _attendee.Id,
             original.Id,
-            "recovery-hash",
             Now.AddDays(4),
             ProposalFixture.LocationId,
             null,
@@ -161,7 +160,7 @@ public class DeleteAttendeeHandlerTests
         _invites.Add(recoveryInvite);
 
         var recovery = Booking.CreateRecovery(
-            Guid.NewGuid(), recoveryInvite, original, recoveryEvent.Id, "recovery-manage-hash", Now);
+            Guid.NewGuid(), recoveryInvite, original, recoveryEvent.Id, Now);
         _bookings.Add(recovery);
         recoveryInvite.MarkUsed();
 
@@ -185,7 +184,6 @@ public class DeleteAttendeeHandlerTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             _attendee.Id,
-            "hash",
             Now.AddDays(4),
             [ProposalFixture.LocationId],
             [eventItem.Id, Guid.NewGuid(), Guid.NewGuid()],
@@ -193,7 +191,7 @@ public class DeleteAttendeeHandlerTests
             0);
         _invites.Add(invite);
 
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, "manage-hash", Now);
+        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, Now);
         _bookings.Add(booking);
 
         foreach (var typeId in _attendee.RequiredAppointmentTypeIds)

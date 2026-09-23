@@ -27,7 +27,6 @@ public class InviteLocationTests
         Invite.CreateInitial(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "hash-of-the-token",
             Now.AddDays(4),
             locationIds ?? [London, Dublin],
             [EventA, EventB, EventC],
@@ -88,7 +87,7 @@ public class InviteLocationTests
         var original = Initial([London, Dublin, Tokyo], retryCount: 1);
 
         var reissued = Invite.Reissue(
-            Guid.NewGuid(), original, "hash-of-the-next-token", Now.AddDays(11),
+            Guid.NewGuid(), original, Now.AddDays(11),
             [EventD, EventE, EventF]);
 
         Assert.Equal(original.LocationIds.Order(), reissued.LocationIds.Order());
@@ -107,7 +106,7 @@ public class InviteLocationTests
         var original = Recovery(bookingId);
 
         var reissued = Invite.Reissue(
-            Guid.NewGuid(), original, "hash-of-the-next-token", Now.AddDays(11),
+            Guid.NewGuid(), original, Now.AddDays(11),
             [EventD, EventE, EventF]);
 
         Assert.Equal(bookingId, reissued.RecoveryOfBookingId);
@@ -137,7 +136,6 @@ public class InviteLocationTests
         var invite = Invite.CreateInitial(
             Guid.NewGuid(),
             Guid.NewGuid(),
-            "hash-of-the-token",
             Now.AddDays(4),
             [London],
             [EventA, EventB, EventC],
@@ -152,7 +150,6 @@ public class InviteLocationTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             bookingId,
-            "hash-of-the-token",
             Now.AddDays(4),
             London,
             additionalLocationIds,

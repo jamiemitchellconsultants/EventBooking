@@ -332,23 +332,21 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             attendee.MarkInvited(ProposalFixture.Now);
             var tokens = _services.GetRequiredService<ITokenService>();
             var inviteId = Guid.NewGuid();
-            var inviteToken = tokens.Issue(inviteId);
+            var inviteToken = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
             var invite = Invite.CreateInitial(
                 inviteId,
                 attendee.Id,
-                inviteToken.TokenHash,
                 FixedNow.AddDays(4),
                 [ProposalFixture.LocationId],
                 [bookedEvent.Id, fallbackOne.Id, fallbackTwo.Id],
                 attendee.RequiredAppointmentTypeIds,
                 0);
             var bookingId = Guid.NewGuid();
-            var manageToken = tokens.Issue(bookingId);
+            var manageToken = tokens.Issue(TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
             var booking = Booking.Create(
                 bookingId,
                 invite,
                 bookedEvent.Id,
-                manageToken.TokenHash,
                 FixedNow);
             bookedEvent.CapacityFor(AppointmentTypeIds.DrugAndAlcoholTesting).Decrement();
             invite.MarkUsed();
@@ -525,11 +523,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             attendee.MarkInvited(ProposalFixture.Now);
             var tokens = _services.GetRequiredService<ITokenService>();
             var firstInviteId = Guid.NewGuid();
-            var firstToken = tokens.Issue(firstInviteId);
+            var firstToken = tokens.Issue(TokenPurpose.Book, firstInviteId, Invite.InitialTokenVersion);
             var firstInvite = Invite.CreateInitial(
                 firstInviteId,
                 attendee.Id,
-                firstToken.TokenHash,
                 FixedNow.AddDays(4),
                 [ProposalFixture.LocationId],
                 [firstEvent.Id, fallbackOne.Id, fallbackTwo.Id],
@@ -545,12 +542,11 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             if (includeSecondInvite)
             {
                 var secondInviteId = Guid.NewGuid();
-                var issued = tokens.Issue(secondInviteId);
-                secondToken = issued.Token;
+                var issued = tokens.Issue(TokenPurpose.Book, secondInviteId, Invite.InitialTokenVersion);
+                secondToken = issued;
                 context.Invites.Add(Invite.CreateInitial(
                     secondInviteId,
                     attendee.Id,
-                    issued.TokenHash,
                     FixedNow.AddDays(4),
                     [ProposalFixture.LocationId],
                     [secondEvent.Id, fallbackOne.Id, fallbackTwo.Id],
@@ -559,7 +555,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             }
 
             await context.SaveChangesAsync();
-            return new LifecycleScenario(attendee.Id, firstToken.Token, secondToken, firstEvent.Id, secondEvent.Id);
+            return new LifecycleScenario(attendee.Id, firstToken, secondToken, firstEvent.Id, secondEvent.Id);
         }
 
         private async Task DropPendingInviteIndexAsync()

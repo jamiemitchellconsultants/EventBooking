@@ -195,18 +195,10 @@ public sealed class InMemoryInviteRepository(TransactionOperationLog? operations
         Task.FromResult(Items.SingleOrDefault(i => i.Id == id));
 
     /// <summary>Returns the in-memory invite because this test double has no database row lock.</summary>
-    public Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(i => i.Id == id));
-
-    public Task<Invite?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(i => i.TokenHash == tokenHash));
-
-    public Task<Invite?> LockByTokenHashForUpdateAsync(
-        string tokenHash,
-        CancellationToken cancellationToken)
+    public Task<Invite?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("invite-locked");
-        return Task.FromResult(Items.SingleOrDefault(i => i.TokenHash == tokenHash));
+        return Task.FromResult(Items.SingleOrDefault(i => i.Id == id));
     }
 
     /// <summary>Returns the current pending in-memory invite because this double has no row lock.</summary>
@@ -264,32 +256,15 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
         return Task.FromResult(Items.SingleOrDefault(b => b.Id == id));
     }
 
-    public Task<Booking?> GetByManageTokenHashAsync(
-        string manageTokenHash, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash));
-
-    public Task<Guid?> GetEventIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken)
+    public Task<Guid?> GetEventIdAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("booking-event-located");
-        return Task.FromResult(
-            Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.EventId);
+        return Task.FromResult(Items.SingleOrDefault(b => b.Id == id)?.EventId);
     }
 
-    /// <summary>Returns the attendee identifier associated with the supplied test manage token.</summary>
-    public Task<Guid?> GetAttendeeIdByManageTokenHashAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash)?.AttendeeId);
-
-    public Task<Booking?> LockByManageTokenHashForUpdateAsync(
-        string manageTokenHash,
-        CancellationToken cancellationToken)
-    {
-        operations?.Record("booking-locked");
-        return Task.FromResult(Items.SingleOrDefault(b => b.ManageTokenHash == manageTokenHash));
-    }
+    /// <summary>Returns the attendee identifier of the booking the manage link names.</summary>
+    public Task<Guid?> GetAttendeeIdAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(b => b.Id == id)?.AttendeeId);
 
     /// <inheritdoc/>
     public Task<Booking?> LockByIdForAttendeeAsync(

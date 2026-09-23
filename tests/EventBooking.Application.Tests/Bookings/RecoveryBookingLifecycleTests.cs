@@ -19,7 +19,6 @@ public sealed class RecoveryBookingLifecycleTests
             Guid.NewGuid(),
             attendeeId,
             originalId,
-            "recovery",
             DateTimeOffset.UtcNow.AddDays(2),
             ProposalFixture.LocationId,
             null,
