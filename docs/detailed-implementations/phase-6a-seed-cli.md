@@ -56,6 +56,8 @@ DOC; LAB has exactly one Manager; and no ClockOptions or Clock:TimeZoneId refere
 - Modify: src/EventBooking.SeedData/KeycloakSeeder.cs
 - Delete: src/EventBooking.SeedData/demo-seed.json
 - Modify: src/EventBooking.SeedData/EventBooking.SeedData.csproj
+- Modify: src/EventBooking.Infrastructure/Email/OutboxDispatcher.cs
+- Modify: src/EventBooking.Infrastructure/Email/ClaimQuery.cs
 - Modify: src/EventBooking.Application/Abstractions/IClock.cs
 - Modify: src/EventBooking.Infrastructure/Time/SystemClock.cs
 - Delete: src/EventBooking.Infrastructure/Time/ClockOptions.cs
@@ -66,9 +68,11 @@ DOC; LAB has exactly one Manager; and no ClockOptions or Clock:TimeZoneId refere
 - Test: tests/EventBooking.SeedData.Tests/SeedCommandTests.cs
 - Test: tests/EventBooking.SeedData.Tests/DemoSeedSpecTests.cs
 - Test: tests/EventBooking.SeedData.Tests/DemoSeederIntegrationTests.cs
-- Test: tests/EventBooking.SeedData.Tests/DemoInvitationSeederTests.cs
+- Delete: tests/EventBooking.SeedData.Tests/DemoInvitationSeederTests.cs (obsolete fixed-dataset and
+  immediate-send suite; the complete PostgreSQL invitation cases move into DemoSeederIntegrationTests)
 - Test: tests/EventBooking.SeedData.Tests/KeycloakSeederTests.cs
 - Test: tests/EventBooking.SeedData.Tests/ReseedTests.cs
+- Test: tests/EventBooking.Infrastructure.Tests/Email/OutboxDispatcherTests.cs
 - Modify: tests/EventBooking.Infrastructure.Tests/SystemClockTests.cs
 
 **Interfaces:**
@@ -129,6 +133,20 @@ public static class DemoSeedSpec
     public static IReadOnlyDictionary<Guid, Guid> ManagerForType();
 }
 
+public sealed class DemoSeeder
+{
+    // Moves only deterministic demo Events and EventProposals before the normal natural-key upsert.
+    public Task ReanchorAsync(DemoDataset target, CancellationToken ct);
+}
+
+namespace EventBooking.Infrastructure.Email;
+
+public sealed class OutboxDispatcher
+{
+    // Claims and dispatches only this delivery; demo seeding must not drain unrelated outbox work.
+    public Task<int> DispatchOneAsync(Guid emailLogId, CancellationToken ct);
+}
+
 namespace EventBooking.Application.Abstractions;
 
 public interface IClock
@@ -138,7 +156,7 @@ public interface IClock
 }
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing test**
 
 Create the command preflight suite. The fake makes the absence of side effects observable rather
 than inferring it from row counts after the fact.
@@ -319,8 +337,10 @@ public sealed class DemoSeedSpecTests
 }
 ```
 
-Add the PostgreSQL idempotence test. SeedDatabaseFixture is complete here so the executor does not
-need to reconstruct service registration.
+Add the PostgreSQL idempotence and reanchor tests. The fixture is complete here so the executor does
+not need to reconstruct service registration. Counts include invitations and delivery logs: a
+second run that silently duplicates either row type is a failure even when the reference-data
+counts remain stable.
 
 ```csharp
 // tests/EventBooking.SeedData.Tests/DemoSeederIntegrationTests.cs (complete)
@@ -329,8 +349,8 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Application.Notifications;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Audit;
+using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
-using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Tokens;
 using EventBooking.SeedData;
 using Microsoft.EntityFrameworkCore;
@@ -343,6 +363,8 @@ namespace EventBooking.SeedData.Tests;
 public sealed class DemoSeederIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 9, 22, 10, 0, 0, TimeSpan.Zero));
+    private readonly CapturingTransport _mail = new();
     private ServiceProvider _provider = null!;
 
     public async Task InitializeAsync()
@@ -357,8 +379,12 @@ public sealed class DemoSeederIntegrationTests : IAsyncLifetime
         services.AddEventBookingApplication(
             new AttendeePortalOptions("http://localhost:5002", "events@example.test"),
             new EventBooking.Application.Access.StaffIdPolicy("^[A-Z0-9]{1,32}$"));
+        services.AddSingleton<IClock>(_clock);
+        services.AddSingleton<IEmailTransport>(_mail);
         services.AddScoped<IAuditLogger, EfAuditLogger>();
         services.AddScoped<DemoSeeder>();
+        services.AddScoped<DemoInvitationSeeder>();
+        services.AddSingleton<OutboxDispatcher>();
         _provider = services.BuildServiceProvider();
         await using var scope = _provider.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
@@ -374,25 +400,92 @@ public sealed class DemoSeederIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TwoDemoRunsHaveIdenticalNaturalKeyCountsAndCoverage()
+    public async Task TwoDemoRunsHaveIdenticalNaturalKeyAndDeliveryCounts()
     {
-        await RunSeedAsync();
+        await RunSeedAndInvitationsAsync();
         var first = await CountsAsync();
 
-        await RunSeedAsync();
+        await RunSeedAndInvitationsAsync();
         var second = await CountsAsync();
 
         Assert.Equal(first, second);
         Assert.Equal((3, 6, 4, 8), (second.Locations, second.Types, second.Groups, second.Profiles));
         Assert.True(second.Events >= 7);
+        Assert.Equal(second.Events + 2, second.Proposals);
         Assert.Equal(2, second.OpenProposals);
         Assert.Equal(DemoSeedSpec.Build().Attendees.Count, second.Attendees);
+        Assert.True(second.Invites > 0);
+        Assert.True(second.EmailLogs > 0);
+        Assert.Single(_mail.Recipients);
     }
 
-    private async Task RunSeedAsync()
+    [Fact]
+    public async Task ReanchorOnALaterDayMovesOwnedWindowsWithoutChangingCounts()
+    {
+        await RunSeedAndInvitationsAsync();
+        var before = await CountsAsync();
+
+        _clock.Advance(TimeSpan.FromDays(1));
+        DemoSeedSpec.OverrideAnchor(new DateOnly(2026, 9, 23));
+        var target = DemoSeedSpec.Build();
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<DemoSeeder>();
+            await seeder.ReanchorAsync(target, default);
+            await seeder.RunAsync(default);
+            await scope.ServiceProvider.GetRequiredService<DemoInvitationSeeder>().RunAsync(default);
+        }
+
+        Assert.Equal(before, await CountsAsync());
+        Assert.Single(_mail.Recipients);
+        await using var verify = _provider.CreateAsyncScope();
+        var db = verify.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        var eventIds = target.Events.Select(x => x.Id).ToList();
+        var eventDates = await db.Events.Where(x => eventIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Window.Date);
+        Assert.All(target.Events, spec => Assert.Equal(spec.Date, eventDates[spec.Id]));
+        var proposalIds = target.OpenProposals.Select(x => x.Id).ToList();
+        var proposalDates = await db.EventProposals
+            .Where(x => proposalIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Window.Date);
+        Assert.All(target.OpenProposals, spec => Assert.Equal(spec.Date, proposalDates[spec.Id]));
+    }
+
+    [Fact]
+    public async Task FailedInvitationDeliveryCreatesOneTargetedRetryAndThenConverges()
+    {
+        await RunSeedOnlyAsync();
+        _mail.Outcome = EmailSendOutcome.PermanentFailure;
+        await Assert.ThrowsAsync<SeedException>(() => RunInvitationsAsync());
+        var failed = await CountsAsync();
+
+        _mail.Outcome = EmailSendOutcome.Sent;
+        Assert.Equal(1, await RunInvitationsAsync());
+        var recovered = await CountsAsync();
+
+        Assert.Equal(failed.Invites, recovered.Invites);
+        Assert.Equal(failed.EmailLogs + 1, recovered.EmailLogs);
+        Assert.Equal(0, await RunInvitationsAsync());
+        Assert.Equal(recovered, await CountsAsync());
+        Assert.Single(_mail.Recipients);
+    }
+
+    private async Task RunSeedAndInvitationsAsync()
+    {
+        await RunSeedOnlyAsync();
+        await RunInvitationsAsync();
+    }
+
+    private async Task RunSeedOnlyAsync()
     {
         await using var scope = _provider.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<DemoSeeder>().RunAsync(default);
+    }
+
+    private async Task<int> RunInvitationsAsync()
+    {
+        await using var scope = _provider.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<DemoInvitationSeeder>().RunAsync(default);
     }
 
     private async Task<Counts> CountsAsync()
@@ -405,21 +498,49 @@ public sealed class DemoSeederIntegrationTests : IAsyncLifetime
             await db.AttendeeGroups.CountAsync(),
             await db.StaffAccessProfiles.CountAsync(),
             await db.Events.CountAsync(),
+            await db.EventProposals.CountAsync(),
             await db.EventProposals.CountAsync(x => x.Status == EventBooking.Domain.Events.EventProposalStatus.Open),
-            await db.Attendees.CountAsync());
+            await db.Attendees.CountAsync(),
+            await db.Invites.CountAsync(),
+            await db.EmailLogs.CountAsync());
     }
 
     private sealed record Counts(
         int Locations, int Types, int Groups, int Profiles,
-        int Events, int OpenProposals, int Attendees);
+        int Events, int Proposals, int OpenProposals, int Attendees, int Invites, int EmailLogs);
+
+    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    {
+        public DateTimeOffset UtcNow { get; private set; } = utcNow;
+        public void Advance(TimeSpan elapsed) => UtcNow += elapsed;
+    }
+
+    private sealed class CapturingTransport : IEmailTransport
+    {
+        public List<string> Recipients { get; } = [];
+        public EmailSendOutcome Outcome { get; set; } = EmailSendOutcome.Sent;
+        public Task<EmailSendOutcome> SendAsync(
+            string recipient, string subject, string textBody, string htmlBody, CancellationToken ct)
+        {
+            if (Outcome == EmailSendOutcome.Sent) Recipients.Add(recipient);
+            return Task.FromResult(Outcome);
+        }
+    }
 }
 ```
+
+Delete the predecessor DemoInvitationSeederTests file. Its fixed 100-attendee/five-recipient data,
+single-zone clock and immediate-send harness describe the retired seed architecture; the complete
+PostgreSQL suite above now owns fresh delivery, rerun idempotence, reanchor and failed-delivery
+retry coverage against the Task 28 composition.
 
 - [ ] **Step 2: Run the focused tests and verify the red state**
 
 ```bash
 dotnet test tests/EventBooking.SeedData.Tests --filter \
   "FullyQualifiedName~SeedCommandTests|FullyQualifiedName~DemoSeedSpecTests|FullyQualifiedName~DemoSeederIntegrationTests"
+dotnet test tests/EventBooking.Infrastructure.Tests --filter \
+  FullyQualifiedName~Targeted_dispatch_leaves_other_due_rows_unclaimed
 ```
 
 Expected: FAIL because SeedCliOptions, SeedCommand, LAB and the general dataset do not exist; the
@@ -572,6 +693,7 @@ public sealed class SeedRunSteps : ISeedRunSteps
             services.AddLocalEmailTransport(email.Sender, email.Smtp);
             services.AddScoped<DemoSeeder>();
             services.AddScoped<DemoInvitationSeeder>();
+            services.AddSingleton<OutboxDispatcher>();
         }
         else
         {
@@ -604,6 +726,8 @@ public sealed class SeedRunSteps : ISeedRunSteps
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
         var zones = scope.ServiceProvider.GetRequiredService<EventBooking.Domain.Time.IEventWindowZones>();
         DemoSeedSpec.OverrideAnchor(zones.LocalDateOf(clock.UtcNow, "Europe/London"));
+        await scope.ServiceProvider.GetRequiredService<DemoSeeder>()
+            .ReanchorAsync(DemoSeedSpec.Build(), ct);
     }
 
     public async Task<KeycloakSeedSummary?> ConvergeKeycloakAsync(bool recreateRealm, CancellationToken ct)
@@ -904,6 +1028,74 @@ public async Task<SeedSummary> ReseedAsync(CancellationToken ct)
     return await RunAsync(ct);
 }
 
+public async Task ReanchorAsync(DemoDataset target, CancellationToken ct)
+{
+    var eventIds = target.Events.Select(x => x.Id).ToList();
+    var proposalIds = target.OpenProposals.Select(x => x.Id).ToList();
+    await using var transaction = await database.Database.BeginTransactionAsync(ct);
+    var locationByCode = await database.Locations.AsNoTracking().ToDictionaryAsync(x => x.Code, ct);
+    var existingEvents = await database.Events.AsNoTracking()
+        .Where(x => eventIds.Contains(x.Id))
+        .Select(x => new
+        {
+            x.Id, x.LocationId, x.ProposalId,
+            Date = x.Window.Date, Start = x.Window.StartTime, x.Window.DurationMinutes,
+        })
+        .ToListAsync(ct);
+
+    foreach (var spec in target.Events)
+    {
+        var current = existingEvents.SingleOrDefault(x => x.Id == spec.Id);
+        if (current is null) continue;
+        var locationId = locationByCode[spec.LocationCode].Id;
+        if (current.LocationId != locationId || current.Start != spec.StartTime
+            || current.DurationMinutes != spec.DurationMinutes || current.ProposalId == Guid.Empty)
+            throw new SeedException($"Demo Event {spec.Id} no longer has its seeded identity.");
+        var collision = await database.Events.AnyAsync(x => x.Id != spec.Id
+            && x.LocationId == locationId && x.Window.Date == spec.Date
+            && x.Window.StartTime == spec.StartTime, ct);
+        if (collision)
+            throw new SeedException($"Cannot reanchor demo Event {spec.Id}; its target window is occupied.");
+        if (current.Date == spec.Date) continue;
+        var eventsMoved = await database.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "event" SET "date" = {spec.Date} WHERE "id" = {spec.Id}""", ct);
+        var proposalsMoved = await database.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "event_proposal" SET "date" = {spec.Date} WHERE "id" = {current.ProposalId}""", ct);
+        if (eventsMoved != 1 || proposalsMoved != 1)
+            throw new SeedException($"Demo Event {spec.Id} could not be reanchored atomically.");
+    }
+
+    var existingProposals = await database.EventProposals.AsNoTracking()
+        .Where(x => proposalIds.Contains(x.Id))
+        .Select(x => new
+        {
+            x.Id, x.LocationId, x.Status,
+            Date = x.Window.Date, Start = x.Window.StartTime, x.Window.DurationMinutes,
+        })
+        .ToListAsync(ct);
+    foreach (var spec in target.OpenProposals)
+    {
+        var current = existingProposals.SingleOrDefault(x => x.Id == spec.Id);
+        if (current is null) continue;
+        var locationId = locationByCode[spec.LocationCode].Id;
+        if (current.LocationId != locationId || current.Start != spec.StartTime
+            || current.DurationMinutes != spec.DurationMinutes || current.Status != EventProposalStatus.Open)
+            throw new SeedException($"Demo EventProposal {spec.Id} no longer has its seeded identity.");
+        var collision = await database.EventProposals.AnyAsync(x => x.Id != spec.Id
+            && x.LocationId == locationId && x.Window.Date == spec.Date
+            && x.Window.StartTime == spec.StartTime, ct);
+        if (collision)
+            throw new SeedException($"Cannot reanchor demo EventProposal {spec.Id}; its target window is occupied.");
+        if (current.Date == spec.Date) continue;
+        if (await database.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "event_proposal" SET "date" = {spec.Date} WHERE "id" = {spec.Id}""", ct) != 1)
+            throw new SeedException($"Demo EventProposal {spec.Id} could not be reanchored.");
+    }
+
+    await transaction.CommitAsync(ct);
+    database.ChangeTracker.Clear();
+}
+
 private async Task<int> EnsureLocationsAsync(DemoDataset data, CancellationToken ct)
 {
     var added = 0;
@@ -978,9 +1170,18 @@ private async Task<int> EnsureEventsAsync(DemoDataset data, CancellationToken ct
     foreach (var spec in data.Events)
     {
         var locationId = locationByCode[spec.LocationCode].Id;
-        var exists = await database.Events.AnyAsync(x => x.LocationId == locationId
-            && x.Window.Date == spec.Date && x.Window.StartTime == spec.StartTime, ct);
-        if (exists) continue;
+        var current = await database.Events.AsNoTracking().SingleOrDefaultAsync(x => x.Id == spec.Id, ct);
+        if (current is not null)
+        {
+            if (current.LocationId != locationId || current.Window.Date != spec.Date
+                || current.Window.StartTime != spec.StartTime
+                || current.Window.DurationMinutes != spec.DurationMinutes)
+                throw new SeedException($"Demo Event {spec.Id} exists with a different natural key; use --reanchor.");
+            continue;
+        }
+        if (await database.Events.AnyAsync(x => x.LocationId == locationId
+            && x.Window.Date == spec.Date && x.Window.StartTime == spec.StartTime, ct))
+            throw new SeedException($"The demo Event target window for {spec.Id} belongs to a non-demo row.");
         DemoEventFactory.CreateEvent(database, spec, data, zones);
         await database.SaveChangesAsync(ct);
         added++;
@@ -995,9 +1196,19 @@ private async Task<int> EnsureOpenProposalsAsync(DemoDataset data, CancellationT
     foreach (var spec in data.OpenProposals)
     {
         var locationId = locationByCode[spec.LocationCode].Id;
-        var exists = await database.EventProposals.AnyAsync(x => x.LocationId == locationId
-            && x.Window.Date == spec.Date && x.Window.StartTime == spec.StartTime, ct);
-        if (exists) continue;
+        var current = await database.EventProposals.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == spec.Id, ct);
+        if (current is not null)
+        {
+            if (current.Status != EventProposalStatus.Open || current.LocationId != locationId
+                || current.Window.Date != spec.Date || current.Window.StartTime != spec.StartTime
+                || current.Window.DurationMinutes != spec.DurationMinutes)
+                throw new SeedException($"Demo EventProposal {spec.Id} exists with a different natural key; use --reanchor.");
+            continue;
+        }
+        if (await database.EventProposals.AnyAsync(x => x.LocationId == locationId
+            && x.Window.Date == spec.Date && x.Window.StartTime == spec.StartTime, ct))
+            throw new SeedException($"The demo EventProposal target window for {spec.Id} belongs to a non-demo row.");
         DemoEventFactory.CreateProposal(database, spec, data, zones);
         await database.SaveChangesAsync(ct);
         added++;
@@ -1006,26 +1217,419 @@ private async Task<int> EnsureOpenProposalsAsync(DemoDataset data, CancellationT
 }
 ```
 
-Implement EnsureAttendeesAsync by natural email using the existing BuildJourneyAsync machinery,
-with these exact changes: resolve groups from `data.AttendeeGroups`; pass the matching
-DemoAttendeeSpec rather than an ordinal; create all invite options from `data.Events`; map the
-requested status with Attendee.MarkAwaitingAvailability, MarkInvited, MarkBooked or MarkNoResponse;
-transition appointments only through BookingAppointment.TransitionTo; create pending and completed
-recoveries with Invite.CreateRecovery and Booking.CreateRecovery. Never set an EF property or
-status directly. The method must return the number newly created, and its second run must return
-zero. Replace every AppointmentTypeIds, AttendeeGroupIds and TransitionalLocation reference in the
-file; the focused build below must find none.
-
-Update DemoInvitationSeeder's recipient selection to:
+Replace the predecessor attendee loop and journey helper with the complete graph-driven methods
+below. Every invite option points at a real Event from DemoDataset; every status transition goes
+through a domain method; and pending/completed recovery rows use the recovery factories. Keep the
+existing SeedId helper and constructor dependencies. Add the Booking, Invite and appointment
+namespaces required by these methods.
 
 ```csharp
-var recipients = DemoSeedSpec.Build().Attendees.Where(x => x.SendInvitation).ToList();
+// src/EventBooking.SeedData/DemoSeeder.cs — complete attendee/journey replacement
+private async Task<int> EnsureAttendeesAsync(DemoDataset data, CancellationToken ct)
+{
+    var created = 0;
+    foreach (var spec in data.Attendees)
+    {
+        if (await attendees.GetByEmailAsync(spec.Email, ct) is not null) continue;
+        var groupSpec = data.AttendeeGroups.Single(x => x.Code == spec.GroupCode);
+        if (!groupSpec.IsActive)
+            throw new SeedException($"Demo attendee {spec.Email} cannot use inactive group {spec.GroupCode}.");
+        var group = await groups.GetByCodeAsync(spec.GroupCode, ct)
+            ?? throw new SeedException($"Demo AttendeeGroup {spec.GroupCode} is missing.");
+        var result = await saveAttendee.CreateAsync(
+            new CreateAttendeeCommand(CoordinatorUserId(), spec.Name, spec.Email, group.Id), ct);
+        if (result.IsFailure)
+            throw new SeedException($"Creating demo Attendee {spec.Email} failed: {result.Error}.");
+        var attendee = await attendees.GetAsync(result.Value, ct)
+            ?? throw new SeedException($"Created demo Attendee {spec.Email} cannot be loaded.");
+        await BuildJourneyAsync(attendee, group, groupSpec, spec, data, ct);
+        created++;
+    }
+    return created;
+}
+
+private async Task BuildJourneyAsync(
+    Attendee attendee,
+    AttendeeGroup group,
+    DemoAttendeeGroupSpec groupSpec,
+    DemoAttendeeSpec spec,
+    DemoDataset data,
+    CancellationToken ct)
+{
+    var now = clock.UtcNow;
+    switch (spec.Status)
+    {
+        case AttendeeStatus.NotYetInvited:
+            return;
+        case AttendeeStatus.AwaitingAvailability:
+            attendee.MarkAwaitingAvailability(now);
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        case AttendeeStatus.Invited:
+        case AttendeeStatus.NoResponseNeedsFollowUp:
+        {
+            var invite = CreateInitialInvite(attendee, group, groupSpec, spec, data, now);
+            database.Invites.Add(invite);
+            attendee.MarkInvited(now);
+            if (spec.Status == AttendeeStatus.NoResponseNeedsFollowUp)
+            {
+                invite.MarkExpired();
+                attendee.MarkNoResponse(now);
+            }
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        }
+        case AttendeeStatus.Booked:
+            await BuildBookedJourneyAsync(attendee, group, groupSpec, spec, data, now, ct);
+            return;
+        default:
+            throw new SeedException($"Demo AttendeeStatus {spec.Status} is not supported.");
+    }
+}
+
+private async Task BuildBookedJourneyAsync(
+    Attendee attendee,
+    AttendeeGroup group,
+    DemoAttendeeGroupSpec groupSpec,
+    DemoAttendeeSpec spec,
+    DemoDataset data,
+    DateTimeOffset now,
+    CancellationToken ct)
+{
+    if (spec.AppointmentStatuses.Count == 0)
+        throw new SeedException($"Booked demo Attendee {spec.Email} needs an appointment status.");
+    if (spec.Recovery != DemoRecovery.None
+        && spec.AppointmentStatuses[0] != BookingAppointmentStatus.NoShow)
+        throw new SeedException($"Recovery demo Attendee {spec.Email} must begin with NoShow.");
+    if (spec.Recovery == DemoRecovery.Completed && spec.AppointmentStatuses.Count != 2)
+        throw new SeedException($"Completed recovery demo Attendee {spec.Email} needs two statuses.");
+    var eligible = EligibleEvents(groupSpec, data);
+    if (eligible.Count < 5 && spec.Recovery != DemoRecovery.None)
+        throw new SeedException($"Recovery demo Attendee {spec.Email} needs five eligible Events.");
+    var initialOptions = eligible.Take(3).ToList();
+    var invite = CreateInitialInvite(attendee, group, spec, initialOptions, data, now);
+    database.Invites.Add(invite);
+    attendee.MarkInvited(now);
+    var booking = Booking.Create(
+        SeedId(attendee.Email, "initial:booking"), invite, initialOptions[0].Id, now);
+    invite.MarkUsed();
+    attendee.MarkBooked(now);
+    database.Bookings.Add(booking);
+    var appointments = group.RequiredAppointmentTypeIds.Order()
+        .Select(typeId => BookingAppointment.Create(
+            SeedId(attendee.Email, $"initial:appointment:{typeId}"), booking.Id, typeId))
+        .ToList();
+    database.BookingAppointments.AddRange(appointments);
+    ApplyAppointmentStatus(appointments[0], spec.AppointmentStatuses[0], now);
+
+    if (spec.Recovery != DemoRecovery.None)
+    {
+        var recoveryOptions = eligible.Skip(2).Take(3).ToList();
+        var locationByCode = data.Locations.ToDictionary(x => x.Code);
+        var originalLocationId = locationByCode[initialOptions[0].LocationCode].Id;
+        var otherLocationIds = recoveryOptions.Select(x => locationByCode[x.LocationCode].Id)
+            .Where(x => x != originalLocationId).Distinct().ToList();
+        var recoveryInvite = Invite.CreateRecovery(
+            SeedId(attendee.Email, "recovery:invite"), attendee.Id, booking.Id, now.AddDays(7),
+            originalLocationId, otherLocationIds, recoveryOptions.Select(x => x.Id),
+            [appointments[0].AppointmentTypeId]);
+        database.Invites.Add(recoveryInvite);
+
+        if (spec.Recovery == DemoRecovery.Completed)
+        {
+            var recovery = Booking.CreateRecovery(
+                SeedId(attendee.Email, "recovery:booking"), recoveryInvite, booking,
+                recoveryOptions[0].Id, now.AddMinutes(5));
+            recoveryInvite.MarkUsed();
+            database.Bookings.Add(recovery);
+            var recoveryAppointment = BookingAppointment.Create(
+                SeedId(attendee.Email, "recovery:appointment"), recovery.Id,
+                appointments[0].AppointmentTypeId);
+            database.BookingAppointments.Add(recoveryAppointment);
+            ApplyAppointmentStatus(recoveryAppointment, spec.AppointmentStatuses[1], now);
+        }
+    }
+
+    await unitOfWork.SaveChangesAsync(ct);
+}
+
+private Invite CreateInitialInvite(
+    Attendee attendee,
+    AttendeeGroup group,
+    DemoAttendeeGroupSpec groupSpec,
+    DemoAttendeeSpec spec,
+    DemoDataset data,
+    DateTimeOffset now) =>
+    CreateInitialInvite(attendee, group, spec, EligibleEvents(groupSpec, data).Take(3).ToList(), data, now);
+
+private Invite CreateInitialInvite(
+    Attendee attendee,
+    AttendeeGroup group,
+    DemoAttendeeSpec spec,
+    IReadOnlyList<DemoEventSpec> options,
+    DemoDataset data,
+    DateTimeOffset now)
+{
+    if (options.Count != 3)
+        throw new SeedException($"Demo Attendee {spec.Email} needs exactly three eligible Events.");
+    var locationByCode = data.Locations.ToDictionary(x => x.Code);
+    var locationIds = options.Select(x => locationByCode[x.LocationCode].Id).Distinct().ToList();
+    return Invite.CreateInitial(
+        SeedId(attendee.Email, "initial:invite"), attendee.Id, now.AddDays(7), locationIds,
+        options.Select(x => x.Id), group.RequiredAppointmentTypeIds, 0);
+}
+
+private static IReadOnlyList<DemoEventSpec> EligibleEvents(
+    DemoAttendeeGroupSpec group, DemoDataset data) => data.Events
+    .Where(item => group.TypeCodes.All(code => item.TypeCodes.Contains(code)))
+    .OrderBy(item => item.Date).ThenBy(item => item.StartTime).ToList();
+
+private void ApplyAppointmentStatus(
+    BookingAppointment appointment, BookingAppointmentStatus status, DateTimeOffset now)
+{
+    switch (status)
+    {
+        case BookingAppointmentStatus.Expected:
+            return;
+        case BookingAppointmentStatus.CheckedIn:
+            appointment.TransitionTo(status, CoordinatorUserId(), now,
+                checkInAllowed: true, noShowAllowed: false);
+            return;
+        case BookingAppointmentStatus.Completed:
+            appointment.TransitionTo(BookingAppointmentStatus.CheckedIn, CoordinatorUserId(), now,
+                checkInAllowed: true, noShowAllowed: false);
+            appointment.TransitionTo(status, CoordinatorUserId(), now,
+                checkInAllowed: true, noShowAllowed: false);
+            return;
+        case BookingAppointmentStatus.NoShow:
+            appointment.TransitionTo(status, CoordinatorUserId(), now,
+                checkInAllowed: false, noShowAllowed: true);
+            return;
+        default:
+            throw new SeedException($"Demo BookingAppointmentStatus {status} is not supported.");
+    }
+}
 ```
 
-Use each recipient's active group and `[LONDON, DUBLIN]` location ids with InviteAttendeeHandler.
-An existing pending invite with a sent EmailLog is skipped; Failed or Pending delivery is retried;
-no other attendee or outbox row is touched. This preserves the existing at-least-once retry logic
-while removing the “one predecessor group each” assumption.
+The second run finds every attendee by natural email and returns zero. Replace every
+AppointmentTypeIds, AttendeeGroupIds and TransitionalLocation reference in DemoSeeder; the focused
+build and retirement proof below must find none.
+
+Demo invitation delivery must not drain unrelated application email. Extend the Task 18 dispatcher
+with a single-row claim that uses the same lease, backoff and rendering path as the batch loop:
+
+```csharp
+// src/EventBooking.Infrastructure/Email/ClaimQuery.cs — add beside Sql
+public const string OneSql = """
+    UPDATE email_log SET claimed_at = @now, claim_count = claim_count + 1,
+        correlation_id = @correlationId
+     WHERE id = @deliveryId
+       AND status = 3
+       AND (claimed_at IS NULL OR claimed_at < @now - make_interval(mins => 5))
+       AND (not_before IS NULL OR not_before <= @now)
+    RETURNING id;
+    """;
+```
+
+```csharp
+// src/EventBooking.Infrastructure/Email/OutboxDispatcher.cs — replace DispatchOnceAsync and add
+// DispatchOneAsync plus the shared helper; keep SendRowAsync and MarkTransientAsync unchanged.
+public async Task<int> DispatchOnceAsync(CancellationToken ct = default)
+{
+    using var scope = scopes.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+    var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+    var now = clock.UtcNow;
+    var claimed = await ClaimAsync(context, Guid.NewGuid().ToString(), now, ct);
+    var sent = 0;
+    foreach (var row in claimed) sent += await DispatchClaimedAsync(scope, row, now, ct);
+    return sent;
+}
+
+public async Task<int> DispatchOneAsync(Guid deliveryId, CancellationToken ct = default)
+{
+    using var scope = scopes.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+    var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+    var now = clock.UtcNow;
+    var ids = await context.Database.SqlQueryRaw<Guid>(ClaimQuery.OneSql,
+        new NpgsqlParameter("@now", now),
+        new NpgsqlParameter("@correlationId", Guid.NewGuid().ToString()),
+        new NpgsqlParameter("@deliveryId", deliveryId)).ToListAsync(ct);
+    if (ids.Count == 0) return 0;
+    var row = await context.EmailLogs.SingleAsync(x => x.Id == deliveryId, ct);
+    return await DispatchClaimedAsync(scope, row, now, ct);
+}
+
+private async Task<int> DispatchClaimedAsync(
+    IServiceScope scope, EmailLog row, DateTimeOffset now, CancellationToken ct)
+{
+    try
+    {
+        await SendRowAsync(scope, row, now, ct);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Outbox send failed for delivery {DeliveryId}.", row.Id);
+        await MarkTransientAsync(scope, row, now, ct);
+    }
+    return row.Status == EmailStatus.Sent ? 1 : 0;
+}
+```
+
+Add this focused case to OutboxDispatcherTests before implementation. It proves the seed path cannot
+claim a different due row while sending its selected invitation:
+
+```csharp
+[Fact]
+public async Task Targeted_dispatch_leaves_other_due_rows_unclaimed()
+{
+    var other = await StagePendingAsync(EmailTemplate.BookingConfirmation);
+    var selected = await StagePendingAsync(EmailTemplate.AttendeeInvite);
+
+    Assert.Equal(1, await Dispatcher(transportA).DispatchOneAsync(selected, default));
+
+    Assert.Equal(EmailStatus.Sent, await StatusOfAsync(selected));
+    Assert.Equal(EmailStatus.Pending, await StatusOfAsync(other));
+    Assert.Single(transportA.Sent);
+}
+```
+
+Replace DemoInvitationSeeder with this complete implementation. It selects only attendees marked
+SendInvitation, validates their active group, uses the LONDON and DUBLIN locations with
+InviteAttendeeHandler, and dispatches only the matching outbox row. A sent delivery is skipped; a
+failed delivery goes through RetryEmailHandler to create a fresh pending row; and a due pending row
+uses the targeted dispatcher directly.
+
+```csharp
+// src/EventBooking.SeedData/DemoInvitationSeeder.cs (complete)
+using EventBooking.Application.Abstractions;
+using EventBooking.Application.Invites;
+using EventBooking.Application.Notifications;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.Invites;
+using EventBooking.Domain.Notifications;
+using EventBooking.Domain.Time;
+using EventBooking.Infrastructure.Email;
+using EventBooking.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace EventBooking.SeedData;
+
+public sealed class DemoInvitationSeeder(
+    EventBookingDbContext database,
+    IAttendeeRepository attendees,
+    InviteAttendeeHandler inviteAttendee,
+    RetryEmailHandler retryEmail,
+    OutboxDispatcher dispatcher,
+    IEventWindowZones zones,
+    IClock clock)
+{
+    public TextWriter Progress { get; set; } = TextWriter.Null;
+
+    public async Task<int> RunAsync(CancellationToken ct)
+    {
+        var data = DemoSeedSpec.Build();
+        var locationSpecs = data.Locations.ToDictionary(x => x.Code);
+        if (data.Events.Any(item => item.Date <=
+            zones.LocalDateOf(clock.UtcNow, locationSpecs[item.LocationCode].TimeZoneId)))
+            throw new SeedException("Demo invitation dates are stale. Run with --reanchor.");
+
+        var locationCodes = new[] { "LONDON", "DUBLIN" };
+        var locations = await database.Locations.AsNoTracking()
+            .Where(x => locationCodes.Contains(x.Code)).ToDictionaryAsync(x => x.Code, ct);
+        if (locationCodes.Any(code => !locations.TryGetValue(code, out var item) || !item.IsActive))
+            throw new SeedException("Demo invitations require active LONDON and DUBLIN locations.");
+        var locationIds = locationCodes.Select(code => locations[code].Id).ToList();
+        var recipients = data.Attendees.Where(x => x.SendInvitation).ToList();
+        var sent = 0;
+
+        foreach (var spec in recipients)
+        {
+            var group = data.AttendeeGroups.Single(x => x.Code == spec.GroupCode);
+            if (!group.IsActive)
+                throw new SeedException($"Demo invitation group {group.Code} is inactive.");
+            var attendee = await attendees.GetByEmailAsync(spec.Email, ct)
+                ?? throw new SeedException($"Seed Attendee is missing: {spec.Email}.");
+            var persistedGroup = await database.AttendeeGroups.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == attendee.AttendeeGroupId, ct);
+            if (persistedGroup is null || persistedGroup.Code != group.Code || !persistedGroup.IsActive)
+                throw new SeedException($"Demo invitation requires active group {group.Code}.");
+            if (attendee.Status == AttendeeStatus.Booked)
+            {
+                Report($"Preserved existing booking: {spec.Email}.");
+                continue;
+            }
+
+            var hasHistory = await database.Invites.AnyAsync(x => x.AttendeeId == attendee.Id, ct);
+            var pendingInvite = await database.Invites.AsNoTracking().SingleOrDefaultAsync(
+                x => x.AttendeeId == attendee.Id && x.Status == InviteStatus.Pending
+                    && x.RecoveryOfBookingId == null, ct);
+            if (!hasHistory)
+            {
+                var issued = await inviteAttendee.HandleAsync(
+                    new InviteAttendeeCommand(DemoSeedSpec.CoordinatorUserId(), attendee.Id, locationIds), ct);
+                if (issued.IsFailure)
+                    throw new SeedException($"Demo invitation for {spec.Email} failed: {issued.Error}.");
+                var inviteId = issued.Value.InviteId
+                    ?? throw new SeedException($"Demo invitation for {spec.Email} produced no Invite.");
+                pendingInvite = await database.Invites.AsNoTracking()
+                    .SingleAsync(x => x.Id == inviteId, ct);
+            }
+            else if (pendingInvite is null || !pendingInvite.IsUsableAt(clock.UtcNow))
+            {
+                Report($"Preserved invitation history: {spec.Email}.");
+                continue;
+            }
+
+            var delivery = await database.EmailLogs.AsNoTracking()
+                .Where(x => x.AttendeeId == attendee.Id && x.InviteId == pendingInvite.Id
+                    && x.TemplateName == EmailTemplate.AttendeeInvite
+                    && x.Status != EmailStatus.Resolved)
+                .OrderByDescending(x => x.SentAt).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new SeedException($"Pending demo invitation has no delivery: {spec.Email}.");
+            if (delivery.Status == EmailStatus.Sent)
+            {
+                Report($"Invitation already delivered: {spec.Email}.");
+                continue;
+            }
+
+            Guid deliveryId;
+            if (delivery.Status == EmailStatus.Failed)
+            {
+                var retried = await retryEmail.HandleAsync(new RetryEmailCommand(
+                    DemoSeedSpec.CoordinatorUserId(), attendee.Id, delivery.Id), ct);
+                if (retried.IsFailure)
+                    throw new SeedException($"Demo delivery retry for {spec.Email} failed: {retried.Error}.");
+                deliveryId = retried.Value.EmailLogId;
+            }
+            else if (delivery.Status == EmailStatus.Pending)
+            {
+                deliveryId = delivery.Id;
+            }
+            else
+            {
+                throw new SeedException($"Demo delivery for {spec.Email} is {delivery.Status}.");
+            }
+
+            await dispatcher.DispatchOneAsync(deliveryId, ct);
+            var status = await database.EmailLogs.AsNoTracking().Where(x => x.Id == deliveryId)
+                .Select(x => x.Status).SingleAsync(ct);
+            if (status != EmailStatus.Sent) throw DeliveryFailed(spec.Email, status);
+            sent++;
+            Report($"Invitation delivered: {spec.Email}.");
+        }
+
+        return sent;
+    }
+
+    private static SeedException DeliveryFailed(string recipient, EmailStatus status) => new(
+        $"Demo invitation delivery for {recipient} is {status}; fix SMTP or wait for backoff and rerun.");
+
+    private void Report(string message) => Progress.WriteLine($"[seed] {message}");
+}
+```
 
 Extend KeycloakSeeder's user payload so the name mapper has source data:
 
@@ -1145,8 +1749,9 @@ rg -n "ClockOptions|Clock[:_]TimeZoneId|TodayAtTransitionalLocation|NowAtTransit
 
 ```bash
 dotnet test tests/EventBooking.SeedData.Tests --filter \
-  "FullyQualifiedName~SeedCommandTests|FullyQualifiedName~DemoSeedSpecTests|FullyQualifiedName~DemoSeederIntegrationTests|FullyQualifiedName~DemoInvitationSeederTests|FullyQualifiedName~KeycloakSeederTests|FullyQualifiedName~ReseedTests"
-dotnet test tests/EventBooking.Infrastructure.Tests --filter FullyQualifiedName~SystemClockTests
+  "FullyQualifiedName~SeedCommandTests|FullyQualifiedName~DemoSeedSpecTests|FullyQualifiedName~DemoSeederIntegrationTests|FullyQualifiedName~KeycloakSeederTests|FullyQualifiedName~ReseedTests"
+dotnet test tests/EventBooking.Infrastructure.Tests --filter \
+  "FullyQualifiedName~SystemClockTests|FullyQualifiedName~Targeted_dispatch_leaves_other_due_rows_unclaimed"
 dotnet build EventBooking.sln -warnaserror
 dotnet test EventBooking.sln
 ```

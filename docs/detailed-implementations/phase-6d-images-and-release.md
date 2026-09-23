@@ -53,7 +53,7 @@ public static class ReleaseContract
 }
 ```
 
-- [ ] **Step 1: Create the workflow and validate its trigger/tag contract**
+- [ ] **Step 1: Write the failing test**
 
 Create this complete workflow. The `dotnet-build.yml` workflow needs no modification: hosted
 Ubuntu runners already expose Docker to Testcontainers, and image publication is independent from
@@ -96,7 +96,7 @@ jobs:
           - name: eventbooking-web
             dockerfile: src/EventBooking.Web/Dockerfile
           - name: eventbooking-web-caddy
-            dockerfile: deploy/home-lab/web/Dockerfile
+            dockerfile: src/EventBooking.Web/Dockerfile.caddy
           - name: eventbooking-seed
             dockerfile: src/EventBooking.SeedData/Dockerfile
     steps:
@@ -182,7 +182,7 @@ for spec in \
   eventbooking-api:src/EventBooking.Api/Dockerfile \
   eventbooking-mcp:src/EventBooking.Mcp/Dockerfile \
   eventbooking-web:src/EventBooking.Web/Dockerfile \
-  eventbooking-web-caddy:deploy/home-lab/web/Dockerfile \
+  eventbooking-web-caddy:src/EventBooking.Web/Dockerfile.caddy \
   eventbooking-seed:src/EventBooking.SeedData/Dockerfile
 do
   image="${spec%%:*}"
@@ -243,7 +243,7 @@ Expected: every command passes and no test is skipped. Add the executor's actual
 home-lab rehearsal record to HANDOVER.md. No number from Task 11 or this plan may be copied forward
 as though Phase 6 had measured it.
 
-- [ ] **Step 4: Commit, push and carry the Phase 6 pull-request gate**
+- [ ] **Step 4: Commit and push**
 
 ```bash
 git add -A

@@ -39,6 +39,7 @@ the checked-in realm, Web settings and ingress fragment retain explicit substitu
 - Create: deploy/home-lab/.gitignore
 - Create: deploy/home-lab/install.sh
 - Modify: deploy/home-lab/README.md
+- Modify: src/EventBooking.Web/Dockerfile.caddy
 - Modify: .github/workflows/compose-smoke.yml
 
 **Interfaces:**
@@ -66,7 +67,7 @@ public sealed record HomeLabContract
 }
 ```
 
-- [ ] **Step 1: Extend the failing deployment smoke checks**
+- [ ] **Step 1: Write the failing test**
 
 Replace the Task 29 workflow with this complete version. The local job is unchanged in behaviour;
 the new job parses every home-lab artifact without requiring a shared Caddy or Keycloak instance.
@@ -181,6 +182,7 @@ x-app-environment: &app-environment
 services:
   eventbooking-db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: eventbooking
       POSTGRES_USER: eventbooking_owner
@@ -199,6 +201,7 @@ services:
 
   eventbooking-mailpit:
     image: axllent/mailpit:v1.27.8
+    restart: unless-stopped
     environment:
       MP_WEBROOT: /mailpit/
     networks: [eventbooking-private, edge]
@@ -210,6 +213,7 @@ services:
 
   eventbooking-api:
     image: ghcr.io/jamiemitchellconsultants/eventbooking-api:${EVENTBOOKING_IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       <<: *app-environment
       ConnectionStrings__EventBooking: Host=eventbooking-db;Database=eventbooking;Username=eventbooking_api;Password=${EVENTBOOKING_DB_APP_PASSWORD:?required}
@@ -226,6 +230,7 @@ services:
 
   eventbooking-mcp:
     image: ghcr.io/jamiemitchellconsultants/eventbooking-mcp:${EVENTBOOKING_IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       <<: *app-environment
       ConnectionStrings__EventBooking: Host=eventbooking-db;Database=eventbooking;Username=eventbooking_mcp;Password=${EVENTBOOKING_DB_APP_PASSWORD:?required}
@@ -235,6 +240,7 @@ services:
 
   eventbooking-web:
     image: ghcr.io/jamiemitchellconsultants/eventbooking-web-caddy:${EVENTBOOKING_IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       EVENTBOOKING_KEYCLOAK_URL: ${EVENTBOOKING_KEYCLOAK_URL:?required}
     volumes:
@@ -321,6 +327,24 @@ USER 1000:1000
 EXPOSE 8080
 ```
 
+Task 29's baseline Caddy Dockerfile is the publication path used by Task 31. Replace it now so the
+published image and the reviewed-checkout fallback above consume the same hardened home-lab
+configuration:
+
+```dockerfile
+# src/EventBooking.Web/Dockerfile.caddy (complete Task 30 replacement; Task 31 publication input)
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish src/EventBooking.Web/EventBooking.Web.csproj -c Release -o /out
+
+FROM caddy:2.10-alpine AS runtime
+COPY --from=build /out/wwwroot /srv
+COPY deploy/home-lab/web/Caddyfile /etc/caddy/Caddyfile
+USER 1000:1000
+EXPOSE 8080
+```
+
 ```caddyfile
 # deploy/home-lab/web/Caddyfile (complete)
 :8080 {
@@ -361,12 +385,17 @@ EXPOSE 8080
 }
 ```
 
+Keep ApiBaseUrl at the public origin, without an `/api` suffix. Every Web client calls a
+root-relative `/api/...` path; the Caddy `handle /api*` block above receives those calls. Adding a
+path to HttpClient.BaseAddress would not prefix a root-relative request and would obscure this
+contract.
+
 ```caddyfile
 # deploy/home-lab/caddy/eventbooking.caddy (complete template)
-EVENTBOOKING_HOSTNAME {
+${EVENTBOOKING_HOSTNAME} {
     handle /mailpit* {
         basic_auth {
-            operator EVENTBOOKING_MAILPIT_BASIC_AUTH
+            operator ${EVENTBOOKING_MAILPIT_BASIC_AUTH}
         }
         reverse_proxy eventbooking-mailpit:8025
     }
@@ -407,8 +436,10 @@ ENTRYPOINT ["dotnet", "EventBooking.SeedData.dll"]
 
 - [ ] **Step 3: Implement the realm, environment and exact seven-step installer**
 
-Replace the home-lab realm with the local realm's roles and mappers, changing only transport and
-redirect values. This is the complete checked-in template:
+Replace the home-lab realm with the local realm's roles and mappers. Change transport and redirect
+values, and retain the home-lab security boundary that disables the public client's resource-owner
+password grant (`directAccessGrantsEnabled: false`). Browser sign-in continues to use authorization
+code with PKCE. This is the complete checked-in template:
 
 ```json
 {
@@ -453,13 +484,13 @@ redirect values. This is the complete checked-in template:
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
-        "https://EVENTBOOKING_HOSTNAME/authentication/login-callback",
-        "https://EVENTBOOKING_HOSTNAME/authentication/logout-callback"
+        "https://${EVENTBOOKING_HOSTNAME}/authentication/login-callback",
+        "https://${EVENTBOOKING_HOSTNAME}/authentication/logout-callback"
       ],
-      "webOrigins": ["https://EVENTBOOKING_HOSTNAME"],
+      "webOrigins": ["https://${EVENTBOOKING_HOSTNAME}"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://EVENTBOOKING_HOSTNAME/authentication/logout-callback"
+        "post.logout.redirect.uris": "https://${EVENTBOOKING_HOSTNAME}/authentication/logout-callback"
       },
       "protocolMappers": [
         {
@@ -625,6 +656,10 @@ envsubst '$EVENTBOOKING_HOSTNAME' \
 # shellcheck disable=SC2016
 envsubst '$EVENTBOOKING_HOSTNAME $EVENTBOOKING_MAILPIT_BASIC_AUTH' \
   < caddy/eventbooking.caddy > .rendered/eventbooking.caddy
+if grep -q 'EVENTBOOKING_' .rendered/eventbooking-realm.json .rendered/eventbooking.caddy; then
+  echo "A runtime placeholder remained after rendering." >&2
+  exit 1
+fi
 sed -e "s|EVENTBOOKING_HOSTNAME|$EVENTBOOKING_HOSTNAME|g" \
     -e "s|EVENTBOOKING_KEYCLOAK_URL|$EVENTBOOKING_KEYCLOAK_URL|g" \
     -e "s|EVENTBOOKING_COORDINATOR_CONTACT|$EVENTBOOKING_COORDINATOR_CONTACT|g" \
@@ -770,9 +805,24 @@ cd deploy/home-lab
 shellcheck install.sh ../postgres/init-roles.sh
 jq --exit-status . keycloak/eventbooking-realm.json >/dev/null
 docker compose --env-file .env.example config --quiet
+render_dir="$(mktemp -d)"
+trap 'rm -rf "$render_dir"' EXIT
+EVENTBOOKING_HOSTNAME=events.example.test \
+  envsubst '$EVENTBOOKING_HOSTNAME' < keycloak/eventbooking-realm.json \
+  > "$render_dir/eventbooking-realm.json"
+test_hash="$(docker run --rm caddy:2.10-alpine caddy hash-password --plaintext test-only)"
+EVENTBOOKING_HOSTNAME=events.example.test EVENTBOOKING_MAILPIT_BASIC_AUTH="$test_hash" \
+  envsubst '$EVENTBOOKING_HOSTNAME $EVENTBOOKING_MAILPIT_BASIC_AUTH' \
+  < caddy/eventbooking.caddy > "$render_dir/eventbooking.caddy"
+! grep -q 'EVENTBOOKING_' "$render_dir/eventbooking-realm.json" "$render_dir/eventbooking.caddy"
+jq --exit-status . "$render_dir/eventbooking-realm.json" >/dev/null
+docker run --rm -v "$render_dir/eventbooking.caddy:/etc/caddy/Caddyfile:ro" \
+  caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
 docker run --rm -v "$PWD/web/Caddyfile:/etc/caddy/Caddyfile:ro" \
   caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
 cd ../..
+docker build --file src/EventBooking.Web/Dockerfile.caddy --tag eventbooking-web-caddy:task30 .
+docker build --file deploy/home-lab/web/Dockerfile --tag eventbooking-web-caddy-fallback:task30 .
 actionlint .github/workflows/compose-smoke.yml
 dotnet build EventBooking.sln -warnaserror
 dotnet test EventBooking.sln

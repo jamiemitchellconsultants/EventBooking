@@ -58,7 +58,7 @@ public static class LocalDeploymentContract
 }
 ```
 
-- [ ] **Step 1: Write the failing smoke workflow**
+- [ ] **Step 1: Write the failing test**
 
 Create the workflow before the deployment files. It validates the Compose model, waits on the real
 readiness endpoint, checks discovery, and proves that Task 28 sent at least one invitation into
@@ -206,7 +206,7 @@ EXPOSE 8080
 ```
 
 ```dockerfile
-# src/EventBooking.Web/Dockerfile.caddy (complete; publication input, not used by local Compose)
+# src/EventBooking.Web/Dockerfile.caddy (complete Task 29 baseline; Task 30 hardens its Caddy input)
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
@@ -496,6 +496,12 @@ services:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
       mailpit: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   web:
     build:

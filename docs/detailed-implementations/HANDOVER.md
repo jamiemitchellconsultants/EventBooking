@@ -645,8 +645,11 @@ LINT_PLANS
 
 - **In plan prose, backtick a PascalCase word only if the ontology defines it.** Class, test and
   file names go in plain text or inside fenced code blocks; the checker skips fenced blocks.
-- **Stage explicit paths.** Never `git add -A`. Review `git diff --cached --name-only` and
-  `git diff --cached` before committing. Leave `.DS_Store` files alone; they are untracked noise.
+- **When authoring plans, stage explicit paths.** Leave `.DS_Store` files alone; they are untracked
+  noise. The executable task documents themselves follow AGENTS.md's separate detailed-plan
+  contract and therefore contain the required literal `git add -A`; their next two commands must
+  review `git diff --cached --name-only` and `git diff --cached` before committing, and an executor
+  must unstage anything outside that task's declared Files list.
 - **Never push to `main`, never merge.** One commit per task on the documentation branch.
 - End commit messages with the co-author line the executing harness requires.
 - If a domain concept changes, edit `docs/ontology.ttl`, run `node scripts/build-ontology.mjs`, and
