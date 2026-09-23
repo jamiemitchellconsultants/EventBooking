@@ -47,7 +47,7 @@ public sealed class ProposeEventHandler(
         EventWindow window;
         try
         {
-            window = new EventWindow(command.Date, command.StartTime);
+            window = new EventWindow(command.Date, command.StartTime, 240);
         }
         catch (DomainException ex)
         {

@@ -132,7 +132,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
                  })
         {
             var proposal = EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(date, startTime), Guid.NewGuid());
+                Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

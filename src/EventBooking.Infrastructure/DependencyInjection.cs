@@ -1,4 +1,5 @@
 using EventBooking.Application.Abstractions;
+using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
@@ -62,6 +63,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton(tokens);
 
         services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IEventWindowZones, NodaTimeEventWindowZones>();
         services.AddSingleton<ITokenService, HmacTokenService>();
 
         services.AddScoped<IEmailSender, LoggingEmailSender>();

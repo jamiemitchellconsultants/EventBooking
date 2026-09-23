@@ -193,11 +193,11 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
 
         var bookedEvent = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(30), new TimeOnly(9, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(30), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var spareEvents = new[] { new TimeOnly(11, 0), new TimeOnly(13, 0), new TimeOnly(15, 0) }
             .Select(start => EventFixture.Create(
-                Guid.NewGuid(), new EventWindow(today.AddDays(31), start),
+                Guid.NewGuid(), new EventWindow(today.AddDays(31), start, 240),
                 AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
             .ToList();
 
@@ -238,7 +238,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
 
         var recoveryEvent = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(40), new TimeOnly(13, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(40), new TimeOnly(13, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var original = await context.Bookings.SingleAsync(b => b.Id == originalId);
         var recoveryInvite = Invite.CreateRecovery(

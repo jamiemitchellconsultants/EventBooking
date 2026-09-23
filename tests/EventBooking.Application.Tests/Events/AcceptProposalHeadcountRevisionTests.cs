@@ -46,7 +46,7 @@ public class AcceptProposalHeadcountRevisionTests
 
         _proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             DrugAndAlcoholManager);
         _proposals.Add(_proposal);
     }

@@ -25,7 +25,7 @@ public sealed class InviteSnapshotAuthorityTests
         var events = new InMemoryEventRepository();
         var options = Enumerable.Range(0, 3).Select(index =>
             EventFixture.Create(
-                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10 + index), new TimeOnly(9, 0)),
+                Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10 + index), new TimeOnly(9, 0), 240),
                 new Dictionary<Guid, int>
                 {
                     [AppointmentTypeIds.DrugAndAlcoholTesting] = 5,

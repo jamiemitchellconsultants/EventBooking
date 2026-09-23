@@ -134,7 +134,7 @@ public class BookingEndpointTests(ApiFactory factory)
         {
             var proposal = EventProposal.Create(
                 Guid.NewGuid(),
-                new EventWindow(offeredEvent.Date, offeredEvent.StartTime),
+                new EventWindow(offeredEvent.Date, offeredEvent.StartTime, 240),
                 Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

@@ -29,7 +29,7 @@ public sealed class CapacityAdjustmentConcurrencyHarness : IAsyncDisposable
     {
         var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0)),
+            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), totalHeadcount);

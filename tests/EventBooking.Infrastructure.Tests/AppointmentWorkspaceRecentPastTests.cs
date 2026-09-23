@@ -107,7 +107,7 @@ public sealed class AppointmentWorkspaceRecentPastTests(PostgresFixture fixture)
     {
         var eventItem = EventFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(date, new TimeOnly(9, 0)),
+            new EventWindow(date, new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 20));
         if (cancelled)
         {

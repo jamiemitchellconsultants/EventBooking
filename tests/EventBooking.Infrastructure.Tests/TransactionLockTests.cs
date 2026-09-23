@@ -233,7 +233,7 @@ public class TransactionLockTests(PostgresFixture fixture)
         {
             var proposal = EventProposal.Create(
                 Guid.NewGuid(),
-                new EventWindow(new DateOnly(2026, 9, 10 + offset), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2026, 9, 10 + offset), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());
             proposal.Accept(
                 AppointmentTypeIds.DrugAndAlcoholTesting,

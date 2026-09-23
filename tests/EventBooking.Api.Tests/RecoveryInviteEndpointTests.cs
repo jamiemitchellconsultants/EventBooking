@@ -175,7 +175,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
         var bookedEvent = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(-1), new TimeOnly(9, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(-1), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var spareEvents = new[]
         {
@@ -184,7 +184,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             new TimeOnly(15, 0),
         }
         .Select(start => EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(2), start),
+            Guid.NewGuid(), new EventWindow(today.AddDays(2), start, 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
         .ToList();
         var group = context.AttendeeGroups

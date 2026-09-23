@@ -118,7 +118,7 @@ public class EligibleEventFinderTests
         int uniformHeadcount = 8)
     {
         var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(date, new TimeOnly(startHour, 0)), Guid.NewGuid());
+            Guid.NewGuid(), new EventWindow(date, new TimeOnly(startHour, 0), 240), Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), drugAndAlcoholHeadcount);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), medicalHeadcount);
         proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), uniformHeadcount);

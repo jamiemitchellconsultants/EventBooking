@@ -35,6 +35,7 @@ public sealed class AttendeeBookingQueries(EventBookingDbContext context) : IAtt
                     IsOriginal = b.RecoveryOfBookingId == null,
                     s.Window.Date,
                     s.Window.StartTime,
+                    s.Window.DurationMinutes,
                 })
             // The original booking sorts first so the coordinator reads the journey in order.
             .OrderByDescending(r => r.IsOriginal)
@@ -51,7 +52,7 @@ public sealed class AttendeeBookingQueries(EventBookingDbContext context) : IAtt
                 r.IsOriginal,
                 r.Date,
                 r.StartTime,
-                r.StartTime.Add(Domain.Events.EventWindow.Duration))),
+                r.StartTime.Add(TimeSpan.FromMinutes(r.DurationMinutes)))),
         ];
     }
 }

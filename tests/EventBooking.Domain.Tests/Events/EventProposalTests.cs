@@ -7,7 +7,7 @@ public class EventProposalTests
 {
     private static readonly Guid Creator = Guid.Parse("c0000001-0000-0000-0000-000000000001");
     private static readonly EventWindow Window =
-        new(new DateOnly(2026, 9, 10), new TimeOnly(9, 0));
+        new(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240);
 
     private static EventProposal NewProposal() => EventProposal.Create(Guid.NewGuid(), Window, Creator);
 

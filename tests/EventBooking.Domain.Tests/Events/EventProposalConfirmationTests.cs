@@ -9,7 +9,7 @@ public class EventProposalConfirmationTests
     private static EventProposal NewProposal() =>
         EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
 
     private static EventProposal AcceptedByAllThree(int drugAndAlcohol = 10, int medical = 6, int uniform = 8)
@@ -64,7 +64,7 @@ public class EventProposalConfirmationTests
         var creator = Guid.NewGuid();
         var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             creator);
         proposal.Withdraw(creator);
 

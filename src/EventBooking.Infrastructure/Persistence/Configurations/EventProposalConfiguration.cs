@@ -23,6 +23,7 @@ public sealed class EventProposalConfiguration : IEntityTypeConfiguration<EventP
         {
             window.Property(w => w.Date).HasColumnName("date");
             window.Property(w => w.StartTime).HasColumnName("start_time");
+            window.Property(w => w.DurationMinutes).HasColumnName("duration_minutes");
             window.Ignore(w => w.EndTime);
             window.HasIndex(item => new { item.Date, item.StartTime })
                 .HasDatabaseName("ux_event_proposal_open_window")

@@ -84,7 +84,7 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
     {
         var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60), new TimeOnly(9, 0)),
+            new EventWindow(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), totalHeadcount);

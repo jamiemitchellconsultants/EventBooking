@@ -270,7 +270,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         {
             var proposal = EventProposal.Create(
                 Guid.NewGuid(),
-                new EventWindow(FixedToday.AddDays(30), new TimeOnly(9, 0)),
+                new EventWindow(FixedToday.AddDays(30), new TimeOnly(9, 0), 240),
                 DrugAndAlcoholManagerId);
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, DrugAndAlcoholManagerId, 10);
             await using var context = _fixture.NewContext();
@@ -555,7 +555,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
 
         private Event CreateEvent() => EventFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(FixedToday.AddDays(30 + Interlocked.Increment(ref _nextEventOffset)), new TimeOnly(9, 0)),
+            new EventWindow(FixedToday.AddDays(30 + Interlocked.Increment(ref _nextEventOffset)), new TimeOnly(9, 0), 240),
             new Dictionary<Guid, int>
             {
                 [AppointmentTypeIds.DrugAndAlcoholTesting] = 1,

@@ -259,7 +259,7 @@ public sealed class DemoSeeder(
 
         foreach (var item in missing)
         {
-            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(item.Date, item.StartTime),
+            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(item.Date, item.StartTime, 240),
                 new Dictionary<Guid, int>
                 {
                     [AppointmentTypeIds.DrugAndAlcoholTesting] = item.DatHeadcount,
@@ -380,7 +380,7 @@ public sealed class DemoSeeder(
 
             DemoEventFactory.Create(database,
                 id,
-                new EventWindow(date, start),
+                new EventWindow(date, start, 240),
                 AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20),
                 clock.UtcNow);
             added++;

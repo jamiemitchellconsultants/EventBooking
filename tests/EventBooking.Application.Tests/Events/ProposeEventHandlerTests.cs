@@ -38,7 +38,7 @@ public class ProposeEventHandlerTests
         var proposal = Assert.Single(_proposals.Items);
         Assert.Equal(result.Value, proposal.Id);
         Assert.Equal(EventProposalStatus.Open, proposal.Status);
-        Assert.Equal(new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)), proposal.Window);
+        Assert.Equal(new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240), proposal.Window);
         Assert.Equal(Manager, proposal.CreatedByManagerUserId);
         Assert.Empty(proposal.Acceptances);
         Assert.Equal(1, _unitOfWork.SaveCount);
@@ -106,7 +106,7 @@ public class ProposeEventHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("validation", result.Error.Code);
         Assert.Equal(
-            "startTime must leave room for the full 4-hour window on the same day.",
+            "The window must end on the local date it starts.",
             result.Error.Message);
     }
 

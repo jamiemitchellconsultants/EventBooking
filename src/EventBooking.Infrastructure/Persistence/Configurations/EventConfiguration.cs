@@ -20,6 +20,7 @@ public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         {
             window.Property(w => w.Date).HasColumnName("date");
             window.Property(w => w.StartTime).HasColumnName("start_time");
+            window.Property(w => w.DurationMinutes).HasColumnName("duration_minutes");
             window.Ignore(w => w.EndTime);
         });
         builder.Navigation(s => s.Window).IsRequired();

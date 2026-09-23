@@ -42,7 +42,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 Guid.NewGuid(), "Amara Novak", "amara@example.com", pilots);
             var eventItem = EventFixture.Create(
                 Guid.NewGuid(),
-                new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0), 240),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
@@ -352,7 +352,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             attendeeId = attendee.Id;
             var pastEvent = EventFixture.Create(
                 Guid.NewGuid(),
-                new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0), 240),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
             var invite = Invite.CreateInitial(
                 Guid.NewGuid(), attendee.Id, "invite-token", now.AddDays(1),
@@ -372,7 +372,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             {
                 seed.Events.Add(EventFixture.Create(
                     Guid.NewGuid(),
-                    new EventWindow(DateOnly.FromDateTime(now.DateTime).AddDays(day), new TimeOnly(9, 0)),
+                    new EventWindow(DateOnly.FromDateTime(now.DateTime).AddDays(day), new TimeOnly(9, 0), 240),
                     AppointmentTypeIds.All.ToDictionary(value => value, _ => 10)));
             }
 

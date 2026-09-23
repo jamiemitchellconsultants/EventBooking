@@ -121,7 +121,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
                  })
         {
             var proposal = EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(date, startTime), Guid.NewGuid());
+                Guid.NewGuid(), new EventWindow(date, startTime, 240), Guid.NewGuid());
             proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
             proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
             proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
@@ -133,7 +133,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         }
 
         var unofferedProposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2030, 1, 17), new TimeOnly(9, 0)), Guid.NewGuid());
+            Guid.NewGuid(), new EventWindow(new DateOnly(2030, 1, 17), new TimeOnly(9, 0), 240), Guid.NewGuid());
         unofferedProposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         unofferedProposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
         unofferedProposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);

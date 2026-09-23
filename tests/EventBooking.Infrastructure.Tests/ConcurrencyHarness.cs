@@ -92,7 +92,7 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             Guid.NewGuid(),
             new EventWindow(
                 DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30 + Interlocked.Increment(ref _nextEventOffset)),
-                new TimeOnly(9, 0)),
+                new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), drugAndAlcohol);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), medical);

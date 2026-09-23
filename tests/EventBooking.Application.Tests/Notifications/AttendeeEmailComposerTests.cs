@@ -21,7 +21,7 @@ public class AttendeeEmailComposerTests
     [Fact]
     public void AWindowIsFormattedForAHumanReader()
     {
-        var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0));
+        var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240);
 
         Assert.Equal("Thursday 10 Sep 2026, 09:00-13:00", AttendeeEmailComposer.FormatWindow(window));
     }
@@ -134,7 +134,7 @@ public class AttendeeEmailComposerTests
     private static Event EventOn(int day, int hour)
     {
         var proposal = EventProposal.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0)),
+            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, day), new TimeOnly(hour, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

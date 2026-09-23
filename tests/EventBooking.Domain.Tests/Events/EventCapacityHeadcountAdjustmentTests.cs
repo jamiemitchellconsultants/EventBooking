@@ -10,7 +10,7 @@ public class EventCapacityHeadcountAdjustmentTests
     {
         var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
             Guid.NewGuid());
         proposal.Accept(
             AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), totalHeadcount);

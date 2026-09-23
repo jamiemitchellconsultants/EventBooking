@@ -10,7 +10,7 @@ public class EventCancellationTests
     {
         var proposal = EventProposal.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 11), new TimeOnly(13, 0)),
+            new EventWindow(new DateOnly(2026, 9, 11), new TimeOnly(13, 0), 240),
             Guid.NewGuid());
         proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
         proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);

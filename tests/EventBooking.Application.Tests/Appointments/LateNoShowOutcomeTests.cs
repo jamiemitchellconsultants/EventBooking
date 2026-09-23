@@ -100,7 +100,7 @@ public sealed class LateNoShowOutcomeTests
         attendees.Add(attendee);
         var eventItem = EventFixture.Create(
             Guid.NewGuid(),
-            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
+            new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
         var events = new InMemoryEventRepository(operations);
         events.Add(eventItem);

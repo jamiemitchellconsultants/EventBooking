@@ -451,7 +451,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         for (var index = 0; index < 3; index++)
         {
             var proposal = EventProposal.Create(
-                Guid.NewGuid(), new EventWindow(date.AddDays(index), new TimeOnly(9, 0)), Guid.NewGuid());
+                Guid.NewGuid(), new EventWindow(date.AddDays(index), new TimeOnly(9, 0), 240), Guid.NewGuid());
             foreach (var appointmentTypeId in AppointmentTypeIds.All)
             {
                 proposal.Accept(appointmentTypeId, Guid.NewGuid(), 8);
@@ -475,7 +475,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         {
             var proposal = EventProposal.Create(
                 Guid.NewGuid(),
-                new EventWindow(new DateOnly(2030, 1, day), new TimeOnly(9, 0)),
+                new EventWindow(new DateOnly(2030, 1, day), new TimeOnly(9, 0), 240),
                 Guid.NewGuid());
             foreach (var appointmentTypeId in AppointmentTypeIds.All)
             {

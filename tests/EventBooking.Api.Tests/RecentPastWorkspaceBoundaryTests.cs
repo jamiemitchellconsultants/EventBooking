@@ -98,7 +98,7 @@ public sealed class RecentPastWorkspaceBoundaryTests(ApiFactory factory)
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
         var eventItem = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today.AddDays(-daysBeforeToday), new TimeOnly(9, 0)),
+            Guid.NewGuid(), new EventWindow(today.AddDays(-daysBeforeToday), new TimeOnly(9, 0), 240),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp
             ? AttendeeGroupIds.GroundOperationsAgent

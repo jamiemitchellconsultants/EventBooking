@@ -5,20 +5,21 @@ namespace EventBooking.Domain.Tests.Events;
 
 public class EventWindowTests
 {
-    private static EventWindow Window(int day, int hour) =>
-        new(new DateOnly(2026, 9, day), new TimeOnly(hour, 0));
+    private static EventWindow Window(int day, int hour, int durationMinutes = 240) =>
+        new(new DateOnly(2026, 9, day), new TimeOnly(hour, 0), durationMinutes);
 
     [Fact]
-    public void EndTimeIsFourHoursAfterTheStart()
+    public void EndTimeFollowsTheStatedDuration()
     {
         Assert.Equal(new TimeOnly(13, 0), Window(10, 9).EndTime);
         Assert.Equal(new TimeOnly(17, 0), Window(10, 13).EndTime);
     }
 
     [Fact]
-    public void DurationIsAlwaysFourHours()
+    public void TheDurationIsStatedByTheCaller()
     {
-        Assert.Equal(TimeSpan.FromHours(4), EventWindow.Duration);
+        Assert.Equal(90, Window(10, 9, 90).DurationMinutes);
+        Assert.Equal(new TimeOnly(10, 30), Window(10, 9, 90).EndTime);
     }
 
     [Fact]
@@ -42,8 +43,8 @@ public class EventWindowTests
     public void AStartTimeThatWouldRunPastMidnightIsRejected()
     {
         var ex = Assert.Throws<DomainException>(
-            () => new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(21, 0)));
-        Assert.Equal("startTime must leave room for the full 4-hour window on the same day.", ex.Message);
+            () => new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(21, 0), 240));
+        Assert.Equal("The window must end on the local date it starts.", ex.Message);
     }
 
     [Fact]
