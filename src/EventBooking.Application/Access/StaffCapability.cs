@@ -7,9 +7,7 @@ public enum StaffCapability
     ManageSettings,
     /// <summary>Defines contract for the current use case.</summary>
     ManageStaffAccess,
-    /// <summary>Defines contract for the current use case.</summary>
-    ImportEvents,
-    /// <summary>Defines contract for the current use case.</summary>
+    /// <summary>Creates, updates and invites attendees under Coordinator authorization.</summary>
     ManageAttendees,
     /// <summary>Defines contract for the current use case.</summary>
     ViewAttendeeDashboards,

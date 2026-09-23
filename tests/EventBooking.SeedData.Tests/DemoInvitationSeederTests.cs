@@ -4,6 +4,7 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.Attendees;
+using EventBooking.Domain.Events;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Infrastructure;
@@ -76,7 +77,12 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         Assert.Equal(5, await db.Invites.CountAsync(i => i.Status == InviteStatus.Pending));
         Assert.Equal(5, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Sent));
         Assert.Equal(12, await db.Events.CountAsync());
-        Assert.Equal(5, await db.EventProposals.CountAsync());
+        // Five negotiation scenarios plus one accepted proposal for each of twelve events.
+        Assert.Equal(17, await db.EventProposals.CountAsync());
+        var events = await db.Events.AsNoTracking().ToListAsync();
+        var proposals = await db.EventProposals.AsNoTracking().ToDictionaryAsync(p => p.Id);
+        Assert.Equal(events.Count, events.Select(e => e.ProposalId).Distinct().Count());
+        Assert.All(events, e => Assert.Equal(EventProposalStatus.Confirmed, proposals[e.ProposalId].Status));
         Assert.Equal(5, await db.Attendees.Where(c => c.Status == AttendeeStatus.Invited)
             .Select(c => c.AttendeeGroupId).Distinct().CountAsync());
         var view = scope.ServiceProvider.GetRequiredService<ViewInviteHandler>();

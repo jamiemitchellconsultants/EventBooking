@@ -21,7 +21,7 @@ public static class StaffNavigation
             [
                 new("/settings", "System settings", "Configure invitation timing"),
                 new("/staff-access", "Staff access", "Set appointment-type scope"),
-                new("/events/operations", "Events", "Import already agreed events"),
+                new("/events/operations", "Events", "Review and cancel confirmed events"),
                 new("/audit", "Audit trail", "Search what changed"),
             ];
         }
@@ -44,7 +44,7 @@ public static class StaffNavigation
         {
             links.Add(new("/attendees", "Attendees", "Invite and track attendees"));
             links.Add(new("/dashboards", "Dashboards", "Waiting lists and follow-ups"));
-            links.Add(new("/events/operations", "Events", "Import already agreed events"));
+            links.Add(new("/events/operations", "Events", "Review and cancel confirmed events"));
             links.Add(new("/audit", "Audit trail", "Search what changed"));
         }
 

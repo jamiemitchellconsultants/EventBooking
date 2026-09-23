@@ -48,7 +48,6 @@ builder.Services.AddScoped<EventBooking.Web.Services.EventsClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.AttendeesClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.AdminClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.StaffAccessClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.EventOperationsClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.DashboardsClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.AuditClient>();
 builder.Services.AddScoped<EventBooking.Web.Services.MeClient>();

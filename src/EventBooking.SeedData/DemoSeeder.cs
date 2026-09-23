@@ -66,7 +66,6 @@ public sealed class SeedException(string message) : Exception(message);
 /// <param name="proposals">Provides persistence for event proposals.</param>
 /// <param name="attendees">Provides persistence for attendees.</param>
 /// <param name="groups">Resolves demo requirement sets to their Attendee Group.</param>
-/// <param name="importEvents">Imports agreed appointment events from the canonical workbook.</param>
 /// <param name="proposeEvent">Creates proposed appointment events.</param>
 /// <param name="acceptProposal">Accepts proposed appointment events.</param>
 /// <param name="saveAttendee">Creates attendees through the application workflow.</param>
@@ -80,7 +79,6 @@ public sealed class DemoSeeder(
     IEventProposalRepository proposals,
     IAttendeeRepository attendees,
     IAttendeeGroupRepository groups,
-    ImportEventsHandler importEvents,
     ProposeEventHandler proposeEvent,
     AcceptProposalHandler acceptProposal,
     SaveAttendeeHandler saveAttendee,
@@ -256,31 +254,22 @@ public sealed class DemoSeeder(
 
         foreach (var eventItem in missing)
         {
-            Report($"Agreed event missing, will import: {eventItem.Date:yyyy-MM-dd} {eventItem.StartTime:HH\\:mm}.");
+            Report($"Agreed event missing, will create with an accepted proposal: {eventItem.Date:yyyy-MM-dd} {eventItem.StartTime:HH\\:mm}.");
         }
 
-        var csv = "date,startTime,DAT,MED,UNI\n" + string.Join(
-            "\n",
-            missing.Select(s =>
-                $"{s.Date:yyyy-MM-dd},{s.StartTime:HH\\:mm},{s.DatHeadcount},{s.MedHeadcount},{s.UniHeadcount}"));
-
-        var outcome = await importEvents.HandleAsync(
-            // Agreed events are deliberately historical (negative day offsets), so the
-            // user-facing future-date rule is lifted for this import only.
-            new ImportEventsCommand(AdminUserId(), csv, AllowPastDates: true), cancellationToken);
-        if (outcome.IsFailure)
+        foreach (var item in missing)
         {
-            throw new SeedException($"Agreed event import failed: {outcome.Error}.");
+            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(item.Date, item.StartTime),
+                new Dictionary<Guid, int>
+                {
+                    [AppointmentTypeIds.DrugAndAlcoholTesting] = item.DatHeadcount,
+                    [AppointmentTypeIds.MedicalCheckUp] = item.MedHeadcount,
+                    [AppointmentTypeIds.UniformFitting] = item.UniHeadcount,
+                });
         }
-
-        if (!outcome.Value.Accepted)
-        {
-            var errors = string.Join("; ", outcome.Value.Errors.Select(e => $"line {e.LineNumber}: {e.Message}"));
-            throw new SeedException($"Agreed event import rejected: {errors}.");
-        }
-
-        Report($"Agreed events: imported {outcome.Value.ImportedCount}.");
-        return outcome.Value.ImportedCount;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        Report($"Agreed events: created {missing.Count} with accepted proposals.");
+        return missing.Count;
     }
 
     private async Task<(int ProposalsEnsured, int AcceptancesApplied)> SeedProposalsAsync(
@@ -388,10 +377,10 @@ public sealed class DemoSeeder(
                 continue;
             }
 
-            database.Events.Add(Event.CreateImported(
+            DemoEventFactory.Create(database,
                 id,
                 new EventWindow(date, start),
-                AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20)));
+                AppointmentTypeIds.All.ToDictionary(typeId => typeId, _ => 20));
             added++;
             Report($"Journey event created: {date:yyyy-MM-dd} {start:HH\\:mm}.");
         }

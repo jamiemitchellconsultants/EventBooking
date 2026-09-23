@@ -169,28 +169,6 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
-    /// Verifies a event file-read exception is recoverable and does not strand the busy flag.
-    /// </summary>
-    [Fact]
-    public async Task EventImportFileReadExceptionRendersAnAlertAndClearsBusy()
-    {
-        var handler = new RoutedHandler();
-        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
-        GivenNoEvents();
-
-        var cut = Render<EventOperations>();
-
-        await cut.InvokeAsync(() => cut.Instance.ImportFileForTestingAsync(new InputFileChangeEventArgs([])));
-        cut.Render();
-
-        Assert.Equal("false", cut.Find(".events-page").GetAttribute("aria-busy"));
-        Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
-        var input = cut.Find("input[type=file]");
-        Assert.Null(input.GetAttribute("disabled"));
-        Assert.Equal("Import events CSV", input.GetAttribute("aria-label"));
-    }
-
-    /// <summary>
     /// Verifies a event mutation transport failure renders the safe alert and releases the page busy state.
     /// </summary>
     [Fact]
@@ -228,49 +206,6 @@ public class RepairBWebComponentTests : BunitContext
 
         Assert.Equal("false", cut.Find(".settings-page").GetAttribute("aria-busy"));
         Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
-    }
-
-    /// <summary>
-    /// Verifies a event import transport failure releases the input's busy state.
-    /// </summary>
-    [Fact]
-    public async Task EventImportTransportExceptionRendersAnAlertAndClearsBusy()
-    {
-        var handler = new RoutedHandler();
-        handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
-        GivenNoEvents();
-
-        var cut = Render<EventOperations>();
-
-        await cut.InvokeAsync(() => cut.Instance.ImportFileForTestingAsync(new InputFileChangeEventArgs(
-            [new BrowserFile("events.csv", "date,startTime,DAT,MED,UNI\n2026-10-01,09:00,1,1,1")] )));
-        cut.Render();
-
-        Assert.Equal("false", cut.Find(".events-page").GetAttribute("aria-busy"));
-        Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
-        Assert.Null(cut.Find("input[type=file]").GetAttribute("disabled"));
-    }
-
-    /// <summary>A second event import cannot start while the first request is in flight.</summary>
-    [Fact]
-    public async Task EventImportSuppressesReentryUntilTheRequestCompletes()
-    {
-        var handler = new DeferredImportHandler();
-        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
-        GivenNoEvents();
-        var cut = Render<EventOperations>();
-
-        var first = cut.InvokeAsync(() => cut.Instance.ImportCsvForTestingAsync("first"));
-        await handler.ImportStarted.WaitAsync(TimeSpan.FromSeconds(2));
-        var second = cut.InvokeAsync(() => cut.Instance.ImportCsvForTestingAsync("second"));
-
-        Assert.Equal(1, handler.ImportRequestCount);
-        handler.CompleteImport();
-        await Task.WhenAll(first, second);
-        cut.Render();
-
-        Assert.Equal("false", cut.Find(".events-page").GetAttribute("aria-busy"));
     }
 
     private IRenderedComponent<CascadingAuthenticationState> RenderAuthenticatedHome(MeDto me)
@@ -362,31 +297,6 @@ public class RepairBWebComponentTests : BunitContext
         /// <returns>A readable stream containing the fixture's CSV content.</returns>
         public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default) =>
             new MemoryStream(Encoding.UTF8.GetBytes(content));
-    }
-
-    private sealed class DeferredImportHandler : HttpMessageHandler
-    {
-        private readonly TaskCompletionSource _importStarted = new();
-        private readonly TaskCompletionSource _importCompleted = new();
-
-        /// <summary>Gets the number of event import requests.</summary>
-        public int ImportRequestCount { get; private set; }
-
-        /// <summary>Completes when the first import request reaches the transport.</summary>
-        public Task ImportStarted => _importStarted.Task;
-
-        /// <summary>Releases the deferred import request.</summary>
-        public void CompleteImport() => _importCompleted.TrySetResult();
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            ImportRequestCount++;
-            _importStarted.TrySetResult();
-            await _importCompleted.Task.WaitAsync(cancellationToken);
-            return Json(new EventImportOutcomeDto(true, 1, []));
-        }
     }
 
     /// <summary>

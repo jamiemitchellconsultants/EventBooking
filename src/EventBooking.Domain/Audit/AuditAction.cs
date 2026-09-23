@@ -33,12 +33,8 @@ public enum AuditAction
     BookingCancelled = 14,
     /// <summary>Defines capacity adjusted for the current use case.</summary>
     CapacityAdjusted = 15,
-    /// <summary>Defines event imported for the current use case.</summary>
-    EventImported = 16,
     /// <summary>Defines staff access changed for the current use case.</summary>
     StaffAccessChanged = 17,
-    /// <summary>Defines staff access removed for the current use case.</summary>
-    StaffAccessRemoved = 18,
     /// <summary>Records an Expected appointment moving to CheckedIn.</summary>
     AppointmentCheckedIn = 19,
     /// <summary>Records a CheckedIn appointment moving to Completed.</summary>

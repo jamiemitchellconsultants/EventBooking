@@ -16,7 +16,7 @@ or missed. EventBooking stores no clinical findings, notes, measurements, or res
   substitute record.
 - If you will be working away from a screen, use **Download roster** to take the list with you.
 
-The dependencies are deliberate: Managers or a direct import create the Confirmed Event, a
+The dependencies are deliberate: Managers negotiate and accept the Event, a
 Coordinator issues an invitation, and the attendee must book before a Booking Appointment appears
 for you.
 

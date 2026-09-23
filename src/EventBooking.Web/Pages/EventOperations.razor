@@ -1,7 +1,6 @@
 @page "/events/operations"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using EventBooking.Web.Services
-@inject EventOperationsClient EventImportsApi
 @inject EventsClient EventsApi
 
 <PageTitle>Events</PageTitle>
@@ -9,53 +8,9 @@
 <section class="page events-page" aria-labelledby="events-heading" aria-busy="@(_busy ? "true" : "false")">
     <div class="page-header">
         <div>
-            <span class="eyebrow">Bulk import</span>
+            <span class="eyebrow">Operations</span>
             <h1 id="events-heading">Events</h1>
-            <p>Bring in windows that were already agreed away from the negotiation board.</p>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-heading">
-            <h2>
-                Import already agreed events
-                <span class="tip" tabindex="0" role="note"
-                      aria-label="Imported events skip the negotiation board: each row lands as a confirmed window with the headcount given per appointment type."
-                      data-tip="Imported events skip the negotiation board: each row lands as a confirmed window with the headcount given per appointment type."></span>
-            </h2>
-        </div>
-        <div class="card-body import-card">
-            <p class="hint">
-                Upload a CSV to add events agreed outside the system. The required header is
-                <code>date,startTime,DAT,MED,UNI</code>. The whole file is accepted or rejected.
-            </p>
-            <InputFile OnChange="OnEventFileChosenAsync" accept=".csv" disabled="@_busy"
-                       aria-label="Import events CSV" />
-
-            @if (_busy)
-            {
-                <p class="hint" role="status">Importing events…</p>
-            }
-            @if (_error is not null)
-            {
-                <p class="banner error" role="alert">@_error</p>
-            }
-            @if (_importMessage is not null)
-            {
-                <p class="banner saved" role="status">@_importMessage</p>
-            }
-            @if (_importErrors.Count > 0)
-            {
-                <div class="banner error" role="alert">
-                    <p><strong>Nothing was imported.</strong> Fix the file and try again.</p>
-                    <ul class="import-errors">
-                        @foreach (var error in _importErrors)
-                        {
-                            <li><strong>Line @error.LineNumber:</strong> @error.Message</li>
-                        }
-                    </ul>
-                </div>
-            }
+            <p>Review confirmed events and cancel an event when necessary.</p>
         </div>
     </div>
 
@@ -128,9 +83,6 @@
 
 @code {
     private bool _busy;
-    private string? _error;
-    private string? _importMessage;
-    private List<EventImportErrorDto> _importErrors = [];
 
     private List<EventOperationDto>? _events;
     private bool _eventsLoading = true;
@@ -208,60 +160,4 @@
         }
     }
 
-    private async Task OnEventFileChosenAsync(InputFileChangeEventArgs args)
-    {
-        await ImportAsync(async () =>
-        {
-            using var stream = args.File.OpenReadStream(1024 * 1024);
-            using var reader = new StreamReader(stream);
-            return await reader.ReadToEndAsync();
-        });
-    }
-
-    internal Task ImportCsvForTestingAsync(string csv) =>
-        ImportAsync(() => Task.FromResult(csv));
-
-    internal Task ImportFileForTestingAsync(InputFileChangeEventArgs args) =>
-        OnEventFileChosenAsync(args);
-
-    private async Task ImportAsync(Func<Task<string>> readCsv)
-    {
-        if (_busy)
-        {
-            return;
-        }
-
-        _busy = true;
-        _error = null;
-        _importMessage = null;
-        _importErrors = [];
-        try
-        {
-            var csv = await readCsv();
-            var outcome = await EventImportsApi.ImportAsync(csv, CancellationToken.None);
-            if (!outcome.IsSuccess)
-            {
-                _error = outcome.ErrorMessage ?? "Something went wrong. Please try again.";
-                return;
-            }
-
-            if (outcome.Value!.Accepted)
-            {
-                _importMessage = $"{outcome.Value.ImportedCount} events imported.";
-            }
-            else
-            {
-                _importErrors = outcome.Value.Errors.ToList();
-            }
-        }
-        catch (Exception)
-        {
-            _error = "Something went wrong. Please try again.";
-        }
-        finally
-        {
-            _busy = false;
-            StateHasChanged();
-        }
-    }
 }

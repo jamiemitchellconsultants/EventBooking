@@ -24,7 +24,7 @@ public sealed class InviteSnapshotAuthorityTests
         attendees.Add(attendee);
         var events = new InMemoryEventRepository();
         var options = Enumerable.Range(0, 3).Select(index =>
-            Event.CreateImported(
+            EventFixture.Create(
                 Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10 + index), new TimeOnly(9, 0)),
                 new Dictionary<Guid, int>
                 {

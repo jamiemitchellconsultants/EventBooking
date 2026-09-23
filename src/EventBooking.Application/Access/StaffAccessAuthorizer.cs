@@ -106,7 +106,6 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
         {
             StaffCapability.ManageSettings => isAdmin,
             StaffCapability.ManageStaffAccess => isAdmin,
-            StaffCapability.ImportEvents => isAdmin || isCoordinator,
             StaffCapability.ManageAttendees => isCoordinator,
             StaffCapability.ViewAttendeeDashboards => isCoordinator,
             StaffCapability.ViewAttendeeAudit => isCoordinator,

@@ -13,7 +13,7 @@ public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.HasKey(s => s.Id);
 
         builder.Property(s => s.Id).HasColumnName("id");
-        builder.Property(s => s.ProposalId).HasColumnName("proposal_id").IsRequired(false);
+        builder.Property(s => s.ProposalId).HasColumnName("proposal_id").IsRequired();
         builder.Property(s => s.Status).HasColumnName("status").HasConversion<int>();
 
         builder.OwnsOne(s => s.Window, window =>

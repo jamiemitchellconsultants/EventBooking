@@ -40,7 +40,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var pilots = seed.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
             var attendee = Attendee.Create(
                 Guid.NewGuid(), "Amara Novak", "amara@example.com", pilots);
-            var eventItem = Event.CreateImported(
+            var eventItem = EventFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
@@ -350,7 +350,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             attendee.MarkInvited();
             attendee.MarkBooked();
             attendeeId = attendee.Id;
-            var pastEvent = Event.CreateImported(
+            var pastEvent = EventFixture.Create(
                 Guid.NewGuid(),
                 new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
                 AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));
@@ -370,7 +370,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             seed.Events.Add(pastEvent);
             foreach (var day in new[] { 30, 31, 32 })
             {
-                seed.Events.Add(Event.CreateImported(
+                seed.Events.Add(EventFixture.Create(
                     Guid.NewGuid(),
                     new EventWindow(DateOnly.FromDateTime(now.DateTime).AddDays(day), new TimeOnly(9, 0)),
                     AppointmentTypeIds.All.ToDictionary(value => value, _ => 10)));

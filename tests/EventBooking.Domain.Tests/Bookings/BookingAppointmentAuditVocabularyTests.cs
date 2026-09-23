@@ -9,7 +9,6 @@ public sealed class BookingAppointmentAuditVocabularyTests
     [Fact]
     public void AppointmentActionsAppendAfterStaffAccessActions()
     {
-        Assert.Equal(18, (int)AuditAction.StaffAccessRemoved);
         Assert.Equal(19, (int)AuditAction.AppointmentCheckedIn);
         Assert.Equal(20, (int)AuditAction.AppointmentCompleted);
         Assert.Equal(21, (int)AuditAction.AppointmentMarkedNoShow);

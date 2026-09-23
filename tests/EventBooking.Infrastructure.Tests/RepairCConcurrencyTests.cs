@@ -553,7 +553,7 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
                 "CREATE UNIQUE INDEX IF NOT EXISTS ux_invite_pending_attendee ON invite (attendee_id) WHERE status = 1;");
         }
 
-        private Event CreateEvent() => Event.CreateImported(
+        private Event CreateEvent() => EventFixture.Create(
             Guid.NewGuid(),
             new EventWindow(FixedToday.AddDays(30 + Interlocked.Increment(ref _nextEventOffset)), new TimeOnly(9, 0)),
             new Dictionary<Guid, int>

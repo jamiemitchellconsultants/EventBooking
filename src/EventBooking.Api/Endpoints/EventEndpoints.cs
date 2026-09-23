@@ -148,26 +148,6 @@ public static class EventEndpoints
             .ProducesProblem(404)
             .ProducesProblem(409);
 
-        app.MapPost("/api/events/import", async (
-            HttpRequest request,
-            ICallerAccessor caller,
-            ImportEventsHandler handler,
-            CancellationToken cancellationToken) =>
-        {
-            using var reader = new StreamReader(request.Body);
-            var csv = await reader.ReadToEndAsync(cancellationToken);
-            return (await handler.HandleAsync(
-                new ImportEventsCommand(caller.RequireStaffUserId(), csv),
-                cancellationToken)).ToResponse();
-        }).RequireAuthorization(AuthenticationExtensions.StaffPolicy)
-            .WithAgentMetadata("importEvents")
-            .Accepts<string>("text/csv")
-            .Produces(200)
-            .ProducesProblem(400)
-            .ProducesProblem(403)
-            .ProducesProblem(413)
-            .ProducesProblem(415);
-
         return app;
     }
 }

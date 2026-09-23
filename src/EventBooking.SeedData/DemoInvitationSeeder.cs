@@ -1,4 +1,5 @@
-using System.Globalization;
+using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.Events;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
@@ -15,7 +16,6 @@ namespace EventBooking.SeedData;
 /// <param name="database">Reads invitation history without changing it directly.</param>
 /// <param name="attendees">Resolves the demo recipients by their seeded email address.</param>
 /// <param name="events">Finds already-imported windows without restoring their capacity.</param>
-/// <param name="importEvents">Imports missing demo windows under Coordinator authorization.</param>
 /// <param name="trigger">Creates initial invitations and sends only after committing.</param>
 /// <param name="retry">Retries outstanding messages under the existing claim and token rules.</param>
 /// <param name="clock">Determines future transitional-location dates and invitation usability.</param>
@@ -23,7 +23,6 @@ public sealed class DemoInvitationSeeder(
     EventBookingDbContext database,
     IAttendeeRepository attendees,
     IEventRepository events,
-    ImportEventsHandler importEvents,
     TriggerInviteHandler trigger,
     RetryEmailHandler retry,
     IClock clock)
@@ -125,16 +124,11 @@ public sealed class DemoInvitationSeeder(
             .Select(eventItem => (eventItem.Window.Date, eventItem.Window.StartTime)).ToHashSet();
         var missing = dates.Where(date => !existing.Contains((date, new TimeOnly(11, 0)))).ToList();
         if (missing.Count == 0) return;
-        var csv = "date,startTime,DAT,MED,UNI\n" + string.Join("\n", missing.Select(date =>
-            date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ",11:00,20,20,20"));
-        var imported = await importEvents.HandleAsync(
-            new ImportEventsCommand(DemoSeedSpec.CoordinatorUserId(), csv), cancellationToken);
-        if (imported.IsFailure)
-            throw new SeedException($"Demo invitation event import failed: {imported.Error}.");
-        if (!imported.Value.Accepted)
-            throw new SeedException("Demo invitation event import rejected: "
-                + string.Join("; ", imported.Value.Errors.Select(error => error.Message)));
-        Report($"Invitation demo events imported: {imported.Value.ImportedCount}.");
+        foreach (var date in missing)
+            DemoEventFactory.Create(database, Guid.NewGuid(), new EventWindow(date, new TimeOnly(11, 0)),
+                AppointmentTypeIds.All.ToDictionary(type => type, _ => 20));
+        await database.SaveChangesAsync(cancellationToken);
+        Report($"Invitation demo events created: {missing.Count} with accepted proposals.");
     }
 
     private static SeedException DeliveryFailed(string recipient) => new(

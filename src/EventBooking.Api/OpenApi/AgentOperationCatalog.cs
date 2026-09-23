@@ -67,7 +67,6 @@ public static class AgentOperationCatalog
             Staff("withdrawProposal", HttpMethods.Delete, "/api/event-proposals/{id}", "Events", "Withdraw a event proposal.", "Withdraws a event proposal. Requires a staff bearer token.", "withdraw_proposal", Delete()),
             Staff("adjustEventCapacity", HttpMethods.Put, "/api/events/{id}/capacity", "Events", "Adjust event capacity.", "Updates the capacity of a eventItem. Requires a staff bearer token.", "adjust_event_capacity", Transition()),
             Staff("cancelEvent", HttpMethods.Delete, "/api/events/{id}", "Events", "Cancel a eventItem.", "Cancels a eventItem. Requires a staff bearer token.", "cancel_event", Delete()),
-            Staff("importEvents", HttpMethods.Post, "/api/events/import", "Events", "Import events.", "Imports events from CSV. Requires a staff bearer token.", "import_events", Create()),
             Staff("listAttendees", HttpMethods.Get, "/api/attendees", "Attendees", "List attendees.", "Reads the attendee collection. Requires a staff bearer token.", "list_attendees", Read()),
             Staff("createAttendee", HttpMethods.Post, "/api/attendees", "Attendees", "Create a attendee.", "Creates a attendee. Requires a staff bearer token.", "create_attendee", Create()),
             Staff("updateAttendee", HttpMethods.Put, "/api/attendees/{id}", "Attendees", "Update a attendee.", "Updates an existing attendee. Requires a staff bearer token.", "update_attendee", Transition()),

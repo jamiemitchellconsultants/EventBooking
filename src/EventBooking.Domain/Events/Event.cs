@@ -18,7 +18,7 @@ public sealed class Event
     public Guid Id { get; private set; }
 
     /// <summary>Defines proposal id for the current use case.</summary>
-    public Guid? ProposalId { get; private set; }
+    public Guid ProposalId { get; private set; }
 
     /// <summary>Defines window for the current use case.</summary>
     public EventWindow Window { get; private set; }
@@ -54,44 +54,6 @@ public sealed class Event
         {
             eventItem._capacities.Add(
                 EventCapacity.Initialise(id, acceptance.AppointmentTypeId, acceptance.Headcount));
-        }
-
-        return eventItem;
-    }
-
-    /// <summary>
-    /// Creates an active event with no backing proposal from a strictly complete set of
-    /// positive headcounts for the three fixed appointment types.
-    /// </summary>
-    /// <param name="id">The id.</param>
-    /// <param name="window">The window.</param>
-    /// <param name="headcountsByAppointmentType">The headcounts by appointment type.</param>
-    public static Event CreateImported(
-        Guid id, EventWindow window, IReadOnlyDictionary<Guid, int> headcountsByAppointmentType)
-    {
-        Guard.Against(id == Guid.Empty, "id must not be empty.");
-        Guard.Against(window is null, "window must be supplied.");
-        Guard.Against(headcountsByAppointmentType is null, "headcountsByAppointmentType must be supplied.");
-        Guard.Against(
-            headcountsByAppointmentType!.Count != AppointmentTypeIds.All.Count
-            || headcountsByAppointmentType.Keys.Any(id => !AppointmentTypeIds.All.Contains(id)),
-            "Headcounts must be supplied for exactly the three fixed appointment types.");
-
-        var eventItem = new Event
-        {
-            Id = id,
-            ProposalId = null,
-            Window = window!,
-            Status = EventStatus.Active,
-        };
-
-        foreach (var appointmentTypeId in AppointmentTypeIds.All)
-        {
-            Guard.Against(
-                !headcountsByAppointmentType.TryGetValue(appointmentTypeId, out var headcount),
-                $"A headcount is required for {AppointmentTypeIds.NameOf(appointmentTypeId)}.");
-
-            eventItem._capacities.Add(EventCapacity.Initialise(id, appointmentTypeId, headcount));
         }
 
         return eventItem;

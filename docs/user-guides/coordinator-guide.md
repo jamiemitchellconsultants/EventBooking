@@ -11,8 +11,7 @@ audit trail.
 ## Your workflow
 
 1. Check **Dashboards** for attendees waiting for availability or follow-up.
-2. Ensure at least three suitable future Confirmed Events exist. Ask Managers to negotiate them or
-   import already-agreed capacity on **Events**.
+2. Ensure at least three suitable future Confirmed Events exist. Ask Managers to negotiate and accept them.
 3. Add attendees on **Attendees**, manually or with a CSV containing one Attendee Group per row.
 4. Review the derived Appointment Type chips, then select **Invite now**.
 5. Monitor invitation and email status until the attendee books.
@@ -234,23 +233,9 @@ Home, or End to change views.
 
 ## Events screen
 
-Use `/events` when all three teams have already agreed a complete window outside
-EventBooking, and to cancel a window that cannot run. Admins see the same screen.
+Use `/events/operations` to review Events and cancel a window that cannot run. Admins see the same screen.
 
-![Events screen with CSV import control](screenshots/events-import.png)
-
-### Import already agreed events
-
-The exact header is:
-
-```text
-date,startTime,DAT,MED,UNI
-```
-
-Choose the file in **Import already agreed events**. Each row uses a `yyyy-MM-dd` date, `HH:mm` start
-time, and positive capacity for all three types. Use future dates for bookable capacity; past events
-are never offered. A valid future import becomes bookable immediately. If any row is invalid,
-nothing is imported and the screen lists every line error.
+Event capacity is created through Manager negotiation. Direct event CSV import is not available.
 
 ### Cancel a event
 

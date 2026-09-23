@@ -8,7 +8,7 @@ that page; a signed-out visitor sees only the attendee guide.
 
 | Guide | Who it is for | Main workspace |
 |---|---|---|
-| [Admin](admin-guide.md) | System administrators who set appointment-type scope, settings, and direct event imports | System settings, Staff access, Events, Audit trail |
+| [Admin](admin-guide.md) | System administrators who set appointment-type scope, settings, and event operations | System settings, Staff access, Events, Audit trail |
 | [Coordinator](coordinator-guide.md) | Recruitment coordinators who manage attendees, invitations, bookings, readiness, and recovery | Attendees, Dashboards, Events, Audit trail |
 | [Manager](manager-guide.md) | Appointment-type managers who negotiate events, manage capacity, and may deliver appointments | Event proposals, Appointments |
 | [Appointment staff](appointment-staff-guide.md) | Delivery staff who check attendees in and record outcomes | Appointments |

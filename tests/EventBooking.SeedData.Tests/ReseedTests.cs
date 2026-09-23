@@ -2,6 +2,7 @@ using EventBooking.Application;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Notifications;
 using EventBooking.Domain.Bookings;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Persistence;
@@ -94,7 +95,12 @@ public sealed class ReseedTests : IAsyncLifetime
         });
         Assert.Equal(6, await database.StaffIdentities.CountAsync());
         Assert.Equal(9, await database.Events.CountAsync());
-        Assert.Equal(5, await database.EventProposals.CountAsync());
+        // Five negotiation scenarios plus one accepted proposal for each of nine events.
+        Assert.Equal(14, await database.EventProposals.CountAsync());
+        var events = await database.Events.AsNoTracking().ToListAsync();
+        var proposals = await database.EventProposals.AsNoTracking().ToDictionaryAsync(p => p.Id);
+        Assert.Equal(events.Count, events.Select(e => e.ProposalId).Distinct().Count());
+        Assert.All(events, e => Assert.Equal(EventProposalStatus.Confirmed, proposals[e.ProposalId].Status));
         Assert.Equal(100, await database.Attendees.CountAsync());
         Assert.Equal(3, await database.AppointmentTypes.CountAsync());
         Assert.Equal(1, await database.SystemSettings.CountAsync());

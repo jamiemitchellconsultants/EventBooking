@@ -9,47 +9,6 @@ namespace EventBooking.Web.Tests;
 
 public class EventsPageTests : BunitContext
 {
-    [Fact]
-    public async Task AcceptedImportShowsCountAndUsesNoAttendeeClient()
-    {
-        var handler = new RoutingHandler();
-        handler.Enqueue("/api/events/operations", OperationsJson([]));
-        handler.Enqueue("/api/events/import", new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = JsonContent.Create(new EventImportOutcomeDto(true, 4, [])),
-        });
-        GivenClients(handler);
-        var cut = Render<EventOperations>();
-
-        await cut.InvokeAsync(() => cut.Instance.ImportCsvForTestingAsync(
-            "date,startTime,DAT,MED,UNI\n2026-09-10,09:00,10,6,8"));
-
-        Assert.Contains("4 events imported", cut.Markup);
-        Assert.Contains(handler.Requests, r => r.RequestUri!.AbsolutePath == "/api/events/import");
-        Assert.DoesNotContain(handler.Requests, r => r.RequestUri!.AbsolutePath.StartsWith("/api/attendees", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task RejectedImportShowsEveryRowError()
-    {
-        var handler = new RoutingHandler();
-        handler.Enqueue("/api/events/operations", OperationsJson([]));
-        handler.Enqueue("/api/events/import", new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = JsonContent.Create(new EventImportOutcomeDto(
-                false,
-                0,
-                [new EventImportErrorDto(3, "DAT must be a positive integer.")])),
-        });
-        GivenClients(handler);
-        var cut = Render<EventOperations>();
-
-        await cut.InvokeAsync(() => cut.Instance.ImportCsvForTestingAsync("bad"));
-
-        Assert.Contains("Nothing was imported", cut.Markup);
-        Assert.Contains("Line 3", cut.Markup);
-        Assert.Contains("DAT must be a positive integer", cut.Markup);
-    }
 
     [Fact]
     public void RendersEventSectionWithCancelControls()
@@ -153,7 +112,6 @@ public class EventsPageTests : BunitContext
 
     private void GivenClients(RoutingHandler handler)
     {
-        Services.AddSingleton(new EventOperationsClient(NewHttpClient(handler)));
         Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
     }
 

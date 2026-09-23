@@ -98,7 +98,7 @@ public sealed class LateNoShowOutcomeTests
         var operations = new TransactionOperationLog();
         var attendees = new InMemoryAttendeeRepository(operations);
         attendees.Add(attendee);
-        var eventItem = Event.CreateImported(
+        var eventItem = EventFixture.Create(
             Guid.NewGuid(),
             new EventWindow(new DateOnly(2026, 9, 7), new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 10));

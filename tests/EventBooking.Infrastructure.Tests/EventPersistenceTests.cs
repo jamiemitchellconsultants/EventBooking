@@ -15,11 +15,11 @@ public class EventPersistenceTests(PostgresFixture fixture)
     };
 
     [Fact]
-    public async Task AnImportedEventPersistsWithANullProposalId()
+    public async Task AnEventPersistsWithItsProposalId()
     {
         await using var context = fixture.NewContext();
         var window = new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0));
-        var eventItem = Event.CreateImported(Guid.NewGuid(), window, FullHeadcounts());
+        var eventItem = EventFixture.Create(Guid.NewGuid(), window, FullHeadcounts());
 
         context.Events.Add(eventItem);
         await context.SaveChangesAsync();
@@ -29,25 +29,27 @@ public class EventPersistenceTests(PostgresFixture fixture)
             .Include(s => s.Capacities)
             .SingleAsync(s => s.Id == eventItem.Id);
 
-        Assert.Null(reloaded.ProposalId);
+        Assert.Equal(eventItem.ProposalId, reloaded.ProposalId);
+        Assert.NotEqual(Guid.Empty, reloaded.ProposalId);
         Assert.Equal(3, reloaded.Capacities.Count);
 
         await fixture.ResetAsync();
     }
 
     [Fact]
-    public async Task TwoImportedEventsCanBothHaveANullProposalId()
+    public async Task TwoEventsHaveDistinctProposalIds()
     {
         await using var context = fixture.NewContext();
-        var first = Event.CreateImported(
+        var first = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 12), new TimeOnly(9, 0)), FullHeadcounts());
-        var second = Event.CreateImported(
+        var second = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 13), new TimeOnly(9, 0)), FullHeadcounts());
 
         context.Events.AddRange(first, second);
 
-        // Proves the existing unique index on proposal_id treats a missing value as distinct
-        // (standard SQL and Postgres semantics) rather than colliding two imported events together.
+        Assert.NotEqual(Guid.Empty, first.ProposalId);
+        Assert.NotEqual(Guid.Empty, second.ProposalId);
+        Assert.NotEqual(first.ProposalId, second.ProposalId);
         await context.SaveChangesAsync();
 
         await fixture.ResetAsync();

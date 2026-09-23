@@ -135,7 +135,7 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
         DateOnly date,
         bool cancelled)
     {
-        var eventItem = Event.CreateImported(
+        var eventItem = EventFixture.Create(
             Guid.NewGuid(),
             new EventWindow(date, new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(value => value, _ => 20));

@@ -15,7 +15,7 @@ public sealed class SnapshotEmailAuthorityTests
             AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
                 AppointmentTypeIds.UniformFitting]));
-    private static readonly Event Event = Event.CreateImported(
+    private static readonly Event Event = EventFixture.Create(
         Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10), new TimeOnly(9, 0)),
         new Dictionary<Guid, int>
         {

@@ -17,7 +17,7 @@ public sealed class BookingSnapshotCancellationTests
     [Fact]
     public async Task CancellationUsesBookingAppointmentsInsteadOfAttendeeRequirements()
     {
-        var eventItem = Event.CreateImported(
+        var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10), new TimeOnly(9, 0)),
             new Dictionary<Guid, int>
             {
@@ -58,7 +58,7 @@ public sealed class BookingSnapshotCancellationTests
     [Fact]
     public async Task CancellationForDroppedTypeFailsLikeFullCapacity()
     {
-        var eventItem = Event.CreateImported(
+        var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(new DateOnly(2026, 10, 10), new TimeOnly(9, 0)),
             new Dictionary<Guid, int>
             {

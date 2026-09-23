@@ -25,11 +25,11 @@ public static class McpScenarioSeeder
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
 
-        var bookedEvent = Event.CreateImported(
+        var bookedEvent = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today.AddDays(30), new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var spareEvents = new[] { new TimeOnly(11, 0), new TimeOnly(13, 0), new TimeOnly(15, 0) }
-            .Select(start => Event.CreateImported(
+            .Select(start => EventFixture.Create(
                 Guid.NewGuid(), new EventWindow(today.AddDays(31), start),
                 AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
             .ToList();
@@ -74,7 +74,7 @@ public static class McpScenarioSeeder
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
             var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
-            var bookedEvent = Event.CreateImported(
+            var bookedEvent = EventFixture.Create(
                 Guid.NewGuid(), new EventWindow(today.AddDays(-1), new TimeOnly(9, 0)),
                 AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
             var spareEvents = new[]
@@ -83,7 +83,7 @@ public static class McpScenarioSeeder
                 new TimeOnly(13, 0),
                 new TimeOnly(15, 0),
             }
-            .Select(start => Event.CreateImported(
+            .Select(start => EventFixture.Create(
                 Guid.NewGuid(), new EventWindow(today.AddDays(2), start),
                 AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)))
             .ToList();
@@ -144,7 +144,7 @@ public static class McpScenarioSeeder
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
-        var eventItem = Event.CreateImported(
+        var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp

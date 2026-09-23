@@ -37,7 +37,6 @@ public static class ApplicationServiceCollectionExtensions
         // Event negotiation.
         services.AddScoped<ProposeEventHandler>();
         services.AddScoped<AcceptProposalHandler>();
-        services.AddScoped<ImportEventsHandler>();
         services.AddScoped<WithdrawAcceptanceHandler>();
         services.AddScoped<WithdrawProposalHandler>();
         services.AddScoped<GetManagerEventBoardHandler>();

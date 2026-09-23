@@ -188,24 +188,4 @@ public sealed class EventTools
             cancellationToken);
         return result.ValueOrThrow();
     }
-
-    /// <summary>Bulk-imports already-agreed events from CSV.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The import handler.</param>
-    /// <param name="csv">The CSV content.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The import outcome.</returns>
-    [McpServerTool(Name = "import_events", Title = "Import events", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Bulk-import already-agreed events from CSV. Caller must be an admin or coordinator.")]
-    public async Task<EventImportOutcome> ImportEventsAsync(
-        ICallerAccessor caller,
-        ImportEventsHandler handler,
-        [Description("CSV content with one already-agreed event per row.")] string csv,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new ImportEventsCommand(caller.RequireStaffUserId(), csv),
-            cancellationToken);
-        return result.ValueOrThrow();
-    }
 }

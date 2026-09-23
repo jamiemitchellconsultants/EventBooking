@@ -321,7 +321,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
-        var eventItem = Event.CreateImported(
+        var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0)),
             AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp

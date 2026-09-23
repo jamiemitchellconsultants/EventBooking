@@ -100,55 +100,6 @@ public class AttendeeEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task AnAdminCanImportEvents()
-    {
-        factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
-        var client = factory.CreateClient();
-
-        var future = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)).ToString("yyyy-MM-dd");
-        var csv = $"date,startTime,DAT,MED,UNI\n{future},09:00,10,6,8";
-        var response = await client.PostAsync(
-            "/api/events/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var outcome = await response.Content.ReadFromJsonAsync<EventImportResponse>();
-        Assert.True(outcome!.Accepted);
-        Assert.Equal(1, outcome.ImportedCount);
-    }
-
-    [Fact]
-    public async Task ACoordinatorCanImportEvents()
-    {
-        factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
-        var client = factory.CreateClient();
-
-        var future = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)).ToString("yyyy-MM-dd");
-        var csv = $"date,startTime,DAT,MED,UNI\n{future},09:00,10,6,8";
-        var response = await client.PostAsync(
-            "/api/events/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var outcome = await response.Content.ReadFromJsonAsync<EventImportResponse>();
-        Assert.True(outcome!.Accepted);
-        Assert.Equal(1, outcome.ImportedCount);
-    }
-
-    [Fact]
-    public async Task AManagerCannotImportEvents()
-    {
-        factory.SignedInAs = await factory.GivenStaffAsync(
-            Role.Manager, AppointmentTypeIds.DrugAndAlcoholTesting);
-        var client = factory.CreateClient();
-
-        var future = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)).ToString("yyyy-MM-dd");
-        var csv = $"date,startTime,DAT,MED,UNI\n{future},09:00,10,6,8";
-        var response = await client.PostAsync(
-            "/api/events/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
     public async Task MissingOrNullGroupsAreValidationErrorsOnCreateAndUpdate()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);

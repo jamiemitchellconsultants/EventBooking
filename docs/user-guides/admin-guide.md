@@ -3,8 +3,7 @@
 [← All user guides](README.md)
 
 As an Admin, you prepare EventBooking for other staff. You set the Appointment Type scope that
-scoped roles need, configure invitation timing, import Confirmed Events agreed outside the normal
-Manager negotiation, cancel a window that cannot run, and search the operational audit trail. Admin
+scoped roles need, configure invitation timing, cancel a window that cannot run, and search the operational audit trail. Admin
 access is exclusive: it cannot be combined with another role, and it never exposes attendee,
 invitation, booking, readiness, or recovery data.
 
@@ -27,7 +26,7 @@ appointment types. That makes scope assignment the one access task that belongs 
    showing **Awaiting appointment-type assignment**.
 3. On **System settings**, confirm invitation expiry and the invite re-issue limit before
    Coordinators start sending invitations.
-4. If a full event has already been agreed outside EventBooking, import it on **Events**.
+4. Ask the Managers to record and accept each proposal before it becomes an Event.
 5. Hand attendee and invitation work to a Coordinator; hand negotiated capacity to the Managers.
 6. Use **Audit trail** when someone asks who changed a event, a proposal, or an access profile.
 
@@ -131,30 +130,9 @@ Changes do not reach back and alter invitations already sent.
 
 ## Events screen
 
-Use `/events` for a complete window agreed outside EventBooking, and to cancel a confirmed
-window. Coordinators see the same screen.
+Use `/events/operations` to review Events and cancel a window that cannot run. Coordinators see the same screen.
 
-![Events screen with CSV import control](screenshots/events-import.png)
-
-### Import already agreed events
-
-A direct import skips Manager acceptance and becomes bookable immediately.
-
-1. Prepare a UTF-8 CSV whose exact header is:
-
-   ```text
-   date,startTime,DAT,MED,UNI
-   ```
-
-2. Add one four-hour window per row in `yyyy-MM-dd,HH:mm` format, with a positive total headcount
-   for Drug & Alcohol Testing (`DAT`), Medical Check-up (`MED`), and Uniform Fitting (`UNI`). Use
-   future dates for bookable capacity; past events are retained as history and are never offered.
-3. In **Import already agreed events**, choose the CSV file.
-4. Wait for the imported-count confirmation.
-
-The import is all-or-nothing. If the screen says **Nothing was imported**, use every line-numbered
-message to correct the file, then upload the whole file again. Imported events do not require an
-additional save or Manager approval.
+Event capacity is created through Manager negotiation. Direct event CSV import is not available.
 
 ### Cancel a event
 
