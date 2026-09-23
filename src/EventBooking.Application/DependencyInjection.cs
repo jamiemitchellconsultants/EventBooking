@@ -30,7 +30,8 @@ public static class ApplicationServiceCollectionExtensions
         // Shared services.
         services.AddScoped<EligibleEventFinder>();
         services.AddScoped<EmailDeliveryService>();
-        services.AddScoped<InviteIssuer>();
+        services.AddScoped<IInviteIssuer, InviteIssuer>();
+        services.AddScoped<LegacyInviteIssuer>();
         services.AddScoped<BookingCanceller>();
         services.AddScoped<IStaffAccessAuthorizer, StaffAccessAuthorizer>();
         services.AddScoped<StaffAccessHandler>();
@@ -70,11 +71,13 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<UpdateBookingAppointmentStatusHandler>();
 
         // Invites and bookings.
-        services.AddScoped<TriggerInviteHandler>();
+        services.AddScoped<InviteAttendeeHandler>();
+        services.AddScoped<ExpireInviteHandler>();
+        services.AddScoped<TopUpInviteOptionsHandler>();
+        services.AddScoped<CountEligibleEventsHandler>();
         services.AddScoped<StartRecoveryHandler>();
         services.AddScoped<CancelRecoveryInviteHandler>();
         services.AddScoped<RetryEmailHandler>();
-        services.AddScoped<ExpireInvitesHandler>();
         services.AddScoped<ViewInviteHandler>();
         services.AddScoped<ViewBookingHandler>();
         services.AddScoped<ConfirmBookingHandler>();

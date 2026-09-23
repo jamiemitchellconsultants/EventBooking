@@ -46,7 +46,7 @@ public sealed class CancelAttendeeBookingHandler(
     IAttendeeRepository attendees,
     IInviteRepository invites,
     BookingCanceller bookingCanceller,
-    InviteIssuer issuer,
+    LegacyInviteIssuer issuer,
     EmailDeliveryService deliveries,
     IClock clock,
     IUnitOfWork unitOfWork)

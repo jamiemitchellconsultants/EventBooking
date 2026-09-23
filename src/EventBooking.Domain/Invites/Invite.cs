@@ -6,7 +6,10 @@ namespace EventBooking.Domain.Invites;
 /// <summary>An offer of event options carrying an immutable requirement snapshot.</summary>
 public sealed class Invite
 {
-    /// <summary>Gets the number of event options every invite offers.</summary>
+    /// <summary>
+    /// Gets the fallback option count for paths that have no invite snapshot yet (the legacy
+    /// issuer, recovery start, event cancellation). New paths read the invite's own snapshot.
+    /// </summary>
     public const int RequiredOptionCount = 3;
 
     /// <summary>The version every freshly issued invite's book link is signed against.</summary>
@@ -226,8 +229,8 @@ public sealed class Invite
     {
         EnsurePending("Only a pending invite's options can change.");
         Guard.Against(
-            _options.Count >= RequiredOptionCount,
-            $"An invite cannot offer more than {RequiredOptionCount} event options.");
+            _options.Count >= InviteOptionCount,
+            $"An invite cannot offer more than {InviteOptionCount} event options.");
         Guard.Against(Offers(eventId), "An invite cannot offer the same event twice.");
 
         _options.Add(InviteOption.For(Id, eventId));
@@ -264,7 +267,8 @@ public sealed class Invite
         int inviteOptionCount = 3)
     {
         var invite = CreateCore(
-            id, attendeeId, recoveryOfBookingId, expiresAt, locationIds, eventIds, retryCount);
+            id, attendeeId, recoveryOfBookingId, expiresAt, locationIds, eventIds, retryCount,
+            inviteOptionCount);
 
         invite.InviteExpiryDays = inviteExpiryDays;
         invite.MaxAutoRetryCount = maxAutoRetryCount;
@@ -291,15 +295,16 @@ public sealed class Invite
         DateTimeOffset expiresAt,
         IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
-        int retryCount)
+        int retryCount,
+        int inviteOptionCount)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
         Guard.Against(attendeeId == Guid.Empty, "attendeeId must not be empty.");
 
         var offeredEventIds = eventIds.ToList();
         Guard.Against(
-            offeredEventIds.Count != RequiredOptionCount,
-            $"An invite must offer exactly {RequiredOptionCount} event options.");
+            offeredEventIds.Count != inviteOptionCount,
+            $"An invite must offer exactly {inviteOptionCount} event options.");
         Guard.Against(
             offeredEventIds.Distinct().Count() != offeredEventIds.Count,
             "An invite cannot offer the same event twice.");

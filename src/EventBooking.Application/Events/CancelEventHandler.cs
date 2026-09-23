@@ -53,7 +53,7 @@ public sealed class CancelEventHandler(
     IAttendeeRepository attendees,
     IStaffAccessAuthorizer access,
     BookingCanceller bookingCanceller,
-    InviteIssuer issuer,
+    LegacyInviteIssuer issuer,
     EligibleEventFinder eventFinder,
     IBookingAppointmentRepository appointments,
     EmailDeliveryService deliveries,

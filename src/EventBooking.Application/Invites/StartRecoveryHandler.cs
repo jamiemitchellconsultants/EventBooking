@@ -46,7 +46,7 @@ public sealed class StartRecoveryHandler(
     IInviteRepository invites,
     IBookingRepository bookings,
     IBookingAppointmentRepository appointments,
-    InviteIssuer issuer,
+    LegacyInviteIssuer issuer,
     EligibleEventFinder eventFinder,
     EmailDeliveryService deliveries,
     IUnitOfWork unitOfWork)

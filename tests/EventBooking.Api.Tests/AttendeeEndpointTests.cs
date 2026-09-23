@@ -359,7 +359,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
             });
         var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
 
-        var invited = await client.PostAsync($"/api/attendees/{attendeeId}/invite", null);
+        var invited = await client.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/invite",
+            new { LocationIds = new[] { EventBooking.Domain.Locations.TransitionalLocation.Id } });
         var unconfirmedDeletion = await client.DeleteAsync($"/api/attendees/{attendeeId}");
         var confirmedDeletion = await client.DeleteAsync($"/api/attendees/{attendeeId}?confirm=true");
 

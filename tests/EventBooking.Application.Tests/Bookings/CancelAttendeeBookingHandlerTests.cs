@@ -69,7 +69,7 @@ public class CancelAttendeeBookingHandlerTests
         _attendees,
         _invites,
         new BookingCanceller(_appointments, _capacities, _audit),
-        new InviteIssuer(
+        new LegacyInviteIssuer(
             _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             _tokens, EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),

@@ -1,10 +1,19 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Invites;
+using EventBooking.Domain.Attendees;
 
 namespace EventBooking.Api;
 
+/// <summary>How one sweep run resolved its due invites.</summary>
+/// <param name="Expired">How many due invites were processed.</param>
+/// <param name="ReIssued">How many attendees hold a fresh invite afterwards.</param>
+/// <param name="FlaggedForFollowUp">How many attendees need follow-up afterwards.</param>
+public sealed record InviteSweepSummary(int Expired, int ReIssued, int FlaggedForFollowUp);
+
 /// <summary>
 /// Runs the invite expiry sweep hourly. Expiry cannot wait for a attendee to open a link — the
-/// whole point is the attendees who never do.
+/// whole point is the attendees who never do. Each due invite is expired on its own row lock;
+/// Task 19 replaces this loop with advisory-locked claiming.
 /// </summary>
 public sealed class InviteSweepService(
     IServiceScopeFactory scopes,
@@ -21,9 +30,7 @@ public sealed class InviteSweepService(
             try
             {
                 using var scope = scopes.CreateScope();
-                var handler = scope.ServiceProvider.GetRequiredService<ExpireInvitesHandler>();
-
-                var summary = await handler.HandleAsync(stoppingToken);
+                var summary = await SweepOnceAsync(scope.ServiceProvider, stoppingToken);
 
                 if (summary.Expired > 0)
                 {
@@ -49,5 +56,41 @@ public sealed class InviteSweepService(
                 break;
             }
         }
+    }
+
+    private static async Task<InviteSweepSummary> SweepOnceAsync(
+        IServiceProvider services, CancellationToken ct)
+    {
+        var invites = services.GetRequiredService<IInviteRepository>();
+        var attendees = services.GetRequiredService<IAttendeeRepository>();
+        var handler = services.GetRequiredService<ExpireInviteHandler>();
+        var clock = services.GetRequiredService<IClock>();
+
+        var due = await invites.ListPendingExpiredAsync(clock.UtcNow, ct);
+        var expired = 0;
+        var reissued = 0;
+        var flagged = 0;
+
+        foreach (var item in due)
+        {
+            var result = await handler.HandleAsync(new ExpireInviteCommand(item.Id), ct);
+            if (result.IsFailure)
+            {
+                continue;
+            }
+
+            expired++;
+            var attendee = await attendees.GetAsync(item.AttendeeId, ct);
+            if (attendee?.Status == AttendeeStatus.Invited)
+            {
+                reissued++;
+            }
+            else if (attendee?.Status == AttendeeStatus.NoResponseNeedsFollowUp)
+            {
+                flagged++;
+            }
+        }
+
+        return new InviteSweepSummary(expired, reissued, flagged);
     }
 }

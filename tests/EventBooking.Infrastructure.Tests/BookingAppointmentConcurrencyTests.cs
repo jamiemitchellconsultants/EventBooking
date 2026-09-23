@@ -205,7 +205,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var deliveries = new EmailDeliveryService(
                 new EmailDeliveryRepository(context), new SilentSender(), unitOfWork, clock,
                 NullLogger<EmailDeliveryService>.Instance);
-            var issuer = new InviteIssuer(
+            var issuer = new LegacyInviteIssuer(
                 new InviteRepository(context),
                 new AttendeeGroupRepository(context),
                 new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),
@@ -312,7 +312,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             var deliveries = new EmailDeliveryService(
                 new EmailDeliveryRepository(context), new SilentSender(), unitOfWork, clock,
                 NullLogger<EmailDeliveryService>.Instance);
-            var issuer = new InviteIssuer(
+            var issuer = new LegacyInviteIssuer(
                 new InviteRepository(context),
                 new AttendeeGroupRepository(context),
                 new EligibleEventFinder(new EventEligibilityQuery(context), events, clock),

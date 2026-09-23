@@ -341,7 +341,7 @@ public sealed class RecoveryConcurrencyTests(PostgresFixture fixture)
         var bookings = new RecordingBookingRepository(services.GetRequiredService<IBookingRepository>(), trace);
         var capacities = new RecordingCapacityRepository(services.GetRequiredService<IEventCapacityRepository>(), trace);
         var audit = services.GetRequiredService<IAuditLogger>();
-        var issuer = new InviteIssuer(
+        var issuer = new LegacyInviteIssuer(
             new RecordingInviteRepository(services.GetRequiredService<IInviteRepository>(), trace),
             services.GetRequiredService<IAttendeeGroupRepository>(),
             new EligibleEventFinder(

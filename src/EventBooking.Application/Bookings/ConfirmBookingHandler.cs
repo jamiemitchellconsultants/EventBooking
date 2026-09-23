@@ -363,7 +363,7 @@ public sealed class ConfirmBookingHandler(
             actorId,
             $"{lostEventId} dropped, no replacement available");
 
-        if (invite.OfferedEventIds.Count < Domain.Invites.Invite.RequiredOptionCount
+        if (invite.OfferedEventIds.Count < invite.InviteOptionCount
             && attendee.Status == AttendeeStatus.Invited)
         {
             attendee.MarkNoResponse(clock.UtcNow);

@@ -159,7 +159,7 @@ public class EventCancellationConcurrencyTests
             Clock,
             _individualCancellationUnitOfWork);
 
-        private InviteIssuer Issuer => new(
+        private LegacyInviteIssuer Issuer => new(
             Invites,
             Groups,
             new EligibleEventFinder(Events, Events, Clock),

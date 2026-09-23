@@ -335,7 +335,7 @@ public sealed class RecoveryInviteHandlerTests
         _invites,
         _bookings,
         appointmentOverride ?? _appointments,
-        new InviteIssuer(
+        new LegacyInviteIssuer(
             _invites, _groups, new EligibleEventFinder(_events, _events, _clock), _settings,
             new FakeTokenService(), EmailDeliveryTestFactory.Create(_deliveries, _email, _unitOfWork, _clock),
             _audit, _clock, Portal),

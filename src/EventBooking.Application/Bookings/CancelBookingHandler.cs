@@ -42,7 +42,7 @@ public sealed class CancelBookingHandler(
     IAttendeeRepository attendees,
     IInviteRepository invites,
     BookingCanceller bookingCanceller,
-    InviteIssuer issuer,
+    LegacyInviteIssuer issuer,
     EmailDeliveryService deliveries,
     ITokenService tokens,
     IClock clock,

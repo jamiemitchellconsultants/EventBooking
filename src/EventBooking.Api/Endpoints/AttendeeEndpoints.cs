@@ -27,6 +27,8 @@ public static class AttendeeEndpoints
     /// </param>
     public sealed record CancelAttendeeBookingRequest(bool Rebook);
 
+    public sealed record InviteAttendeeRequest(IReadOnlyList<Guid> LocationIds);
+
     /// <summary>Registers attendee CRUD, invite, and template-aware retry routes.</summary>
     public static IEndpointRouteBuilder MapAttendeeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -146,11 +148,13 @@ public static class AttendeeEndpoints
 
         group.MapPost("/{id:guid}/invite", async (
             Guid id,
+            InviteAttendeeRequest request,
             ICallerAccessor caller,
-            TriggerInviteHandler handler,
+            InviteAttendeeHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new TriggerInviteCommand(caller.RequireStaffUserId(), id), cancellationToken))
+                new InviteAttendeeCommand(caller.RequireStaffUserId(), id, request?.LocationIds ?? []),
+                cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("triggerAttendeeInvite")
             .Produces(200)

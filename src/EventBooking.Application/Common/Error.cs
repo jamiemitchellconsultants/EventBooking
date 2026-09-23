@@ -115,4 +115,18 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
             ["currentTotal"] = currentTotal,
             ["currentRemaining"] = currentRemaining,
         });
+
+    /// <summary>Identifies an invite short of eligible events.</summary>
+    public const string InsufficientEventsCode = "insufficient-events";
+
+    /// <summary>Creates a short-options refusal carrying the found and required counts.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="found">How many eligible events the query returned.</param>
+    /// <param name="required">How many options the invite needs.</param>
+    public static Error InsufficientEvents(string message, int found, int required) =>
+        new(InsufficientEventsCode, message, new Dictionary<string, long>
+        {
+            ["found"] = found,
+            ["required"] = required,
+        });
 }

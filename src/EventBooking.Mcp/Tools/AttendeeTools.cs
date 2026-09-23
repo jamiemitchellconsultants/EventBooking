@@ -253,18 +253,20 @@ public sealed class AttendeeTools
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The invite handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="locationIds">The locations the Coordinator opened for this invite.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invite issue result.</returns>
+    /// <returns>The invite issue outcome.</returns>
     [McpServerTool(Name = "trigger_invite", Title = "Trigger invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Issue a fresh three-option invite to a attendee. Caller must be a coordinator or admin; sends an invite email.")]
-    public async Task<InviteIssueResult> TriggerInviteAsync(
+    [Description("Issue a fresh invite to a attendee at explicit locations. Caller must be a coordinator or admin; stages an invite email for sending.")]
+    public async Task<InviteAttendeeOutcome> TriggerInviteAsync(
         ICallerAccessor caller,
-        TriggerInviteHandler handler,
+        InviteAttendeeHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
+        [Description("The locations the Coordinator opened for this invite.")] Guid[] locationIds,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new TriggerInviteCommand(caller.RequireStaffUserId(), attendeeId),
+            new InviteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, locationIds),
             cancellationToken);
         return result.ValueOrThrow();
     }

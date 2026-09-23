@@ -26,6 +26,7 @@ public static class ResultResponses
         Error.RequirementsLockedCode => StatusCodes.Status409Conflict,
         Error.VersionConflictCode => StatusCodes.Status409Conflict,
         Error.CapacityBelowBookingsCode => StatusCodes.Status409Conflict,
+        Error.InsufficientEventsCode => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError,
     };
 

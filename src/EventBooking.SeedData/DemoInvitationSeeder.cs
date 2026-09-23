@@ -1,5 +1,6 @@
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
@@ -16,14 +17,14 @@ namespace EventBooking.SeedData;
 /// <param name="database">Reads invitation history without changing it directly.</param>
 /// <param name="attendees">Resolves the demo recipients by their seeded email address.</param>
 /// <param name="events">Finds already-imported windows without restoring their capacity.</param>
-/// <param name="trigger">Creates initial invitations and sends only after committing.</param>
+/// <param name="trigger">Issues initial invitations; sending goes through the retry handler.</param>
 /// <param name="retry">Retries outstanding messages under the existing claim and token rules.</param>
 /// <param name="clock">Determines future transitional-location dates and invitation usability.</param>
 public sealed class DemoInvitationSeeder(
     EventBookingDbContext database,
     IAttendeeRepository attendees,
     IEventRepository events,
-    TriggerInviteHandler trigger,
+    InviteAttendeeHandler trigger,
     RetryEmailHandler retry,
     IClock clock)
 {
@@ -100,12 +101,20 @@ public sealed class DemoInvitationSeeder(
                     and not AttendeeStatus.AwaitingAvailability)
                     throw new SeedException($"Demo attendee has unexpected invitation state: {spec.Email}.");
                 var issued = await trigger.HandleAsync(
-                    new TriggerInviteCommand(DemoSeedSpec.CoordinatorUserId(), attendee.Id), cancellationToken);
+                    new InviteAttendeeCommand(
+                        DemoSeedSpec.CoordinatorUserId(), attendee.Id,
+                        [TransitionalLocation.Id]),
+                    cancellationToken);
                 if (issued.IsFailure)
                     throw new SeedException($"Demo invitation for {spec.Email} failed: {issued.Error}.");
-                if (!issued.Value.Invited)
-                    throw new SeedException($"Three future events with capacity are required for {spec.Email}.");
-                if (!issued.Value.EmailSent)
+                // Issuing only stages the email; the retry handler sends the staged delivery,
+                // exactly as it does for a failed or pending delivery above. A fresh attendee
+                // has no other outstanding work, so the retry cannot pick the wrong delivery.
+                var dispatched = await retry.HandleAsync(
+                    new RetryEmailCommand(DemoSeedSpec.CoordinatorUserId(), attendee.Id), cancellationToken);
+                if (dispatched.IsFailure)
+                    throw new SeedException($"Demo invitation for {spec.Email} failed: {dispatched.Error}.");
+                if (dispatched.Value.DeliveryStatus != EmailStatus.Sent.ToString())
                     throw DeliveryFailed(spec.Email);
             }
             sent++;

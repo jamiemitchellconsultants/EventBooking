@@ -149,7 +149,7 @@ public sealed class ViewInviteHandler(
             mutated = true;
         }
 
-        if (options.Count < Domain.Invites.Invite.RequiredOptionCount
+        if (options.Count < invite.InviteOptionCount
             && attendee.Status == AttendeeStatus.Invited)
         {
             attendee.MarkNoResponse(clock.UtcNow);

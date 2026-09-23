@@ -386,11 +386,12 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         }
 
         /// <summary>Runs the real coordinator invite trigger in an isolated scope.</summary>
-        public async Task<Result<InviteIssueResult>> TriggerAsync(Guid coordinatorId, Guid attendeeId)
+        public async Task<Result<InviteAttendeeOutcome>> TriggerAsync(Guid coordinatorId, Guid attendeeId)
         {
             await using var scope = _services.CreateAsyncScope();
-            return await scope.ServiceProvider.GetRequiredService<TriggerInviteHandler>().HandleAsync(
-                new TriggerInviteCommand(coordinatorId, attendeeId), CancellationToken.None);
+            return await scope.ServiceProvider.GetRequiredService<InviteAttendeeHandler>().HandleAsync(
+                new InviteAttendeeCommand(coordinatorId, attendeeId, [TransitionalLocation.Id]),
+                CancellationToken.None);
         }
 
         /// <summary>Runs the real attendee-token booking confirmation in an isolated scope.</summary>
