@@ -24,6 +24,10 @@ public sealed class PostgresFixture : IAsyncLifetime
         _dataSource = NpgsqlDataSource.Create(ConnectionString);
 
         await using var context = NewContext();
+
+        // The SeedData CLI does this before migrating, because the initial migration grants to
+        // roles it does not create. The fixture has to do the same or the grants are skipped.
+        await context.Database.ExecuteSqlRawAsync(DatabaseRoles.Script);
         await context.Database.MigrateAsync();
     }
 

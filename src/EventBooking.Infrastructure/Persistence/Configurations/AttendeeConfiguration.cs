@@ -35,7 +35,8 @@ public sealed class AttendeeConfiguration : IEntityTypeConfiguration<Attendee>
 
         builder.Navigation(c => c.Requirements).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasIndex(c => c.Email).IsUnique();
+        // The unique index is on lower(email): EF cannot express a functional index, so the
+        // initial migration creates ux_attendee_email_lower by hand.
         builder.HasIndex(c => c.Status);
     }
 }

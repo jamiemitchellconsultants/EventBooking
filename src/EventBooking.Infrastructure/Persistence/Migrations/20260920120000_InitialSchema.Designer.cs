@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace EventBooking.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(EventBookingDbContext))]
-    [Migration("20260920102733_DeterministicAttendeeTokens")]
-    partial class DeterministicAttendeeTokens
+    [Migration("20260920120000_InitialSchema")]
+    partial class InitialSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -207,6 +207,48 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_attendee_group_name_nonblank", "name <> ''");
                         });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("e0000001-0000-0000-0000-000000000001"),
+                            Code = "CABIN_CREW",
+                            IsActive = true,
+                            Name = "Cabin Crew",
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e0000002-0000-0000-0000-000000000002"),
+                            Code = "PILOTS",
+                            IsActive = true,
+                            Name = "Pilots",
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e0000003-0000-0000-0000-000000000003"),
+                            Code = "GROUND_OPERATIONS_AGENT",
+                            IsActive = true,
+                            Name = "Ground Operations Agent",
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e0000004-0000-0000-0000-000000000004"),
+                            Code = "ENGINEERING",
+                            IsActive = true,
+                            Name = "Engineering",
+                            Version = 1L
+                        },
+                        new
+                        {
+                            Id = new Guid("e0000005-0000-0000-0000-000000000005"),
+                            Code = "GROUND_TRANSPORT_SERVICES",
+                            IsActive = true,
+                            Name = "Ground Transport Services",
+                            Version = 1L
+                        });
                 });
 
             modelBuilder.Entity("EventBooking.Domain.AttendeeGroups.AttendeeGroupRequirement", b =>
@@ -224,6 +266,58 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.HasIndex("AppointmentTypeId");
 
                     b.ToTable("attendee_group_requirement", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000001-0000-0000-0000-000000000001"),
+                            AppointmentTypeId = new Guid("a0000001-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000001-0000-0000-0000-000000000001"),
+                            AppointmentTypeId = new Guid("a0000002-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000001-0000-0000-0000-000000000001"),
+                            AppointmentTypeId = new Guid("a0000003-0000-0000-0000-000000000003")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000002-0000-0000-0000-000000000002"),
+                            AppointmentTypeId = new Guid("a0000001-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000002-0000-0000-0000-000000000002"),
+                            AppointmentTypeId = new Guid("a0000003-0000-0000-0000-000000000003")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000003-0000-0000-0000-000000000003"),
+                            AppointmentTypeId = new Guid("a0000002-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000004-0000-0000-0000-000000000004"),
+                            AppointmentTypeId = new Guid("a0000002-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000005-0000-0000-0000-000000000005"),
+                            AppointmentTypeId = new Guid("a0000001-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000005-0000-0000-0000-000000000005"),
+                            AppointmentTypeId = new Guid("a0000002-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            AttendeeGroupId = new Guid("e0000005-0000-0000-0000-000000000005"),
+                            AppointmentTypeId = new Guid("a0000003-0000-0000-0000-000000000003")
+                        });
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Attendees.Attendee", b =>
@@ -260,9 +354,6 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AttendeeGroupId");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.HasIndex("Status");
 
@@ -463,6 +554,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("proposal_id");
 
+                    b.Property<DateTimeOffset?>("StartUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_utc");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -473,6 +568,9 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("Status", "LocationId", "StartUtc")
+                        .HasDatabaseName("ix_event_eligibility");
 
                     b.ToTable("event", (string)null);
                 });
@@ -499,7 +597,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.ToTable("event_capacity", null, t =>
                         {
-                            t.HasCheckConstraint("ck_event_capacity_within_bounds", "remaining_capacity >= 0 AND remaining_capacity <= total_headcount");
+                            t.HasCheckConstraint("ck_event_capacity_bounds", "remaining_capacity >= 0 AND remaining_capacity <= total_headcount AND total_headcount > 0");
                         });
                 });
 
@@ -665,6 +763,66 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.ToTable("invite_requirement", (string)null);
                 });
 
+            modelBuilder.Entity("EventBooking.Domain.Locations.Location", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("code");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("time_zone_id");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("location", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000001"),
+                            Address = "Recorded against the transitional site until Phase 3.",
+                            Code = "TRANSITIONAL",
+                            IsActive = true,
+                            Name = "Transitional location",
+                            TimeZoneId = "Europe/London",
+                            Version = 1L
+                        });
+                });
+
             modelBuilder.Entity("EventBooking.Domain.Notifications.EmailLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -679,6 +837,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid")
                         .HasColumnName("booking_id");
+
+                    b.Property<int>("ClaimCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("claim_count");
 
                     b.Property<DateTimeOffset?>("ClaimedAt")
                         .HasColumnType("timestamp with time zone")
@@ -875,11 +1037,6 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                                 .HasColumnName("start_time");
 
                             b1.HasKey("EventProposalId");
-
-                            b1.HasIndex("Date", "StartTime")
-                                .IsUnique()
-                                .HasDatabaseName("ux_event_proposal_open_window")
-                                .HasFilter("status = 1");
 
                             b1.ToTable("event_proposal");
 

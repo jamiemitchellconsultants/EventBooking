@@ -93,6 +93,13 @@ try
         Console.WriteLine("[seed] Applying pending migrations...");
     }
 
+    // Before migrating, not after: the initial migration grants to roles it does not create.
+    await database.Database.ExecuteSqlRawAsync(DatabaseRoles.Script);
+    if (verbose)
+    {
+        Console.WriteLine("[seed] Database roles applied.");
+    }
+
     await database.Database.MigrateAsync();
     if (verbose)
     {

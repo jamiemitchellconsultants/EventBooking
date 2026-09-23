@@ -1,242 +1,110 @@
 using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Attendees;
-using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace EventBooking.Infrastructure.Tests;
 
+/// <summary>
+/// The schema is one migration against a real PostgreSQL 16. Every constraint here is one the
+/// application must not be able to violate even with a direct connection.
+/// </summary>
 [Collection("postgres")]
 public class SchemaTests(PostgresFixture fixture)
 {
-    private const string ReleaseOneMigration = "20260909120000_AddRecoveryBookings";
+    private const string CapacityBounds = "ck_event_capacity_bounds";
 
     [Fact]
-    public async Task CleanDatabaseMigrationsSeedFixedRowsAndAddTheAttendeeStatusTimestamp()
+    public async Task TheSchemaIsOneMigrationThatAppliesToAnEmptyDatabase()
     {
-        var databaseName = $"eventbooking_seed_{Guid.NewGuid():N}";
-        var connectionString = new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
-        {
-            Database = databaseName,
-            Pooling = false,
-        }.ConnectionString;
+        var databaseName = $"eventbooking_fresh_{Guid.NewGuid():N}";
+        var connectionString = ConnectionTo(databaseName);
 
         try
         {
-            await CreateDatabaseAsync(fixture.ConnectionString, databaseName);
+            await CreateDatabaseAsync(databaseName);
+            await ApplyRolesScriptAsync(connectionString);
 
-            await using (var context = new EventBookingDbContext(
-                             new DbContextOptionsBuilder<EventBookingDbContext>()
-                                 .UseNpgsql(connectionString)
-                                 .Options))
-            {
-                await context.Database.MigrateAsync();
+            await using var context = NewContext(connectionString);
+            Assert.Equal(
+                ["20260920120000_InitialSchema"],
+                (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
-                var types = await context.AppointmentTypes.OrderBy(t => t.Code).ToListAsync();
-                Assert.Collection(
-                    types,
-                    type =>
-                    {
-                        Assert.Equal(AppointmentTypeIds.DrugAndAlcoholTesting, type.Id);
-                        Assert.Equal("DAT", type.Code);
-                        Assert.Equal("Drug & Alcohol Testing", type.Name);
-                    },
-                    type =>
-                    {
-                        Assert.Equal(AppointmentTypeIds.MedicalCheckUp, type.Id);
-                        Assert.Equal("MED", type.Code);
-                        Assert.Equal("Medical Check-up", type.Name);
-                    },
-                    type =>
-                    {
-                        Assert.Equal(AppointmentTypeIds.UniformFitting, type.Id);
-                        Assert.Equal("UNI", type.Code);
-                        Assert.Equal("Uniform Fitting", type.Name);
-                    });
+            await context.Database.MigrateAsync();
 
-                var settings = await context.SystemSettings.SingleAsync();
-                Assert.Equal(1, settings.Id);
-                Assert.Equal(7, settings.InviteExpiryDays);
-                Assert.Equal(3, settings.InviteOptionCount);
-                Assert.Equal(2, settings.MaxAutoRetryCount);
-            }
-
-            await using (var connection = new NpgsqlConnection(connectionString))
-            {
-                await connection.OpenAsync();
-                await using var command = connection.CreateCommand();
-                command.CommandText =
-                    """
-                    SELECT data_type
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'attendee'
-                      AND column_name = 'status_changed_at';
-                    """;
-
-                Assert.Equal("timestamp with time zone", await command.ExecuteScalarAsync());
-            }
+            Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+            var types = await context.AppointmentTypes.OrderBy(t => t.Code).ToListAsync();
+            Assert.Equal(["DAT", "MED", "UNI"], types.Select(t => t.Code));
+            Assert.Equal(1, (await context.SystemSettings.SingleAsync()).Id);
         }
         finally
         {
-            await DropDatabaseAsync(fixture.ConnectionString, databaseName);
+            await DropDatabaseAsync(databaseName);
         }
     }
 
-    [Fact]
-    public async Task AttendeeStatusTimestampMigrationBackfillsExistingAttendeesWithoutLeavingADefault()
-    {
-        var databaseName = $"eventbooking_status_backfill_{Guid.NewGuid():N}";
-        var connectionString = new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
-        {
-            Database = databaseName,
-            Pooling = false,
-        }.ConnectionString;
-        var attendeeId = Guid.NewGuid();
-
-        try
-        {
-            await CreateDatabaseAsync(fixture.ConnectionString, databaseName);
-
-            await using (var initialContext = NewContext(connectionString))
-            {
-                await initialContext.Database.MigrateAsync("20260905060413_InitialSchema");
-            }
-
-            await using (var connection = new NpgsqlConnection(connectionString))
-            {
-                await connection.OpenAsync();
-                await using var command = connection.CreateCommand();
-                command.CommandText =
-                    """
-                    INSERT INTO attendee (id, name, email, status)
-                    VALUES (@attendee_id, 'Legacy Attendee', 'legacy.attendee@mail.com', @status);
-                    INSERT INTO attendee_requirement (attendee_id, appointment_type_id)
-                    VALUES (@attendee_id, @appointment_type_id);
-                    """;
-                command.Parameters.AddWithValue("attendee_id", attendeeId);
-                command.Parameters.AddWithValue("status", (int)AttendeeStatus.NotYetInvited);
-                command.Parameters.AddWithValue(
-                    "appointment_type_id", AppointmentTypeIds.DrugAndAlcoholTesting);
-                await command.ExecuteNonQueryAsync();
-            }
-
-            await using (var releaseOneContext = NewContext(connectionString))
-            {
-                await releaseOneContext.Database.MigrateAsync(ReleaseOneMigration);
-            }
-
-            await using (var connection = new NpgsqlConnection(connectionString))
-            {
-                await connection.OpenAsync();
-                await using var command = connection.CreateCommand();
-                command.CommandText =
-                    """
-                    UPDATE attendee SET attendee_group_id = @group_id WHERE id = @attendee_id;
-                    INSERT INTO attendee_requirement (attendee_id, appointment_type_id)
-                    VALUES (@attendee_id, @uniform_type_id);
-                    """;
-                command.Parameters.AddWithValue("attendee_id", attendeeId);
-                command.Parameters.AddWithValue("group_id", AttendeeGroupIds.Pilots);
-                command.Parameters.AddWithValue(
-                    "uniform_type_id", AppointmentTypeIds.UniformFitting);
-                await command.ExecuteNonQueryAsync();
-            }
-
-            var migrationStartedAt = DateTimeOffset.UtcNow;
-            await using (var latestContext = NewContext(connectionString))
-            {
-                await latestContext.Database.MigrateAsync();
-            }
-            var migrationFinishedAt = DateTimeOffset.UtcNow;
-
-            await using (var connection = new NpgsqlConnection(connectionString))
-            {
-                await connection.OpenAsync();
-                await using var command = connection.CreateCommand();
-                command.CommandText =
-                    """
-                    SELECT c.status_changed_at, col.column_default
-                    FROM attendee AS c
-                    CROSS JOIN information_schema.columns AS col
-                    WHERE c.id = @attendee_id
-                      AND col.table_schema = 'public'
-                      AND col.table_name = 'attendee'
-                      AND col.column_name = 'status_changed_at';
-                    """;
-                command.Parameters.AddWithValue("attendee_id", attendeeId);
-
-                await using var reader = await command.ExecuteReaderAsync();
-                Assert.True(await reader.ReadAsync());
-                Assert.False(reader.IsDBNull(0));
-                var stampedAt = reader.GetFieldValue<DateTimeOffset>(0);
-                Assert.InRange(stampedAt, migrationStartedAt.AddSeconds(-1), migrationFinishedAt.AddSeconds(1));
-                Assert.True(stampedAt > DateTimeOffset.UnixEpoch);
-                Assert.True(reader.IsDBNull(1));
-            }
-        }
-        finally
-        {
-            await DropDatabaseAsync(fixture.ConnectionString, databaseName);
-        }
-    }
-
-    [Fact]
-    public async Task ResetAsyncReseedsTheFixedAppointmentTypes()
+    [Theory]
+    [InlineData(5, -1)]
+    [InlineData(5, 6)]
+    [InlineData(0, 0)]
+    public async Task TheDatabaseRefusesACapacityRowOutsideItsBounds(int total, int remaining)
     {
         await fixture.ResetAsync();
 
         await using var context = fixture.NewContext();
-        var types = await context.AppointmentTypes.OrderBy(t => t.Code).ToListAsync();
+        var eventId = await CreateEventWithoutCapacitiesAsync(context);
 
-        Assert.Equal(3, types.Count);
-        Assert.Equal(new[] { "DAT", "MED", "UNI" }, types.Select(t => t.Code));
-        Assert.Equal(AppointmentTypeIds.DrugAndAlcoholTesting, types[0].Id);
+        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO event_capacity
+                    (event_id, appointment_type_id, total_headcount, remaining_capacity)
+                VALUES ({0}, {1}, {2}, {3});
+                """,
+                [eventId, AppointmentTypeIds.DrugAndAlcoholTesting, total, remaining]));
+
+        Assert.Contains(CapacityBounds, ex.ToString());
     }
 
     [Fact]
-    public async Task ResetAsyncReseedsTheDefaultSettingsRow()
+    public async Task TheDatabaseRefusesASecondEventForOneProposal()
     {
         await fixture.ResetAsync();
 
         await using var context = fixture.NewContext();
-        var settings = await context.SystemSettings.SingleAsync();
+        var eventId = await CreateEventWithoutCapacitiesAsync(context);
+        var proposalId = await context.Events.Where(e => e.Id == eventId)
+            .Select(e => e.ProposalId).SingleAsync();
 
-        Assert.Equal(7, settings.InviteExpiryDays);
-        Assert.Equal(3, settings.InviteOptionCount);
-        Assert.Equal(2, settings.MaxAutoRetryCount);
+        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO event
+                    (id, proposal_id, location_id, status, date, start_time, duration_minutes, start_utc)
+                SELECT {0}, proposal_id, location_id, status, date, start_time, duration_minutes, start_utc
+                  FROM event WHERE id = {1};
+                """,
+                [Guid.NewGuid(), eventId]));
+
+        Assert.Contains("proposal_id", ex.ToString());
     }
 
     [Fact]
-    public async Task AProposalRoundTripsWithItsWindowAndAcceptances()
+    public async Task TheDatabaseRefusesASecondManagerForOneAppointmentType()
     {
         await fixture.ResetAsync();
 
-        var proposal = ProposalFixture.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
-            Guid.NewGuid());
-        proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
-        proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
+        await using var context = fixture.NewContext();
+        var typeId = AppointmentTypeIds.MedicalCheckUp;
+        await InsertManagerProfileAsync(context, typeId);
 
-        await using (var write = fixture.NewContext())
-        {
-            write.EventProposals.Add(proposal);
-            await write.SaveChangesAsync();
-        }
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
+            () => InsertManagerProfileAsync(context, typeId));
 
-        await using var read = fixture.NewContext();
-        var loaded = await read.EventProposals
-            .Include(p => p.Acceptances)
-            .SingleAsync(p => p.Id == proposal.Id);
-
-        Assert.Equal(new DateOnly(2026, 9, 10), loaded.Window.Date);
-        Assert.Equal(new TimeOnly(9, 0), loaded.Window.StartTime);
-        Assert.Equal(new TimeOnly(13, 0), loaded.Window.EndTime);
-        Assert.Equal(2, loaded.Acceptances.Count);
-        Assert.Equal(10, loaded.Acceptances.Single(
-            a => a.AppointmentTypeId == AppointmentTypeIds.DrugAndAlcoholTesting).Headcount);
+        Assert.Contains("ux_staff_access_profile_manager_appointment_type", ex.ToString());
     }
 
     [Fact]
@@ -267,72 +135,200 @@ public class SchemaTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task AEventRoundTripsWithItsThreeCapacityRows()
+    public async Task TheApplicationRoleMayAppendToTheAuditTrailButNeverRewriteIt()
     {
         await fixture.ResetAsync();
 
-        var proposal = ProposalFixture.Create(
-            Guid.NewGuid(), new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
-            Guid.NewGuid());
-        proposal.Accept(AppointmentTypeIds.DrugAndAlcoholTesting, Guid.NewGuid(), 10);
-        proposal.Accept(AppointmentTypeIds.MedicalCheckUp, Guid.NewGuid(), 6);
-        proposal.Accept(AppointmentTypeIds.UniformFitting, Guid.NewGuid(), 8);
-        var eventItem = Event.CreateFrom(Guid.NewGuid(), proposal);
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await ExecuteAsync(connection, "SET ROLE eventbooking_app;");
 
-        await using (var write = fixture.NewContext())
+        await ExecuteAsync(
+            connection,
+            """
+            INSERT INTO audit_log (id, entity_type, entity_id, action, actor_type, actor_id, timestamp)
+            VALUES (gen_random_uuid(), 'Event', gen_random_uuid(), 0, 2, 'schema-test', now());
+            """);
+        Assert.Equal(1L, await ScalarAsync(connection, "SELECT count(*) FROM audit_log;"));
+
+        var update = await Assert.ThrowsAsync<PostgresException>(
+            () => ExecuteAsync(connection, "UPDATE audit_log SET actor_id = 'rewritten';"));
+        Assert.Equal("42501", update.SqlState);
+
+        var delete = await Assert.ThrowsAsync<PostgresException>(
+            () => ExecuteAsync(connection, "DELETE FROM audit_log;"));
+        Assert.Equal("42501", delete.SqlState);
+    }
+
+    [Fact]
+    public async Task TheApplicationRoleKeepsFullDmlOnEveryOtherTable()
+    {
+        await fixture.ResetAsync();
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync();
+        await ExecuteAsync(connection, "SET ROLE eventbooking_app;");
+
+        await ExecuteAsync(
+            connection,
+            """
+            INSERT INTO location (id, code, name, address, time_zone_id, is_active, version)
+            VALUES (gen_random_uuid(), 'ROLE', 'Role check', 'Somewhere', 'Europe/London', true, 1);
+            UPDATE location SET name = 'Renamed' WHERE code = 'ROLE';
+            DELETE FROM location WHERE code = 'ROLE';
+            """);
+
+        Assert.Equal(0L, await ScalarAsync(connection, "SELECT count(*) FROM location WHERE code = 'ROLE';"));
+    }
+
+    [Fact]
+    public async Task AStaleVersionOnALocationIsARefusedWrite()
+    {
+        await fixture.ResetAsync();
+
+        var location = Location.Create(
+            Guid.NewGuid(), "STALE", "Stale check", "Somewhere", "Europe/London", new NodaTimeEventWindowZones());
+        await using (var seed = fixture.NewContext())
         {
-            write.EventProposals.Add(proposal);
-            write.Events.Add(eventItem);
-            await write.SaveChangesAsync();
+            seed.Add(location);
+            await seed.SaveChangesAsync();
         }
 
-        await using var read = fixture.NewContext();
-        var loaded = await read.Events
-            .Include(s => s.Capacities)
-            .SingleAsync(s => s.Id == eventItem.Id);
+        await using var first = fixture.NewContext();
+        await using var second = fixture.NewContext();
+        var readByFirst = await first.Set<Location>().SingleAsync(l => l.Id == location.Id);
+        var readBySecond = await second.Set<Location>().SingleAsync(l => l.Id == location.Id);
 
-        Assert.Equal(3, loaded.Capacities.Count);
-        Assert.Equal(6, loaded.CapacityFor(AppointmentTypeIds.MedicalCheckUp).RemainingCapacity);
+        readByFirst.Rename("Renamed first");
+        await first.SaveChangesAsync();
+
+        readBySecond.Rename("Renamed second");
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
     }
 
-    [Fact]
-    public async Task TheDatabaseRefusesNegativeRemainingCapacity()
+    [Theory]
+    [InlineData("location", "code")]
+    [InlineData("appointment_type", "code")]
+    [InlineData("attendee_group", "code")]
+    public async Task ACodeIsUniqueWithinItsReferenceTable(string table, string column)
     {
         await fixture.ResetAsync();
 
         await using var context = fixture.NewContext();
-        var eventId = await CreateEventWithoutCapacitiesAsync(context);
+        var indexes = await IndexDefinitionsAsync(context, table);
 
-        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
-            await context.Database.ExecuteSqlRawAsync(
-                """
-                INSERT INTO event_capacity
-                    (event_id, appointment_type_id, total_headcount, remaining_capacity)
-                VALUES ({0}, {1}, 5, -1);
-                """,
-                [eventId, AppointmentTypeIds.DrugAndAlcoholTesting]));
-
-        Assert.Contains("ck_event_capacity_within_bounds", ex.ToString());
+        Assert.Contains(
+            indexes,
+            definition => definition.Contains("UNIQUE", StringComparison.Ordinal)
+                && definition.Contains($"({column})", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task TheDatabaseRefusesRemainingCapacityAboveTotalHeadcount()
+    public async Task AnAttendeeEmailIsUniqueIgnoringCase()
     {
         await fixture.ResetAsync();
 
         await using var context = fixture.NewContext();
-        var eventId = await CreateEventWithoutCapacitiesAsync(context);
+        var indexes = await IndexDefinitionsAsync(context, "attendee");
 
-        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
-            await context.Database.ExecuteSqlRawAsync(
-                """
-                INSERT INTO event_capacity
-                    (event_id, appointment_type_id, total_headcount, remaining_capacity)
-                VALUES ({0}, {1}, 5, 6);
-                """,
-                [eventId, AppointmentTypeIds.DrugAndAlcoholTesting]));
+        Assert.Contains(
+            indexes,
+            definition => definition.Contains("UNIQUE", StringComparison.Ordinal)
+                && definition.Contains("lower(", StringComparison.Ordinal)
+                && definition.Contains("email", StringComparison.Ordinal));
+    }
 
-        Assert.Contains("ck_event_capacity_within_bounds", ex.ToString());
+    [Fact]
+    public async Task TheEligibilityQueryHasItsCoveringIndex()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        var indexes = await IndexDefinitionsAsync(context, "event");
+
+        Assert.Contains(
+            indexes,
+            definition => definition.Contains("(status, location_id, start_utc)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ADeliveryAttemptCarriesItsClaimAndItsClaimCount()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        var columns = await ColumnNamesAsync(context, "email_log");
+
+        Assert.Contains("claimed_at", columns);
+        Assert.Contains("claim_count", columns);
+    }
+
+    private static async Task InsertManagerProfileAsync(EventBookingDbContext context, Guid typeId) =>
+        await context.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO staff_access_profile
+                (staff_user_id, is_admin, is_coordinator, is_manager, is_appointment_staff,
+                 appointment_type_id, version)
+            VALUES ({0}, false, false, true, false, {1}, 1);
+            """,
+            [Guid.NewGuid(), typeId]);
+
+    private static async Task<IReadOnlyList<string>> IndexDefinitionsAsync(
+        EventBookingDbContext context, string table)
+    {
+        var rows = new List<string>();
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        await context.Database.OpenConnectionAsync();
+        command.CommandText =
+            $"SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = '{table}';";
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(reader.GetString(0));
+        }
+
+        return rows;
+    }
+
+    private static async Task<IReadOnlyList<string>> ColumnNamesAsync(
+        EventBookingDbContext context, string table)
+    {
+        var rows = new List<string>();
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        await context.Database.OpenConnectionAsync();
+        command.CommandText =
+            $"""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = '{table}';
+            """;
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(reader.GetString(0));
+        }
+
+        return rows;
+    }
+
+    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<object?> ScalarAsync(NpgsqlConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return await command.ExecuteScalarAsync();
+    }
+
+    private async Task ApplyRolesScriptAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await ExecuteAsync(connection, DatabaseRoles.Script);
     }
 
     private static async Task<Guid> CreateEventWithoutCapacitiesAsync(EventBookingDbContext context)
@@ -355,38 +351,39 @@ public class SchemaTests(PostgresFixture fixture)
         return eventItem.Id;
     }
 
+    private string ConnectionTo(string databaseName) =>
+        new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
+        {
+            Database = databaseName,
+            Pooling = false,
+        }.ConnectionString;
+
     private static EventBookingDbContext NewContext(string connectionString) =>
         new(new DbContextOptionsBuilder<EventBookingDbContext>()
             .UseNpgsql(connectionString)
             .Options);
 
-    private static async Task CreateDatabaseAsync(string connectionString, string databaseName)
+    private async Task CreateDatabaseAsync(string databaseName)
     {
         await using var connection = new NpgsqlConnection(
-            new NpgsqlConnectionStringBuilder(connectionString)
+            new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
             {
                 Database = "postgres",
                 Pooling = false,
             }.ConnectionString);
         await connection.OpenAsync();
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"CREATE DATABASE {databaseName};";
-        await command.ExecuteNonQueryAsync();
+        await ExecuteAsync(connection, $"CREATE DATABASE {databaseName};");
     }
 
-    private static async Task DropDatabaseAsync(string connectionString, string databaseName)
+    private async Task DropDatabaseAsync(string databaseName)
     {
         await using var connection = new NpgsqlConnection(
-            new NpgsqlConnectionStringBuilder(connectionString)
+            new NpgsqlConnectionStringBuilder(fixture.ConnectionString)
             {
                 Database = "postgres",
                 Pooling = false,
             }.ConnectionString);
         await connection.OpenAsync();
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"DROP DATABASE IF EXISTS {databaseName};";
-        await command.ExecuteNonQueryAsync();
+        await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {databaseName};");
     }
 }

@@ -40,6 +40,10 @@ public sealed class EmailLog
     /// <summary>The in-progress claim timestamp used to prevent duplicate concurrent sends.</summary>
     public DateTimeOffset? ClaimedAt { get; private set; }
 
+    /// <summary>How many times a worker has claimed this attempt. The input to the backoff the
+    /// dispatcher gains in Task 18; here it only has to be recorded.</summary>
+    public int ClaimCount { get; private set; }
+
     /// <summary>Creates a legacy email attempt without a regeneration context.</summary>
     /// <param name="id">The id.</param>
     /// <param name="attendeeId">The attendee id.</param>
@@ -99,6 +103,7 @@ public sealed class EmailLog
         }
 
         ClaimedAt = now;
+        ClaimCount++;
         return true;
     }
 

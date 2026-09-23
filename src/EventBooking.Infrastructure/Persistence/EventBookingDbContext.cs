@@ -4,6 +4,7 @@ using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
@@ -26,6 +27,8 @@ public sealed class EventBookingDbContext(DbContextOptions<EventBookingDbContext
     public DbSet<EventCapacity> EventCapacities => Set<EventCapacity>();
 
     /// <summary>Gets Attendee Group reference rows and their required Appointment Type mappings.</summary>
+    public DbSet<Location> Locations => Set<Location>();
+
     public DbSet<AttendeeGroup> AttendeeGroups => Set<AttendeeGroup>();
 
     public DbSet<Attendee> Attendees => Set<Attendee>();
