@@ -29,7 +29,7 @@ public class ViewInviteHandlerTests
 
     private ViewInviteHandler Handler => new(
         _invites, _attendees, _events, new EligibleEventFinder(_events, _events, _clock),
-        _audit, _unitOfWork, _tokens, _clock, _locations, ProposalFixture.Zones,
+        _audit, _unitOfWork, _tokens, _clock, _locations,
         new InMemoryAppointmentTypeRepository());
 
     public ViewInviteHandlerTests()
@@ -79,15 +79,17 @@ public class ViewInviteHandlerTests
     }
 
     [Fact]
-    public async Task OptionsCarryTheirWindowAndADisplayString()
+    public async Task OptionsCarryTheirWindowVenueAndZone()
     {
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
         var first = result.Value.Options[0];
         Assert.Equal(new DateOnly(2026, 9, 10), first.Date);
         Assert.Equal(new TimeOnly(9, 0), first.StartTime);
-        Assert.Equal(new TimeOnly(13, 0), first.EndTime);
-        Assert.Equal("Thu 10 Sep 2026, 09:00-13:00 GMT at London HQ", first.Display);
+        Assert.Equal(240, first.DurationMinutes);
+        Assert.Equal("London HQ", first.LocationName);
+        Assert.Equal("1 High St", first.Address);
+        Assert.Equal("Europe/London", first.TimeZoneId);
     }
 
     [Fact]

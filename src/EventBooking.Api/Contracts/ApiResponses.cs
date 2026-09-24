@@ -24,7 +24,8 @@ public sealed record LocationResponse(
 
 /// <summary>One appointment type with its current Manager.</summary>
 public sealed record AppointmentTypeResponse(
-    Guid Id, string Code, string Name, bool IsActive, long Version, string? ManagerDisplayName,
+    Guid Id, string Code, string Name, bool IsActive, long Version, bool HasManager,
+    string? ManagerDisplayName,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>One attendee group with its requirements and member count.</summary>
@@ -44,14 +45,13 @@ public sealed record StaffAccessResponse(
     Guid? AppointmentTypeId, long Version,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
-/// <summary>A scope change, naming the Manager it displaced, if any.</summary>
-public sealed record StaffAccessScopeResponse(
-    StaffAccessResponse Profile, Guid? DisplacedManagerStaffUserId,
-    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
-
 /// <summary>One event capacity row.</summary>
 public sealed record EventCapacityResponse(
-    Guid AppointmentTypeId, string Code, string Name, int TotalHeadcount, int RemainingCapacity);
+    Guid AppointmentTypeId, string Code, string Name, int TotalHeadcount, int RemainingCapacity,
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
+/// <summary>One listed type on a proposal row.</summary>
+public sealed record ProposalTypeResponse(string Code, string Name);
 
 /// <summary>One event with its capacities.</summary>
 public sealed record EventResponse(
@@ -64,7 +64,7 @@ public sealed record EventResponse(
 public sealed record EventProposalResponse(
     Guid Id, Guid LocationId, string LocationCode, string LocationName, EventTimeResponse Time,
     string Status, int ListedTypeCount, int AcceptedTypeCount, int? MyAcceptedHeadcount,
-    bool AcceptedByMe, bool CreatedByMe,
+    bool AcceptedByMe, bool CreatedByMe, IReadOnlyList<ProposalTypeResponse> Types,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>One attendee row with its workflow links.</summary>
@@ -83,6 +83,9 @@ public sealed record AttendeeBookingResponse(
 /// <summary>Minimum canonical detail for one incomplete appointment type.</summary>
 public sealed record OutstandingAppointmentTypeResponse(
     string Code, string Name, bool IsRecoverable);
+
+/// <summary>How many events an invite could offer, and how many it needs.</summary>
+public sealed record EligibleEventCountResponse(int Count, int RequiredOptionCount);
 
 /// <summary>Coordinator-facing readiness for one attendee.</summary>
 public sealed record AttendeeReadinessResponse(
@@ -106,8 +109,8 @@ public sealed record DashboardTabResponse<T>(int Count, IReadOnlyList<T> Rows);
 
 /// <summary>One events-tab row with its audit and cancel links.</summary>
 public sealed record DashboardEventResponse(
-    Guid EventId, Guid LocationId, string LocationName, DateOnly Date, TimeOnly StartTime,
-    TimeOnly EndTime, IReadOnlyList<EventCapacityRow> Capacities, int ActiveBookings,
+    Guid EventId, Guid LocationId, string LocationName, EventTimeResponse Time,
+    IReadOnlyList<EventCapacityRow> Capacities, int ActiveBookings,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>Coordinator dashboards plus entry links for related collections.</summary>
@@ -120,8 +123,13 @@ public sealed record DashboardsResponse(
 
 /// <summary>One workspace event row with its roster link.</summary>
 public sealed record WorkspaceEventResponse(
-    Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
-    TimeOnly StartTime, TimeOnly EndTime, string ZoneAbbreviation, string Status,
+    Guid EventId, Guid LocationId, string LocationName, EventTimeResponse Time, string Status,
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
+/// <summary>One roster row with the status actions currently available for it.</summary>
+public sealed record WorkspaceRosterRowResponse(
+    Guid AppointmentId, string Name, string Email, string ScopeTypeCode,
+    string AppointmentStatus, DateTimeOffset? CheckedInAt, long Version,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>One appointment's row-local state after a status change.</summary>
@@ -130,22 +138,29 @@ public sealed record AppointmentStatusResponse(
     DateTimeOffset? OutcomeAt, long Version,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
+/// <summary>One invite option: where the event is and when it runs.</summary>
+public sealed record InviteOptionResponse(
+    Guid EventId, string LocationName, string Address, EventTimeResponse Time);
+
 /// <summary>Attendee-facing invite options plus the confirm affordance.</summary>
 public sealed record InviteResponse(
     Guid InviteId, string AttendeeName, IReadOnlyList<string> AppointmentTypeNames,
-    IReadOnlyList<InviteOptionView> Options, bool IsRecovery,
+    IReadOnlyList<InviteOptionResponse> Options, bool IsRecovery,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
+/// <summary>The booking confirmation: the booking id plus its manage link secret.</summary>
+public sealed record ConfirmBookingResponse(Guid BookingId, string ManageToken);
 
 /// <summary>Attendee-facing managed booking plus the cancel affordance.</summary>
 public sealed record ManagedBookingResponse(
-    DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Display, string AttendeeName,
-    bool CanCancel,
+    string AttendeeName, string LocationName, string Address, EventTimeResponse Time,
+    IReadOnlyList<string> AppointmentTypeNames,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>One audit row.</summary>
 public sealed record AuditRowResponse(
-    DateTimeOffset Timestamp, string EntityType, Guid EntityId, string Action, string ActorType,
-    string? ActorId, string? Details,
+    Guid Id, DateTimeOffset Timestamp, string EntityType, Guid EntityId, string Action,
+    string ActorType, string? ActorId, string? ActorDisplay, string? Details,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>Projects application results onto design 05's response bodies.</summary>
@@ -173,19 +188,77 @@ public static class ApiResponses
     /// <summary>Projects one appointment type.</summary>
     /// <param name="result">The application result.</param>
     /// <param name="capabilities">The caller's capabilities.</param>
+    /// <param name="hasManager">Whether a current Manager profile scopes to this type.</param>
     /// <returns>The response body.</returns>
     public static AppointmentTypeResponse AppointmentType(
-        AppointmentTypeResult result, IReadOnlySet<string> capabilities)
+        AppointmentTypeResult result, IReadOnlySet<string> capabilities, bool hasManager)
     {
         ArgumentNullException.ThrowIfNull(result);
-        return new AppointmentTypeResponse(
+        return AppointmentType(
             result.Id, result.Code, result.Name, result.IsActive, result.Version,
-            result.ManagerDisplayName,
+            hasManager, result.ManagerDisplayName, capabilities);
+    }
+
+    /// <summary>Projects one appointment-type list row as the full response shape.</summary>
+    /// <param name="item">The application row.</param>
+    /// <param name="capabilities">The caller's capabilities.</param>
+    /// <returns>The response body.</returns>
+    public static AppointmentTypeResponse AppointmentType(
+        AppointmentTypeListItem item, IReadOnlySet<string> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return AppointmentType(
+            item.Id, item.Code, item.Name, item.IsActive, item.Version,
+            item.HasManager, item.ManagerDisplayName, capabilities);
+    }
+
+    private static AppointmentTypeResponse AppointmentType(
+        Guid id, string code, string name, bool isActive, long version,
+        bool hasManager, string? managerDisplayName, IReadOnlySet<string> capabilities) =>
+        new(
+            id, code, name, isActive, version, hasManager, managerDisplayName,
             CallerLinks.For(
                 capabilities,
                 new LinkCandidate("self", "listAppointmentTypes", "/api/appointment-types", null),
                 new LinkCandidate(
-                    "update", "updateAppointmentType", $"/api/appointment-types/{result.Id}",
+                    "update", "updateAppointmentType", $"/api/appointment-types/{id}",
+                    nameof(StaffCapability.ManageReferenceData))));
+
+    /// <summary>Projects one location list row as the full response shape.</summary>
+    /// <param name="item">The application row.</param>
+    /// <param name="capabilities">The caller's capabilities.</param>
+    /// <returns>The response body.</returns>
+    public static LocationResponse Location(
+        LocationListItem item, IReadOnlySet<string> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return new LocationResponse(
+            item.Id, item.Code, item.Name, item.Address, item.TimeZoneId,
+            item.IsActive, item.Version,
+            CallerLinks.For(
+                capabilities,
+                new LinkCandidate("self", "listLocations", "/api/locations", null),
+                new LinkCandidate(
+                    "update", "updateLocation", $"/api/locations/{item.Id}",
+                    nameof(StaffCapability.ManageReferenceData))));
+    }
+
+    /// <summary>Projects one attendee-group list row as the full response shape.</summary>
+    /// <param name="item">The application row.</param>
+    /// <param name="capabilities">The caller's capabilities.</param>
+    /// <returns>The response body.</returns>
+    public static AttendeeGroupResponse AttendeeGroup(
+        AttendeeGroupListItem item, IReadOnlySet<string> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return new AttendeeGroupResponse(
+            item.Id, item.Code, item.Name, item.IsActive, item.Version,
+            item.RequirementTypeIds, item.MemberCount,
+            CallerLinks.For(
+                capabilities,
+                new LinkCandidate("self", "listAttendeeGroups", "/api/attendee-groups", null),
+                new LinkCandidate(
+                    "update", "updateAttendeeGroup", $"/api/attendee-groups/{item.Id}",
                     nameof(StaffCapability.ManageReferenceData))));
     }
 
@@ -267,26 +340,27 @@ public static class ApiResponses
                     nameof(StaffCapability.ManageStaffAccess))));
     }
 
-    /// <summary>Projects a scope change, naming any displaced Manager.</summary>
+    /// <summary>Projects a scope change, naming any displaced Manager by display name.</summary>
     /// <param name="view">The application view.</param>
-    /// <param name="capabilities">The caller's capabilities.</param>
     /// <returns>The response body.</returns>
-    public static StaffAccessScopeResponse StaffAccessScope(
-        StaffAccessMutationView view, IReadOnlySet<string> capabilities)
+    public static Application.Access.SetStaffScopeOutcome StaffAccessScope(
+        StaffAccessMutationView view)
     {
         ArgumentNullException.ThrowIfNull(view);
-        var profile = StaffAccess(view.Profile, capabilities);
-        return new StaffAccessScopeResponse(
-            profile, view.FormerManagerStaffUserId, profile.Links);
+        return new Application.Access.SetStaffScopeOutcome(
+            view.Profile.StaffUserId, view.Profile.AppointmentTypeId,
+            view.FormerManagerDisplayName);
     }
 
     /// <summary>Projects one event, deriving its time in the location's own zone.</summary>
     /// <param name="view">The read model.</param>
     /// <param name="zones">The zone resolver.</param>
     /// <param name="capabilities">The caller's capabilities.</param>
+    /// <param name="scopeAppointmentTypeId">The caller's scoped type, or null when unscoped.</param>
     /// <returns>The response body.</returns>
     public static EventResponse Event(
-        EventView view, IEventWindowZones zones, IReadOnlySet<string> capabilities)
+        EventView view, IEventWindowZones zones, IReadOnlySet<string> capabilities,
+        Guid? scopeAppointmentTypeId)
     {
         ArgumentNullException.ThrowIfNull(view);
         return new EventResponse(
@@ -295,7 +369,8 @@ public static class ApiResponses
                 view.Date, view.StartTime, view.DurationMinutes, view.TimeZoneId, zones),
             view.Status,
             [.. view.Capacities.Select(c => new EventCapacityResponse(
-                c.AppointmentTypeId, c.Code, c.Name, c.TotalHeadcount, c.RemainingCapacity))],
+                c.AppointmentTypeId, c.Code, c.Name, c.TotalHeadcount, c.RemainingCapacity,
+                CapacityLinks(view.EventId, c.AppointmentTypeId, capabilities, scopeAppointmentTypeId)))],
             view.ActiveBookings,
             CallerLinks.For(
                 capabilities,
@@ -307,6 +382,27 @@ public static class ApiResponses
                     "roster", "getWorkspaceRoster",
                     $"/api/appointment-workspace/events/{view.EventId}",
                     nameof(StaffCapability.ConductAppointments))));
+    }
+
+    private static IReadOnlyDictionary<string, ApiLink> CapacityLinks(
+        Guid eventId, Guid appointmentTypeId, IReadOnlySet<string> capabilities,
+        Guid? scopeAppointmentTypeId)
+    {
+        // The handler refuses any row but the caller's own, so only that row advertises
+        // the adjust action. Another type's headcount stays visible, never editable.
+        if (!capabilities.Contains(nameof(StaffCapability.ManageEventNegotiation))
+            || scopeAppointmentTypeId is null
+            || scopeAppointmentTypeId != appointmentTypeId)
+        {
+            return new Dictionary<string, ApiLink>(StringComparer.Ordinal);
+        }
+
+        return CallerLinks.For(
+            capabilities,
+            new LinkCandidate(
+                "adjust", "adjustEventCapacity",
+                $"/api/events/{eventId}/capacities/{appointmentTypeId}",
+                nameof(StaffCapability.ManageEventNegotiation)));
     }
 
     /// <summary>Projects one attendee row. The row cursor is signed by the endpoint.</summary>
@@ -449,7 +545,7 @@ public static class ApiResponses
     /// <param name="capabilities">The caller's capabilities.</param>
     /// <returns>The response body.</returns>
     public static DashboardsResponse Dashboards(
-        DashboardsView view, IReadOnlySet<string> capabilities)
+        DashboardsView view, IEventWindowZones zones, IReadOnlySet<string> capabilities)
     {
         ArgumentNullException.ThrowIfNull(view);
         return new DashboardsResponse(
@@ -459,7 +555,7 @@ public static class ApiResponses
                 view.NoResponse.Count, view.NoResponse.Rows),
             new DashboardTabResponse<DashboardEventResponse>(
                 view.Events.Count,
-                [.. view.Events.Rows.Select(row => DashboardEvent(row, capabilities))]),
+                [.. view.Events.Rows.Select(row => DashboardEvent(row, zones, capabilities))]),
             view.FailedEmails,
             view.PendingEmails,
             CallerLinks.For(
@@ -473,9 +569,10 @@ public static class ApiResponses
     }
 
     private static DashboardEventResponse DashboardEvent(
-        EventOverviewRow row, IReadOnlySet<string> capabilities) =>
+        EventOverviewRow row, IEventWindowZones zones, IReadOnlySet<string> capabilities) =>
         new(row.EventId, row.LocationId, row.LocationName,
-            row.Date, row.StartTime, row.EndTime,
+            EventTimeResponse.From(
+                row.Date, row.StartTime, row.DurationMinutes, row.TimeZoneId, zones),
             row.Capacities, row.ActiveBookings,
             CallerLinks.For(
                 capabilities,
@@ -488,10 +585,11 @@ public static class ApiResponses
 
     /// <summary>Projects one audit row, linking only to real attendee or event routes.</summary>
     /// <param name="row">The application row.</param>
+    /// <param name="actorDisplay">The staff actor's display name, or null.</param>
     /// <param name="capabilities">The caller's capabilities.</param>
     /// <returns>The response row.</returns>
     public static AuditRowResponse AuditRow(
-        AuditHistoryRow row, IReadOnlySet<string> capabilities)
+        AuditHistoryRow row, string? actorDisplay, IReadOnlySet<string> capabilities)
     {
         ArgumentNullException.ThrowIfNull(row);
         var candidates = row.EntityType switch
@@ -512,22 +610,25 @@ public static class ApiResponses
             _ => [],
         };
         return new AuditRowResponse(
-            row.Timestamp, row.EntityType, row.EntityId, row.Action,
-            row.ActorType, row.ActorId, row.Details,
+            row.Id, row.Timestamp, row.EntityType, row.EntityId, row.Action,
+            row.ActorType, row.ActorId, actorDisplay, row.Details,
             CallerLinks.For(capabilities, [.. candidates]));
     }
 
     /// <summary>Projects one workspace event row.</summary>
     /// <param name="view">The application row.</param>
+    /// <param name="zones">The zone resolver.</param>
     /// <param name="capabilities">The caller's capabilities.</param>
     /// <returns>The response row.</returns>
     public static WorkspaceEventResponse WorkspaceEvent(
-        WorkspaceEventView view, IReadOnlySet<string> capabilities)
+        WorkspaceEventView view, IEventWindowZones zones, IReadOnlySet<string> capabilities)
     {
         ArgumentNullException.ThrowIfNull(view);
         return new WorkspaceEventResponse(
-            view.EventId, view.LocationId, view.LocationName, view.Date,
-            view.StartTime, view.EndTime, view.ZoneAbbreviation, view.Status,
+            view.EventId, view.LocationId, view.LocationName,
+            EventTimeResponse.From(
+                view.Date, view.StartTime, view.DurationMinutes, view.TimeZoneId, zones),
+            view.Status,
             CallerLinks.For(
                 capabilities,
                 new LinkCandidate(
@@ -538,6 +639,61 @@ public static class ApiResponses
                     "rosterCsv", "exportWorkspaceRoster",
                     $"/api/appointment-workspace/events/{view.EventId}/roster.csv",
                     nameof(StaffCapability.ConductAppointments))));
+    }
+
+    /// <summary>Projects one roster row with the links its state and the event window allow.</summary>
+    /// <param name="row">The application row.</param>
+    /// <param name="checkInAllowed">Whether the event date is the local date.</param>
+    /// <param name="noShowAllowed">Whether the event window has ended locally.</param>
+    /// <param name="capabilities">The caller's capabilities.</param>
+    /// <returns>The response row.</returns>
+    public static WorkspaceRosterRowResponse WorkspaceRosterRow(
+        WorkspaceRosterRow row, bool checkInAllowed, bool noShowAllowed,
+        IReadOnlySet<string> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var candidates = new List<LinkCandidate>();
+        var href = $"/api/appointment-workspace/appointments/{row.AppointmentId}/status";
+        if (string.Equals(row.AppointmentStatus, "Expected", StringComparison.Ordinal))
+        {
+            if (checkInAllowed)
+            {
+                candidates.Add(new LinkCandidate(
+                    "checkIn", "setAppointmentStatus", href,
+                    nameof(StaffCapability.ConductAppointments)));
+            }
+
+            if (noShowAllowed)
+            {
+                candidates.Add(new LinkCandidate(
+                    "noShow", "setAppointmentStatus", href,
+                    nameof(StaffCapability.ConductAppointments)));
+            }
+        }
+        else if (string.Equals(row.AppointmentStatus, "CheckedIn", StringComparison.Ordinal))
+        {
+            candidates.Add(new LinkCandidate(
+                "complete", "setAppointmentStatus", href,
+                nameof(StaffCapability.ConductAppointments)));
+            candidates.Add(new LinkCandidate(
+                "reopen", "setAppointmentStatus", href,
+                nameof(StaffCapability.ConductAppointments)));
+        }
+        else if (string.Equals(row.AppointmentStatus, "Completed", StringComparison.Ordinal)
+            || string.Equals(row.AppointmentStatus, "NoShow", StringComparison.Ordinal))
+        {
+            // The bounded correction back towards Expected. A NoShow covered by a later
+            // recovery still advertises it: the handler refuses with recovery-active,
+            // which the caller could not have known from this row.
+            candidates.Add(new LinkCandidate(
+                "reopen", "setAppointmentStatus", href,
+                nameof(StaffCapability.ConductAppointments)));
+        }
+
+        return new WorkspaceRosterRowResponse(
+            row.AppointmentId, row.Name, row.Email, row.ScopeTypeCode,
+            row.AppointmentStatus, row.CheckedInAt, row.Version,
+            CallerLinks.For(capabilities, [.. candidates]));
     }
 
     /// <summary>Projects one appointment's row-local state with its update affordance.</summary>
@@ -563,12 +719,18 @@ public static class ApiResponses
     /// <param name="view">The application view.</param>
     /// <param name="token">The raw invite token, embedded only in the confirm href.</param>
     /// <returns>The response body.</returns>
-    public static InviteResponse Invite(InviteView view, string token)
+    public static InviteResponse Invite(
+        InviteView view, IEventWindowZones zones, string token)
     {
         ArgumentNullException.ThrowIfNull(view);
         return new InviteResponse(
             view.InviteId, view.AttendeeName, view.AppointmentTypeNames,
-            view.Options, view.IsRecovery,
+            [.. view.Options.Select(option => new InviteOptionResponse(
+                option.EventId, option.LocationName, option.Address,
+                EventTimeResponse.From(
+                    option.Date, option.StartTime, option.DurationMinutes,
+                    option.TimeZoneId, zones)))],
+            view.IsRecovery,
             new Dictionary<string, ApiLink>(StringComparer.Ordinal)
             {
                 ["confirm"] = new(
@@ -580,44 +742,76 @@ public static class ApiResponses
     /// <param name="view">The application view.</param>
     /// <param name="token">The raw manage token, embedded only in the cancel href.</param>
     /// <returns>The response body.</returns>
-    public static ManagedBookingResponse ManagedBooking(BookingView view, string token)
+    public static ManagedBookingResponse ManagedBooking(
+        BookingView view, IEventWindowZones zones, string token)
     {
         ArgumentNullException.ThrowIfNull(view);
+        var links = new Dictionary<string, ApiLink>(StringComparer.Ordinal);
+        if (view.CanCancel)
+        {
+            links["cancel"] = new(
+                $"/api/manage/{token}/cancel", HttpMethods.Post, "cancelManagedBooking");
+        }
+
         return new ManagedBookingResponse(
-            view.Date, view.StartTime, view.EndTime, view.Display, view.AttendeeName,
-            view.CanCancel,
-            new Dictionary<string, ApiLink>(StringComparer.Ordinal)
-            {
-                ["cancel"] = new(
-                    $"/api/manage/{token}/cancel", HttpMethods.Post, "cancelManagedBooking"),
-            });
+            view.AttendeeName, view.LocationName, view.Address,
+            EventTimeResponse.From(
+                view.Date, view.StartTime, view.DurationMinutes, view.TimeZoneId, zones),
+            view.AppointmentTypeNames,
+            links);
     }
 
     /// <summary>Projects one proposal.</summary>
     /// <param name="item">The read model.</param>
     /// <param name="zones">The zone resolver.</param>
     /// <param name="capabilities">The caller's capabilities.</param>
+    /// <param name="scopeAppointmentTypeId">The caller's scoped type, or null when unscoped.</param>
     /// <returns>The response body.</returns>
     public static EventProposalResponse EventProposal(
-        EventProposalListItem item, IEventWindowZones zones, IReadOnlySet<string> capabilities)
+        EventProposalListItem item, IEventWindowZones zones, IReadOnlySet<string> capabilities,
+        Guid? scopeAppointmentTypeId)
     {
         ArgumentNullException.ThrowIfNull(item);
+        var candidates = new List<LinkCandidate>
+        {
+            new("self", "listEventProposals", "/api/event-proposals", null),
+        };
+        if (string.Equals(item.Status, "Open", StringComparison.Ordinal))
+        {
+            if (!item.AcceptedByMe)
+            {
+                candidates.Add(new LinkCandidate(
+                    "accept", "recordAcceptance",
+                    $"/api/event-proposals/{item.ProposalId}/acceptance",
+                    nameof(StaffCapability.ManageEventNegotiation)));
+            }
+            else
+            {
+                candidates.Add(new LinkCandidate(
+                    "withdrawAcceptance", "withdrawAcceptance",
+                    $"/api/event-proposals/{item.ProposalId}/acceptance",
+                    nameof(StaffCapability.ManageEventNegotiation)));
+            }
+
+            // Withdrawal is judged against the proposing type, so the current Manager
+            // inherits it from a predecessor: the scope matches, not the user.
+            if (scopeAppointmentTypeId is not null
+                && scopeAppointmentTypeId == item.ProposerAppointmentTypeId)
+            {
+                candidates.Add(new LinkCandidate(
+                    "withdraw", "withdrawProposal",
+                    $"/api/event-proposals/{item.ProposalId}/withdraw",
+                    nameof(StaffCapability.ManageEventNegotiation)));
+            }
+        }
+
         return new EventProposalResponse(
             item.ProposalId, item.LocationId, item.LocationCode, item.LocationName,
             EventTimeResponse.From(
                 item.Date, item.StartTime, item.DurationMinutes, item.TimeZoneId, zones),
             item.Status, item.ListedTypeCount, item.AcceptedTypeCount, item.MyAcceptedHeadcount,
             item.AcceptedByMe, item.CreatedByMe,
-            CallerLinks.For(
-                capabilities,
-                new LinkCandidate("self", "listEventProposals", "/api/event-proposals", null),
-                new LinkCandidate(
-                    "accept", "recordAcceptance",
-                    $"/api/event-proposals/{item.ProposalId}/acceptance",
-                    nameof(StaffCapability.ManageEventNegotiation)),
-                new LinkCandidate(
-                    "withdraw", "withdrawProposal",
-                    $"/api/event-proposals/{item.ProposalId}/withdraw",
-                    nameof(StaffCapability.ManageEventNegotiation))));
+            [.. item.Types.Select(t => new ProposalTypeResponse(t.Code, t.Name))],
+            CallerLinks.For(capabilities, [.. candidates]));
     }
 }

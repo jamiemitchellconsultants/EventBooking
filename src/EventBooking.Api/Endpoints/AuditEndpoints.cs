@@ -35,6 +35,7 @@ public static class AuditEndpoints
             ICallerAccessor caller,
             GetAuditSearchHandler handler,
             PageCursor cursors,
+            IStaffIdentityRepository identities,
             CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
@@ -83,13 +84,16 @@ public static class AuditEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
+            var displays = await StaffDisplaysAsync(identities, cancellationToken);
             return Results.Ok(new Page<AuditRowResponse>(
-                [.. result.Value.Rows.Select(row => ApiResponses.AuditRow(row, held))],
+                [.. result.Value.Rows.Select(row => ApiResponses.AuditRow(
+                    row, DisplayOf(row, displays), held))],
                 result.Value.NextCursor is null
                     ? null
                     : cursors.Protect(result.Value.NextCursor)));
         })
             .WithAgentMetadata("searchAudit")
+            .WithEventBookingList()
             .Produces<Page<AuditRowResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(422);
@@ -98,6 +102,7 @@ public static class AuditEndpoints
             Guid id,
             ICallerAccessor caller,
             GetAuditHistoryHandler handler,
+            IStaffIdentityRepository identities,
             CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
@@ -110,10 +115,14 @@ public static class AuditEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
+            var displays = await StaffDisplaysAsync(identities, cancellationToken);
             return Results.Ok(new Page<AuditRowResponse>(
-                [.. result.Value.Select(row => ApiResponses.AuditRow(row, held))], null));
+                [.. result.Value.Select(row => ApiResponses.AuditRow(
+                    row, DisplayOf(row, displays), held))],
+                null));
         })
             .WithAgentMetadata("getAttendeeAuditHistory")
+            .WithEventBookingList()
             .Produces<Page<AuditRowResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(404);
@@ -122,6 +131,7 @@ public static class AuditEndpoints
             Guid id,
             ICallerAccessor caller,
             GetAuditHistoryHandler handler,
+            IStaffIdentityRepository identities,
             CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
@@ -135,16 +145,33 @@ public static class AuditEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
+            var displays = await StaffDisplaysAsync(identities, cancellationToken);
             return Results.Ok(new Page<AuditRowResponse>(
-                [.. result.Value.Select(row => ApiResponses.AuditRow(row, held))], null));
+                [.. result.Value.Select(row => ApiResponses.AuditRow(
+                    row, DisplayOf(row, displays), held))],
+                null));
         })
             .WithAgentMetadata("getEventAuditHistory")
+            .WithEventBookingList()
             .Produces<Page<AuditRowResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(404);
 
         return app;
     }
+
+    private static async Task<IReadOnlyDictionary<Guid, string?>> StaffDisplaysAsync(
+        IStaffIdentityRepository identities, CancellationToken cancellationToken) =>
+        (await identities.ListAsync(cancellationToken))
+            .ToDictionary(identity => identity.StaffUserId, identity => identity.DisplayName);
+
+    private static string? DisplayOf(
+        AuditHistoryRow row, IReadOnlyDictionary<Guid, string?> displays) =>
+        string.Equals(row.ActorType, ActorType.Staff.ToString(), StringComparison.Ordinal)
+        && Guid.TryParse(row.ActorId, out var staffUserId)
+        && displays.TryGetValue(staffUserId, out var display)
+            ? display
+            : null;
 
     private static IResult Invalid(string parameter) =>
         Result<AuditSearchPage>

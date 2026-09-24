@@ -72,11 +72,13 @@ public static class EventProposalEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
+            var scope = await capabilities.ScopedAppointmentTypeIdAsync(cancellationToken);
             return Results.Ok(new Page<EventProposalResponse>(
-                [.. result.Value.Items.Select(x => ApiResponses.EventProposal(x, zones, held))],
+                [.. result.Value.Items.Select(x => ApiResponses.EventProposal(x, zones, held, scope))],
                 result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor)));
         })
             .WithAgentMetadata("listEventProposals")
+            .WithEventBookingList()
             .Produces<Page<EventProposalResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(422);
@@ -95,15 +97,11 @@ public static class EventProposalEndpoints
                 cancellationToken);
             return result.IsFailure
                 ? result.ToResponse()
-                : Results.Created($"/api/event-proposals/{result.Value.ProposalId}", new
-                {
-                    id = result.Value.ProposalId,
-                    status = result.Value.Status,
-                    eventId = result.Value.EventId,
-                });
+                : Results.Created(
+                    $"/api/event-proposals/{result.Value.ProposalId}", result.Value);
         })
             .WithAgentMetadata("proposeEvent")
-            .Produces(201)
+            .Produces<ProposeEventOutcome>(201)
             .ProducesProblem(403)
             .ProducesProblem(409)
             .ProducesProblem(422);

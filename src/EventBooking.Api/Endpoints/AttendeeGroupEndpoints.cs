@@ -50,11 +50,12 @@ public static class AttendeeGroupEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(new Page<AttendeeGroupListResponse>(
-                [.. result.Value.Select(x => AttendeeGroupListResponse.From(x, held))], null));
+            return Results.Ok(new Page<AttendeeGroupResponse>(
+                [.. result.Value.Select(x => ApiResponses.AttendeeGroup(x, held))], null));
         })
             .WithAgentMetadata("listAttendeeGroups")
-            .Produces<Page<AttendeeGroupListResponse>>(200)
+            .WithEventBookingList()
+            .Produces<Page<AttendeeGroupResponse>>(200)
             .ProducesProblem(401)
             .ProducesProblem(403);
 
@@ -118,36 +119,3 @@ public static class AttendeeGroupEndpoints
     }
 }
 
-/// <summary>One row of the attendee-group list, with the links its caller may follow.</summary>
-/// <param name="Id">The identifier.</param>
-/// <param name="Code">The canonical code.</param>
-/// <param name="Name">The display name.</param>
-/// <param name="IsActive">Whether the group is in use.</param>
-/// <param name="RequirementTypeIds">The required appointment types.</param>
-/// <param name="MemberCount">The member count.</param>
-/// <param name="Links">The affordances the caller holds.</param>
-public sealed record AttendeeGroupListResponse(
-    Guid Id, string Code, string Name, bool IsActive, IReadOnlyList<Guid> RequirementTypeIds,
-    int MemberCount,
-    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
-    IReadOnlyDictionary<string, ApiLink> Links)
-{
-    /// <summary>Projects one list row.</summary>
-    /// <param name="item">The application row.</param>
-    /// <param name="capabilities">The caller's capabilities.</param>
-    /// <returns>The response row.</returns>
-    public static AttendeeGroupListResponse From(
-        AttendeeGroupListItem item, IReadOnlySet<string> capabilities)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        return new AttendeeGroupListResponse(
-            item.Id, item.Code, item.Name, item.IsActive, item.RequirementTypeIds,
-            item.MemberCount,
-            CallerLinks.For(
-                capabilities,
-                new LinkCandidate("self", "listAttendeeGroups", "/api/attendee-groups", null),
-                new LinkCandidate(
-                    "update", "updateAttendeeGroup", $"/api/attendee-groups/{item.Id}",
-                    nameof(StaffCapability.ManageReferenceData))));
-    }
-}

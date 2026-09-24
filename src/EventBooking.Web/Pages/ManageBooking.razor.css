@@ -34,7 +34,7 @@
 }
 
 .manage-booking-page__card {
-    border-left: 5px solid var(--ba-speedmarque-red);
+    border-left: 5px solid var(--color-danger);
     display: grid;
     gap: 6px;
     padding: 20px;
@@ -81,8 +81,8 @@
 }
 
 .manage-booking-page__button--danger {
-    border-color: var(--error-line);
-    color: var(--ba-red-ink);
+    border-color: var(--color-danger);
+    color: var(--color-danger);
 }
 
 .manage-booking-page__button--danger:hover:not(:disabled) {
@@ -93,7 +93,7 @@
     background: var(--accent);
     border-color: var(--accent);
     box-shadow: var(--shadow-sm);
-    color: #fff;
+    color: var(--color-on-primary);
 }
 
 .manage-booking-page__button--primary:hover:not(:disabled) {

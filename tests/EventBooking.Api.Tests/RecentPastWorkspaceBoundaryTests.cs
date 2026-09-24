@@ -104,8 +104,8 @@ public sealed class RecentPastWorkspaceBoundaryTests(ApiFactory factory)
             $"/api/appointment-workspace/events/{data.EventId}"));
         AssertKeys(detail.RootElement, "items", "nextCursor");
         var row = Assert.Single(detail.RootElement.GetProperty("items").EnumerateArray());
-        AssertKeys(row, "name", "email", "scopeTypeCode", "appointmentStatus",
-            "checkedInAt", "version");
+        AssertKeys(row, "appointmentId", "name", "email", "scopeTypeCode",
+            "appointmentStatus", "checkedInAt", "version", "_links");
         Assert.DoesNotContain("attendeeId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("bookingId", detail.RootElement.GetRawText());
     }

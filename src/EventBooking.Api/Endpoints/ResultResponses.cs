@@ -96,6 +96,12 @@ public static class ResultResponses
             body.Extensions[shape.DataMember] = shape.ScalarKey is { } key
                 ? data.TryGetValue(key, out var scalar) ? scalar : null
                 : data;
+            if (shape.ObjectMember is not null && shape.ObjectKeys is { Count: > 0 } keys)
+            {
+                body.Extensions[shape.ObjectMember] = keys
+                    .Where(pair => data.ContainsKey(pair.Value))
+                    .ToDictionary(pair => pair.Key, pair => data[pair.Value]);
+            }
         }
 
         if (error.RelatedId is not null)

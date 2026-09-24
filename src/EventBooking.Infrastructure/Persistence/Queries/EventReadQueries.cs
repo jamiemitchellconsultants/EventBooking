@@ -236,6 +236,24 @@ public sealed class EventProposalListQueries(EventBookingDbContext context)
             .Take(limit)
             .ToListAsync(ct);
 
+        // Listed-type detail comes from one follow-up read over the page's own
+        // identifiers: the board shows the types, and the keyset page stays narrow.
+        var pageIds = page.Select(p => p.Id).ToList();
+        var typesByProposal = (await (
+            from p in context.EventProposals.AsNoTracking()
+            where pageIds.Contains(p.Id)
+            from entry in p.ListedTypes
+            join t in context.AppointmentTypes.AsNoTracking()
+                on entry.AppointmentTypeId equals t.Id
+            orderby t.Code
+            select new { p.Id, t.Code, t.Name })
+            .ToListAsync(ct))
+            .GroupBy(x => x.Id)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ProposalListedType>)[.. group.Select(x =>
+                    new ProposalListedType(x.Code, x.Name))]);
+
         // A proposal's window is ordered by its local date, not a derived instant: proposals
         // carry no start_utc, and FR-2.13's board is a Manager's own calendar rather than a
         // cross-site sequence.
@@ -245,6 +263,8 @@ public sealed class EventProposalListQueries(EventBookingDbContext context)
             p.ListedTypeCount, p.AcceptedTypeCount, p.MyAcceptedHeadcount,
             p.MyAcceptedHeadcount is not null,
             p.ProposerType == actingAppointmentTypeId && p.CreatedByManagerUserId == staffUserId,
-            KeysetCursor.Encode(p.Date.ToString("yyyy-MM-dd"), p.Id)))];
+            KeysetCursor.Encode(p.Date.ToString("yyyy-MM-dd"), p.Id),
+            typesByProposal.GetValueOrDefault(p.Id, []),
+            p.ProposerType))];
     }
 }

@@ -1,17 +1,17 @@
 namespace EventBooking.Web.Services;
 
-/// <summary>Describes one staff navigation destination shown for a role combination.</summary>
-/// <param name="Href">The link target shown for the permitted role combination.</param>
-/// <param name="Label">The visible link text naming the permitted workspace.</param>
-/// <param name="Description">The accessible description of what the workspace offers.</param>
+/// <summary>Describes one staff navigation destination.</summary>
+/// <param name="Href">The route.</param>
+/// <param name="Label">The visible label.</param>
+/// <param name="Description">The accessible description.</param>
 public sealed record StaffLink(string Href, string Label, string Description);
 
-/// <summary>Builds the deterministic navigation union permitted by staff roles.</summary>
+/// <summary>Builds the deterministic union of links permitted by the caller's roles.</summary>
 public static class StaffNavigation
 {
-    /// <summary>Builds the deterministic union of links permitted by the caller's roles.</summary>
-    /// <param name="me">The authenticated staff identity with its assigned roles.</param>
-    /// <returns>The ordered links the caller is permitted to open.</returns>
+    /// <summary>Returns the complete ordered link union for one staff identity.</summary>
+    /// <param name="me">The authenticated staff identity.</param>
+    /// <returns>The role union with no duplicate route.</returns>
     public static IReadOnlyList<StaffLink> LinksFor(MeDto me)
     {
         var roles = me.Roles.ToHashSet(StringComparer.Ordinal);
@@ -19,33 +19,34 @@ public static class StaffNavigation
         {
             return
             [
-                new("/settings", "System settings", "Configure invitation timing"),
-                new("/staff-access", "Staff access", "Set appointment-type scope"),
-                new("/events/operations", "Events", "Review and cancel confirmed events"),
-                new("/audit", "Audit trail", "Search what changed"),
+                new("/admin/locations", "Locations", "Manage event sites and time zones"),
+                new("/admin/appointment-types", "Appointment types", "Manage the types events may offer"),
+                new("/admin/attendee-groups", "Attendee groups", "Manage requirement mappings"),
+                new("/admin/settings", "System settings", "Configure future invitations"),
+                new("/admin/staff-access", "Staff access", "Set appointment-type scope"),
+                new("/events/operations", "Event operations", "Review and cancel future events"),
+                new("/audit", "Audit search", "Search event and administration history"),
             ];
         }
 
         var links = new List<StaffLink>();
         if (roles.Contains("Manager"))
-        {
-            links.Add(new("/events/negotiate", "Event proposals", "Negotiate and confirm shared windows"));
-        }
-
+            links.Add(new("/events/negotiate", "Negotiation board", "Propose and agree event windows"));
         if (roles.Contains("Manager") || roles.Contains("AppointmentStaff"))
-        {
-            links.Add(new(
-                "/appointments",
-                "Appointments",
-                "Check attendees in and record appointment outcomes"));
-        }
-
+            links.Add(new("/appointments", "Appointment workspace", "Run your appointment roster"));
         if (roles.Contains("Coordinator"))
         {
             links.Add(new("/attendees", "Attendees", "Invite and track attendees"));
-            links.Add(new("/dashboards", "Dashboards", "Waiting lists and follow-ups"));
-            links.Add(new("/events/operations", "Events", "Review and cancel confirmed events"));
-            links.Add(new("/audit", "Audit trail", "Search what changed"));
+            links.Add(new("/dashboards", "Dashboards", "Review waiting lists and follow-ups"));
+            links.Add(new("/events/operations", "Event operations", "Review and cancel future events"));
+            links.Add(new("/audit", "Audit search", "Search event and administration history"));
+        }
+
+        if (roles.Contains("Coordinator") || roles.Contains("Manager"))
+        {
+            links.Add(new("/admin/locations", "Locations", "Read event sites and time zones"));
+            links.Add(new("/admin/appointment-types", "Appointment types", "Read the types events may offer"));
+            links.Add(new("/admin/attendee-groups", "Attendee groups", "Read requirement mappings"));
         }
 
         return links;

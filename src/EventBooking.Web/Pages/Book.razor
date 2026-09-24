@@ -1,9 +1,10 @@
 @page "/book/{Token}"
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Components
 @using EventBooking.Web.Services
 @layout EventBooking.Web.Layout.AttendeeLayout
-@inject BookingClient Booking
-@inject AttendeePageOptions PageOptions
+@inject IBookingClient Booking
+@inject IServiceProvider Services
 
 <PageTitle>Choose a time</PageTitle>
 
@@ -27,7 +28,7 @@
             <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your booking is confirmed. Your confirmation email will follow shortly; use your management link below to change or cancel.</p>
             @if (_confirmedOption is not null)
             {
-                <p class="booking-page__confirmed-window">@_confirmedOption.Date.ToString("dddd, dd MMM yyyy") · @_confirmedOption.StartTime.ToString("HH\\:mm") – @_confirmedOption.EndTime.ToString("HH\\:mm")</p>
+                <p class="booking-page__confirmed-window">@_confirmedOption.LocationName · @_confirmedOption.Time.Date.ToString("dddd, dd MMM yyyy") · @_confirmedOption.Time.StartTime.ToString("HH\\:mm") – @_confirmedOption.Time.EndLocal.ToString("HH\\:mm") @_confirmedOption.Time.ZoneAbbreviation</p>
             }
             <p class="booking-page__note">Need to change or cancel? <a href="@ManageUrl">Use your booking management link.</a></p>
         </div>
@@ -35,7 +36,7 @@
     else if (_expired)
     {
         <div class="booking-page__status booking-page__expired">
-            <p class="booking-page__note"><strong>This link has expired.</strong><br />Contact your coordinator at @PageOptions.CoordinatorContact and they’ll send you a fresh one.</p>
+            <p class="booking-page__note"><strong>This link has expired.</strong><br />Contact your coordinator at @CoordinatorContact and they’ll send you a fresh one.</p>
         </div>
     }
     else if (_invite is null)
@@ -63,7 +64,7 @@
         @if (_invite.Options.Count == 0)
         {
             <div class="booking-page__status">
-                <p class="booking-page__note"><strong>Nothing fits right now.</strong> There’s no time currently open for your appointment type. Please contact @PageOptions.CoordinatorContact and the team will be in touch to arrange one.</p>
+                <p class="booking-page__note"><strong>Nothing fits right now.</strong> There’s no time currently open for your appointment type. Please contact @CoordinatorContact and the team will be in touch to arrange one.</p>
             </div>
         }
         else
@@ -81,18 +82,21 @@
                         <label class="booking-page__option">
                             <input type="radio"
                                    name="event"
+                                   value="@option.EventId"
                                    checked="@(_chosen == option.EventId)"
                                    @onchange="() => _chosen = option.EventId" />
                             <span class="booking-page__option-copy">
-                                <span class="booking-page__option-date">@option.Date.ToString("dddd, dd MMM yyyy")</span>
-                                <span class="booking-page__option-time">@option.StartTime.ToString("HH\\:mm") – @option.EndTime.ToString("HH\\:mm")</span>
+                                <span class="booking-page__option-location">@option.LocationName</span>
+                                <span class="booking-page__option-address">@option.Address</span>
+                                <span class="booking-page__option-date">@option.Time.Date.ToString("dddd, dd MMM yyyy")</span>
+                                <span class="booking-page__option-time">@option.Time.StartTime.ToString("HH\\:mm") – @option.Time.EndLocal.ToString("HH\\:mm") @option.Time.ZoneAbbreviation</span>
                             </span>
                         </label>
                     }
                 </fieldset>
             </div>
 
-            <button class="booking-page__button" @onclick="ConfirmAsync" disabled="@(_busy || _chosen is null)">
+            <button data-action="confirm-booking" class="booking-page__button" @onclick="ConfirmAsync" disabled="@(_busy || _chosen is null)">
                 @(_busy ? "Confirming…" : "Confirm this time")
             </button>
         }
@@ -106,14 +110,18 @@
     public string Token { get; set; } = string.Empty;
 
     private InviteDto? _invite;
-    private ConfirmedBookingDto? _confirmed;
+    private ConfirmBookingOutcomeDto? _confirmed;
     private InviteOptionDto? _confirmedOption;
     private Guid? _chosen;
     private string? _error;
     private bool _expired;
     private bool _loading = true;
     private bool _busy;
+    private readonly PendingSubmission _confirmSubmission = new();
     private int _requestVersion;
+
+    private string CoordinatorContact =>
+        Services.GetService<AttendeePageOptions>()?.CoordinatorContact ?? "the recruitment team";
 
     private string ManageUrl => _confirmed is null
         ? "/"
@@ -144,7 +152,7 @@
 
         try
         {
-            var outcome = await Booking.GetInviteAsync(Token, CancellationToken.None);
+            var outcome = await Booking.ViewInviteAsync(Token, CancellationToken.None);
             if (version != _requestVersion)
             {
                 return;
@@ -184,7 +192,8 @@
 
         try
         {
-            var outcome = await Booking.ConfirmAsync(Token, chosen, CancellationToken.None);
+            var outcome = await Booking.ConfirmAsync(
+                Token, chosen, _confirmSubmission.For(chosen), CancellationToken.None);
             if (version != _requestVersion)
             {
                 return;
@@ -192,9 +201,24 @@
 
             if (outcome.IsSuccess)
             {
+                _confirmSubmission.Complete();
                 _confirmed = outcome.Value;
                 _confirmedOption = _invite?.Options.SingleOrDefault(option => option.EventId == chosen);
                 _invite = null;
+                return;
+            }
+
+            if (_invite is not null
+                && string.Equals(outcome.ErrorCode, "capacity-exhausted", StringComparison.Ordinal))
+            {
+                // A lost race removes only the filled option: the rest are still live,
+                // so the attendee picks again without re-reading the whole offer.
+                _invite = _invite with
+                {
+                    Options = _invite.Options.Where(option => option.EventId != chosen).ToArray(),
+                };
+                _chosen = null;
+                _error = "That time has just filled up. Please choose another.";
                 return;
             }
 

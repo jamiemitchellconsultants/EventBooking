@@ -45,10 +45,9 @@ public class DashboardsComponentTests : BunitContext
     {
         var handler = new RoutedHandler();
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
-        Services.AddSingleton(new DashboardsClient(http));
-        Services.AddSingleton(new AttendeesClient(http));
-        Services.AddSingleton(new AuditClient(http));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IDashboardsClient>(new DashboardsClient(http));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(http));
+        Services.AddSingleton<IAuditClient>(new AuditClient(http));
         return handler;
     }
 
@@ -57,7 +56,11 @@ public class DashboardsComponentTests : BunitContext
         Content = JsonContent.Create(dto, options: CamelCase),
     };
 
-    private static HttpResponseMessage NoContent() => new(HttpStatusCode.NoContent);
+    private static HttpResponseMessage InviteJson() => new(HttpStatusCode.OK)
+    {
+        Content = JsonContent.Create(
+            new InviteOutcomeDto(Guid.NewGuid(), "Invited"), options: CamelCase),
+    };
 
     private static HttpResponseMessage ServerError() => new(HttpStatusCode.InternalServerError)
     {
@@ -65,15 +68,16 @@ public class DashboardsComponentTests : BunitContext
     };
 
     private static DashboardsDto DashboardWithOneStuckAttendee(Guid attendeeId) => new(
-        new DashboardTabDto<AwaitingRowDto>(0, []),
-        new DashboardTabDto<NoResponseRowDto>(1,
+        new DashboardCountedTab<AwaitingAvailabilityDto>(0, []),
+        new DashboardCountedTab<NoResponseDto>(1,
         [
-            new NoResponseRowDto(
+            new NoResponseDto(
                 attendeeId, "D. Stuck", "d.stuck@mail.com", ["DAT"], DateOnly.FromDateTime(DateTime.UtcNow)),
         ]),
-        new DashboardTabDto<EventRowDto>(0, []),
+        new DashboardCountedTab<EventOverviewDto>(0, []),
         0,
-        0);
+        0,
+        new Dictionary<string, ApiLink>());
 
     [Fact]
     public async Task ASuccessfulReinviteStaysVisibleEvenWhenTheFollowingRefreshFails()
@@ -81,7 +85,7 @@ public class DashboardsComponentTests : BunitContext
         var attendeeId = Guid.NewGuid();
         var handler = GivenClients();
         handler.Enqueue(_ => DashboardJson(DashboardWithOneStuckAttendee(attendeeId)));
-        handler.Enqueue(_ => NoContent());
+        handler.Enqueue(_ => InviteJson());
         handler.Enqueue(_ => ServerError());
 
         var cut = Render<Dashboards>();
@@ -101,11 +105,12 @@ public class DashboardsComponentTests : BunitContext
     }
 
     private static DashboardsDto EmptyDashboard() => new(
-        new DashboardTabDto<AwaitingRowDto>(0, []),
-        new DashboardTabDto<NoResponseRowDto>(0, []),
-        new DashboardTabDto<EventRowDto>(0, []),
+        new DashboardCountedTab<AwaitingAvailabilityDto>(0, []),
+        new DashboardCountedTab<NoResponseDto>(0, []),
+        new DashboardCountedTab<EventOverviewDto>(0, []),
         0,
-        0);
+        0,
+        new Dictionary<string, ApiLink>());
 
     [Fact]
     public void ArrowKeysMoveTheSelectedTabAndWrapAtTheEnds()
@@ -145,16 +150,17 @@ public class DashboardsComponentTests : BunitContext
     }
 
     private static DashboardsDto DashboardWithOneAwaitingAttendee(Guid attendeeId) => new(
-        new DashboardTabDto<AwaitingRowDto>(1,
+        new DashboardCountedTab<AwaitingAvailabilityDto>(1,
         [
-            new AwaitingRowDto(
+            new AwaitingAvailabilityDto(
                 attendeeId, "A. Waiting", "a.waiting@mail.com", ["DAT"],
                 DateOnly.FromDateTime(DateTime.UtcNow), 3),
         ]),
-        new DashboardTabDto<NoResponseRowDto>(0, []),
-        new DashboardTabDto<EventRowDto>(0, []),
+        new DashboardCountedTab<NoResponseDto>(0, []),
+        new DashboardCountedTab<EventOverviewDto>(0, []),
         0,
-        0);
+        0,
+        new Dictionary<string, ApiLink>());
 
     /// <summary>Verifies the awaiting-availability tab offers each attendee's history.</summary>
     [Fact]
@@ -166,7 +172,7 @@ public class DashboardsComponentTests : BunitContext
         var cut = Render<Dashboards>();
 
         cut.WaitForAssertion(() => Assert.Contains("A. Waiting", cut.Markup));
-        Assert.Single(cut.FindAll("details.audit-history"));
+        Assert.Single(cut.FindAll("section.audit-history"));
     }
 
     /// <summary>Verifies the no-response tab offers each attendee's history.</summary>
@@ -182,6 +188,6 @@ public class DashboardsComponentTests : BunitContext
         await cut.InvokeAsync(() => cut.Find("#no-response-tab").Click());
 
         cut.WaitForAssertion(() => Assert.Contains("D. Stuck", cut.Markup));
-        Assert.Single(cut.FindAll("details.audit-history"));
+        Assert.Single(cut.FindAll("section.audit-history"));
     }
 }

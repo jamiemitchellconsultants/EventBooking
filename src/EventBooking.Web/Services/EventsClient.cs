@@ -1,149 +1,216 @@
+using System.Globalization;
 using System.Net.Http.Json;
 
 namespace EventBooking.Web.Services;
 
-public sealed record OpenProposalDto(
-    Guid ProposalId,
-    DateOnly Date,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    IReadOnlyList<string> AcceptedByAppointmentTypeNames,
-    int? MyAcceptedHeadcount,
-    bool AcceptedByMe,
-    bool CreatedByMe);
-
+public sealed record EventProposalDto(
+    Guid Id, Guid LocationId, string LocationCode, string LocationName, EventTimeDto Time,
+    string Status, int ListedTypeCount, int AcceptedTypeCount, int? MyAcceptedHeadcount,
+    bool AcceptedByMe, bool CreatedByMe, IReadOnlyList<ProposalTypeDto> Types,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
+public sealed record ProposalTypeDto(string Code, string Name);
+public sealed record TypeSummaryDto(Guid Id, string Code, string Name, bool IsActive, bool HasManager);
+public sealed record LocationSummaryDto(
+    Guid Id, string Name, string Address, string TimeZoneId, string ZoneAbbreviation, bool IsActive);
+public sealed record NegotiationReferenceData(
+    IReadOnlyList<LocationSummaryDto> Locations,
+    IReadOnlyList<TypeSummaryDto> AppointmentTypes,
+    Guid CallerAppointmentTypeId,
+    IReadOnlyDictionary<string, ApiLink> CollectionLinks);
+public sealed record EventCapacityDto(
+    Guid AppointmentTypeId, string Code, string Name, int TotalHeadcount, int RemainingCapacity,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record EventDto(
-    Guid EventId,
-    DateOnly Date,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    int MyHeadcount,
-    int MyRemainingCapacity);
+    Guid Id, Guid ProposalId, Guid LocationId, string LocationCode, string LocationName,
+    EventTimeDto Time, string Status, IReadOnlyList<EventCapacityDto> Capacities,
+    int ActiveBookings,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
+public sealed record ProposeEventRequest(
+    Guid LocationId, DateOnly Date, TimeOnly StartTime, int DurationMinutes,
+    IReadOnlyList<Guid> AppointmentTypeIds, int Headcount);
+public sealed record ProposeEventOutcome(Guid ProposalId, string Status, Guid? EventId);
+public sealed record RecordAcceptanceOutcome(
+    Guid ProposalId, string Status, Guid? EventId, bool Changed);
+public sealed record AdjustEventCapacityOutcome(
+    Guid EventId, int TotalHeadcount, int RemainingCapacity, bool Changed);
+public sealed record CancelEventOutcome(
+    int CancelledCount, int ReinvitedCount, int AwaitingAvailabilityCount);
 
-public sealed record AdjustConfirmedCapacityDto(
-    Guid EventId,
-    int TotalHeadcount,
-    int RemainingCapacity);
-
-public sealed record EventBoardDto(
-    IReadOnlyList<OpenProposalDto> OpenProposals,
-    IReadOnlyList<EventDto> Events);
-
-/// <summary>Remaining and accepted places for one appointment type within a eventItem.</summary>
-/// <param name="Code">The canonical appointment-type code.</param>
-/// <param name="TotalHeadcount">The headcount the manager accepted for this appointment type.</param>
-/// <param name="RemainingCapacity">The places still free for this appointment type.</param>
-public sealed record EventOperationCapacityDto(string Code, int TotalHeadcount, int RemainingCapacity);
-
-/// <summary>One eventItem in the event-only operations view; carries no attendee data.</summary>
-/// <param name="EventId">The event the row describes.</param>
-/// <param name="Date">The date of the confirmed window.</param>
-/// <param name="StartTime">The start of the confirmed window.</param>
-/// <param name="EndTime">The end of the confirmed window.</param>
-/// <param name="Capacities">Per-appointment-type capacity for this window.</param>
-/// <param name="ActiveBookings">How many active bookings the window currently holds.</param>
-public sealed record EventOperationDto(
-    Guid EventId,
-    DateOnly Date,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    IReadOnlyList<EventOperationCapacityDto> Capacities,
-    int ActiveBookings);
-
-/// <summary>The event-only operations view returned to administrators and coordinators.</summary>
-/// <param name="Events">Every active eventItem, newest data as the server returned it.</param>
-public sealed record EventOperationsDto(IReadOnlyList<EventOperationDto> Events);
-
-public sealed class EventsClient(HttpClient http)
+public interface IEventsClient
 {
-    public async Task<ApiOutcome<EventBoardDto>> GetBoardAsync(CancellationToken cancellationToken)
+    Task<ApiOutcome<NegotiationReferenceData>> GetReferenceDataAsync(CancellationToken ct);
+    Task<ApiOutcome<PageDto<EventProposalDto>>> ListProposalsAsync(string? cursor, CancellationToken ct);
+    Task<ApiOutcome<ProposeEventOutcome>> ProposeAsync(
+        ProposeEventRequest request, IdempotencySubmission submission, CancellationToken ct);
+    Task<ApiOutcome<RecordAcceptanceOutcome>> RecordAcceptanceAsync(
+        Guid proposalId, int headcount, CancellationToken ct);
+    Task<ApiOutcome<object>> WithdrawAcceptanceAsync(Guid proposalId, CancellationToken ct);
+    Task<ApiOutcome<object>> WithdrawProposalAsync(Guid proposalId, CancellationToken ct);
+    Task<ApiOutcome<PageDto<EventDto>>> ListEventsAsync(
+        Guid? locationId, DateOnly? from, DateOnly? to, string? cursor, CancellationToken ct);
+    Task<ApiOutcome<AdjustEventCapacityOutcome>> AdjustCapacityAsync(
+        Guid eventId, Guid appointmentTypeId, int totalHeadcount, CancellationToken ct);
+    Task<ApiOutcome<CancelEventOutcome>> CancelAsync(Guid eventId, bool confirm, CancellationToken ct);
+}
+
+public sealed class EventsClient(HttpClient http, IMeClient me) : IEventsClient
+{
+    public EventsClient(HttpClient http) : this(http, new MeClient(http)) { }
+
+    public async Task<ApiOutcome<NegotiationReferenceData>> GetReferenceDataAsync(CancellationToken ct)
     {
-        using var response = await http.GetAsync("/api/events/board", cancellationToken);
-        return await ApiCall.ReadAsync<EventBoardDto>(response, cancellationToken);
+        var current = await me.GetAsync(ct);
+        if (!current.IsSuccess || current.Value is null)
+            return ApiOutcome<NegotiationReferenceData>.Failure(current.Problem ?? Unexpected());
+        if (current.Value.ScopeAppointmentTypeId is null)
+            return ApiOutcome<NegotiationReferenceData>.Failure(ApiProblem.FromSlug(
+                "unexpected", "Your staff profile has no appointment-type scope."));
+        using var locationsResponse = await http.GetAsync("/api/locations?includeInactive=false", ct);
+        var locations = await ApiCall.ReadAsync<PageDto<LocationDto>>(locationsResponse, ct);
+        if (!locations.IsSuccess || locations.Value is null)
+            return ApiOutcome<NegotiationReferenceData>.Failure(locations.Problem ?? Unexpected());
+        using var typesResponse = await http.GetAsync("/api/appointment-types?includeInactive=false", ct);
+        var types = await ApiCall.ReadAsync<PageDto<AppointmentTypeDto>>(typesResponse, ct);
+        if (!types.IsSuccess || types.Value is null)
+            return ApiOutcome<NegotiationReferenceData>.Failure(types.Problem ?? Unexpected());
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return ApiOutcome<NegotiationReferenceData>.Success(new NegotiationReferenceData(
+            locations.Value.Items.Select(x => new LocationSummaryDto(
+                x.Id, x.Name, x.Address, x.TimeZoneId, ZoneAbbreviation(x.TimeZoneId, today),
+                x.IsActive)).ToArray(),
+            types.Value.Items.Select(x => new TypeSummaryDto(
+                x.Id, x.Code, x.Name, x.IsActive, x.HasManager)).ToArray(),
+            current.Value.ScopeAppointmentTypeId.Value,
+            current.Value.Links));
     }
 
-    public async Task<ApiOutcome<Guid>> ProposeAsync(
-        DateOnly date,
-        TimeOnly startTime,
-        CancellationToken cancellationToken)
-    {
-        using var response = await http.PostAsJsonAsync(
-            "/api/event-proposals",
-            new { Date = date, StartTime = startTime },
-            cancellationToken);
+    public Task<ApiOutcome<PageDto<EventProposalDto>>> ListProposalsAsync(string? cursor, CancellationToken ct) =>
+        Get<PageDto<EventProposalDto>>("/api/event-proposals" + CursorQuery(cursor), ct);
 
-        return await ApiCall.ReadAsync<Guid>(response, cancellationToken);
-    }
+    public Task<ApiOutcome<ProposeEventOutcome>> ProposeAsync(
+        ProposeEventRequest request, IdempotencySubmission submission, CancellationToken ct) =>
+        Send<ProposeEventOutcome>(HttpMethod.Post, "/api/event-proposals",
+            new
+            {
+                locationId = request.LocationId, date = request.Date, startTime = request.StartTime,
+                durationMinutes = request.DurationMinutes,
+                appointmentTypeIds = request.AppointmentTypeIds, headcount = request.Headcount,
+            },
+            submission, ct);
 
-    public async Task<ApiOutcome<bool>> AcceptAsync(
-        Guid proposalId,
-        int headcount,
-        CancellationToken cancellationToken)
-    {
-        using var response = await http.PostAsJsonAsync(
-            $"/api/event-proposals/{proposalId}/acceptance",
-            new { Headcount = headcount },
-            cancellationToken);
+    public Task<ApiOutcome<RecordAcceptanceOutcome>> RecordAcceptanceAsync(
+        Guid proposalId, int headcount, CancellationToken ct) =>
+        Send<RecordAcceptanceOutcome>(HttpMethod.Put, $"/api/event-proposals/{proposalId}/acceptance",
+            new { headcount }, null, ct);
 
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
-    }
-
-    public async Task<ApiOutcome<bool>> WithdrawAcceptanceAsync(
-        Guid proposalId,
-        CancellationToken cancellationToken)
+    public async Task<ApiOutcome<object>> WithdrawAcceptanceAsync(Guid proposalId, CancellationToken ct)
     {
         using var response = await http.DeleteAsync(
-            $"/api/event-proposals/{proposalId}/acceptance",
-            cancellationToken);
-
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+            $"/api/event-proposals/{proposalId}/acceptance", ct);
+        return await NoContent(response, ct);
     }
 
-    public async Task<ApiOutcome<bool>> WithdrawProposalAsync(
-        Guid proposalId,
-        CancellationToken cancellationToken)
+    public async Task<ApiOutcome<object>> WithdrawProposalAsync(Guid proposalId, CancellationToken ct)
     {
-        using var response = await http.DeleteAsync(
-            $"/api/event-proposals/{proposalId}",
-            cancellationToken);
-
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/event-proposals/{proposalId}/withdraw");
+        using var response = await http.SendAsync(request, ct);
+        return await NoContent(response, ct);
     }
 
-    public async Task<ApiOutcome<AdjustConfirmedCapacityDto>> AdjustCapacityAsync(
-        Guid eventId,
-        int totalHeadcount,
-        CancellationToken cancellationToken)
+    public Task<ApiOutcome<PageDto<EventDto>>> ListEventsAsync(
+        Guid? locationId, DateOnly? from, DateOnly? to, string? cursor, CancellationToken ct)
     {
-        var response = await http.PutAsJsonAsync(
-            $"/api/events/{eventId}/capacity",
-            new { TotalHeadcount = totalHeadcount },
-            cancellationToken);
-
-        return await ApiCall.ReadAsync<AdjustConfirmedCapacityDto>(
-            response,
-            cancellationToken);
+        var query = new List<string>();
+        if (locationId is not null) query.Add($"locationId={locationId:D}");
+        if (from is not null) query.Add($"from={from.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+        if (to is not null) query.Add($"to={to.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+        if (cursor is not null) query.Add($"cursor={Uri.EscapeDataString(cursor)}");
+        var suffix = query.Count == 0 ? "" : "?" + string.Join("&", query);
+        return Get<PageDto<EventDto>>("/api/events" + suffix, ct);
     }
 
-    /// <summary>Loads the event-only operations view; never touches attendee data.</summary>
-    /// <param name="cancellationToken">Cancels the request.</param>
-    /// <returns>Every active eventItem, or the failure the API reported.</returns>
-    public async Task<ApiOutcome<EventOperationsDto>> GetEventOperationsAsync(
-        CancellationToken cancellationToken)
+    public Task<ApiOutcome<AdjustEventCapacityOutcome>> AdjustCapacityAsync(
+        Guid eventId, Guid appointmentTypeId, int totalHeadcount, CancellationToken ct) =>
+        Send<AdjustEventCapacityOutcome>(HttpMethod.Put,
+            $"/api/events/{eventId}/capacities/{appointmentTypeId}",
+            new { totalHeadcount }, null, ct);
+
+    public async Task<ApiOutcome<CancelEventOutcome>> CancelAsync(
+        Guid eventId, bool confirm, CancellationToken ct)
     {
-        using var response = await http.GetAsync("/api/events/operations", cancellationToken);
-        return await ApiCall.ReadAsync<EventOperationsDto>(response, cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/events/{eventId}/cancel?confirm={confirm.ToString().ToLowerInvariant()}");
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<CancelEventOutcome>(response, ct);
     }
 
-    public async Task<ApiOutcome<bool>> CancelEventAsync(
-        Guid eventId,
-        bool confirm,
-        CancellationToken cancellationToken)
+    // Best-effort display text for the unsaved proposal preview only. Once the API
+    // returns a proposal or event, its EventTimeDto abbreviation is rendered instead.
+    // TimeZoneInfo carries only long names ("British Summer Time"), so the short names
+    // for the zones the product uses are spelled out; anything else falls back to its
+    // UTC offset, which is always truthful if less familiar.
+    public static string ZoneAbbreviation(string timeZoneId, DateOnly date)
     {
-        using var response = await http.DeleteAsync(
-            $"/api/events/{eventId}?confirm={(confirm ? "true" : "false")}",
-            cancellationToken);
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            var sample = date.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Unspecified);
+            var daylight = zone.IsDaylightSavingTime(sample);
+            return (timeZoneId, daylight) switch
+            {
+                ("Europe/London", false) => "GMT",
+                ("Europe/London", true) => "BST",
+                ("Europe/Dublin", false) => "GMT",
+                ("Europe/Dublin", true) => "IST",
+                ("Asia/Tokyo", _) => "JST",
+                ("Etc/UTC", _) => "UTC",
+                ("UTC", _) => "UTC",
+                _ => FormatOffset(zone.GetUtcOffset(sample)),
+            };
+        }
+        catch (Exception)
+        {
+            return timeZoneId;
+        }
+    }
 
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+    private static string FormatOffset(TimeSpan offset) =>
+        (offset < TimeSpan.Zero ? "-" : "+") + offset.Duration().ToString("hh\\:mm");
+
+    private static string CursorQuery(string? cursor) =>
+        cursor is null ? "" : $"?cursor={Uri.EscapeDataString(cursor)}";
+
+    private static ApiProblem Unexpected() =>
+        ApiProblem.FromSlug("unexpected", "Something went wrong. Please try again.");
+
+    private async Task<ApiOutcome<T>> Get<T>(string path, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(path, ct);
+        return await ApiCall.ReadAsync<T>(response, ct);
+    }
+
+    private async Task<ApiOutcome<T>> Send<T>(
+        HttpMethod method, string path, object body, IdempotencySubmission? submission,
+        CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body) };
+        if (submission is not null) request.Headers.Add("Idempotency-Key", submission.Key);
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<T>(response, ct);
+    }
+
+    private static async Task<ApiOutcome<object>> NoContent(
+        HttpResponseMessage response, CancellationToken ct)
+    {
+        var outcome = await ApiCall.ReadNoContentAsync(response, ct);
+        return outcome.IsSuccess
+            ? ApiOutcome<object>.Success(new object(), outcome.StatusCode)
+            : ApiOutcome<object>.Failure(
+                outcome.Problem ?? ApiProblem.FromSlug("unexpected", "Something went wrong. Please try again."));
     }
 }

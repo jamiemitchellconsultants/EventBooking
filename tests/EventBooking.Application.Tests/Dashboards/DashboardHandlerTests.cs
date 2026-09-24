@@ -188,7 +188,9 @@ public sealed class DashboardHandlerTests
                     new TimeOnly(9, 0),
                     new TimeOnly(13, 0),
                     [],
-                    0))
+                    0,
+                    "Europe/London",
+                    240))
                 .OrderBy(e => e.Date)
                 .ThenBy(e => e.StartTime)
                 .ThenBy(e => e.EventId)

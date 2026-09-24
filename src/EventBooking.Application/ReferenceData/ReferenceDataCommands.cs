@@ -37,7 +37,10 @@ public sealed record LocationResult(Guid Id, string Code, string Name, string Ad
 /// <param name="Code">The code.</param>
 /// <param name="Name">The name.</param>
 /// <param name="IsActive">Whether the location is active.</param>
-public sealed record LocationListItem(Guid Id, string Code, string Name, bool IsActive);
+/// <param name="Address">The address.</param>
+/// <param name="TimeZoneId">The time zone id.</param>
+/// <param name="Version">The version.</param>
+public sealed record LocationListItem(Guid Id, string Code, string Name, bool IsActive, string Address, string TimeZoneId, long Version);
 
 /// <summary>Creates an appointment type.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
@@ -72,7 +75,9 @@ public sealed record AppointmentTypeResult(Guid Id, string Code, string Name, bo
 /// <param name="Name">The name.</param>
 /// <param name="IsActive">Whether the type is active.</param>
 /// <param name="ManagerDisplayName">The manager display name.</param>
-public sealed record AppointmentTypeListItem(Guid Id, string Code, string Name, bool IsActive, string? ManagerDisplayName);
+/// <param name="Version">The version.</param>
+/// <param name="HasManager">Whether a current Manager profile scopes to this type.</param>
+public sealed record AppointmentTypeListItem(Guid Id, string Code, string Name, bool IsActive, string? ManagerDisplayName, long Version, bool HasManager);
 
 /// <summary>Creates an attendee group.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
@@ -111,4 +116,5 @@ public sealed record AttendeeGroupResult(Guid Id, string Code, string Name, bool
 /// <param name="IsActive">Whether the group is active.</param>
 /// <param name="RequirementTypeIds">The requirement type ids.</param>
 /// <param name="MemberCount">The member count.</param>
-public sealed record AttendeeGroupListItem(Guid Id, string Code, string Name, bool IsActive, IReadOnlyList<Guid> RequirementTypeIds, int MemberCount);
+/// <param name="Version">The version.</param>
+public sealed record AttendeeGroupListItem(Guid Id, string Code, string Name, bool IsActive, IReadOnlyList<Guid> RequirementTypeIds, int MemberCount, long Version);

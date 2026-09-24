@@ -63,11 +63,13 @@ public static class EventEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
+            var scope = await capabilities.ScopedAppointmentTypeIdAsync(cancellationToken);
             return Results.Ok(new Page<EventResponse>(
-                [.. result.Value.Items.Select(x => ApiResponses.Event(x, zones, held))],
+                [.. result.Value.Items.Select(x => ApiResponses.Event(x, zones, held, scope))],
                 result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor)));
         })
             .WithAgentMetadata("listEvents")
+            .WithEventBookingList()
             .Produces<Page<EventResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(422);
@@ -110,11 +112,13 @@ public static class EventEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
+            var scope = await capabilities.ScopedAppointmentTypeIdAsync(cancellationToken);
             return Results.Ok(new Page<EventResponse>(
-                [.. result.Value.Items.Select(x => ApiResponses.Event(x, zones, held))],
+                [.. result.Value.Items.Select(x => ApiResponses.Event(x, zones, held, scope))],
                 result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor)));
         })
             .WithAgentMetadata("listCancellableEvents")
+            .WithEventBookingList()
             .Produces<Page<EventResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(422);
@@ -135,7 +139,8 @@ public static class EventEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(ApiResponses.Event(result.Value, zones, held));
+            var scope = await capabilities.ScopedAppointmentTypeIdAsync(cancellationToken);
+            return Results.Ok(ApiResponses.Event(result.Value, zones, held, scope));
         })
             .WithAgentMetadata("getEvent")
             .Produces<EventResponse>(200)

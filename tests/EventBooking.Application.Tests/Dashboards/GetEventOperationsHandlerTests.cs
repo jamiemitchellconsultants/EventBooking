@@ -63,7 +63,9 @@ public class GetEventOperationsHandlerTests
             new TimeOnly(9, 0),
             new TimeOnly(13, 0),
             [new EventCapacityRow("DAT", 10, 9)],
-            1),
+            1,
+            "Europe/London",
+            240),
     ]);
 
     [Fact]

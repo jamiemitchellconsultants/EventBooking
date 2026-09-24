@@ -1,89 +1,108 @@
 @page "/help"
+@using Markdig
 @using Microsoft.AspNetCore.Components.Authorization
 @using EventBooking.Web.Services
+@using System.Security.Claims
+@inject IUserGuideCatalog Catalog
+@inject AuthenticationStateProvider Auth
 
 <PageTitle>Help</PageTitle>
 
-<AuthorizeView>
-    <Authorized>
-        <section class="page help-page" aria-labelledby="help-heading" aria-busy="@(Loading ? "true" : "false")">
-            <div class="page-header">
-                <div>
-                    <span class="eyebrow">User guide</span>
-                    <h1 id="help-heading">Help</h1>
-                    <p>Guidance for the roles on your profile.</p>
-                </div>
-            </div>
+<section class="page help-page" aria-labelledby="help-heading" aria-busy="@(_loading ? "true" : "false")">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">User guide</span>
+            <h1 id="help-heading">Help</h1>
+            <p>@(_authenticated ? "Guidance for the roles on your profile." : "Guidance for booking and managing your appointment.")</p>
+        </div>
+    </div>
 
-            @if (Loading)
-            {
-                <div class="card loading-block" role="status">
-                    <span class="loading-line loading-line-short"></span>
-                    <span class="loading-line"></span>
-                    <span class="loading-line loading-line-medium"></span>
-                    <span class="visually-hidden">Loading…</span>
-                </div>
-            }
-            else if (Error is not null)
-            {
-                <p class="landing-hint">@Error</p>
-            }
-            else if (Guides.Count == 0)
-            {
-                <p class="landing-hint">
-                    Your account has not been assigned a role yet. Contact an administrator to be given
-                    access as Manager, Coordinator, Admin, or Appointment staff.
-                </p>
-            }
-            else
-            {
-                @if (Guides.Count > 1)
+    @if (_loading)
+    {
+        <div class="card loading-block" role="status">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+            <span class="visually-hidden">Loading…</span>
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <p class="landing-hint" role="alert">@_error</p>
+        <button class="button" @onclick="LoadAsync">Try again</button>
+    }
+    else if (_sections.Count == 0)
+    {
+        <p class="landing-hint">
+            Your account has not been assigned a role yet. Contact an administrator to be given
+            access as Manager, Coordinator, Admin, or Appointment staff.
+        </p>
+    }
+    else
+    {
+        <nav class="card guide-toc" aria-label="Contents">
+            <h2>Contents</h2>
+            <ul>
+                @foreach (var section in _sections)
                 {
-                    <nav class="card guide-toc" aria-label="Guides on this page">
-                        <ul>
-                            @foreach (var guide in Guides)
-                            {
-                                <li><a href="/help#@guide.AnchorId">@guide.Title</a></li>
-                            }
-                        </ul>
-                    </nav>
+                    <li><a href="@(SectionHref(section))">@(section.Title)</a></li>
                 }
+            </ul>
+        </nav>
 
-                @foreach (var guide in Guides)
-                {
-                    <section class="card guide-section" id="@guide.AnchorId" aria-label="@guide.Title">
-                        @((MarkupString)guide.Html)
-                    </section>
-                }
-            }
-        </section>
-    </Authorized>
-    <NotAuthorized>
-        <section class="page help-page" aria-labelledby="help-heading">
-            <div class="page-header">
-                <div>
-                    <span class="eyebrow">User guide</span>
-                    <h1 id="help-heading">Help</h1>
-                    <p>Guidance for booking and managing your appointment.</p>
-                </div>
-            </div>
-            <section class="card guide-section" id="@AttendeeGuide.AnchorId" aria-label="@AttendeeGuide.Title">
-                @((MarkupString)AttendeeGuide.Html)
+        @foreach (var section in _sections)
+        {
+            <section class="card guide-section" id="@(section.AnchorId)" aria-label="@(section.Title)">
+                @((MarkupString)section.Html)
             </section>
-        </section>
-    </NotAuthorized>
-</AuthorizeView>
+        }
+    }
+</section>
 
 @code {
-    // Cascaded by MainLayout, which fetches it once for both the nav bar and Home — reused here
-    // rather than issued as a second concurrent call to the same token-protected endpoint.
-    [CascadingParameter]
-    private ApiOutcome<MeDto>? MeOutcome { get; set; }
+    private static readonly MarkdownPipeline Pipeline =
+        new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
-    private static readonly UserGuide AttendeeGuide = UserGuideCatalog.AttendeeGuide();
+    private readonly List<GuideSection> _sections = [];
+    private bool _authenticated;
+    private bool _loading = true;
+    private string? _error;
 
-    private bool Loading => MeOutcome is null;
-    private string? Error => MeOutcome is { IsSuccess: false } ? MeOutcome.ErrorMessage : null;
-    private IReadOnlyList<UserGuide> Guides =>
-        MeOutcome?.Value is { } me ? UserGuideCatalog.GuidesFor(me.Roles) : [];
+    private sealed record GuideSection(string AnchorId, string Title, string Html);
+
+    private static string SectionHref(GuideSection section) => $"#{section.AnchorId}";
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _sections.Clear();
+
+        try
+        {
+            var state = await Auth.GetAuthenticationStateAsync();
+            var user = state.User;
+            _authenticated = user.Identity?.IsAuthenticated == true;
+            var roles = user.FindAll(ClaimTypes.Role).Select(claim => claim.Value).ToArray();
+            var guides = await Catalog.ForAsync(_authenticated, roles, CancellationToken.None);
+            foreach (var guide in guides)
+            {
+                var markdown = await Catalog.ReadMarkdownAsync(guide, CancellationToken.None);
+                _sections.Add(new GuideSection(
+                    $"guide-{guide.RoleKey.ToLowerInvariant()}",
+                    guide.Title,
+                    Markdig.Markdown.ToHtml(markdown, Pipeline)));
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
 }

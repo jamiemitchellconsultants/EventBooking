@@ -13,16 +13,20 @@ namespace EventBooking.Application.Bookings;
 
 /// <summary>Defines invite option view for the current use case.</summary>
 /// <param name="EventId">The event id.</param>
+/// <param name="LocationName">The location display name.</param>
+/// <param name="Address">The location address.</param>
+/// <param name="TimeZoneId">The location's time zone.</param>
 /// <param name="Date">The date.</param>
 /// <param name="StartTime">The start time.</param>
-/// <param name="EndTime">The end time.</param>
-/// <param name="Display">The display.</param>
+/// <param name="DurationMinutes">The window length.</param>
 public sealed record InviteOptionView(
     Guid EventId,
+    string LocationName,
+    string Address,
+    string TimeZoneId,
     DateOnly Date,
     TimeOnly StartTime,
-    TimeOnly EndTime,
-    string Display);
+    int DurationMinutes);
 
 /// <summary>Defines invite view for the current use case.</summary>
 /// <param name="InviteId">The invite id.</param>
@@ -51,7 +55,6 @@ public sealed record ViewInviteQuery(string? Token);
 /// <param name="tokens">The tokens.</param>
 /// <param name="clock">The clock.</param>
 /// <param name="locations">The locations.</param>
-/// <param name="zones">The zones.</param>
 /// <param name="types">Resolves requirement names for the invite view.</param>
 public sealed class ViewInviteHandler(
     IInviteRepository invites,
@@ -63,7 +66,6 @@ public sealed class ViewInviteHandler(
     ITokenService tokens,
     IClock clock,
     ILocationRepository locations,
-    IEventWindowZones zones,
     IAppointmentTypeRepository types)
 {
     /// <summary>
@@ -201,17 +203,12 @@ public sealed class ViewInviteHandler(
             }
             optionViews.Add(new InviteOptionView(
                 option.Id,
+                location.Name,
+                location.Address,
+                location.TimeZoneId,
                 option.Window.Date,
                 option.Window.StartTime,
-                option.Window.EndTime,
-                WindowText.Format(
-                    option.Window.Date,
-                    option.Window.StartTime,
-                    option.Window.EndTime,
-                    location.Name,
-                    zones.AbbreviationOf(
-                        option.Window.StartInstant(zones, location.TimeZoneId),
-                        location.TimeZoneId))));
+                option.Window.DurationMinutes));
         }
 
         // Resolved from the stored rows, not the canonical constants: invites snapshot

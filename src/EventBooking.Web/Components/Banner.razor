@@ -1,0 +1,15 @@
+@using EventBooking.Web.Services
+
+<div class="banner banner-@Variant.ToString().ToLowerInvariant()" role="@(Variant is BannerVariant.Error ? "alert" : "status")" aria-live="@(Variant is BannerVariant.Error ? "assertive" : "polite")">
+    <p>@Message</p>
+    @if (Retry.HasDelegate)
+    {
+        <p><button type="button" class="button" @onclick="() => Retry.InvokeAsync()">Try again</button></p>
+    }
+</div>
+
+@code {
+    [Parameter] public BannerVariant Variant { get; set; } = BannerVariant.Info;
+    [Parameter, EditorRequired] public string Message { get; set; } = "";
+    [Parameter] public EventCallback Retry { get; set; }
+}

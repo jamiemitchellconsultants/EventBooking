@@ -1,9 +1,10 @@
 @page "/manage/{Token}"
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Components
 @using EventBooking.Web.Services
 @layout EventBooking.Web.Layout.AttendeeLayout
-@inject BookingClient Booking
-@inject AttendeePageOptions PageOptions
+@inject IBookingClient Booking
+@inject IServiceProvider Services
 
 <PageTitle>Manage your booking</PageTitle>
 
@@ -23,21 +24,21 @@
             <h1>Booking cancelled</h1>
         </div>
         <div class="manage-booking-page__status manage-booking-page__status--cancelled" role="status">
-            @if (_rebookRequested && _cancelOutcome == "reinvited")
+            @if (_cancelOutcome == "reinvited")
             {
-                <p class="manage-booking-page__lead">Your booking has been cancelled and a new invitation with fresh times is on its way.</p>
+                <p class="manage-booking-page__lead">A new invitation is ready: your booking has been cancelled and a new invitation with fresh times is on its way.</p>
             }
-            else if (_rebookRequested && _cancelOutcome == "reinvitePending")
+            else if (_cancelOutcome == "reinvitePending")
             {
-                <p class="manage-booking-page__lead">Your booking has been cancelled. You already have a pending invitation; use that link to choose a new time.</p>
+                <p class="manage-booking-page__lead">A replacement invitation is already being arranged. Your booking has been cancelled. You already have a pending invitation; use that link to choose a new time.</p>
             }
-            else if (_rebookRequested)
+            else if (_cancelOutcome == "noEligibleEvents")
             {
-                <p class="manage-booking-page__lead">Your booking has been cancelled. There are no times available right now; the recruitment team will be in touch with the next available times.</p>
+                <p class="manage-booking-page__lead">We'll be in touch when another time is available. Your booking has been cancelled. There are no times available right now; the recruitment team will be in touch with the next available times.</p>
             }
             else
             {
-                <p class="manage-booking-page__lead">Your booking has been cancelled. If that was a mistake, contact the recruitment team at @PageOptions.CoordinatorContact.</p>
+                <p class="manage-booking-page__lead">Your booking is cancelled. If that was a mistake, contact the recruitment team at @CoordinatorContact.</p>
             }
         </div>
     }
@@ -45,7 +46,7 @@
     {
         <div class="manage-booking-page__status manage-booking-page__status--expired">
             <h1>This link has expired</h1>
-            <p class="manage-booking-page__note">This booking link is no longer valid. Please contact the recruitment team at @PageOptions.CoordinatorContact for help.</p>
+            <p class="manage-booking-page__note">This booking link is no longer valid. Please contact the recruitment team at @CoordinatorContact for help.</p>
         </div>
     }
     else if (_booking is null)
@@ -62,7 +63,7 @@
     {
         <div class="manage-booking-page__intro">
             <h1>Manage your booking</h1>
-            <p class="manage-booking-page__lead">Review your appointment or cancel it below.</p>
+            <p class="manage-booking-page__lead">Hi <strong>@_booking.AttendeeName</strong> — review your appointment or cancel it below.</p>
         </div>
 
         @if (_error is not null)
@@ -72,15 +73,23 @@
 
         <div class="manage-booking-page__card">
             <span class="manage-booking-page__label">Your appointment</span>
-            <span class="manage-booking-page__window">@_booking.Display</span>
+            <span class="manage-booking-page__window">@_booking.LocationName, @_booking.Address · @_booking.Time.Date.ToString("dddd, dd MMM yyyy") · @_booking.Time.StartTime.ToString("HH\\:mm") – @_booking.Time.EndLocal.ToString("HH\\:mm") @_booking.Time.ZoneAbbreviation</span>
+            <span class="manage-booking-page__types">@string.Join(" and ", _booking.AppointmentTypeNames)</span>
         </div>
 
-        <div class="manage-booking-page__actions">
-            <button class="manage-booking-page__button manage-booking-page__button--danger" @onclick="() => CancelAsync(false)" disabled="@_busy"
-                    title="Releases your place. No replacement times are offered — the recruitment team will follow up.">@(_busy ? "Cancelling…" : "Cancel booking")</button>
-            <button class="manage-booking-page__button manage-booking-page__button--primary" @onclick="() => CancelAsync(true)" disabled="@_busy"
-                    title="Releases your place and emails you a fresh link with the times still open.">@(_busy ? "Cancelling…" : "Cancel and choose a new time")</button>
-        </div>
+        @if (_booking.Links.Allows("cancel"))
+        {
+            <div class="manage-booking-page__actions">
+                <button data-action="cancel-booking" class="manage-booking-page__button manage-booking-page__button--danger" @onclick="() => CancelAsync(false)" disabled="@_busy"
+                        title="Releases your place. No replacement times are offered — the recruitment team will follow up.">@(_busy ? "Cancelling…" : "Cancel booking")</button>
+                <button data-action="cancel-booking-rebook" class="manage-booking-page__button manage-booking-page__button--primary" @onclick="() => CancelAsync(true)" disabled="@_busy"
+                        title="Releases your place and emails you a fresh link with the times still open.">@(_busy ? "Cancelling…" : "Cancel and choose a new time")</button>
+            </div>
+        }
+        else
+        {
+            <p class="manage-booking-page__note">This appointment has already started, so it can no longer be cancelled here. To change it, contact @SupportContact.</p>
+        }
         <p class="manage-booking-page__note manage-booking-page__footnote">This link is single-use and only works for you — no sign-in required. Please do not forward it.</p>
     }
 </section>
@@ -89,15 +98,21 @@
     [Parameter]
     public string Token { get; set; } = string.Empty;
 
-    private BookingDto? _booking;
+    private ManagedBookingDto? _booking;
     private string? _error;
     private bool _expired;
     private bool _loading = true;
     private bool _busy;
+    private readonly PendingSubmission _cancelSubmission = new();
     private bool _cancelled;
-    private bool _rebookRequested;
     private string? _cancelOutcome;
     private int _requestVersion;
+
+    private string CoordinatorContact =>
+        Services.GetService<AttendeePageOptions>()?.CoordinatorContact ?? "the recruitment team";
+
+    private string SupportContact =>
+        Services.GetService<ProductOptions>()?.CoordinatorContact ?? CoordinatorContact;
 
     protected override Task OnParametersSetAsync() => ReloadAsync();
 
@@ -110,12 +125,11 @@
         _error = null;
         _expired = false;
         _cancelled = false;
-        _rebookRequested = false;
         _cancelOutcome = null;
 
         try
         {
-            var outcome = await Booking.GetBookingAsync(Token, CancellationToken.None);
+            var outcome = await Booking.ViewManagedAsync(Token, CancellationToken.None);
             if (version != _requestVersion)
             {
                 return;
@@ -149,13 +163,13 @@
         }
 
         var version = _requestVersion;
-        _rebookRequested = rebook;
         _busy = true;
         _error = null;
 
         try
         {
-            var outcome = await Booking.CancelAsync(Token, rebook, CancellationToken.None);
+            var outcome = await Booking.CancelAsync(
+                Token, rebook, _cancelSubmission.For(rebook), CancellationToken.None);
             if (version != _requestVersion)
             {
                 return;
@@ -163,6 +177,7 @@
 
             if (outcome.IsSuccess)
             {
+                _cancelSubmission.Complete();
                 _cancelOutcome = outcome.Value?.Outcome;
                 _cancelled = true;
                 _booking = null;

@@ -25,24 +25,19 @@ public class ApiCallTests
         Assert.Null(outcome.ErrorMessage);
     }
 
-    /// <summary>Verifies problem details preserve both their stable title and safe detail.</summary>
     [Fact]
-    public async Task AProblemDetailsBodyPreservesItsCodeAndUserFacingMessage()
+    public async Task ASuccessWithANullBodyIsAFailure()
     {
-        var response = new HttpResponseMessage(HttpStatusCode.Conflict)
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent(
-                """{"title":"conflict","detail":"An open proposal already exists for that window.","status":409}""",
-                Encoding.UTF8,
-                "application/problem+json"),
+            Content = new StringContent("null", Encoding.UTF8, "application/json"),
         };
 
         var outcome = await ApiCall.ReadAsync<Payload>(response, CancellationToken.None);
 
         Assert.False(outcome.IsSuccess);
-        Assert.Equal("conflict", outcome.ErrorCode);
-        Assert.Equal("An open proposal already exists for that window.", outcome.ErrorMessage);
-        Assert.Equal(409, outcome.StatusCode);
+        Assert.Equal("unexpected", outcome.ErrorCode);
+        Assert.Equal("Something went wrong. Please try again.", outcome.ErrorMessage);
     }
 
     [Fact]
@@ -57,20 +52,6 @@ public class ApiCallTests
 
         Assert.False(outcome.IsSuccess);
         Assert.Equal("Something went wrong. Please try again.", outcome.ErrorMessage);
-    }
-
-    [Fact]
-    public async Task AForbiddenResponseSaysSoInPlainWords()
-    {
-        var response = new HttpResponseMessage(HttpStatusCode.Forbidden)
-        {
-            Content = new StringContent("", Encoding.UTF8, "text/plain"),
-        };
-
-        var outcome = await ApiCall.ReadAsync<Payload>(response, CancellationToken.None);
-
-        Assert.False(outcome.IsSuccess);
-        Assert.Equal("You do not have permission to do that.", outcome.ErrorMessage);
     }
 
     [Fact]
@@ -90,7 +71,7 @@ public class ApiCallTests
         var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
         {
             Content = new StringContent(
-                """{"title":"validation","detail":"headcount must be greater than zero.","status":400}""",
+                """{"type":"validation-failed","title":"Validation failed","detail":"headcount must be greater than zero.","status":400}""",
                 Encoding.UTF8,
                 "application/problem+json"),
         };
@@ -98,6 +79,42 @@ public class ApiCallTests
         var outcome = await ApiCall.ReadNoContentAsync(response, CancellationToken.None);
 
         Assert.False(outcome.IsSuccess);
+        Assert.Equal("validation-failed", outcome.ErrorCode);
         Assert.Equal("headcount must be greater than zero.", outcome.ErrorMessage);
+    }
+
+    [Theory]
+    [InlineData("\"Bad gateway\"")]
+    [InlineData("[1,2]")]
+    [InlineData("""{"type":42}""")]
+    [InlineData("""{"type":"validation-failed","errors":{"name":["Required"]}}""")]
+    [InlineData("""{"type":"validation-failed","errors":[{"line":99999999999}]}""")]
+    public async Task AnUnexpectedlyShapedProblemBodyIsAGenericFailureNotAnException(string body)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+
+        var outcome = await ApiCall.ReadAsync<Payload>(response, CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(502, outcome.StatusCode);
+        Assert.NotNull(outcome.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AMalformedSuccessBodyIsAGenericFailureNotAnException()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{not json", Encoding.UTF8, "application/json"),
+        };
+
+        var outcome = await ApiCall.ReadAsync<Payload>(response, CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal("unexpected", outcome.ErrorCode);
+        Assert.Equal(200, outcome.StatusCode);
     }
 }

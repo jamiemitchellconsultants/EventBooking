@@ -20,16 +20,25 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         var list = await client.GetFromJsonAsync<StaffAccessPage>("/api/staff-access");
         Assert.Contains(list!.Items, profile => profile.StaffUserId == target);
 
+        // A fresh type, so no other test's Manager sits on it and the displacement
+        // assertion below cannot depend on suite order.
+        var created = await client.PostAsJsonAsync(
+            "/api/appointment-types", new { Code = "SA_SCOPE", Name = "Scope Test" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var freshType = (await created.Content.ReadFromJsonAsync<CreatedType>())!.Id;
+
         var set = await client.PutAsJsonAsync(
             $"/api/staff-access/{target}/scope",
             new
             {
-                AppointmentTypeId = AppointmentTypeIds.MedicalCheckUp,
+                AppointmentTypeId = freshType,
                 ExpectedVersion = 1L,
             });
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
         var setBody = await set.Content.ReadFromJsonAsync<MutationResponse>();
-        Assert.Equal(AppointmentTypeIds.MedicalCheckUp, setBody!.Profile.AppointmentTypeId);
+        Assert.Equal(target, setBody!.TargetStaffUserId);
+        Assert.Equal(freshType, setBody.AppointmentTypeId);
+        Assert.Null(setBody.DisplacedManagerDisplayName);
 
         var stale = await client.PutAsJsonAsync(
             $"/api/staff-access/{target}/scope",
@@ -137,7 +146,36 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         long Version,
         string? DisplayName = null);
 
+    [Fact]
+    public async Task AReplacedManagerIsNamedByDisplayName()
+    {
+        factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
+        var former = await factory.GivenStaffAsync(
+            [Role.Manager], AppointmentTypeIds.UniformFitting);
+        var target = await factory.GivenStaffAsync([Role.Manager], null);
+        await factory.GivenIdentityAsync(former, "U000031", "Fran Former");
+        factory.RolesClaim = ["Admin"];
+        var client = factory.CreateClient();
+
+        var set = await client.PutAsJsonAsync(
+            $"/api/staff-access/{target}/scope",
+            new
+            {
+                AppointmentTypeId = AppointmentTypeIds.UniformFitting,
+                ExpectedVersion = 1L,
+            });
+
+        Assert.Equal(HttpStatusCode.OK, set.StatusCode);
+        var setBody = await set.Content.ReadFromJsonAsync<MutationResponse>();
+        Assert.Equal(target, setBody!.TargetStaffUserId);
+        Assert.Equal(AppointmentTypeIds.UniformFitting, setBody.AppointmentTypeId);
+        Assert.Equal("Fran Former", setBody.DisplacedManagerDisplayName);
+    }
+
+    private sealed record CreatedType(Guid Id);
+
     private sealed record MutationResponse(
-        ProfileResponse Profile,
-        Guid? DisplacedManagerStaffUserId);
+        Guid TargetStaffUserId,
+        Guid? AppointmentTypeId,
+        string? DisplacedManagerDisplayName);
 }

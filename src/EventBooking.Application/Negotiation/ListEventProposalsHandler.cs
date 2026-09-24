@@ -13,6 +13,11 @@ namespace EventBooking.Application.Negotiation;
 public sealed record ListEventProposalsQuery(
     Guid StaffUserId, string? Status, Guid? LocationId, string? Cursor, int Limit);
 
+/// <summary>One listed type on a proposal: display detail for the negotiation board.</summary>
+/// <param name="Code">The type code.</param>
+/// <param name="Name">The type name.</param>
+public sealed record ProposalListedType(string Code, string Name);
+
 /// <summary>One listed proposal with the caller's relationship to it.</summary>
 /// <param name="ProposalId">The proposal.</param>
 /// <param name="LocationId">The location that would host the event.</param>
@@ -29,11 +34,14 @@ public sealed record ListEventProposalsQuery(
 /// <param name="AcceptedByMe">Whether the caller's type accepted.</param>
 /// <param name="CreatedByMe">Whether the caller raised it for their type.</param>
 /// <param name="Cursor">The keyset cursor for this row.</param>
+/// <param name="Types">The listed types in code order.</param>
+/// <param name="ProposerAppointmentTypeId">The proposing Manager's own type.</param>
 public sealed record EventProposalListItem(
     Guid ProposalId, Guid LocationId, string LocationCode, string LocationName, string TimeZoneId,
     DateOnly Date, TimeOnly StartTime, int DurationMinutes, string Status,
     int ListedTypeCount, int AcceptedTypeCount, int? MyAcceptedHeadcount,
-    bool AcceptedByMe, bool CreatedByMe, string Cursor);
+    bool AcceptedByMe, bool CreatedByMe, string Cursor,
+    IReadOnlyList<ProposalListedType> Types, Guid ProposerAppointmentTypeId);
 
 /// <summary>One page of listed proposals.</summary>
 /// <param name="Items">The rows.</param>

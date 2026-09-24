@@ -1,0 +1,91 @@
+@typeparam TItem
+<div class="table-wrap">
+    @if (Items is null)
+    {
+        <div class="loading-skeleton" role="status" aria-label="Loading" />
+    }
+    else if (Items.Count == 0)
+    {
+        <p>@EmptyTitle</p>
+        <p class="muted">@EmptyHint</p>
+        @if (!string.IsNullOrEmpty(EmptyActionLabel))
+        {
+            <button type="button" class="button button-primary" @onclick="() => EmptyAction.InvokeAsync()">@EmptyActionLabel</button>
+        }
+    }
+    else
+    {
+        var typeCodes = TypeCodes(Items);
+        var collapsed = typeCodes.Count > MaximumTypeColumns;
+        if (collapsed)
+        {
+            typeCodes = [];
+        }
+        <table>
+            <thead><tr>
+                @foreach (var column in Columns)
+                {
+                    <th scope="col">@column.Title</th>
+                }
+                @foreach (var typeCode in typeCodes)
+                {
+                    <th scope="col" data-type-code="@typeCode">@typeCode</th>
+                }
+                @if (collapsed)
+                {
+                    <th scope="col">Capacity</th>
+                }
+            </tr></thead>
+            <tbody>
+                @foreach (var item in Items)
+                {
+                    <tr @key="RowKey(item)">
+                        @foreach (var column in Columns)
+                        {
+                            <td data-label="@column.Title">@column.Cell(item)</td>
+                        }
+                        @* One cell per header column, looked up by code, so a row lacking a type
+                           leaves that cell empty instead of shifting the rest left. *@
+                        @foreach (var typeCode in typeCodes)
+                        {
+                            <td data-label="@typeCode">@CapacityText(item, typeCode)</td>
+                        }
+                        @if (collapsed)
+                        {
+                            <td data-label="Capacity"><ul class="capacity-breakdown">
+                                @foreach (var capacity in Capacities(item))
+                                {
+                                    <li>@capacity.TypeCode: @capacity.TotalHeadcount total, @capacity.RemainingCapacity left</li>
+                                }
+                            </ul></td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (NextCursor is not null)
+        {
+            <button type="button" class="button" @onclick="() => LoadMore.InvokeAsync()">Load more</button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<TItem>? Items { get; set; }
+    [Parameter, EditorRequired] public Func<TItem, object> RowKey { get; set; } = null!;
+    [Parameter, EditorRequired] public IReadOnlyList<TableColumn<TItem>> Columns { get; set; } = [];
+    [Parameter] public Func<TItem, IReadOnlyList<TypeCapacity>> Capacities { get; set; } = _ => [];
+    [Parameter] public string? NextCursor { get; set; }
+    [Parameter] public EventCallback LoadMore { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "Nothing here yet.";
+    [Parameter] public string EmptyHint { get; set; } = "";
+    [Parameter] public string EmptyActionLabel { get; set; } = "";
+    [Parameter] public EventCallback EmptyAction { get; set; }
+    private const int MaximumTypeColumns = 5;
+    private IReadOnlyList<string> TypeCodes(IReadOnlyList<TItem> items) =>
+        items.SelectMany(Capacities).Select(x => x.TypeCode).Distinct().ToArray();
+    private string? CapacityText(TItem item, string typeCode) =>
+        Capacities(item).FirstOrDefault(x => x.TypeCode == typeCode) is { } capacity
+            ? $"{capacity.TotalHeadcount} total, {capacity.RemainingCapacity} left"
+            : null;
+}

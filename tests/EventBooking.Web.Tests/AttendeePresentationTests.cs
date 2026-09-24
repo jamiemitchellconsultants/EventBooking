@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using Bunit;
 using Bunit.TestDoubles;
-using EventBooking.Domain.Attendees;
 using EventBooking.Web.Pages;
 using EventBooking.Web.Services;
 using Microsoft.AspNetCore.Components.Forms;
@@ -79,7 +78,7 @@ public class AttendeePresentationTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var cut = RenderAttendees(attendeeId, _ => Task.FromResult(ReadinessJson(
-            new AttendeeReadinessDto(attendeeId, code, display, []))));
+            new AttendeeReadinessDto(attendeeId, code, display, [], new Dictionary<string, ApiLink>()))));
 
         cut.Find("button.readiness-badge").Click();
 
@@ -106,7 +105,8 @@ public class AttendeePresentationTests : BunitContext
                 [
                     new OutstandingAppointmentTypeDto("DAT", "Drug & Alcohol Testing", false),
                     new OutstandingAppointmentTypeDto("MED", "Medical Check-Up", true),
-                ]))));
+                ],
+                new Dictionary<string, ApiLink>()))));
 
         cut.Find("button.readiness-badge").Click();
 
@@ -137,7 +137,7 @@ public class AttendeePresentationTests : BunitContext
         });
 
         gate.SetResult(ReadinessJson(
-            new AttendeeReadinessDto(attendeeId, "Ready", "Ready to book", [])));
+            new AttendeeReadinessDto(attendeeId, "Ready", "Ready to book", [], new Dictionary<string, ApiLink>())));
         cut.WaitForAssertion(() =>
             Assert.Contains("Ready to book", cut.Find("button.readiness-badge").TextContent));
     }
@@ -153,7 +153,7 @@ public class AttendeePresentationTests : BunitContext
             return Task.FromResult(attempts == 1
                 ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
                 : ReadinessJson(
-                    new AttendeeReadinessDto(attendeeId, "Ready", "Ready to book", [])));
+                    new AttendeeReadinessDto(attendeeId, "Ready", "Ready to book", [], new Dictionary<string, ApiLink>())));
         });
 
         cut.Find("button.readiness-badge").Click();
@@ -169,7 +169,7 @@ public class AttendeePresentationTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var cut = RenderAttendees(attendeeId, _ => Task.FromResult(ReadinessJson(
-            new AttendeeReadinessDto(attendeeId, "Ready", "Ready to book", []))));
+            new AttendeeReadinessDto(attendeeId, "Ready", "Ready to book", [], new Dictionary<string, ApiLink>()))));
 
         var badge = cut.Find("button.readiness-badge");
 
@@ -205,36 +205,44 @@ public class AttendeePresentationTests : BunitContext
                 return await respond(request);
             }
 
+            if (path == "/api/me")
+            {
+                return Json(new MeDto(["Coordinator"], null, null));
+            }
+
+            if (path is "/api/locations")
+            {
+                return Json(new PageDto<LocationDto>([], null));
+            }
+
+            if (path is "/api/attendee-groups")
+            {
+                return Json(new PageDto<AttendeeGroupDto>([], null));
+            }
+
+            if (path is "/api/appointment-types")
+            {
+                return Json(new PageDto<AppointmentTypeDto>([], null));
+            }
+
             if (path == "/api/attendees")
             {
-                return Json(new AttendeeListDto(
+                return Json(new PageDto<AttendeeDto>(
                     [
                         new AttendeeDto(
                             attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
-                            "Not yet invited", "MED", "NoActiveBooking", [], null, "cursor"),
+                            "Not yet invited", "MED", "NoActiveBooking", [], null, "cursor",
+                            null, new Dictionary<string, ApiLink>()),
                     ],
                     null));
             }
 
-            if (path == "/api/attendee-groups")
-            {
-                return Json(Array.Empty<object>());
-            }
-
-            return Json(new DashboardsDto(
-                new DashboardTabDto<AwaitingRowDto>(0, []),
-                new DashboardTabDto<NoResponseRowDto>(0, []),
-                new DashboardTabDto<EventRowDto>(0, []),
-                0,
-                0));
+            return Json(new PageDto<AuditRowDto>([], null));
         });
-        Services.AddSingleton(
+        Services.AddSingleton<IAttendeesClient>(
             new AttendeesClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));
-        Services.AddSingleton(
-            new DashboardsClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));
-        Services.AddSingleton(
+        Services.AddSingleton<IAuditClient>(
             new AuditClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
 
         return Render<Attendees>();
     }

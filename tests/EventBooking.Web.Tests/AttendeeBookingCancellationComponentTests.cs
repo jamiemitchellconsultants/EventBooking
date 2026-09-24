@@ -36,7 +36,8 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
     };
 
     private static AttendeeBookingDto Booking(Guid id, bool isOriginal, int day) => new(
-        id, isOriginal, new DateOnly(2026, 9, day), new TimeOnly(9, 0), new TimeOnly(13, 0));
+        id, isOriginal, new DateOnly(2026, 9, day), new TimeOnly(9, 0), new TimeOnly(13, 0),
+        new Dictionary<string, ApiLink>());
 
     private static AngleSharp.Dom.IElement FindButton(IRenderedComponent<Attendees> cut, string text) =>
         cut.FindAll("button").First(button => button.TextContent.Trim() == text);
@@ -56,45 +57,57 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
             {
                 return cancel is not null
                     ? cancel(request)
-                    : Json(new CancelAttendeeBookingDto(false, 0, Guid.NewGuid()));
+                    : Json(new CancelAttendeeBookingDto(
+                        false, 0, Guid.NewGuid(), new Dictionary<string, ApiLink>()));
             }
 
             if (path == $"/api/attendees/{AttendeeId}/bookings")
             {
-                return Json(bookingPages.Count > 0
-                    ? bookingPages.Dequeue()
-                    : Array.Empty<AttendeeBookingDto>());
+                return Json(new PageDto<AttendeeBookingDto>(
+                    bookingPages.Count > 0
+                        ? bookingPages.Dequeue()
+                        : Array.Empty<AttendeeBookingDto>(),
+                    null));
             }
 
-            if (path == "/api/attendees")
+            if (path == "/api/me")
             {
-                return Json(new AttendeeListDto(
-                    [
-                        new AttendeeDto(
-                            AttendeeId, "Amara Novak", "a.novak@mail.com", "Booked",
-                            "Booked", "MED", "Booked", [], null, "cursor"),
-                    ],
-                    null));
+                return Json(new MeDto(["Coordinator"], null, null));
+            }
+
+            if (path is "/api/locations")
+            {
+                return Json(new PageDto<LocationDto>([], null));
             }
 
             if (path == "/api/attendee-groups")
             {
-                return Json(Array.Empty<object>());
+                return Json(new PageDto<AttendeeGroupDto>([], null));
             }
 
-            return Json(new DashboardsDto(
-                new DashboardTabDto<AwaitingRowDto>(0, []),
-                new DashboardTabDto<NoResponseRowDto>(0, []),
-                new DashboardTabDto<EventRowDto>(0, []),
-                0,
-                0));
+            if (path is "/api/appointment-types")
+            {
+                return Json(new PageDto<AppointmentTypeDto>([], null));
+            }
+
+            if (path == "/api/attendees")
+            {
+                return Json(new PageDto<AttendeeDto>(
+                    [
+                        new AttendeeDto(
+                            AttendeeId, "Amara Novak", "a.novak@mail.com", "Booked",
+                            "Booked", "MED", "Booked", [], null, "cursor",
+                            null, new Dictionary<string, ApiLink>()),
+                    ],
+                    null));
+            }
+
+            return Json(new PageDto<AuditRowDto>([], null));
         });
 
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
-        Services.AddSingleton(new AttendeesClient(http));
-        Services.AddSingleton(new DashboardsClient(http));
-        Services.AddSingleton(new AuditClient(http));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(http));
+        Services.AddSingleton<IAuditClient>(new AuditClient(http));
 
         return (Render<Attendees>(), handler);
     }

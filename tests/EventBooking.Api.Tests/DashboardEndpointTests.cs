@@ -144,9 +144,11 @@ public class DashboardEndpointTests(ApiFactory factory)
         Assert.Equal(today, noResponseRow.GaveUpOn);
 
         var eventRow = Assert.Single(dashboards.Events.Rows, s => s.EventId == eventId);
-        Assert.Equal(today.AddDays(30), eventRow.Date);
-        Assert.Equal(new TimeOnly(9, 0), eventRow.StartTime);
-        Assert.Equal(new TimeOnly(13, 0), eventRow.EndTime);
+        Assert.Equal(today.AddDays(30), eventRow.Time.Date);
+        Assert.Equal(new TimeOnly(9, 0), eventRow.Time.StartTime);
+        Assert.Equal(240, eventRow.Time.DurationMinutes);
+        Assert.Equal("Europe/London", eventRow.Time.TimeZoneId);
+        Assert.False(string.IsNullOrWhiteSpace(eventRow.Time.ZoneAbbreviation));
         Assert.Equal(0, eventRow.ActiveBookings);
         Assert.Equal(new[] { "DAT", "MED", "UNI" }, eventRow.Capacities.Select(c => c.Code));
         var drugAndAlcohol = eventRow.Capacities.Single(c => c.Code == "DAT");
@@ -165,11 +167,20 @@ public class DashboardEndpointTests(ApiFactory factory)
 
     private sealed record EventCapacityResponse(string Code, int TotalHeadcount, int RemainingCapacity);
 
-    private sealed record EventResponse(
-        Guid EventId,
+    private sealed record TimeResponse(
         DateOnly Date,
         TimeOnly StartTime,
-        TimeOnly EndTime,
+        int DurationMinutes,
+        string StartLocal,
+        string EndLocal,
+        DateTimeOffset StartUtc,
+        DateTimeOffset EndUtc,
+        string TimeZoneId,
+        string ZoneAbbreviation);
+
+    private sealed record EventResponse(
+        Guid EventId,
+        TimeResponse Time,
         IReadOnlyList<EventCapacityResponse> Capacities,
         int ActiveBookings);
 

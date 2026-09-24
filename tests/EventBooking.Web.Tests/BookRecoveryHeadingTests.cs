@@ -14,7 +14,8 @@ public class BookRecoveryHeadingTests : BunitContext
     public void InitialInviteKeepsTheChooseATimeHeading()
     {
         var cut = RenderBook(new InviteDto(
-            Guid.NewGuid(), "Amara Novak", ["Medical Check-Up"], [Option()], IsRecovery: false));
+            Guid.NewGuid(), "Amara Novak", ["Medical Check-Up"], [Option()], false,
+            new Dictionary<string, ApiLink>()));
 
         cut.WaitForAssertion(() =>
             Assert.Equal("Choose a time", cut.Find("h1").TextContent.Trim()));
@@ -24,7 +25,8 @@ public class BookRecoveryHeadingTests : BunitContext
     public void RecoveryInviteUsesTheSingularMissedAppointmentHeading()
     {
         var cut = RenderBook(new InviteDto(
-            Guid.NewGuid(), "Amara Novak", ["Medical Check-Up"], [Option()], IsRecovery: true));
+            Guid.NewGuid(), "Amara Novak", ["Medical Check-Up"], [Option()], true,
+            new Dictionary<string, ApiLink>()));
 
         cut.WaitForAssertion(() =>
             Assert.Equal(
@@ -40,7 +42,8 @@ public class BookRecoveryHeadingTests : BunitContext
             "Amara Novak",
             ["Medical Check-Up", "Uniform Fitting"],
             [Option()],
-            IsRecovery: true));
+            true,
+            new Dictionary<string, ApiLink>()));
 
         cut.WaitForAssertion(() =>
             Assert.Equal(
@@ -51,7 +54,7 @@ public class BookRecoveryHeadingTests : BunitContext
     private IRenderedComponent<Book> RenderBook(InviteDto invite)
     {
         var handler = new StubInviteHandler(invite);
-        Services.AddSingleton(
+        Services.AddSingleton<IBookingClient>(
             new BookingClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") }));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
@@ -61,10 +64,9 @@ public class BookRecoveryHeadingTests : BunitContext
     private static InviteOptionDto Option() =>
         new(
             Guid.NewGuid(),
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "Monday 14 Jan 2030, 09:00-13:00");
+            "London HQ",
+            "1 Example St",
+            TestContractFactory.EventTimeAt(new DateOnly(2030, 1, 14), new TimeOnly(9, 0)));
 
     private sealed class StubInviteHandler(InviteDto invite) : HttpMessageHandler
     {

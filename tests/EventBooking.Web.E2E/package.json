@@ -1,0 +1,5 @@
+{
+  "name": "eventbooking-web-e2e",
+  "private": true,
+  "devDependencies": { "axe-core": "4.13.0" }
+}

@@ -46,6 +46,7 @@ public static class StaffAccessEndpoints
                 [.. result.Value.Select(x => ApiResponses.StaffAccess(x, held))], null));
         })
             .WithAgentMetadata("listStaffAccess")
+            .WithEventBookingList()
             .Produces<Page<StaffAccessResponse>>(200)
             .ProducesProblem(403);
 
@@ -104,11 +105,10 @@ public static class StaffAccessEndpoints
                 return result.ToResponse();
             }
 
-            var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(ApiResponses.StaffAccessScope(result.Value, held));
+            return Results.Ok(ApiResponses.StaffAccessScope(result.Value));
         })
             .WithAgentMetadata("setStaffAccessScope")
-            .Produces<StaffAccessScopeResponse>(200)
+            .Produces<SetStaffScopeOutcome>(200)
             .ProducesProblem(403)
             .ProducesProblem(404)
             .ProducesProblem(409)

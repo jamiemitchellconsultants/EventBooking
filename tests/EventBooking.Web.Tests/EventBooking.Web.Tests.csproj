@@ -28,4 +28,9 @@
     <Using Include="EventBooking.TestSupport" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The committed OpenAPI snapshot the client-contract tests pair DTOs against. -->
+    <None Include="Contracts\openapi-v1.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -16,6 +16,7 @@ public sealed class CallerCapabilities(
     ICallerAccessor caller, IStaffAccessProfileRepository profiles)
 {
     private IReadOnlySet<string>? _resolved;
+    private IReadOnlySet<Guid>? _managedTypeIds;
 
     /// <summary>Returns the capability names the caller holds, or an empty set.</summary>
     /// <param name="ct">The cancellation token.</param>
@@ -48,5 +49,35 @@ public sealed class CallerCapabilities(
         }
 
         return _resolved = held;
+    }
+
+    /// <summary>Returns the caller's own scoped appointment-type identifier, or null.</summary>
+    /// <param name="ct">The cancellation token.</param>
+    /// <returns>The scope, or null when the caller is unscoped or unknown.</returns>
+    public async Task<Guid?> ScopedAppointmentTypeIdAsync(CancellationToken ct)
+    {
+        if (caller.StaffUserId is not { } staffUserId)
+        {
+            return null;
+        }
+
+        var profile = await profiles.GetAsync(staffUserId, ct);
+        return profile is null || !profile.IsValid() ? null : profile.AppointmentTypeId;
+    }
+
+    /// <summary>Returns the appointment-type identifiers with a current Manager profile.</summary>
+    /// <param name="ct">The cancellation token.</param>
+    /// <returns>The managed type identifiers, resolved once per request.</returns>
+    public async Task<IReadOnlySet<Guid>> ManagerTypeIdsAsync(CancellationToken ct)
+    {
+        if (_managedTypeIds is not null)
+        {
+            return _managedTypeIds;
+        }
+
+        return _managedTypeIds = (await profiles.ListAsync(ct))
+            .Where(profile => profile.IsManager && profile.AppointmentTypeId is not null)
+            .Select(profile => profile.AppointmentTypeId!.Value)
+            .ToHashSet();
     }
 }

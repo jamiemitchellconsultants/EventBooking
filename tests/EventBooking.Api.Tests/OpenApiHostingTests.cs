@@ -33,6 +33,38 @@ public sealed class OpenApiHostingTests(ApiFactory factory)
         Assert.Contains("/openapi/v1.json", html, StringComparison.Ordinal);
     }
 
+    /// <summary>Every keyset list marks itself so clients can assert the envelope.</summary>
+    [Fact]
+    public async Task EveryListOperationIsMarkedWithTheListExtension()
+    {
+        using var json = JsonDocument.Parse(
+            await factory.CreateClient().GetStringAsync("/openapi/v1.json"));
+        var paths = json.RootElement.GetProperty("paths");
+        var marked = new List<string>();
+        foreach (var path in paths.EnumerateObject())
+        {
+            if (path.Value.TryGetProperty("get", out var get)
+                && get.TryGetProperty("x-eventbooking-list", out var marker)
+                && marker.GetBoolean())
+            {
+                marked.Add(path.Name);
+            }
+        }
+
+        foreach (var expected in new[]
+        {
+            "/api/locations", "/api/appointment-types", "/api/attendee-groups",
+            "/api/staff-access", "/api/event-proposals", "/api/events",
+            "/api/events/cancellable", "/api/attendees", "/api/attendees/{id}/bookings",
+            "/api/audit", "/api/audit/attendees/{id}", "/api/audit/events/{id}",
+            "/api/appointment-workspace/events",
+            "/api/appointment-workspace/events/{eventId}",
+        })
+        {
+            Assert.Contains(expected, marked);
+        }
+    }
+
     /// <summary>The MCP host is not accidentally given REST documentation middleware.</summary>
     [Fact]
     public async Task ApiDocumentDoesNotDescribeMcpTransport()

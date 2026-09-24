@@ -8,8 +8,11 @@ namespace EventBooking.Api.Endpoints;
 /// <param name="Title">The short, caller-safe title.</param>
 /// <param name="DataMember">The extension carrying the error's numeric map, if any.</param>
 /// <param name="ScalarKey">The single key to lift out where the design gives a bare number.</param>
+/// <param name="ObjectMember">A second extension carrying a renamed subset of the map, if any.</param>
+/// <param name="ObjectKeys">The wire-to-data key map for the object member.</param>
 public sealed record ProblemShape(
-    string Type, int Status, string Title, string? DataMember = null, string? ScalarKey = null);
+    string Type, int Status, string Title, string? DataMember = null, string? ScalarKey = null,
+    string? ObjectMember = null, IReadOnlyDictionary<string, string>? ObjectKeys = null);
 
 /// <summary>
 /// Every failure the API can return, keyed by the application error code that produces it.
@@ -54,7 +57,12 @@ public static class ProblemCatalogue
                 "This time is no longer available."),
             [Error.CapacityBelowBookingsCode] = new(
                 "capacity-below-bookings", StatusCodes.Status409Conflict,
-                "That total is below the places already booked.", "minimum", "minimum"),
+                "That total is below the places already booked.", "minimum", "minimum",
+                "current", new Dictionary<string, string>
+                {
+                    ["totalHeadcount"] = "currentTotal",
+                    ["remainingCapacity"] = "currentRemaining",
+                }),
             [Error.ProposalNotOpenCode] = new(
                 "proposal-not-open", StatusCodes.Status409Conflict,
                 "This proposal is no longer open."),

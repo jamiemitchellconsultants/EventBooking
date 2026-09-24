@@ -63,9 +63,10 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     }
 
     /// <summary>
-    /// Verifies list/detail JSON contains exactly the approved minimum-data properties. Pages
-    /// carry no links (design 05); the roster rows carry none either, because minimum data
-    /// gives them no identifier to address an affordance with.
+    /// Verifies list/detail JSON contains exactly the approved properties. The workspace event
+    /// carries the one event-time representation; each roster row carries its stable command
+    /// identifier plus the status actions currently available for it, and still no attendee,
+    /// booking or requirement identifiers.
     /// </summary>
     [Fact]
     public async Task ResponsesHaveTheExactApprovedPropertySets()
@@ -81,8 +82,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         var eventItem = Assert.Single(
             list.RootElement.GetProperty("items").EnumerateArray(),
             item => item.GetProperty("eventId").GetString() == data.EventId.ToString());
-        AssertKeys(eventItem, "eventId", "locationId", "locationName", "date", "startTime",
-            "endTime", "zoneAbbreviation", "status", "_links");
+        AssertKeys(eventItem, "eventId", "locationId", "locationName", "time", "status", "_links");
         var entryLinks = eventItem.GetProperty("_links");
         Assert.Equal(
             $"/api/appointment-workspace/events/{data.EventId}",
@@ -95,12 +95,104 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             $"/api/appointment-workspace/events/{data.EventId}"));
         AssertKeys(detail.RootElement, "items", "nextCursor");
         var row = Assert.Single(detail.RootElement.GetProperty("items").EnumerateArray());
-        AssertKeys(row, "name", "email", "scopeTypeCode", "appointmentStatus",
-            "checkedInAt", "version");
+        AssertKeys(row, "appointmentId", "name", "email", "scopeTypeCode",
+            "appointmentStatus", "checkedInAt", "version", "_links");
         Assert.Equal("Expected", row.GetProperty("appointmentStatus").GetString());
+        Assert.Equal(data.AppointmentId, row.GetProperty("appointmentId").GetGuid());
         Assert.DoesNotContain("attendeeId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("bookingId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("requirement", detail.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WorkspaceEventsCarryTheCompleteTimeContract()
+    {
+        var data = await GivenWorkspaceAsync(AppointmentTypeIds.DrugAndAlcoholTesting);
+        factory.SignedInAs = await factory.GivenStaffAsync(
+            [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
+        var client = factory.CreateClient();
+
+        using var list = JsonDocument.Parse(await client.GetStringAsync(
+            "/api/appointment-workspace/events"));
+        var eventItem = Assert.Single(
+            list.RootElement.GetProperty("items").EnumerateArray(),
+            item => item.GetProperty("eventId").GetString() == data.EventId.ToString());
+        var time = eventItem.GetProperty("time");
+
+        foreach (var member in new[]
+        {
+            "date", "startTime", "durationMinutes", "startLocal", "endLocal",
+            "startUtc", "endUtc", "timeZoneId", "zoneAbbreviation",
+        })
+        {
+            Assert.True(time.TryGetProperty(member, out _), member);
+        }
+    }
+
+    [Fact]
+    public async Task AnExpectedRowOffersCheckInAndItsLinksFollowStatusChanges()
+    {
+        var data = await GivenWorkspaceAsync(AppointmentTypeIds.DrugAndAlcoholTesting);
+        factory.SignedInAs = await factory.GivenStaffAsync(
+            [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
+        var client = factory.CreateClient();
+
+        var links = (await RosterRowAsync(client, data.EventId)).GetProperty("_links");
+        Assert.True(links.TryGetProperty("checkIn", out var checkIn));
+        Assert.Equal(
+            $"/api/appointment-workspace/appointments/{data.AppointmentId}/status",
+            checkIn.GetProperty("href").GetString());
+        Assert.False(links.TryGetProperty("complete", out _));
+        Assert.False(links.TryGetProperty("reopen", out _));
+
+        using var checkedIn = await client.PutAsJsonAsync(
+            $"/api/appointment-workspace/appointments/{data.AppointmentId}/status",
+            new { targetStatus = "CheckedIn", expectedVersion = 1 });
+        Assert.Equal(HttpStatusCode.OK, checkedIn.StatusCode);
+
+        var after = (await RosterRowAsync(client, data.EventId)).GetProperty("_links");
+        Assert.False(after.TryGetProperty("checkIn", out _));
+        Assert.True(after.TryGetProperty("complete", out _));
+        Assert.True(after.TryGetProperty("reopen", out _));
+        Assert.False(after.TryGetProperty("noShow", out _));
+    }
+
+    [Fact]
+    public async Task AFutureEventOffersNeitherCheckInNorNoShow()
+    {
+        var data = await GivenWorkspaceAsync(
+            AppointmentTypeIds.DrugAndAlcoholTesting, daysOffset: 1);
+        factory.SignedInAs = await factory.GivenStaffAsync(
+            [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
+        var client = factory.CreateClient();
+
+        var links = (await RosterRowAsync(client, data.EventId)).GetProperty("_links");
+
+        Assert.False(links.TryGetProperty("checkIn", out _));
+        Assert.False(links.TryGetProperty("noShow", out _));
+    }
+
+    [Fact]
+    public async Task APastEventOffersNoShowButNotCheckIn()
+    {
+        var data = await GivenWorkspaceAsync(
+            AppointmentTypeIds.DrugAndAlcoholTesting, daysOffset: -1);
+        factory.SignedInAs = await factory.GivenStaffAsync(
+            [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
+        var client = factory.CreateClient();
+
+        var links = (await RosterRowAsync(client, data.EventId)).GetProperty("_links");
+
+        Assert.False(links.TryGetProperty("checkIn", out _));
+        Assert.True(links.TryGetProperty("noShow", out _));
+    }
+
+    private static async Task<JsonElement> RosterRowAsync(HttpClient client, Guid eventId)
+    {
+        using var detail = JsonDocument.Parse(await client.GetStringAsync(
+            $"/api/appointment-workspace/events/{eventId}"));
+        var rows = detail.RootElement.GetProperty("items").EnumerateArray().ToArray();
+        return Assert.Single(rows).Clone();
     }
 
     /// <summary>Verifies the update body is parsed, applied, and returned as a named state.</summary>
@@ -350,14 +442,15 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     private async Task<(Guid EventId, Guid AppointmentId)> GivenWorkspaceAsync(
         Guid appointmentTypeId,
         string attendeeName = "Alex Morgan",
-        IEnumerable<Guid>? listedTypes = null)
+        IEnumerable<Guid>? listedTypes = null,
+        int daysOffset = 0)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
         var listed = listedTypes ?? AppointmentTypeIds.All;
         var eventItem = EventFixture.Create(
-            Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0), 240),
+            Guid.NewGuid(), new EventWindow(today.AddDays(daysOffset), new TimeOnly(9, 0), 240),
             listed.ToDictionary(id => id, _ => 20), listed);
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp
             ? AttendeeGroupIds.GroundOperationsAgent

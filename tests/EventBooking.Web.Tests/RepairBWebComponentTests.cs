@@ -62,7 +62,7 @@ public class RepairBWebComponentTests : BunitContext
         var cut = RenderAuthenticatedHome(new(["Admin"], null, null));
 
         Assert.Contains("Roles: Admin", cut.Markup);
-        Assert.Contains("href=\"/settings\"", cut.Markup);
+        Assert.Contains("href=\"/admin/settings\"", cut.Markup);
         Assert.DoesNotContain("href=\"/events\"", cut.Markup);
     }
 
@@ -96,23 +96,24 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
-    /// Verifies audit timestamps render as configured transitional-location local time with their offset and zone identifier.
+    /// Verifies audit timestamps render as UTC so entries from every location compare directly.
     /// </summary>
     [Fact]
-    public void AuditHistoryRendersTransitionalLocationLocalTimestamp()
+    public void AuditHistoryRendersUtcTimestamp()
     {
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AuditRowDto>
-        {
-            new(new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero), "Attendee", Guid.NewGuid(), "Updated", "Staff", "staff-1", null),
-        }));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        handler.Enqueue(_ => Json(new PageDto<AuditRowDto>(
+        [
+            new(Guid.NewGuid(), new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero), "Attendee", Guid.NewGuid(), "Updated", "Staff", "staff-1", null, null, new Dictionary<string, ApiLink>()),
+        ], null)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
-        var cut = Render<AuditHistory>(parameters => parameters.Add(p => p.AttendeeId, Guid.NewGuid()));
-        cut.Find("details").TriggerEvent("ontoggle", new EventArgs());
+        var cut = Render<AuditHistory>(parameters => parameters
+            .Add(p => p.EntityKind, AuditEntityKind.Attendee)
+            .Add(p => p.EntityId, Guid.NewGuid()));
+        cut.Find("button").Click();
 
-        cut.WaitForAssertion(() => Assert.Contains("2026-06-02 00:30 +01:00 (Europe/London)", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("2026-06-01 23:30 UTC", cut.Markup));
     }
 
     /// <summary>
@@ -123,16 +124,15 @@ public class RepairBWebComponentTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new AttendeeListDto(
+        EnqueueReferenceData(handler);
+        handler.Enqueue(_ => Json(new PageDto<AttendeeDto>(
             [new AttendeeDto(
                 attendeeId, "C. Attendee", "attendee@example.com", "Invited",
-                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Sent", "cursor")],
+                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Sent", "cursor",
+                null, new Dictionary<string, ApiLink>())],
             null)));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
         var cut = Render<Attendees>();
 
@@ -147,34 +147,35 @@ public class RepairBWebComponentTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var deliveryId = Guid.NewGuid();
-        var page = new AttendeeListDto(
+        var page = new PageDto<AttendeeDto>(
             [new AttendeeDto(
                 attendeeId, "C. Attendee", "attendee@example.com", "Invited",
                 "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Failed", "cursor",
-                deliveryId)],
+                deliveryId, new Dictionary<string, ApiLink>
+                {
+                    ["emailRetry"] = new($"/api/attendees/{attendeeId}/email-retry", "POST", "retryEmail"),
+                })],
             null);
         string? retried = null;
         var handler = new RoutedHandler();
+        EnqueueReferenceData(handler);
         handler.Enqueue(_ => Json(page));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
         handler.Enqueue(request =>
         {
             retried = request.RequestUri!.PathAndQuery;
             return Json(new EmailRetryDto(Guid.NewGuid()));
         });
+        EnqueueReferenceData(handler);
         handler.Enqueue(_ => Json(page));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
         var cut = Render<Attendees>();
         cut.WaitForAssertion(() => Assert.Contains("Failed", cut.Markup));
         cut.FindAll("button").Single(b => b.TextContent.Trim() == "Resend").Click();
 
         cut.WaitForAssertion(() => Assert.Equal(
-            $"/api/attendees/{attendeeId}/email-retry?emailLogId={deliveryId}", retried));
+            $"/api/attendees/{attendeeId}/email-retry", retried));
     }
 
     /// <summary>
@@ -185,14 +186,14 @@ public class RepairBWebComponentTests : BunitContext
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
+        Services.AddSingleton<IEventsClient>(new EventsClient(NewHttpClient(handler)));
 
         var cut = Render<EventNegotiation>();
 
         cut.WaitForAssertion(() =>
         {
             Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy"));
-            Assert.Equal("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent.Trim());
+            Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
         });
     }
 
@@ -202,18 +203,32 @@ public class RepairBWebComponentTests : BunitContext
     [Fact]
     public async Task EventsMutationTransportExceptionRendersAnAlertAndClearsBusy()
     {
+        // The negotiation board loads reference data, proposals and events before the
+        // proposal dialog can submit; the failure below lands on the submit call.
+        var scopeType = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new EventBoardDto([], [])));
+        handler.Enqueue(_ => Raw("""
+            {"displayName":"Manny Manager","staffId":"M1","roles":["Manager"],"scopeAppointmentTypeId":"SCOPE","scopeAppointmentTypeCode":"MED","scopeAppointmentTypeName":"Medical check","capabilities":[],"problem":null,"_links":{"proposeEvent":{"href":"/api/event-proposals","method":"POST","operationId":"proposeEvent"}}}
+            """.Replace("SCOPE", scopeType.ToString())));
+        handler.Enqueue(_ => Raw("""
+            {"items":[{"id":"10000000-0000-0000-0000-000000000001","code":"LON","name":"London HQ","address":"1 Example St","timeZoneId":"Europe/London","isActive":true,"version":1,"_links":{}}],"nextCursor":null}
+            """));
+        handler.Enqueue(_ => Raw("""
+            {"items":[{"id":"SCOPE","code":"MED","name":"Medical check","isActive":true,"version":1,"hasManager":true,"managerDisplayName":"Manny Manager","_links":{}}],"nextCursor":null}
+            """.Replace("SCOPE", scopeType.ToString())));
+        handler.Enqueue(_ => Raw("""{"items":[],"nextCursor":null}"""));
+        handler.Enqueue(_ => Raw("""{"items":[],"nextCursor":null}"""));
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
+        Services.AddSingleton<IEventsClient>(new EventsClient(NewHttpClient(handler)));
 
         var cut = Render<EventNegotiation>();
-        cut.WaitForAssertion(() => Assert.Contains("Submit proposal", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Propose event", cut.Markup));
 
-        await cut.InvokeAsync(() => cut.Find("button.button-primary").Click());
+        await cut.InvokeAsync(() => cut.Find("[data-action='propose']").Click());
+        await cut.InvokeAsync(() => cut.Find("[data-action='submit-proposal']").Click());
 
-        Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy"));
-        Assert.Equal("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent.Trim());
+        cut.WaitForAssertion(() => Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy")));
+        Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
     }
 
     /// <summary>
@@ -258,6 +273,14 @@ public class RepairBWebComponentTests : BunitContext
         return cut;
     }
 
+    private static void EnqueueReferenceData(RoutedHandler handler)
+    {
+        handler.Enqueue(_ => Json(new MeDto(["Coordinator"], null, null)));
+        handler.Enqueue(_ => Json(new PageDto<LocationDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AttendeeGroupDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AppointmentTypeDto>([], null)));
+    }
+
     private static HttpClient NewHttpClient(HttpMessageHandler handler) => new(handler)
     {
         BaseAddress = new Uri("https://api.example.com"),
@@ -268,10 +291,17 @@ public class RepairBWebComponentTests : BunitContext
         Content = JsonContent.Create(value, options: CamelCase),
     };
 
+    private static HttpResponseMessage Raw(string body) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(body, Encoding.UTF8, "application/json"),
+    };
+
     private static SettingsDto SettingsWithManager(Guid appointmentTypeId) => new(
         4,
         2,
-        [new AppointmentTypeDto(appointmentTypeId, "DAT", "Drug & Alcohol Testing", null)]);
+        3,
+        1,
+        new Dictionary<string, ApiLink>());
 
     private sealed class RoutedHandler : HttpMessageHandler
     {
@@ -295,55 +325,4 @@ public class RepairBWebComponentTests : BunitContext
         }
     }
 
-    private sealed class BrowserFile(string name, string content) : IBrowserFile
-    {
-        /// <summary>
-        /// Gets the browser-provided file name used by the upload component.
-        /// </summary>
-        public string Name => name;
-
-        /// <summary>
-        /// Gets a deterministic modification instant for this in-memory upload fixture.
-        /// </summary>
-        public DateTimeOffset LastModified => DateTimeOffset.UnixEpoch;
-
-        /// <summary>
-        /// Gets the UTF-8 byte length of the fixture's CSV content.
-        /// </summary>
-        public long Size => Encoding.UTF8.GetByteCount(content);
-
-        /// <summary>
-        /// Gets the CSV media type supplied to the file input.
-        /// </summary>
-        public string ContentType => "text/csv";
-
-        /// <summary>
-        /// Opens the in-memory CSV content for the component upload path.
-        /// </summary>
-        /// <param name="maxAllowedSize">The maximum permitted input size requested by the component.</param>
-        /// <param name="cancellationToken">Cancels opening the in-memory stream.</param>
-        /// <returns>A readable stream containing the fixture's CSV content.</returns>
-        public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default) =>
-            new MemoryStream(Encoding.UTF8.GetBytes(content));
-    }
-
-    /// <summary>
-    /// The page lists events on init. These import tests care only about the import card,
-    /// so the event list is served from its own always-empty handler rather than the queued one.
-    /// </summary>
-    private void GivenNoEvents() =>
-        Services.AddSingleton(new EventsClient(new HttpClient(new EmptyEventOperationsHandler())
-        {
-            BaseAddress = new Uri("https://api.example.com"),
-        }));
-
-    private sealed class EmptyEventOperationsHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(new EventOperationsDto([]), options: CamelCase),
-            });
-    }
 }

@@ -31,7 +31,7 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
                 Headcount = 10,
             });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var proposalId = (await created.Content.ReadFromJsonAsync<CreatedResponse>())!.Id;
+        var proposalId = (await created.Content.ReadFromJsonAsync<CreatedResponse>())!.ProposalId;
 
         var accepted = await client.PutAsJsonAsync(
             $"/api/event-proposals/{proposalId}/acceptance",
@@ -52,7 +52,7 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
         Assert.Equal(12, proposal.MyAcceptedHeadcount);
     }
 
-    private sealed record CreatedResponse(Guid Id, string Status, Guid? EventId);
+    private sealed record CreatedResponse(Guid ProposalId, string Status, Guid? EventId);
 
     private sealed record ProposalPage(
         IReadOnlyList<OpenProposalResponse> Items, string? NextCursor);

@@ -81,7 +81,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
 
         var locations = await context.Locations
             .AsNoTracking()
-            .Select(location => new { location.Id, location.Name })
+            .Select(location => new { location.Id, location.Name, location.TimeZoneId })
             .ToDictionaryAsync(location => location.Id, cancellationToken);
 
         return rows
@@ -98,7 +98,9 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                     capacity.TotalHeadcount,
                     capacity.RemainingCapacity))
                     .OrderBy(capacity => capacity.Code, StringComparer.Ordinal).ToList(),
-                row.ActiveBookings))
+                row.ActiveBookings,
+                locations[row.LocationId].TimeZoneId,
+                row.DurationMinutes))
             .OrderBy(row => row.Date)
             .ThenBy(row => row.StartTime)
             .ToList();
@@ -284,7 +286,9 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                     .Select(c => new EventCapacityRow(
                         typeCodes[c.AppointmentTypeId], c.TotalHeadcount, c.RemainingCapacity))
                     .OrderBy(c => c.Code)],
-                row.ActiveBookings));
+                row.ActiveBookings,
+                location.TimeZoneId,
+                row.DurationMinutes));
         }
 
         events = [.. events.OrderBy(e => e.Date).ThenBy(e => e.StartTime).ThenBy(e => e.EventId)];

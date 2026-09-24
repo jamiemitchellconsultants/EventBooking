@@ -61,10 +61,13 @@ public sealed record EventCapacityRow(string Code, int TotalHeadcount, int Remai
 /// <param name="EndTime">The end time.</param>
 /// <param name="Capacities">The capacities.</param>
 /// <param name="ActiveBookings">The active bookings.</param>
+/// <param name="TimeZoneId">The location's IANA zone identifier.</param>
+/// <param name="DurationMinutes">The window length.</param>
 public sealed record EventOverviewRow(
     Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
     TimeOnly StartTime, TimeOnly EndTime,
-    IReadOnlyList<EventCapacityRow> Capacities, int ActiveBookings);
+    IReadOnlyList<EventCapacityRow> Capacities, int ActiveBookings,
+    string TimeZoneId, int DurationMinutes);
 
 /// <summary>
 /// The dashboard read side. Implementations query and project directly, returning no entities and

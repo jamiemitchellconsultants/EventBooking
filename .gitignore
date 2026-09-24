@@ -64,3 +64,7 @@ nunit-*.xml
 **/.DS_Store
 ._.DS_Store
 **/._.DS_Store
+
+# axe-core for the Playwright accessibility suite is restored by npm ci; only the
+# lockfile is committed.
+node_modules/

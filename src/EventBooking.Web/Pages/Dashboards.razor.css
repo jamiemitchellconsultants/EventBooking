@@ -30,7 +30,7 @@
 }
 
 .dashboard-tab.selected {
-    border-bottom-color: var(--ba-speedmarque-red);
+    border-bottom-color: var(--color-danger);
     color: var(--accent);
 }
 

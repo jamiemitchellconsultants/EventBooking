@@ -4,6 +4,13 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
   </PropertyGroup>
 
+  <!-- The E2E compile-time provider exists only in a publish carrying EventBookingE2E.
+       Defining the symbol through a property keeps the framework's own constants intact,
+       which -p:DefineConstants=EVENTBOOKING_E2E would wipe. -->
+  <PropertyGroup Condition="'$(EventBookingE2E)' == 'true'">
+    <DefineConstants>$(DefineConstants);EVENTBOOKING_E2E</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
@@ -13,21 +20,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Bundled so the in-app Help page (Pages/Help.razor) renders the same guides that live in
-         docs/user-guides — one source of truth, no runtime fetch. -->
-    <EmbeddedResource Include="../../docs/user-guides/*.md" Exclude="../../docs/user-guides/README.md"
-                       LogicalName="UserGuides/%(Filename)%(Extension)" />
-
-    <!-- The guides' markdown images reference these by path (see UserGuideCatalog's rewrite of
-         "screenshots/" to "/help-assets/screenshots/"); serving them means copying the files into
-         wwwroot, since a Blazor WASM app has no backend to stream embedded resources from at
-         request time. Deliberately not wwwroot/help/... — that would create a real /help directory
-         that collides with the client-side /help route: nginx's try_files matches the directory
-         before falling back to index.html and 301-redirects to a trailing slash instead of serving
-         the SPA. -->
-    <Content Include="../../docs/user-guides/screenshots/*.png">
-      <Link>wwwroot/help-assets/screenshots/%(Filename)%(Extension)</Link>
+    <!-- The role guides under wwwroot/help are plain static content: the Help page fetches
+         them at runtime from the app's own origin. If the production host serves this
+         bundle behind nginx try_files, the /help directory needs an explicit fallback to
+         index.html — otherwise try_files matches the directory before the SPA fallback and
+         301-redirects the client-side /help route to a trailing slash. -->
+    <!-- The shared design-system sheet lives beside the components and is served from
+         the app bundle's css path. -->
+    <Content Include="Components\components.css">
+      <Link>wwwroot\css\components.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>

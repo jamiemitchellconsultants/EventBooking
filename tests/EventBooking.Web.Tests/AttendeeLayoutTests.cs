@@ -2,8 +2,10 @@ using System.Reflection;
 using Bunit;
 using EventBooking.Web.Layout;
 using EventBooking.Web.Pages;
+using EventBooking.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Web.Tests;
 
@@ -46,6 +48,7 @@ public class AttendeeLayoutTests : BunitContext
 
     private IRenderedComponent<CascadingAuthenticationState> RenderLayout()
     {
+        Services.AddSingleton(new ProductOptions("EventBooking", null, "events@example.com"));
         RenderFragment layout = builder =>
         {
             builder.OpenComponent<AttendeeLayout>(0);

@@ -18,4 +18,16 @@ public static class EndpointMetadataExtensions
             .WithSummary(operation.Summary)
             .WithDescription(operation.Description);
     }
+
+    /// <summary>Marks a GET returning the items/nextCursor page envelope for OpenAPI.</summary>
+    /// <param name="builder">The endpoint being described.</param>
+    /// <returns>The endpoint builder for chaining.</returns>
+    public static RouteHandlerBuilder WithEventBookingList(this RouteHandlerBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        return builder.WithMetadata(new EventBookingListMetadata());
+    }
 }
+
+/// <summary>Marks a GET whose 200 body is the items/nextCursor page envelope.</summary>
+public sealed record EventBookingListMetadata();

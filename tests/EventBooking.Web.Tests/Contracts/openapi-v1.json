@@ -1,0 +1,6306 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "EventBooking API",
+    "description": "EventBooking staff API and anonymous Attendee booking links.",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5001/"
+    }
+  ],
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Read the liveness probe.",
+        "description": "Anonymous deployment liveness probe.",
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Read the readiness probe.",
+        "description": "Anonymous readiness probe; reports whether the database is reachable.",
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Scrape the metrics endpoint.",
+        "description": "Anonymous Prometheus exposition of the API's meters (design 08).",
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api": {
+      "get": {
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Read the API entry document.",
+        "description": "Anonymous entry document listing every top-level resource.",
+        "operationId": "getApiIndex",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiDiscoveryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Read the signed-in staff access.",
+        "description": "Reads display name, staff number, roles, scope and granted capabilities (FR-10.8). Requires staff auth; no capability, and answers even when the staff number claim is missing or malformed.",
+        "operationId": "getMyAccess",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentStaffResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-mcp-tool": "get_my_access",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/dashboards": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Read the dashboards.",
+        "description": "Reads the three tabs and their counts (FR-13), optionally filtered by location.",
+        "operationId": "getDashboards",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ViewAttendeeDashboards",
+        "x-mcp-tool": "get_dashboards",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/locations": {
+      "get": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "List locations.",
+        "description": "Reads every location in code order. Requires staff auth.",
+        "operationId": "listLocations",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfLocationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-mcp-tool": "list_locations",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "post": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "Create a location.",
+        "description": "Creates a location with its code, name, address and IANA zone.",
+        "operationId": "createLocation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLocationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageReferenceData",
+        "x-mcp-tool": "create_location",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/locations/{id}": {
+      "put": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "Update a location.",
+        "description": "Updates a location's name, address, zone and active flag. Refuses a zone change or a deactivation while the location has open proposals or future events.",
+        "operationId": "updateLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLocationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageReferenceData",
+        "x-mcp-tool": "update_location",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/appointment-types": {
+      "get": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "List appointment types.",
+        "description": "Reads every appointment type with its current Manager's display name.",
+        "operationId": "listAppointmentTypes",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAppointmentTypeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-mcp-tool": "list_appointment_types",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "post": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "Create an appointment type.",
+        "description": "Creates an appointment type with its code and name.",
+        "operationId": "createAppointmentType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAppointmentTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentTypeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageReferenceData",
+        "x-mcp-tool": "create_appointment_type",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/appointment-types/{id}": {
+      "put": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "Update an appointment type.",
+        "description": "Updates an appointment type's name and active flag. Refuses a deactivation while it is listed on an open proposal or a future event, or mapped by an active group.",
+        "operationId": "updateAppointmentType",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAppointmentTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentTypeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageReferenceData",
+        "x-mcp-tool": "update_appointment_type",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendee-groups": {
+      "get": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "List attendee groups.",
+        "description": "Reads every attendee group with its requirement type ids and member count.",
+        "operationId": "listAttendeeGroups",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAttendeeGroupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-mcp-tool": "list_attendee_groups",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "post": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "Create an attendee group.",
+        "description": "Creates an attendee group mapping at least one active appointment type.",
+        "operationId": "createAttendeeGroup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAttendeeGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendeeGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageReferenceData",
+        "x-mcp-tool": "create_attendee_group",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendee-groups/{id}": {
+      "put": {
+        "tags": [
+          "Reference Data"
+        ],
+        "summary": "Update an attendee group.",
+        "description": "Updates a group's name, requirement mapping and active flag. A mapping change re-derives every member's requirements and is refused while any member holds an active original booking (FR-1.5).",
+        "operationId": "updateAttendeeGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAttendeeGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendeeGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageReferenceData",
+        "x-mcp-tool": "update_attendee_group",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Read the system settings.",
+        "description": "Reads the single settings row and its version.",
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageSettings",
+        "x-mcp-tool": "get_settings",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Update the system settings.",
+        "description": "Updates invite expiry, automatic retry count and option count. Existing invites keep the values they were issued under.",
+        "operationId": "updateSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageSettings",
+        "x-mcp-tool": "update_settings",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/staff-access": {
+      "get": {
+        "tags": [
+          "Staff Access"
+        ],
+        "summary": "List staff access profiles.",
+        "description": "Reads every profile with its display name, staff number, read-only roles and scope.",
+        "operationId": "listStaffAccess",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfStaffAccessResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ManageStaffAccess",
+        "x-mcp-tool": "list_staff_access",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/staff-access/{staffUserId}/scope": {
+      "put": {
+        "tags": [
+          "Staff Access"
+        ],
+        "summary": "Set a staff access scope.",
+        "description": "Sets or clears one profile's appointment-type scope. Assigning a type that another Manager holds displaces them, and the response names who.",
+        "operationId": "setStaffAccessScope",
+        "parameters": [
+          {
+            "name": "staffUserId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetStaffScopeOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageStaffAccess",
+        "x-mcp-tool": "set_staff_access_scope",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/event-proposals": {
+      "get": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "List the caller's type's proposals.",
+        "description": "Reads the proposals listing the caller's own appointment type (FR-2.13), filtered by status and location, one keyset page at a time.",
+        "operationId": "listEventProposals",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfEventProposalResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ManageEventNegotiation",
+        "x-mcp-tool": "list_event_proposals",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "post": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "Propose an event.",
+        "description": "Creates a proposal for one location, window and listed appointment-type set. A proposal listing only the proposer's type is confirmed on creation.",
+        "operationId": "proposeEvent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposeEventOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventNegotiation",
+        "x-mcp-tool": "propose_event",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/event-proposals/{id}/acceptance": {
+      "put": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "Record or revise an acceptance.",
+        "description": "Records the caller's type's acceptance with its headcount, or revises it while the proposal is open. The last missing acceptance confirms the event.",
+        "operationId": "recordAcceptance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAcceptanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordAcceptanceOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventNegotiation",
+        "x-mcp-tool": "record_acceptance",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "delete": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "Withdraw an acceptance.",
+        "description": "Withdraws the caller's type's acceptance while the proposal is open.",
+        "operationId": "withdrawAcceptance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventNegotiation",
+        "x-mcp-tool": "withdraw_acceptance",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/event-proposals/{id}/withdraw": {
+      "post": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "Withdraw a proposal.",
+        "description": "Withdraws the whole proposal. Judged against the proposing appointment type, so a Manager inherits it from a predecessor.",
+        "operationId": "withdrawProposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventNegotiation",
+        "x-mcp-tool": "withdraw_proposal",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List events.",
+        "description": "Reads events filtered by location, date range and appointment type. A Manager sees their own type's capacity; an Admin or Coordinator sees every type.",
+        "operationId": "listEvents",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "appointmentTypeId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfEventResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-mcp-tool": "list_events",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/events/cancellable": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List cancellable events.",
+        "description": "Reads the active events whose window has not started, which are the ones a cancellation can still reach (FR-7.2).",
+        "operationId": "listCancellableEvents",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfEventResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ViewEventOperations",
+        "x-mcp-tool": "list_cancellable_events",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/events/{id}": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Read one event.",
+        "description": "Reads one event with its capacities, filtered the same way the list is. An event outside the caller's scope reads as not found.",
+        "operationId": "getEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-mcp-tool": "get_event",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/events/{id}/capacities/{appointmentTypeId}": {
+      "put": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Adjust an event capacity.",
+        "description": "Replaces the total headcount for one appointment type on an active event. The type must be the caller's own, and the total must still cover every active booking.",
+        "operationId": "adjustEventCapacity",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "appointmentTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustCapacityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustEventCapacityOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventNegotiation",
+        "x-mcp-tool": "adjust_event_capacity",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/events/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Cancel an event.",
+        "description": "Cancels an event, voiding its bookings and re-inviting the affected attendees. Two-step: without confirm=true the call reports its consequence and changes nothing.",
+        "operationId": "cancelEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelEventOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "CancelEvent",
+        "x-mcp-tool": "cancel_event",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees": {
+      "get": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "List attendees.",
+        "description": "Reads attendees filtered by status, group, readiness and a name or email prefix, one keyset page at a time, with each row's latest delivery status.",
+        "operationId": "listAttendees",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "readiness",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAttendeeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "list_attendees",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "post": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Create an attendee.",
+        "description": "Creates an attendee in a group, deriving their requirements from it.",
+        "operationId": "createAttendee",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAttendeeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "create_attendee",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}": {
+      "put": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Update an attendee.",
+        "description": "Updates an attendee's name, email and group (FR-4.2). A group change that would alter an active booking's requirements is refused.",
+        "operationId": "updateAttendee",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAttendeeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "update_attendee",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "delete": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Delete an attendee.",
+        "description": "Deletes an attendee and their bookings (FR-4.5). Two-step: without confirm=true the call reports its consequence and changes nothing.",
+        "operationId": "deleteAttendee",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "delete_attendee",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/import": {
+      "post": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Import attendees from CSV.",
+        "description": "Imports attendees from CSV content, all or nothing (FR-4.3). At most 1000 rows and 1 MB.",
+        "operationId": "importAttendees",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendeeImportOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "import_attendees",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/eligible-event-count": {
+      "get": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Count an attendee's eligible events.",
+        "description": "Counts the events this attendee could currently be offered at the given locations.",
+        "operationId": "countEligibleEvents",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locationIds",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EligibleEventCountResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "count_eligible_events",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/invites": {
+      "post": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Invite an attendee.",
+        "description": "Issues an invitation restricted to the chosen locations, returning Invited or AwaitingAvailability when too few events are eligible.",
+        "operationId": "inviteAttendee",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/InviteAttendeeRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAttendeeOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "invite_attendee",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/recovery-invites": {
+      "post": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Start a recovery invite.",
+        "description": "Starts missed-appointment recovery for the attendee's outstanding no-show types (FR-9.1), optionally widening the locations.",
+        "operationId": "startRecoveryInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AdditionalLocationIdsRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartRecoveryResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "start_recovery_invite",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/recovery-invites/{inviteId}": {
+      "delete": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Cancel a recovery invite.",
+        "description": "Cancels one pending recovery invitation.",
+        "operationId": "cancelRecoveryInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "inviteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "cancel_recovery_invite",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/bookings": {
+      "get": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "List an attendee's bookings.",
+        "description": "Reads the attendee's bookings with their event and location.",
+        "operationId": "listAttendeeBookings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAttendeeBookingResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "list_attendee_bookings",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/bookings/{bookingId}/cancel": {
+      "post": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Cancel an attendee's booking.",
+        "description": "Cancels one booking on the attendee's behalf (FR-7.1). Two-step: without confirm=true the call reports its consequence and changes nothing.",
+        "operationId": "cancelAttendeeBooking",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "bookingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelAttendeeBookingResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "cancel_attendee_booking",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/email-retry": {
+      "post": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Retry an attendee email.",
+        "description": "Regenerates and re-queues the newest failed or stale delivery (FR-11.3).",
+        "operationId": "retryAttendeeEmail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryEmailOutcome"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageAttendees",
+        "x-mcp-tool": "retry_attendee_email",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/attendees/{id}/readiness": {
+      "get": {
+        "tags": [
+          "Attendees"
+        ],
+        "summary": "Read an attendee's readiness.",
+        "description": "Reads the calculated readiness and any outstanding appointment types.",
+        "operationId": "getAttendeeReadiness",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendeeReadinessResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ViewAttendeeDashboards",
+        "x-mcp-tool": "get_attendee_readiness",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Search the audit log.",
+        "description": "Searches audit entries, scoped to the buckets the caller's capabilities reach (FR-12.3), one keyset page at a time.",
+        "operationId": "searchAudit",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAuditRowResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-mcp-tool": "search_audit",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/audit/attendees/{id}": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Read an attendee's history.",
+        "description": "Reads the audit history of one attendee.",
+        "operationId": "getAttendeeAuditHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAuditRowResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ViewAttendeeAudit",
+        "x-mcp-tool": "get_attendee_audit_history",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/audit/events/{id}": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Read an event's history.",
+        "description": "Reads the audit history of one event, including its proposal.",
+        "operationId": "getEventAuditHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAuditRowResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ViewEventAudit",
+        "x-mcp-tool": "get_event_audit_history",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/appointment-workspace/events": {
+      "get": {
+        "tags": [
+          "Appointment Workspace"
+        ],
+        "summary": "List workspace events.",
+        "description": "Reads the events listing the caller's type and ending between seven days ago and fourteen days ahead.",
+        "operationId": "listWorkspaceEvents",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfWorkspaceEventResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ConductAppointments",
+        "x-mcp-tool": "list_workspace_events",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/appointment-workspace/events/{eventId}": {
+      "get": {
+        "tags": [
+          "Appointment Workspace"
+        ],
+        "summary": "Read a workspace roster.",
+        "description": "Reads the minimum-data roster for one event (FR-8.1): name, email, the caller's own type's appointment status, and nothing else.",
+        "operationId": "getWorkspaceRoster",
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfWorkspaceRosterRowResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ConductAppointments",
+        "x-mcp-tool": "get_workspace_roster",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/appointment-workspace/appointments/{id}/status": {
+      "put": {
+        "tags": [
+          "Appointment Workspace"
+        ],
+        "summary": "Set an appointment status.",
+        "description": "Moves one booking appointment to a target status, or applies a bounded correction. A same-status submission is idempotent.",
+        "operationId": "setAppointmentStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAppointmentStatusRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ConductAppointments",
+        "x-mcp-tool": "set_appointment_status",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/appointment-workspace/events/{eventId}/roster.csv": {
+      "get": {
+        "tags": [
+          "Appointment Workspace"
+        ],
+        "summary": "Export a workspace roster.",
+        "description": "Downloads the roster as CSV (FR-8.7, FR-8.8), with formula characters neutralised.",
+        "operationId": "exportWorkspaceRoster",
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ConductAppointments",
+        "x-mcp-tool": "export_workspace_roster",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/booking/{token}": {
+      "get": {
+        "tags": [
+          "Attendee Booking"
+        ],
+        "summary": "View an invitation.",
+        "description": "Anonymous. Shows the live options, topped up (FR-5.8), or the expired state.",
+        "operationId": "viewInvite",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/booking/{token}/confirm": {
+      "post": {
+        "tags": [
+          "Attendee Booking"
+        ],
+        "summary": "Confirm a booking.",
+        "description": "Anonymous. Confirms one offered event and returns the booking and its manage link.",
+        "operationId": "confirmBooking",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmBookingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/manage/{token}": {
+      "get": {
+        "tags": [
+          "Attendee Booking"
+        ],
+        "summary": "View a booking.",
+        "description": "Anonymous. Shows the booking and whether it can still be cancelled.",
+        "operationId": "viewManagedBooking",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedBookingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/manage/{token}/cancel": {
+      "post": {
+        "tags": [
+          "Attendee Booking"
+        ],
+        "summary": "Cancel a booking.",
+        "description": "Anonymous. Cancels the booking and optionally asks for a new time.",
+        "operationId": "cancelManagedBooking",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendeeCancelOutcome"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdditionalLocationIdsRequest": {
+        "required": [
+          "additionalLocationIds"
+        ],
+        "type": "object",
+        "properties": {
+          "additionalLocationIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "AdjustCapacityRequest": {
+        "required": [
+          "totalHeadcount"
+        ],
+        "type": "object",
+        "properties": {
+          "totalHeadcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AdjustEventCapacityOutcome": {
+        "required": [
+          "eventId",
+          "totalHeadcount",
+          "remainingCapacity",
+          "changed"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "The event identifier.",
+            "format": "uuid"
+          },
+          "totalHeadcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The total after the call.",
+            "format": "int32"
+          },
+          "remainingCapacity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The remaining count after the call.",
+            "format": "int32"
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "Whether anything moved."
+          }
+        },
+        "description": "The capacity row after adjusting."
+      },
+      "ApiDiscoveryResponse": {
+        "required": [
+          "name",
+          "version",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "ApiLink": {
+        "required": [
+          "href",
+          "method",
+          "operationId"
+        ],
+        "type": "object",
+        "properties": {
+          "href": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          }
+        }
+      },
+      "AppointmentStatusResponse": {
+        "required": [
+          "bookingAppointmentId",
+          "status",
+          "checkedInAt",
+          "outcomeAt",
+          "version",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "bookingAppointmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "checkedInAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "outcomeAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AppointmentTypeResponse": {
+        "required": [
+          "id",
+          "code",
+          "name",
+          "isActive",
+          "version",
+          "hasManager",
+          "managerDisplayName",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "hasManager": {
+            "type": "boolean"
+          },
+          "managerDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AttendeeBookingResponse": {
+        "required": [
+          "bookingId",
+          "isOriginal",
+          "eventDate",
+          "eventStartTime",
+          "eventEndTime",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isOriginal": {
+            "type": "boolean"
+          },
+          "eventDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "eventStartTime": {
+            "type": "string",
+            "format": "time"
+          },
+          "eventEndTime": {
+            "type": "string",
+            "format": "time"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AttendeeCancelOutcome": {
+        "required": [
+          "outcome",
+          "inviteId"
+        ],
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "Which of the four outcomes happened."
+          },
+          "inviteId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The fresh or still-pending invite, when there is one.",
+            "format": "uuid"
+          }
+        },
+        "description": "The truthful outcome: cancelled, reinvited, noEligibleEvents or reinvitePending."
+      },
+      "AttendeeCsvError": {
+        "required": [
+          "lineNumber",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "lineNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The line number.",
+            "format": "int32"
+          },
+          "message": {
+            "type": "string",
+            "description": "The message."
+          }
+        },
+        "description": "Defines attendee csv error for the current use case."
+      },
+      "AttendeeGroupResponse": {
+        "required": [
+          "id",
+          "code",
+          "name",
+          "isActive",
+          "version",
+          "requirementTypeIds",
+          "memberCount",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "requirementTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "memberCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AttendeeImportOutcome": {
+        "required": [
+          "accepted",
+          "importedCount",
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "The accepted."
+          },
+          "importedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The imported count.",
+            "format": "int32"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendeeCsvError"
+            },
+            "description": "The errors."
+          }
+        },
+        "description": "Accepted is false when the file was rejected. The result itself is still a success — a rejected\nupload is a normal outcome with a list of row errors, not a failed request."
+      },
+      "AttendeeReadinessResponse": {
+        "required": [
+          "attendeeId",
+          "code",
+          "display",
+          "outstandingAppointmentTypes",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "attendeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "display": {
+            "type": "string"
+          },
+          "outstandingAppointmentTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutstandingAppointmentTypeResponse"
+            }
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AttendeeResponse": {
+        "required": [
+          "attendeeId",
+          "name",
+          "email",
+          "status",
+          "statusDisplay",
+          "groupCode",
+          "readiness",
+          "requiredTypeCodes",
+          "latestDeliveryStatus",
+          "cursor",
+          "latestDeliveryId",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "attendeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "statusDisplay": {
+            "type": "string"
+          },
+          "groupCode": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "requiredTypeCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "latestDeliveryStatus": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "latestDeliveryId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AuditRowResponse": {
+        "required": [
+          "id",
+          "timestamp",
+          "entityType",
+          "entityId",
+          "action",
+          "actorType",
+          "actorId",
+          "actorDisplay",
+          "details",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entityType": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actorType": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actorDisplay": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "details": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "AwaitingAvailabilityRow": {
+        "required": [
+          "attendeeId",
+          "name",
+          "email",
+          "requiredCodes",
+          "waitingSince",
+          "daysWaiting"
+        ],
+        "type": "object",
+        "properties": {
+          "attendeeId": {
+            "type": "string",
+            "description": "The attendee id.",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name."
+          },
+          "email": {
+            "type": "string",
+            "description": "The email."
+          },
+          "requiredCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The required codes."
+          },
+          "waitingSince": {
+            "type": "string",
+            "description": "The waiting since.",
+            "format": "date"
+          },
+          "daysWaiting": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The days waiting.",
+            "format": "int32"
+          }
+        },
+        "description": "Defines awaiting availability row for the current use case."
+      },
+      "CancelAttendeeBookingResponse": {
+        "required": [
+          "confirmationRequired",
+          "activeBookingCount",
+          "cancelledBookingId",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "confirmationRequired": {
+            "type": "boolean"
+          },
+          "activeBookingCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cancelledBookingId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "CancelBookingRequest": {
+        "required": [
+          "requestNewTime"
+        ],
+        "type": "object",
+        "properties": {
+          "requestNewTime": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CancelEventOutcome": {
+        "required": [
+          "cancelledCount",
+          "reinvitedCount",
+          "awaitingAvailabilityCount"
+        ],
+        "type": "object",
+        "properties": {
+          "cancelledCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "Bookings moved to cancelled (preview: bookings that would be).",
+            "format": "int32"
+          },
+          "reinvitedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "Cancelled attendees issued a replacement invite.",
+            "format": "int32"
+          },
+          "awaitingAvailabilityCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "Cancelled attendees with no replacement.",
+            "format": "int32"
+          }
+        },
+        "description": "How many bookings were cancelled, rebooked, or left awaiting availability."
+      },
+      "ConfirmBookingRequest": {
+        "required": [
+          "eventId"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ConfirmBookingResponse": {
+        "required": [
+          "bookingId",
+          "manageToken"
+        ],
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "manageToken": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateAppointmentTypeRequest": {
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CreateAttendeeGroupRequest": {
+        "required": [
+          "code",
+          "name",
+          "appointmentTypeIds"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "appointmentTypeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "CreateLocationRequest": {
+        "required": [
+          "code",
+          "name",
+          "address",
+          "timeZoneId"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeZoneId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CurrentStaffResponse": {
+        "required": [
+          "displayName",
+          "staffId",
+          "roles",
+          "scopeAppointmentTypeId",
+          "scopeAppointmentTypeCode",
+          "scopeAppointmentTypeName",
+          "capabilities",
+          "problem",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "staffId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scopeAppointmentTypeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "scopeAppointmentTypeCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scopeAppointmentTypeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "problem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "DashboardEventResponse": {
+        "required": [
+          "eventId",
+          "locationId",
+          "locationName",
+          "time",
+          "capacities",
+          "activeBookings",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          },
+          "capacities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventCapacityRow"
+            }
+          },
+          "activeBookings": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "DashboardsResponse": {
+        "required": [
+          "awaitingAvailability",
+          "noResponse",
+          "events",
+          "failedEmails",
+          "pendingEmails",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "awaitingAvailability": {
+            "$ref": "#/components/schemas/DashboardTabResponseOfAwaitingAvailabilityRow"
+          },
+          "noResponse": {
+            "$ref": "#/components/schemas/DashboardTabResponseOfNoResponseRow"
+          },
+          "events": {
+            "$ref": "#/components/schemas/DashboardTabResponseOfDashboardEventResponse"
+          },
+          "failedEmails": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingEmails": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "DashboardTabResponseOfAwaitingAvailabilityRow": {
+        "required": [
+          "count",
+          "rows"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AwaitingAvailabilityRow"
+            }
+          }
+        }
+      },
+      "DashboardTabResponseOfDashboardEventResponse": {
+        "required": [
+          "count",
+          "rows"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardEventResponse"
+            }
+          }
+        }
+      },
+      "DashboardTabResponseOfNoResponseRow": {
+        "required": [
+          "count",
+          "rows"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoResponseRow"
+            }
+          }
+        }
+      },
+      "EligibleEventCountResponse": {
+        "required": [
+          "count",
+          "requiredOptionCount"
+        ],
+        "type": "object",
+        "properties": {
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "requiredOptionCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "EventCapacityResponse": {
+        "required": [
+          "appointmentTypeId",
+          "code",
+          "name",
+          "totalHeadcount",
+          "remainingCapacity",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "appointmentTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "totalHeadcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "remainingCapacity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "EventCapacityRow": {
+        "required": [
+          "code",
+          "totalHeadcount",
+          "remainingCapacity"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The code."
+          },
+          "totalHeadcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The total headcount.",
+            "format": "int32"
+          },
+          "remainingCapacity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "The remaining capacity.",
+            "format": "int32"
+          }
+        },
+        "description": "Defines event capacity row for the current use case."
+      },
+      "EventProposalResponse": {
+        "required": [
+          "id",
+          "locationId",
+          "locationCode",
+          "locationName",
+          "time",
+          "status",
+          "listedTypeCount",
+          "acceptedTypeCount",
+          "myAcceptedHeadcount",
+          "acceptedByMe",
+          "createdByMe",
+          "types",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationCode": {
+            "type": "string"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          },
+          "status": {
+            "type": "string"
+          },
+          "listedTypeCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "acceptedTypeCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "myAcceptedHeadcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "acceptedByMe": {
+            "type": "boolean"
+          },
+          "createdByMe": {
+            "type": "boolean"
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalTypeResponse"
+            }
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "EventResponse": {
+        "required": [
+          "id",
+          "proposalId",
+          "locationId",
+          "locationCode",
+          "locationName",
+          "time",
+          "status",
+          "capacities",
+          "activeBookings",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationCode": {
+            "type": "string"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          },
+          "status": {
+            "type": "string"
+          },
+          "capacities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventCapacityResponse"
+            }
+          },
+          "activeBookings": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "EventTimeResponse": {
+        "required": [
+          "date",
+          "startTime",
+          "durationMinutes",
+          "startLocal",
+          "endLocal",
+          "startUtc",
+          "endUtc",
+          "timeZoneId",
+          "zoneAbbreviation"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "time"
+          },
+          "durationMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "startLocal": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endLocal": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeZoneId": {
+            "type": "string"
+          },
+          "zoneAbbreviation": {
+            "type": "string"
+          }
+        }
+      },
+      "InviteAttendeeOutcome": {
+        "required": [
+          "inviteId",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The new invite identifier.",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "description": "The attendee status after inviting."
+          }
+        },
+        "description": "The invite that was issued."
+      },
+      "InviteAttendeeRequest": {
+        "required": [
+          "locationIds"
+        ],
+        "type": "object",
+        "properties": {
+          "locationIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "InviteOptionResponse": {
+        "required": [
+          "eventId",
+          "locationName",
+          "address",
+          "time"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          }
+        }
+      },
+      "InviteResponse": {
+        "required": [
+          "inviteId",
+          "attendeeName",
+          "appointmentTypeNames",
+          "options",
+          "isRecovery",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attendeeName": {
+            "type": "string"
+          },
+          "appointmentTypeNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteOptionResponse"
+            }
+          },
+          "isRecovery": {
+            "type": "boolean"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "JsonElement": { },
+      "LocationResponse": {
+        "required": [
+          "id",
+          "code",
+          "name",
+          "address",
+          "timeZoneId",
+          "isActive",
+          "version",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "timeZoneId": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "ManagedBookingResponse": {
+        "required": [
+          "attendeeName",
+          "locationName",
+          "address",
+          "time",
+          "appointmentTypeNames",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "attendeeName": {
+            "type": "string"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          },
+          "appointmentTypeNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "NoResponseRow": {
+        "required": [
+          "attendeeId",
+          "name",
+          "email",
+          "requiredCodes",
+          "gaveUpOn"
+        ],
+        "type": "object",
+        "properties": {
+          "attendeeId": {
+            "type": "string",
+            "description": "The attendee id.",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name."
+          },
+          "email": {
+            "type": "string",
+            "description": "The email."
+          },
+          "requiredCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The required codes."
+          },
+          "gaveUpOn": {
+            "type": "string",
+            "description": "The gave up on.",
+            "format": "date"
+          }
+        },
+        "description": "Defines no response row for the current use case."
+      },
+      "OutstandingAppointmentTypeResponse": {
+        "required": [
+          "code",
+          "name",
+          "isRecoverable"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isRecoverable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PageOfAppointmentTypeResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppointmentTypeResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfAttendeeBookingResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendeeBookingResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfAttendeeGroupResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendeeGroupResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfAttendeeResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendeeResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfAuditRowResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditRowResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfEventProposalResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventProposalResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfEventResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfLocationResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocationResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfStaffAccessResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffAccessResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfWorkspaceEventResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceEventResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfWorkspaceRosterRowResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceRosterRowResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProposalTypeResponse": {
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ProposeEventOutcome": {
+        "required": [
+          "proposalId",
+          "status",
+          "eventId"
+        ],
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "description": "The new proposal identifier.",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "description": "The proposal status after proposing."
+          },
+          "eventId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The event identifier, or null while the proposal stays open.",
+            "format": "uuid"
+          }
+        },
+        "description": "The proposal that was created, and the event when it confirmed immediately."
+      },
+      "ProposeEventRequest": {
+        "required": [
+          "locationId",
+          "date",
+          "startTime",
+          "durationMinutes",
+          "appointmentTypeIds",
+          "headcount"
+        ],
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "time"
+          },
+          "durationMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "appointmentTypeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "headcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RecordAcceptanceOutcome": {
+        "required": [
+          "proposalId",
+          "status",
+          "eventId",
+          "changed"
+        ],
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "string",
+            "description": "The proposal identifier.",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "description": "The proposal status after accepting."
+          },
+          "eventId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The event identifier, or null while the proposal stays open.",
+            "format": "uuid"
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "Whether the headcount actually changed."
+          }
+        },
+        "description": "The proposal status after accepting, and the event when this was the final accept."
+      },
+      "RecordAcceptanceRequest": {
+        "required": [
+          "headcount"
+        ],
+        "type": "object",
+        "properties": {
+          "headcount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RetryEmailOutcome": {
+        "required": [
+          "emailLogId"
+        ],
+        "type": "object",
+        "properties": {
+          "emailLogId": {
+            "type": "string",
+            "description": "The new pending delivery identifier.",
+            "format": "uuid"
+          }
+        },
+        "description": "Reports the staged replacement delivery."
+      },
+      "SaveAttendeeRequest": {
+        "required": [
+          "name",
+          "email",
+          "attendeeGroupId"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "attendeeGroupId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "SetAppointmentStatusRequest": {
+        "required": [
+          "targetStatus",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "targetStatus": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "SetStaffScopeOutcome": {
+        "required": [
+          "targetStaffUserId",
+          "appointmentTypeId",
+          "displacedManagerDisplayName"
+        ],
+        "type": "object",
+        "properties": {
+          "targetStaffUserId": {
+            "type": "string",
+            "description": "The profile whose scope changed.",
+            "format": "uuid"
+          },
+          "appointmentTypeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The scope now set, or null when cleared.",
+            "format": "uuid"
+          },
+          "displacedManagerDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The displaced holder's name, when any."
+          }
+        },
+        "description": "The scope change plus the displaced Manager's display name when any."
+      },
+      "SettingsResponse": {
+        "required": [
+          "inviteExpiryDays",
+          "maxAutoRetryCount",
+          "inviteOptionCount",
+          "version",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "inviteExpiryDays": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxAutoRetryCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "inviteOptionCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "StaffAccessResponse": {
+        "required": [
+          "staffUserId",
+          "staffId",
+          "displayName",
+          "roles",
+          "appointmentTypeId",
+          "version",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "staffUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "staffId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "appointmentTypeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "StartRecoveryResponse": {
+        "required": [
+          "recoveryInviteId",
+          "locationIds",
+          "recoverableTypeIds",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "recoveryInviteId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "recoverableTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "UpdateAppointmentTypeRequest": {
+        "required": [
+          "name",
+          "isActive",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "UpdateAttendeeGroupRequest": {
+        "required": [
+          "name",
+          "isActive",
+          "appointmentTypeIds",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "appointmentTypeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "UpdateLocationRequest": {
+        "required": [
+          "name",
+          "address",
+          "timeZoneId",
+          "isActive",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeZoneId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "UpdateSettingsRequest": {
+        "required": [
+          "inviteExpiryDays",
+          "maxAutoRetryCount",
+          "inviteOptionCount",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "inviteExpiryDays": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxAutoRetryCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "inviteOptionCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "WorkspaceEventResponse": {
+        "required": [
+          "eventId",
+          "locationId",
+          "locationName",
+          "time",
+          "status",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "time": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          },
+          "status": {
+            "type": "string"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "WorkspaceRosterRowResponse": {
+        "required": [
+          "appointmentId",
+          "name",
+          "email",
+          "scopeTypeCode",
+          "appointmentStatus",
+          "checkedInAt",
+          "version",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "appointmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "scopeTypeCode": {
+            "type": "string"
+          },
+          "appointmentStatus": {
+            "type": "string"
+          },
+          "checkedInAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Discovery"
+    },
+    {
+      "name": "Identity"
+    },
+    {
+      "name": "Dashboards"
+    },
+    {
+      "name": "Reference Data"
+    },
+    {
+      "name": "Settings"
+    },
+    {
+      "name": "Staff Access"
+    },
+    {
+      "name": "Negotiation"
+    },
+    {
+      "name": "Events"
+    },
+    {
+      "name": "Attendees"
+    },
+    {
+      "name": "Audit"
+    },
+    {
+      "name": "Appointment Workspace"
+    },
+    {
+      "name": "Attendee Booking"
+    }
+  ]
+}

@@ -64,6 +64,117 @@ public sealed class NegotiationEndpointTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task TheCreationResponseNamesItsProposalId()
+    {
+        var medical = await GivenAppointmentTypeAsync("NEGIDMED");
+        var location = await GivenLocationAsync("NEGIDLOC");
+        var client = await ManagerAsync(medical, "U700119");
+
+        var body = await BodyAsync(await PostAsync(client, "/api/event-proposals", new
+        {
+            locationId = location,
+            date = "2026-11-13",
+            startTime = "09:30",
+            durationMinutes = 240,
+            appointmentTypeIds = new[] { medical },
+            headcount = 8,
+        }));
+
+        Assert.True(body.TryGetProperty("proposalId", out var proposalId));
+        Assert.NotEqual(Guid.Empty, proposalId.GetGuid());
+        Assert.False(body.TryGetProperty("id", out _));
+    }
+
+    [Fact]
+    public async Task ProposalListRowsCarryTheirListedTypes()
+    {
+        var (proposalId, otherType) = await GivenOpenProposalAsync("NEGT");
+        var client = await ManagerAsync(otherType, "U700120");
+
+        var row = (await BodyAsync(await client.GetAsync("/api/event-proposals?limit=50")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == proposalId);
+
+        var codes = row.GetProperty("types").EnumerateArray()
+            .Select(x => x.GetProperty("code").GetString())
+            .Order()
+            .ToArray();
+        Assert.Equal(["NEGT_ONE", "NEGT_TWO"], codes.Select(x => x!));
+        Assert.All(
+            row.GetProperty("types").EnumerateArray(),
+            x => Assert.False(string.IsNullOrWhiteSpace(x.GetProperty("name").GetString())));
+    }
+
+    [Fact]
+    public async Task AManagerWhoHasNotAcceptedSeesOnlyAccept()
+    {
+        var (proposalId, otherType) = await GivenOpenProposalAsync("NEGB");
+        var client = await ManagerAsync(otherType, "U700121");
+
+        var links = (await BodyAsync(await client.GetAsync("/api/event-proposals?limit=50")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == proposalId)
+            .GetProperty("_links");
+
+        Assert.True(links.TryGetProperty("accept", out _));
+        Assert.False(links.TryGetProperty("withdrawAcceptance", out _));
+        Assert.False(links.TryGetProperty("withdraw", out _));
+    }
+
+    [Fact]
+    public async Task AnAcceptingManagerSeesWithdrawAcceptanceButNotWithdraw()
+    {
+        var (proposalId, otherType) = await GivenOpenProposalAsync("NEGX", threeTypes: true);
+        var client = await ManagerAsync(otherType, "U700122");
+        var accepted = await client.PutAsJsonAsync(
+            $"/api/event-proposals/{proposalId}/acceptance", new { headcount = 5 });
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+
+        var links = (await BodyAsync(await client.GetAsync("/api/event-proposals?limit=50")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == proposalId)
+            .GetProperty("_links");
+
+        Assert.False(links.TryGetProperty("accept", out _));
+        Assert.True(links.TryGetProperty("withdrawAcceptance", out _));
+        Assert.False(links.TryGetProperty("withdraw", out _));
+    }
+
+    [Fact]
+    public async Task TheProposingTypeSeesWithdrawAndWithdrawAcceptance()
+    {
+        var (proposalId, _) = await GivenOpenProposalAsync("NEGQ");
+        var client = await ManagerAsync(await ProposerTypeOfAsync(proposalId), "U700123");
+
+        var links = (await BodyAsync(await client.GetAsync("/api/event-proposals?limit=50")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == proposalId)
+            .GetProperty("_links");
+
+        Assert.False(links.TryGetProperty("accept", out _));
+        Assert.True(links.TryGetProperty("withdrawAcceptance", out _));
+        Assert.True(links.TryGetProperty("withdraw", out _));
+    }
+
+    [Fact]
+    public async Task AWithdrawnProposalOffersNoAction()
+    {
+        var (proposalId, otherType) = await GivenOpenProposalAsync("NEGV");
+        var proposer = await ManagerAsync(await ProposerTypeOfAsync(proposalId), "U700124");
+        await PostAsync(proposer, $"/api/event-proposals/{proposalId}/withdraw", new { });
+        var client = await ManagerAsync(otherType, "U700125");
+
+        var links = (await BodyAsync(await client.GetAsync("/api/event-proposals?limit=50")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == proposalId)
+            .GetProperty("_links");
+
+        Assert.False(links.TryGetProperty("accept", out _));
+        Assert.False(links.TryGetProperty("withdrawAcceptance", out _));
+        Assert.False(links.TryGetProperty("withdraw", out _));
+    }
+
+    [Fact]
     public async Task AcceptanceIsRecordedRevisedAndWithdrawn()
     {
         // Three listed types: with two, the first acceptance would confirm the proposal and
@@ -219,7 +330,7 @@ public sealed class NegotiationEndpointTests(ApiFactory factory)
             headcount = 8,
         }));
 
-        return (created.GetProperty("id").GetGuid(), otherType);
+        return (created.GetProperty("proposalId").GetGuid(), otherType);
     }
 
     /// <summary>

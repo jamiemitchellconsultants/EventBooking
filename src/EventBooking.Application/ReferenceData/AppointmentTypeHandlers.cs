@@ -139,7 +139,8 @@ public sealed class ListAppointmentTypesHandler(
                     var managerUserId = managerByType.TryGetValue(t.Id, out var found) ? found : (Guid?)null;
                     var identity = managerUserId is null ? null : identityByUserId.GetValueOrDefault(managerUserId.Value);
                     return new AppointmentTypeListItem(t.Id, t.Code, t.Name, t.IsActive,
-                        identity?.DisplayName ?? identity?.StaffId.Value);
+                        identity?.DisplayName ?? identity?.StaffId.Value, t.Version,
+                        managerByType.ContainsKey(t.Id));
                 })
                 .ToList());
     }
