@@ -266,20 +266,32 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
     private static async Task<CancelAttempt> TryCancelEventAsync(
         ConcurrencyHarness harness, Guid coordinator, Guid eventId)
     {
-        try
+        // The handler re-validates its booking snapshot under the event lock and asks the
+        // caller to retry when a racing confirmation changed it, so the harness retries
+        // that conflict instead of treating it as a failure.
+        for (var attempt = 0; attempt < 25; attempt++)
         {
-            using var scope = harness.CreateScope();
-            var result = await scope.ServiceProvider.GetRequiredService<CancelEventHandler>()
-                .HandleAsync(new CancelEventCommand(coordinator, eventId, true), CancellationToken.None);
-            if (result.IsFailure)
-                throw new InvalidOperationException(
-                    $"Unexpected cancel refusal: {result.Error.Code} {result.Error.Message}");
-            return new CancelAttempt(false, true, result.Value.CancelledCount);
+            try
+            {
+                using var scope = harness.CreateScope();
+                var result = await scope.ServiceProvider.GetRequiredService<CancelEventHandler>()
+                    .HandleAsync(new CancelEventCommand(coordinator, eventId, true), CancellationToken.None);
+                if (result.IsSuccess)
+                    return new CancelAttempt(false, true, result.Value.CancelledCount);
+                if (result.Error is not { Code: "conflict" } error
+                    || !error.Message.Contains("Please retry", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"Unexpected cancel refusal: {result.Error.Code} {result.Error.Message}");
+                await Task.Delay(50);
+            }
+            catch (Exception exception) when (IsDeadlock(exception))
+            {
+                return new CancelAttempt(true, false, 0);
+            }
         }
-        catch (Exception exception) when (IsDeadlock(exception))
-        {
-            return new CancelAttempt(true, false, 0);
-        }
+
+        throw new InvalidOperationException(
+            "Cancel never stopped conflicting; expected a retry to succeed.");
     }
 
     /// <summary>SQLSTATE 40P01. The one outcome none of these scenarios may produce.</summary>
