@@ -5,13 +5,19 @@ using System.Text;
 namespace EventBooking.Api.Pagination;
 
 /// <summary>
-/// The opaque keyset cursor: base64url(payload) + "." + base64url(HMAC-SHA256(key, payload)).
+/// The opaque keyset cursor: base64url(payload) + "." + base64url(HMAC-SHA256(cursorKey, payload)).
 /// The signature is checked in constant time before the payload is read, so a tampered or
 /// forged cursor costs one hash and never reaches a query. There is no offset pagination.
 /// </summary>
-/// <param name="signingKey">The signing key, shared with the attendee token service.</param>
-public sealed class PageCursor(byte[] signingKey)
+/// <param name="sharedKey">
+/// The configured signing key, shared with the attendee token service. Cursors sign under a
+/// key derived from it for this purpose alone, never under the shared key itself.
+/// </param>
+public sealed class PageCursor(byte[] sharedKey)
 {
+    private readonly byte[] _signingKey = HMACSHA256.HashData(
+        sharedKey, "EventBooking.PageCursor.v1"u8);
+
     /// <summary>Signs and encodes one sort-key payload.</summary>
     /// <param name="payload">The keyset payload the query produced.</param>
     /// <returns>The opaque cursor.</returns>
@@ -19,7 +25,7 @@ public sealed class PageCursor(byte[] signingKey)
     {
         ArgumentNullException.ThrowIfNull(payload);
         var bytes = Encoding.UTF8.GetBytes(payload);
-        var signature = HMACSHA256.HashData(signingKey, bytes);
+        var signature = HMACSHA256.HashData(_signingKey, bytes);
         return Base64Url.EncodeToString(bytes) + "." + Base64Url.EncodeToString(signature);
     }
 
@@ -53,7 +59,7 @@ public sealed class PageCursor(byte[] signingKey)
             return false;
         }
 
-        var expected = HMACSHA256.HashData(signingKey, bytes);
+        var expected = HMACSHA256.HashData(_signingKey, bytes);
         if (!CryptographicOperations.FixedTimeEquals(expected, supplied))
         {
             return false;

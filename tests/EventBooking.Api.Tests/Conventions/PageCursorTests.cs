@@ -48,6 +48,21 @@ public sealed class PageCursorTests
         Assert.False(other.TryUnprotect(issued, out _));
     }
 
+    /// <summary>
+    /// The configured key also signs attendee booking links, so the cursor signs under a key
+    /// derived for cursors alone. Otherwise every cursor the API hands out would be an HMAC
+    /// under the link key, one payload-format change away from a forged link.
+    /// </summary>
+    [Fact]
+    public void ACursorIsNotSignedWithTheSharedKeyItself()
+    {
+        var issued = new PageCursor(Key).Protect("page-2");
+        var signature = Base64Url.DecodeFromChars(issued.Split('.')[1]);
+
+        Assert.NotEqual(
+            HMACSHA256.HashData(Key, Encoding.UTF8.GetBytes("page-2")), signature);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
