@@ -1,12 +1,16 @@
 using EventBooking.Application.Access;
 using EventBooking.Application.Appointments;
+using EventBooking.Application.Audit;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
 using EventBooking.Application.Invites;
+using EventBooking.Application.Jobs;
 using EventBooking.Application.Notifications;
+using EventBooking.Application.Recovery;
 using EventBooking.Application.Settings;
 using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Application;
@@ -28,18 +32,17 @@ public static class ApplicationServiceCollectionExtensions
 
         // Shared services.
         services.AddScoped<EligibleEventFinder>();
-        services.AddScoped<EmailDeliveryService>();
-        services.AddScoped<InviteIssuer>();
+        services.AddScoped<IInviteIssuer, InviteIssuer>();
         services.AddScoped<BookingCanceller>();
         services.AddScoped<IStaffAccessAuthorizer, StaffAccessAuthorizer>();
         services.AddScoped<StaffAccessHandler>();
 
         // Event negotiation.
         services.AddScoped<ProposeEventHandler>();
-        services.AddScoped<AcceptProposalHandler>();
+        services.AddScoped<RecordAcceptanceHandler>();
         services.AddScoped<WithdrawAcceptanceHandler>();
         services.AddScoped<WithdrawProposalHandler>();
-        services.AddScoped<GetManagerEventBoardHandler>();
+        services.AddScoped<NegotiationBoardHandler>();
         services.AddScoped<CancelEventHandler>();
         services.AddScoped<AdjustEventCapacityHandler>();
 
@@ -56,10 +59,14 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<GetEventOperationsHandler>();
         services.AddScoped<GetAuditHistoryHandler>();
         services.AddScoped<GetAuditSearchHandler>();
+        services.AddScoped<SearchAuditHandler>();
+        services.AddScoped<AttendeeHistoryHandler>();
+        services.AddScoped<EventHistoryHandler>();
 
         // Administration.
         services.AddScoped<AdminSettingsHandler>();
         services.AddScoped<MeHandler>();
+        services.AddScoped<StaffScopeHandler>();
         services.AddScoped<SyncStaffAccessProfileRolesHandler>();
 
         // Appointments.
@@ -67,18 +74,30 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<AppointmentRosterCsvFormatter>();
         services.AddScoped<RecoveryBookingOutcomeCoordinator>();
         services.AddScoped<UpdateBookingAppointmentStatusHandler>();
+        services.AddScoped<ListWorkspaceEventsHandler>();
+        services.AddScoped<GetWorkspaceRosterHandler>();
+        services.AddScoped<SetAppointmentStatusHandler>();
+        services.AddScoped<DownloadRosterHandler>();
 
         // Invites and bookings.
-        services.AddScoped<TriggerInviteHandler>();
+        services.AddScoped<InviteAttendeeHandler>();
+        services.AddScoped<ListInviteLocationsHandler>();
+        services.AddScoped<ExpireInviteHandler>();
+        services.AddScoped<TopUpInviteOptionsHandler>();
+        services.AddScoped<CountEligibleEventsHandler>();
         services.AddScoped<StartRecoveryHandler>();
         services.AddScoped<CancelRecoveryInviteHandler>();
+        services.AddScoped<ConcludeRecoveryHandler>();
         services.AddScoped<RetryEmailHandler>();
-        services.AddScoped<ExpireInvitesHandler>();
         services.AddScoped<ViewInviteHandler>();
         services.AddScoped<ViewBookingHandler>();
         services.AddScoped<ConfirmBookingHandler>();
-        services.AddScoped<CancelBookingHandler>();
-        services.AddScoped<CancelAttendeeBookingHandler>();
+        services.AddScoped<CancelBookingByAttendeeHandler>();
+        services.AddScoped<CancelBookingByCoordinatorHandler>();
+
+        // Background jobs.
+        services.AddScoped<ISweepSteps, SweepSteps>();
+        services.AddScoped<SweepRunner>();
 
         return services;
     }

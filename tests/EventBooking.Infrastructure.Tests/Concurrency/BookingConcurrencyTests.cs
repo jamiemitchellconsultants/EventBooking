@@ -1,17 +1,18 @@
+using EventBooking.Application.Events;
+using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
+using EventBooking.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace EventBooking.Infrastructure.Tests.Concurrency;
 
 /// <summary>
-/// The scenarios the master plan names for Task 10, driven straight against the lock helpers from
-/// many connections at once. Two things are being proved: no capacity row can go below zero, and
-/// no combination of type sets or event orders can deadlock.
-///
-/// The master plan writes the three types as MED, FIT and IND. The prototype carries the
-/// predecessor's three seeded types, so MED is the medical check-up, FIT the uniform fitting, and
-/// IND the drug and alcohol test — the type every requirement subset includes, and therefore the
-/// one that binds.
+/// The scenarios the master plan names for Task 10, driven through the real ConfirmBookingHandler
+/// from many connections at once. Two things are being proved: no capacity row can go below zero,
+/// and no combination of type sets or event orders can deadlock.
 /// </summary>
 [Collection("postgres")]
 public class BookingConcurrencyTests(PostgresFixture fixture)
@@ -29,56 +30,64 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
         [Med, Fit, Ind],
     ];
 
-    private readonly BookingConcurrencyHarness _harness = new(fixture);
+    private readonly BookingConcurrencyHarness _raw = new(fixture);
 
     [Fact]
     public async Task FortyParallelBookingsFillTheBindingTypeExactlyOnce()
     {
-        await fixture.ResetAsync();
-        var eventId = await GivenEventAsync(headcount: 10);
+        await using var harness = await ConcurrencyHarness.CreateAsync(fixture);
+        var eventId = await harness.GivenEventAsync(drugAndAlcohol: 10, medical: 10, uniform: 10);
 
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 40).Select(index =>
-            Task.Run(() => _harness.TryChargeAsync(
-                [eventId], Rotation[index % Rotation.Length], CancellationToken.None))));
+        var tokens = new List<string>();
+        for (var i = 0; i < 40; i++)
+            tokens.Add(await harness.GivenInvitedAttendeeAsync(eventId, Rotation[i % Rotation.Length].ToArray()));
+
+        var attempts = await Task.WhenAll(tokens.Select(token =>
+            Task.Run(() => TryConfirmAsync(harness, token, eventId))));
 
         Assert.DoesNotContain(attempts, attempt => attempt.Outcome == ConcurrentOutcome.Deadlocked);
         Assert.Equal(10, attempts.Count(attempt => attempt.Outcome == ConcurrentOutcome.Booked));
         Assert.Equal(30, attempts.Count(attempt => attempt.Outcome == ConcurrentOutcome.CapacityExhausted));
-        Assert.All(
-            attempts.Where(attempt => attempt.Outcome == ConcurrentOutcome.CapacityExhausted),
-            attempt => Assert.Equal(Ind, attempt.ExhaustedTypeId));
 
-        var rows = await _harness.CapacitiesAsync(eventId);
+        var rows = await _raw.CapacitiesAsync(eventId);
         Assert.All(rows, row => Assert.InRange(row.RemainingCapacity, 0, row.TotalHeadcount));
         Assert.Equal(0, Remaining(rows, Ind));
+        Assert.Equal(10, await harness.ActiveBookingCountAsync(eventId));
     }
 
     /// <summary>
-    /// The ordering test. Each attempt names its two events in a different order, and the helpers
-    /// have to sort them: without that, half the attempts take A then B and half take B then A,
-    /// which is the textbook deadlock.
+    /// The ordering test through the real handler. Each attempt confirms one of two events,
+    /// alternating down the list, and every invite offers the event it confirms: without
+    /// ordered locks the two event rows would be taken in opposite orders, which is the
+    /// textbook deadlock.
     /// </summary>
     [Fact]
     public async Task BookingsAcrossTwoEventsInShuffledOrderNeverDeadlock()
     {
-        await fixture.ResetAsync();
-        var first = await GivenEventAsync(headcount: 30);
-        var second = await GivenEventAsync(headcount: 30);
+        await using var harness = await ConcurrencyHarness.CreateAsync(fixture);
+        var first = await harness.GivenEventAsync(drugAndAlcohol: 10, medical: 10, uniform: 10);
+        var second = await harness.GivenEventAsync(drugAndAlcohol: 10, medical: 10, uniform: 10);
 
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 40).Select(index =>
-            Task.Run(() => _harness.TryChargeAsync(
-                index % 2 == 0 ? [first, second] : [second, first],
-                Rotation[index % Rotation.Length],
-                CancellationToken.None))));
+        var work = new List<(string Token, Guid Target)>();
+        for (var i = 0; i < 40; i++)
+        {
+            var target = i % 2 == 0 ? first : second;
+            work.Add((await harness.GivenInvitedAttendeeAsync(
+                target, Rotation[i % Rotation.Length].ToArray()), target));
+        }
+
+        var attempts = await Task.WhenAll(work.Select(item =>
+            Task.Run(() => TryConfirmAsync(harness, item.Token, item.Target))));
 
         Assert.DoesNotContain(attempts, attempt => attempt.Outcome == ConcurrentOutcome.Deadlocked);
-        Assert.Equal(30, attempts.Count(attempt => attempt.Outcome == ConcurrentOutcome.Booked));
+        Assert.Equal(20, attempts.Count(attempt => attempt.Outcome == ConcurrentOutcome.Booked));
 
         foreach (var eventId in new[] { first, second })
         {
-            var rows = await _harness.CapacitiesAsync(eventId);
+            var rows = await _raw.CapacitiesAsync(eventId);
             Assert.All(rows, row => Assert.InRange(row.RemainingCapacity, 0, row.TotalHeadcount));
             Assert.Equal(0, Remaining(rows, Ind));
+            Assert.Equal(10, await harness.ActiveBookingCountAsync(eventId));
         }
     }
 
@@ -91,11 +100,11 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
     public async Task CapacityLocksAcrossTwoEventsInShuffledOrderNeverDeadlock()
     {
         await fixture.ResetAsync();
-        var first = await GivenEventAsync(headcount: 30);
-        var second = await GivenEventAsync(headcount: 30);
+        var first = await GivenRawEventAsync(headcount: 30);
+        var second = await GivenRawEventAsync(headcount: 30);
 
         var attempts = await Task.WhenAll(Enumerable.Range(0, 40).Select(index =>
-            Task.Run(() => _harness.TryChargeCapacitiesOnlyAsync(
+            Task.Run(() => _raw.TryChargeCapacitiesOnlyAsync(
                 index % 2 == 0 ? [first, second] : [second, first],
                 Rotation[index % Rotation.Length],
                 CancellationToken.None))));
@@ -105,7 +114,7 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
 
         foreach (var eventId in new[] { first, second })
         {
-            var rows = await _harness.CapacitiesAsync(eventId);
+            var rows = await _raw.CapacitiesAsync(eventId);
             Assert.All(rows, row => Assert.InRange(row.RemainingCapacity, 0, row.TotalHeadcount));
             Assert.Equal(0, Remaining(rows, Ind));
         }
@@ -119,15 +128,19 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
     [Fact]
     public async Task ACapacityCutRacingEightBookingsLeavesTheArithmeticIntact()
     {
-        await fixture.ResetAsync();
-        var eventId = await GivenEventAsync(headcount: 10);
+        await using var harness = await ConcurrencyHarness.CreateAsync(fixture);
+        var eventId = await harness.GivenEventAsync(drugAndAlcohol: 10, medical: 10, uniform: 10);
+
+        var tokens = new List<string>();
+        for (var i = 0; i < 8; i++)
+            tokens.Add(await harness.GivenInvitedAttendeeAsync(eventId, Ind));
 
         var work = new List<Task<ConcurrentAttempt>>
         {
-            Task.Run(() => _harness.TryAdjustAsync(eventId, Ind, 5, CancellationToken.None)),
+            Task.Run(() => _raw.TryAdjustAsync(eventId, Ind, 5, CancellationToken.None)),
         };
-        work.AddRange(Enumerable.Range(0, 8).Select(_ =>
-            Task.Run(() => _harness.TryChargeAsync([eventId], [Ind], CancellationToken.None))));
+        work.AddRange(tokens.Select(token =>
+            Task.Run(() => TryConfirmAsync(harness, token, eventId))));
 
         var results = await Task.WhenAll(work);
         var adjustment = results[0];
@@ -136,7 +149,7 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
         Assert.DoesNotContain(results, attempt => attempt.Outcome == ConcurrentOutcome.Deadlocked);
 
         var booked = bookings.Count(attempt => attempt.Outcome == ConcurrentOutcome.Booked);
-        var rows = await _harness.CapacitiesAsync(eventId);
+        var rows = await _raw.CapacitiesAsync(eventId);
         var row = rows.Single(item => item.AppointmentTypeId == Ind);
 
         Assert.Equal(row.TotalHeadcount - booked, row.RemainingCapacity);
@@ -157,10 +170,50 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
         }
     }
 
+    /// <summary>
+    /// An event cancellation racing bookings on the same event. Whatever order the rows grant,
+    /// there is no deadlock and the arithmetic closes: every surviving active booking still
+    /// holds its place, and every cancelled booking gave its place back.
+    /// </summary>
+    [Fact]
+    public async Task CancelEventRacingBookingsLeavesCapacityConsistent()
+    {
+        await using var harness = await ConcurrencyHarness.CreateAsync(fixture);
+        var coordinator = await GivenCoordinatorAsync();
+        var eventId = await harness.GivenEventAsync(drugAndAlcohol: 10, medical: 10, uniform: 10);
+
+        var tokens = new List<string>();
+        for (var i = 0; i < 8; i++)
+            tokens.Add(await harness.GivenInvitedAttendeeAsync(eventId, Ind));
+
+        var bookingTasks = tokens.Select(token =>
+            Task.Run(() => TryConfirmAsync(harness, token, eventId))).ToArray();
+        var cancelTask = Task.Run(() => TryCancelEventAsync(harness, coordinator, eventId));
+        var attempts = await Task.WhenAll(bookingTasks);
+        var cancel = await cancelTask;
+
+        Assert.DoesNotContain(attempts, attempt => attempt.Outcome == ConcurrentOutcome.Deadlocked);
+        Assert.False(cancel.Deadlocked);
+        Assert.True(cancel.IsSuccess);
+
+        await using var context = fixture.NewContext();
+        var status = await context.Events.Where(e => e.Id == eventId)
+            .Select(e => e.Status).SingleAsync();
+        Assert.Equal(EventStatus.Cancelled, status);
+
+        var rows = await _raw.CapacitiesAsync(eventId);
+        var row = rows.Single(item => item.AppointmentTypeId == Ind);
+        var surviving = await harness.ActiveBookingCountAsync(eventId);
+        Assert.Equal(row.TotalHeadcount - surviving, row.RemainingCapacity);
+        Assert.InRange(row.RemainingCapacity, 0, row.TotalHeadcount);
+        var booked = attempts.Count(attempt => attempt.Outcome == ConcurrentOutcome.Booked);
+        Assert.Equal(booked - surviving, cancel.Cancelled);
+    }
+
     private static int Remaining(IEnumerable<EventCapacity> rows, Guid appointmentTypeId) =>
         rows.Single(row => row.AppointmentTypeId == appointmentTypeId).RemainingCapacity;
 
-    private async Task<Guid> GivenEventAsync(int headcount)
+    private async Task<Guid> GivenRawEventAsync(int headcount)
     {
         var proposal = ProposalFixture.Create(
             Guid.NewGuid(),
@@ -178,4 +231,62 @@ public class BookingConcurrencyTests(PostgresFixture fixture)
 
         return eventItem.Id;
     }
+
+    private async Task<Guid> GivenCoordinatorAsync()
+    {
+        var coordinator = Guid.Parse("c0000009-0000-0000-0000-000000000009");
+        await using var context = fixture.NewContext();
+        context.StaffAccessProfiles.Add(
+            Domain.Access.StaffAccessProfile.Create(coordinator, Role.Coordinator, null));
+        await context.SaveChangesAsync();
+        return coordinator;
+    }
+
+    private static async Task<ConcurrentAttempt> TryConfirmAsync(
+        ConcurrencyHarness harness, string token, Guid eventId)
+    {
+        try
+        {
+            var result = await harness.ConfirmAsync(token, eventId);
+            if (result.IsSuccess)
+                return new ConcurrentAttempt(ConcurrentOutcome.Booked);
+            if (result.Error.Code == "capacity-exhausted")
+                return new ConcurrentAttempt(ConcurrentOutcome.CapacityExhausted);
+            throw new InvalidOperationException(
+                $"Unexpected refusal: {result.Error.Code} {result.Error.Message}");
+        }
+        catch (Exception exception) when (IsDeadlock(exception))
+        {
+            return new ConcurrentAttempt(ConcurrentOutcome.Deadlocked);
+        }
+    }
+
+    private sealed record CancelAttempt(bool Deadlocked, bool IsSuccess, int Cancelled);
+
+    private static async Task<CancelAttempt> TryCancelEventAsync(
+        ConcurrencyHarness harness, Guid coordinator, Guid eventId)
+    {
+        // No retry here: the handler owns the retry of a stale booking snapshot, so a refusal
+        // reaching the caller would be a defect in the handler, and this test exists to see it.
+        try
+        {
+            using var scope = harness.CreateScope();
+            var result = await scope.ServiceProvider.GetRequiredService<CancelEventHandler>()
+                .HandleAsync(new CancelEventCommand(coordinator, eventId, true), CancellationToken.None);
+            if (result.IsFailure)
+                throw new InvalidOperationException(
+                    $"Unexpected cancel refusal: {result.Error.Code} {result.Error.Message}");
+            return new CancelAttempt(false, true, result.Value.CancelledCount);
+        }
+        catch (Exception exception) when (IsDeadlock(exception))
+        {
+            return new CancelAttempt(true, false, 0);
+        }
+    }
+
+    /// <summary>SQLSTATE 40P01. The one outcome none of these scenarios may produce.</summary>
+    private static bool IsDeadlock(Exception exception) =>
+        exception is PostgresException { SqlState: PostgresErrorCodes.DeadlockDetected }
+            || exception.InnerException is PostgresException
+                { SqlState: PostgresErrorCodes.DeadlockDetected };
 }

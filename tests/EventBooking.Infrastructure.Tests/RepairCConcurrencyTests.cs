@@ -6,6 +6,7 @@ using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
@@ -13,6 +14,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
@@ -212,8 +214,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         private sealed class SilentTransport : IEmailTransport
         {
             /// <inheritdoc />
-            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) =>
-                Task.CompletedTask;
+            public Task<EmailSendOutcome> SendAsync(
+                string recipient, string subject, string textBody, string htmlBody,
+                CancellationToken cancellationToken) =>
+                Task.FromResult(EmailSendOutcome.Sent);
         }
 
         /// <summary>Creates a reset service provider with the production application wiring.</summary>
@@ -366,27 +370,30 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         }
 
         /// <summary>Runs the real proposal acceptance handler in an isolated scope.</summary>
-        public async Task<Result<AcceptProposalOutcome>> AcceptAsync(Guid managerId, Guid proposalId, int headcount)
+        public async Task<Result<RecordAcceptanceOutcome>> AcceptAsync(Guid managerId, Guid proposalId, int headcount)
         {
             await using var scope = _services.CreateAsyncScope();
-            return await scope.ServiceProvider.GetRequiredService<AcceptProposalHandler>().HandleAsync(
-                new AcceptProposalCommand(managerId, proposalId, headcount), CancellationToken.None);
+            return await scope.ServiceProvider.GetRequiredService<RecordAcceptanceHandler>().HandleAsync(
+                new RecordAcceptanceCommand(managerId, proposalId, headcount), CancellationToken.None);
         }
 
         /// <summary>Runs the real proposal creation handler in an isolated scope.</summary>
-        public async Task<Result<Guid>> ProposeAsync(Guid managerId, DateOnly date, TimeOnly startTime)
+        public async Task<Result<ProposeEventOutcome>> ProposeAsync(Guid managerId, DateOnly date, TimeOnly startTime)
         {
             await using var scope = _services.CreateAsyncScope();
             return await scope.ServiceProvider.GetRequiredService<ProposeEventHandler>().HandleAsync(
-                new ProposeEventCommand(managerId, date, startTime), CancellationToken.None);
+                new ProposeEventCommand(
+                    managerId, TransitionalLocation.Id, date, startTime, 240, AppointmentTypeIds.All),
+                CancellationToken.None);
         }
 
         /// <summary>Runs the real coordinator invite trigger in an isolated scope.</summary>
-        public async Task<Result<InviteIssueResult>> TriggerAsync(Guid coordinatorId, Guid attendeeId)
+        public async Task<Result<InviteAttendeeOutcome>> TriggerAsync(Guid coordinatorId, Guid attendeeId)
         {
             await using var scope = _services.CreateAsyncScope();
-            return await scope.ServiceProvider.GetRequiredService<TriggerInviteHandler>().HandleAsync(
-                new TriggerInviteCommand(coordinatorId, attendeeId), CancellationToken.None);
+            return await scope.ServiceProvider.GetRequiredService<InviteAttendeeHandler>().HandleAsync(
+                new InviteAttendeeCommand(coordinatorId, attendeeId, [TransitionalLocation.Id]),
+                CancellationToken.None);
         }
 
         /// <summary>Runs the real attendee-token booking confirmation in an isolated scope.</summary>
@@ -620,6 +627,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             /// <inheritdoc />
             public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken) =>
                 _inner.GetByEmailAsync(email, cancellationToken);
+
+            /// <inheritdoc />
+            public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken) =>
+                _inner.LockByGroupForUpdateAsync(groupId, cancellationToken);
 
             /// <inheritdoc />
             public Task<IReadOnlyList<Attendee>> ListAsync(

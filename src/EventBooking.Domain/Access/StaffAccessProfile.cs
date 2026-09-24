@@ -1,4 +1,3 @@
-using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Common;
 
 namespace EventBooking.Domain.Access;
@@ -141,10 +140,9 @@ public sealed class StaffAccessProfile
             !NeedsScope(roleSet) && appointmentTypeId is not null,
             "Only Manager or AppointmentStaff can have an appointment type.");
 
-        if (appointmentTypeId is not null)
-        {
-            AppointmentTypeIds.EnsureKnown(appointmentTypeId.Value);
-        }
+        // No fixed-set guard: Admin-managed appointment-type ids flow here the way they
+        // flow through Attendee groups and Invite snapshots. Existence is checked against
+        // the type repository by the handlers that need it, not by the domain.
 
         return roleSet;
     }

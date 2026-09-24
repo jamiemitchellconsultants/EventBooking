@@ -59,4 +59,18 @@ public enum AuditAction
     StaffRolesSynced = 29,
     /// <summary>Records a Coordinator deleting a Attendee and cascading onto their active bookings.</summary>
     AttendeeDeleted = 30,
+    /// <summary>Records an Admin creating a location.</summary>
+    LocationCreated = 31,
+    /// <summary>Records an Admin changing a location.</summary>
+    LocationUpdated = 32,
+    /// <summary>Records an Admin creating an appointment type.</summary>
+    AppointmentTypeCreated = 33,
+    /// <summary>Records an Admin changing an appointment type.</summary>
+    AppointmentTypeUpdated = 34,
+    /// <summary>Records an Admin creating an attendee group.</summary>
+    AttendeeGroupCreated = 35,
+    /// <summary>Records an Admin changing an attendee group.</summary>
+    AttendeeGroupUpdated = 36,
+    /// <summary>Records an Admin saving the system settings.</summary>
+    SystemSettingsChanged = 37,
 }

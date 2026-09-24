@@ -8,7 +8,7 @@ namespace EventBooking.Infrastructure.Persistence.Locking;
 public sealed class LockOrderViolationException(LockLevel held, LockLevel requested)
     : InvalidOperationException(
         $"This transaction already holds a {held} lock, so it cannot now take a {requested} lock. " +
-        "The order is Attendee, EventProposal, Event, EventCapacity: take every lock the command " +
+        "The order is Attendee, EventProposal, Invite, Booking, Event, EventCapacity: take every lock the command " +
         "needs in that order, before the first write.")
 {
     /// <summary>Gets the highest level this transaction already held.</summary>

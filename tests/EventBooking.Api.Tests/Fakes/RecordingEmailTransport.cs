@@ -1,32 +1,38 @@
-using EventBooking.Application.Abstractions;
 using EventBooking.Infrastructure.Email;
 
 namespace EventBooking.Api.Tests.Fakes;
+
+/// <summary>A send the fake provider accepted.</summary>
+/// <param name="Recipient">The recipient address.</param>
+/// <param name="Subject">The subject.</param>
+/// <param name="TextBody">The text body.</param>
+/// <param name="HtmlBody">The HTML body.</param>
+public sealed record CapturedMail(string Recipient, string Subject, string TextBody, string HtmlBody);
 
 /// <summary>
 /// Stands in for AWS SES in every API test. Constructing the real
 /// <c>AmazonSimpleEmailServiceV2Client</c> throws immediately outside an AWS environment (no
 /// RegionEndpoint or ServiceURL configured), which is exactly where CI runs — so no test may
-/// depend on it, directly or through a handler that happens to send an email.
+/// depend on it, directly or through a tool that happens to send an email.
 /// </summary>
 public sealed class RecordingEmailTransport : IEmailTransport
 {
-    /// <summary>Messages accepted by this fake provider.</summary>
-    public List<EmailMessage> Sent { get; } = [];
+    /// <summary>Sends the fake provider accepted.</summary>
+    public List<CapturedMail> Sent { get; } = [];
 
-    /// <summary>Makes the next provider call fail, modelling an SES rejection.</summary>
-    public bool FailNextSend { get; set; }
+    /// <summary>The outcome every send reports until reassigned.</summary>
+    public EmailSendOutcome Next { get; set; } = EmailSendOutcome.Sent;
 
     /// <inheritdoc />
-    public Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
+    public Task<EmailSendOutcome> SendAsync(
+        string recipient, string subject, string textBody, string htmlBody,
+        CancellationToken cancellationToken)
     {
-        if (FailNextSend)
+        if (Next == EmailSendOutcome.Sent)
         {
-            FailNextSend = false;
-            throw new InvalidOperationException("simulated provider failure");
+            Sent.Add(new CapturedMail(recipient, subject, textBody, htmlBody));
         }
 
-        Sent.Add(message);
-        return Task.CompletedTask;
+        return Task.FromResult(Next);
     }
 }

@@ -18,4 +18,12 @@ public interface IAttendeeGroupRepository
     /// <summary>Lists active mapped groups ordered by display name.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<IReadOnlyList<AttendeeGroup>> ListActiveAsync(CancellationToken cancellationToken);
+
+    /// <summary>Lists every group, inactive included.</summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<IReadOnlyList<AttendeeGroup>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>Stages a new attendee group for the next save.</summary>
+    /// <param name="group">The group.</param>
+    void Add(AttendeeGroup group);
 }

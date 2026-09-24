@@ -15,22 +15,22 @@ namespace EventBooking.Web.Tests;
 public class AttendeePresentationTests : BunitContext
 {
     [Theory]
-    [InlineData(AttendeeStatus.NotYetInvited, "status-new")]
-    [InlineData(AttendeeStatus.AwaitingAvailability, "status-warning")]
-    [InlineData(AttendeeStatus.Invited, "status-neutral")]
-    [InlineData(AttendeeStatus.Booked, "status-success")]
-    [InlineData(AttendeeStatus.NoResponseNeedsFollowUp, "status-warning")]
+    [InlineData("NotYetInvited", "status-new")]
+    [InlineData("AwaitingAvailability", "status-warning")]
+    [InlineData("Invited", "status-neutral")]
+    [InlineData("Booked", "status-success")]
+    [InlineData("NoResponseNeedsFollowUp", "status-warning")]
     public void EachCanonicalAttendeeStatusGetsItsWireframeStyle(
-        AttendeeStatus status,
+        string status,
         string expectedCssClass)
     {
-        Assert.Equal(expectedCssClass, AttendeePresentation.StatusCssClass((int)status));
+        Assert.Equal(expectedCssClass, AttendeePresentation.StatusCssClass(status));
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(999)]
-    public void UnknownRawStatusValuesAreNeutral(int rawStatus)
+    [InlineData("")]
+    [InlineData("Bogus")]
+    public void UnknownRawStatusValuesAreNeutral(string rawStatus)
     {
         Assert.Equal("status-neutral", AttendeePresentation.StatusCssClass(rawStatus));
     }
@@ -207,12 +207,13 @@ public class AttendeePresentationTests : BunitContext
 
             if (path == "/api/attendees")
             {
-                return Json(new[]
-                {
-                    new AttendeeDto(
-                        attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical",
-                        [], 1, "Not yet invited"),
-                });
+                return Json(new AttendeeListDto(
+                    [
+                        new AttendeeDto(
+                            attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
+                            "Not yet invited", "MED", "NoActiveBooking", [], null, "cursor"),
+                    ],
+                    null));
             }
 
             if (path == "/api/attendee-groups")
@@ -220,7 +221,12 @@ public class AttendeePresentationTests : BunitContext
                 return Json(Array.Empty<object>());
             }
 
-            return Json(new DashboardsDto([], [], [], []));
+            return Json(new DashboardsDto(
+                new DashboardTabDto<AwaitingRowDto>(0, []),
+                new DashboardTabDto<NoResponseRowDto>(0, []),
+                new DashboardTabDto<EventRowDto>(0, []),
+                0,
+                0));
         });
         Services.AddSingleton(
             new AttendeesClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));

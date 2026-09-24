@@ -13,53 +13,94 @@ public sealed record AttendeeResourceResponse(
     string Name,
     /// <summary>Gets the Attendee contact email address.</summary>
     string Email,
-    /// <summary>Gets the assigned Attendee Group identifier.</summary>
-    Guid AttendeeGroupId,
-    /// <summary>Gets the canonical Attendee Group code.</summary>
-    string AttendeeGroupCode,
-    /// <summary>Gets the Attendee Group display name.</summary>
-    string AttendeeGroupName,
-    /// <summary>Gets the Appointment Types currently required by the Attendee.</summary>
-    IReadOnlyList<AppointmentTypeSummary> RequiredAppointmentTypes,
     /// <summary>Gets where the Attendee sits in the invite and booking lifecycle.</summary>
-    AttendeeStatus Status,
+    string Status,
     /// <summary>Gets the Coordinator-facing wording for the Attendee status.</summary>
     string StatusDisplay,
+    /// <summary>Gets the canonical Attendee Group code.</summary>
+    string GroupCode,
+    /// <summary>Gets the readiness label for the Attendee.</summary>
+    string Readiness,
+    /// <summary>Gets the required type codes, on awaiting-availability rows only.</summary>
+    IReadOnlyList<string> RequiredTypeCodes,
+    /// <summary>Gets the latest delivery status, or null when never invited.</summary>
+    string? LatestDeliveryStatus,
+    /// <summary>Gets the row's page cursor.</summary>
+    string Cursor,
+    /// <summary>Gets the latest delivery's id, which the retry operation needs.</summary>
+    Guid? LatestDeliveryId,
     /// <summary>Gets the safe follow-up operations for the Attendee.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
     /// <summary>Projects one list item into its hypermedia resource.</summary>
     /// <param name="item">The application list item to project.</param>
     /// <returns>The API resource with Attendee workflow links.</returns>
-    public static AttendeeResourceResponse From(AttendeeListItem item) =>
-        new(item.AttendeeId, item.Name, item.Email, item.AttendeeGroupId,
-            item.AttendeeGroupCode, item.AttendeeGroupName,
-            item.RequiredAppointmentTypes,
-            item.Status, item.StatusDisplay,
-            AttendeeLinks.ForAttendee(item.AttendeeId, item.Status));
+    public static AttendeeResourceResponse From(AttendeeListItem item)
+    {
+        var status = Enum.Parse<AttendeeStatus>(item.Status);
+        return new(
+            item.AttendeeId, item.Name, item.Email,
+            item.Status, DisplayOf(status),
+            item.GroupCode,
+            item.Readiness,
+            item.RequiredTypeCodes,
+            item.LatestDeliveryStatus,
+            item.Cursor,
+            item.LatestDeliveryId,
+            AttendeeLinks.ForAttendee(item.AttendeeId, status));
+    }
+
+    /// <summary>The Coordinator-facing wording for each status.</summary>
+    /// <param name="status">The status.</param>
+    public static string DisplayOf(AttendeeStatus status) => status switch
+    {
+        AttendeeStatus.NotYetInvited => "Not yet invited",
+        AttendeeStatus.AwaitingAvailability => "Awaiting availability",
+        AttendeeStatus.Invited => "Invited (pending response)",
+        AttendeeStatus.Booked => "Booked",
+        AttendeeStatus.NoResponseNeedsFollowUp => "No response - needs follow-up",
+        _ => status.ToString(),
+    };
+}
+
+/// <summary>One attendee-list page with conditional next-page affordance.</summary>
+public sealed record AttendeeListResourceResponse(
+    /// <summary>Gets the attendee rows for the requested page.</summary>
+    IReadOnlyList<AttendeeResourceResponse> Items,
+    /// <summary>Gets the opaque cursor for the following page, or null when exhausted.</summary>
+    string? NextCursor,
+    /// <summary>Gets the self relation plus next while paging continues.</summary>
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
+{
+    /// <summary>Projects one attendee-list page into its hypermedia resource.</summary>
+    /// <param name="page">The application list page to project.</param>
+    /// <param name="currentQuery">The raw incoming query string, used verbatim for the self href.</param>
+    /// <returns>The API resource with list links.</returns>
+    public static AttendeeListResourceResponse From(AttendeeListView page, string currentQuery) =>
+        new(page.Items.Select(AttendeeResourceResponse.From).ToList(),
+            page.NextCursor,
+            AttendeeLinks.ForAttendeeList(currentQuery, page.NextCursor));
 }
 
 /// <summary>Coordinator-facing delivery outcome for one started recovery invite.</summary>
 public sealed record StartRecoveryResourceResponse(
-    /// <summary>Gets the new recovery Invite identifier, or empty when awaiting availability.</summary>
-    Guid InviteId,
-    /// <summary>Gets the recoverable snapshot offered, or awaiting availability.</summary>
-    IReadOnlyList<Guid> AppointmentTypeIds,
-    /// <summary>Gets whether the post-commit provider attempt completed successfully.</summary>
-    bool EmailSent,
+    /// <summary>Gets the newly issued recovery invite identifier.</summary>
+    Guid RecoveryInviteId,
+    /// <summary>Gets the locations the recovery invite covers.</summary>
+    IReadOnlyList<Guid> LocationIds,
+    /// <summary>Gets the recoverable snapshot the recovery invite offers.</summary>
+    IReadOnlyList<Guid> RecoverableTypeIds,
     /// <summary>Gets the safe follow-up operations for the recovery invite.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>Coordinator-facing outcome of cancelling one attendee booking.</summary>
 public sealed record CancelAttendeeBookingResourceResponse(
-    /// <summary>Gets whether a replacement Invite was created for the Attendee.</summary>
-    bool Reinvited,
-    /// <summary>Gets the explicit replacement-invite creation state.</summary>
-    bool InviteCreated,
-    /// <summary>Gets the provider outcome, or Unavailable when no replacement Invite exists.</summary>
-    string? DeliveryStatus,
-    /// <summary>Gets the durable replacement delivery identifier, when one was staged.</summary>
-    Guid? DeliveryId,
+    /// <summary>Gets whether this call only previews the cancellation's consequence.</summary>
+    bool ConfirmationRequired,
+    /// <summary>Gets how many active bookings the attendee holds (preview only).</summary>
+    int ActiveBookingCount,
+    /// <summary>Gets the cancelled booking identifier (confirmed call only).</summary>
+    Guid? CancelledBookingId,
     /// <summary>Gets the safe follow-up operations for the Attendee.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
@@ -182,6 +223,56 @@ public static class AttendeeLinks
         }
 
         return links;
+    }
+
+    /// <summary>Builds the self relation from the incoming query plus a next relation while paging continues.</summary>
+    /// <param name="currentQuery">The raw incoming query string, used verbatim for the self href.</param>
+    /// <param name="nextCursor">The opaque cursor for the following page, or null when exhausted.</param>
+    /// <returns>The attendee-list affordances keyed by relation name.</returns>
+    public static IReadOnlyDictionary<string, ApiLink> ForAttendeeList(string currentQuery, string? nextCursor)
+    {
+        var links = new Dictionary<string, ApiLink>
+        {
+            ["self"] = new($"/api/attendees{currentQuery}", "GET", "listAttendees"),
+        };
+        if (nextCursor is not null)
+        {
+            links["next"] = new(BuildListNextHref(currentQuery, nextCursor), "GET", "listAttendees");
+        }
+
+        return links;
+    }
+
+    private static string BuildListNextHref(string currentQuery, string nextCursor)
+    {
+        var parameters = new List<(string Name, string? Value)>();
+        var seenCursor = false;
+        if (currentQuery.Length > 1)
+        {
+            foreach (var pair in currentQuery[1..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var index = pair.IndexOf('=');
+                var name = index < 0 ? pair : pair[..index];
+                var value = index < 0 ? null : pair[(index + 1)..];
+                if (string.Equals(name, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    seenCursor = true;
+                    parameters.Add((name, Uri.EscapeDataString(nextCursor)));
+                }
+                else
+                {
+                    parameters.Add((name, value));
+                }
+            }
+        }
+
+        if (!seenCursor)
+        {
+            parameters.Add(("cursor", Uri.EscapeDataString(nextCursor)));
+        }
+
+        return "/api/attendees?" + string.Join(
+            "&", parameters.Select(p => p.Value is null ? p.Name : $"{p.Name}={p.Value}"));
     }
 
     /// <summary>Builds the cancellation link for one Attendee booking.</summary>

@@ -20,48 +20,60 @@ namespace EventBooking.Api.Tests;
 public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
 {
     private sealed record CancelResponse(
-        bool Reinvited, bool InviteCreated, string? DeliveryStatus, Guid? DeliveryId);
+        bool ConfirmationRequired, int ActiveBookingCount, Guid? CancelledBookingId);
 
     private sealed record BookingRow(
         Guid BookingId, bool IsOriginal, DateOnly EventDate, TimeOnly EventStartTime, TimeOnly EventEndTime);
 
     [Fact]
-    public async Task CoordinatorCanCancelAnOriginalBooking()
+    public async Task CoordinatorCancelPreviewsTheConsequenceThenCancels()
     {
         var (attendeeId, bookingId) = await GivenBookedAttendeeAsync();
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel", new { Rebook = false });
+        using var preview = await client.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=false", new { });
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<CancelResponse>();
-        Assert.False(body!.Reinvited);
-        Assert.False(body.InviteCreated);
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        var consequence = await preview.Content.ReadFromJsonAsync<CancelResponse>();
+        Assert.True(consequence!.ConfirmationRequired);
+        Assert.Equal(1, consequence.ActiveBookingCount);
+        Assert.Null(consequence.CancelledBookingId);
+        Assert.Equal(BookingStatus.Active, await StatusOfAsync(bookingId));
+
+        using var confirmed = await client.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=true", new { });
+
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        var outcome = await confirmed.Content.ReadFromJsonAsync<CancelResponse>();
+        Assert.False(outcome!.ConfirmationRequired);
+        Assert.Equal(bookingId, outcome.CancelledBookingId);
         Assert.Equal(BookingStatus.Cancelled, await StatusOfAsync(bookingId));
     }
 
     [Fact]
-    public async Task CoordinatorCanCancelAndRebookAnOriginalBooking()
+    public async Task CancellingAnAlreadyCancelledBookingIsAConflict()
     {
         var (attendeeId, bookingId) = await GivenBookedAttendeeAsync();
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel", new { Rebook = true });
+        using var first = await client.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=true", new { });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<CancelResponse>();
-        Assert.True(body!.Reinvited);
-        Assert.True(body.InviteCreated);
-        Assert.NotNull(body.DeliveryStatus);
+        using var response = await client.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=true", new { });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("conflict", problem.RootElement.GetProperty("title").GetString());
         Assert.Equal(BookingStatus.Cancelled, await StatusOfAsync(bookingId));
     }
 
     [Fact]
-    public async Task RebookTrueOnARecoveryBookingIsAConflict()
+    public async Task CoordinatorCanCancelARecoveryBookingAlone()
     {
         var (attendeeId, originalId) = await GivenBookedAttendeeAsync();
         var recoveryId = await GivenActiveRecoveryAsync(attendeeId, originalId);
@@ -69,12 +81,13 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{recoveryId}/cancel", new { Rebook = true });
+            $"/api/attendees/{attendeeId}/bookings/{recoveryId}/cancel?confirm=true", new { });
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("conflict", problem.RootElement.GetProperty("title").GetString());
-        Assert.Equal(BookingStatus.Active, await StatusOfAsync(recoveryId));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var outcome = await response.Content.ReadFromJsonAsync<CancelResponse>();
+        Assert.Equal(recoveryId, outcome!.CancelledBookingId);
+        Assert.Equal(BookingStatus.Cancelled, await StatusOfAsync(recoveryId));
+        Assert.Equal(BookingStatus.Active, await StatusOfAsync(originalId));
     }
 
     [Fact]
@@ -85,7 +98,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{Guid.NewGuid()}/cancel", new { Rebook = false });
+            $"/api/attendees/{attendeeId}/bookings/{Guid.NewGuid()}/cancel?confirm=true", new { });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -107,7 +120,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var cancel = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel", new { Rebook = false });
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=true", new { });
         using var list = await client.GetAsync($"/api/attendees/{attendeeId}/bookings");
 
         Assert.Equal(HttpStatusCode.Forbidden, cancel.StatusCode);
@@ -124,7 +137,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel", new { Rebook = false });
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=true", new { });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -136,7 +149,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         using var cancel = await client.PostAsJsonAsync(
-            $"/api/attendees/{Guid.NewGuid()}/bookings/{Guid.NewGuid()}/cancel", new { Rebook = false });
+            $"/api/attendees/{Guid.NewGuid()}/bookings/{Guid.NewGuid()}/cancel?confirm=true", new { });
         using var list = await client.GetAsync($"/api/attendees/{Guid.NewGuid()}/bookings");
 
         Assert.Equal(HttpStatusCode.Unauthorized, cancel.StatusCode);

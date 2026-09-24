@@ -68,8 +68,8 @@ public class CallerAccessorTests
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [
-                new Claim(HttpContextCallerAccessor.RolesClaim, "Coordinator"),
-                new Claim(HttpContextCallerAccessor.RolesClaim, "Manager"),
+                new Claim("roles", "Coordinator"),
+                new Claim("roles", "Manager"),
             ],
             "test"));
 
@@ -83,8 +83,8 @@ public class CallerAccessorTests
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [
-                new Claim(HttpContextCallerAccessor.RolesClaim, "Coordinator"),
-                new Claim(HttpContextCallerAccessor.RolesClaim, "SuperUser"),
+                new Claim("roles", "Coordinator"),
+                new Claim("roles", "SuperUser"),
             ],
             "test"));
 
@@ -122,7 +122,7 @@ public class CallerAccessorTests
             new ClaimsIdentity(
                 [new Claim(HttpContextCallerAccessor.ShortObjectIdClaim, ObjectId.ToString())], "test"),
             new ClaimsIdentity(
-                [new Claim(HttpContextCallerAccessor.RolesClaim, "Manager")], "test"),
+                [new Claim("roles", "Manager")], "test"),
         ]);
 
         var roles = HttpContextCallerAccessor.RolesOf(principal);
@@ -135,9 +135,9 @@ public class CallerAccessorTests
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [
-                new Claim(HttpContextCallerAccessor.RolesClaim, "Manager"),
-                new Claim(HttpContextCallerAccessor.RolesClaim, "Manager"),
-                new Claim(HttpContextCallerAccessor.RolesClaim, "manager"),
+                new Claim("roles", "Manager"),
+                new Claim("roles", "Manager"),
+                new Claim("roles", "manager"),
             ],
             "test"));
         var rejected = new List<string>();

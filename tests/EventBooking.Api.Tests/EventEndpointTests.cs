@@ -41,13 +41,23 @@ public class EventEndpointTests(ApiFactory factory)
     [Fact]
     public async Task AManagerCanProposeAEventAndSeeItOnTheBoard()
     {
+        await factory.GivenStaffAsync(Role.Manager, AppointmentTypeIds.MedicalCheckUp);
+        await factory.GivenStaffAsync(Role.Manager, AppointmentTypeIds.UniformFitting);
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager, AppointmentTypeIds.DrugAndAlcoholTesting);
         var client = factory.CreateClient();
 
         var created = await client.PostAsJsonAsync(
             "/api/event-proposals",
-            new { Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30), StartTime = new TimeOnly(9, 0) });
+            new
+            {
+                LocationId = Domain.Locations.TransitionalLocation.Id,
+                Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30),
+                StartTime = new TimeOnly(9, 0),
+                DurationMinutes = 240,
+                ListedAppointmentTypeIds = AppointmentTypeIds.All,
+                ProposerHeadcount = 10,
+            });
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
@@ -65,7 +75,15 @@ public class EventEndpointTests(ApiFactory factory)
 
         var response = await client.PostAsJsonAsync(
             "/api/event-proposals",
-            new { Date = new DateOnly(2020, 1, 1), StartTime = new TimeOnly(9, 0) });
+            new
+            {
+                LocationId = Domain.Locations.TransitionalLocation.Id,
+                Date = new DateOnly(2020, 1, 1),
+                StartTime = new TimeOnly(9, 0),
+                DurationMinutes = 240,
+                ListedAppointmentTypeIds = new[] { AppointmentTypeIds.MedicalCheckUp },
+                ProposerHeadcount = 10,
+            });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -124,17 +142,21 @@ public class EventEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task TheTwoStageCancellationProtocolIsUnchangedForAnAdmin()
+    public async Task TheTwoStageCancellationProtocolPreviewsCountsThenCancels()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
         var eventId = await GivenEventWithOneBookingAsync();
         var client = factory.CreateClient();
 
         using var first = await client.DeleteAsync($"/api/events/{eventId}?confirm=false");
-        Assert.Equal(HttpStatusCode.Conflict, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var preview = await first.Content.ReadFromJsonAsync<CancelEventResponse>();
+        Assert.Equal(1, preview!.CancelledCount);
 
         using var second = await client.DeleteAsync($"/api/events/{eventId}?confirm=true");
         Assert.True(second.IsSuccessStatusCode, await second.Content.ReadAsStringAsync());
+        var outcome = await second.Content.ReadFromJsonAsync<CancelEventResponse>();
+        Assert.Equal(1, outcome!.CancelledCount);
     }
 
     /// <summary>Seeds one event with capacity for every appointment type.</summary>
@@ -183,6 +205,7 @@ public class EventEndpointTests(ApiFactory factory)
             0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, eventId, DateTimeOffset.UtcNow);
+        invite.MarkUsed();
         attendee.MarkInvited(ProposalFixture.Now);
         attendee.MarkBooked(ProposalFixture.Now);
 
@@ -204,6 +227,8 @@ public class EventEndpointTests(ApiFactory factory)
         await context.SaveChangesAsync();
         return eventId;
     }
+
+    private sealed record CancelEventResponse(int CancelledCount, int ReinvitedCount, int AwaitingAvailabilityCount);
 
     private sealed record EventOperationsResponse(IReadOnlyList<EventOperationsRow> Events);
 

@@ -65,14 +65,15 @@ public class DashboardsComponentTests : BunitContext
     };
 
     private static DashboardsDto DashboardWithOneStuckAttendee(Guid attendeeId) => new(
-        AwaitingAvailability: [],
-        NoResponse:
+        new DashboardTabDto<AwaitingRowDto>(0, []),
+        new DashboardTabDto<NoResponseRowDto>(1,
         [
             new NoResponseRowDto(
                 attendeeId, "D. Stuck", "d.stuck@mail.com", ["DAT"], DateOnly.FromDateTime(DateTime.UtcNow)),
-        ],
-        Events: [],
-        EmailStatuses: []);
+        ]),
+        new DashboardTabDto<EventRowDto>(0, []),
+        0,
+        0);
 
     [Fact]
     public async Task ASuccessfulReinviteStaysVisibleEvenWhenTheFollowingRefreshFails()
@@ -99,8 +100,12 @@ public class DashboardsComponentTests : BunitContext
         });
     }
 
-    private static DashboardsDto EmptyDashboard() =>
-        new(AwaitingAvailability: [], NoResponse: [], Events: [], EmailStatuses: []);
+    private static DashboardsDto EmptyDashboard() => new(
+        new DashboardTabDto<AwaitingRowDto>(0, []),
+        new DashboardTabDto<NoResponseRowDto>(0, []),
+        new DashboardTabDto<EventRowDto>(0, []),
+        0,
+        0);
 
     [Fact]
     public void ArrowKeysMoveTheSelectedTabAndWrapAtTheEnds()
@@ -140,15 +145,16 @@ public class DashboardsComponentTests : BunitContext
     }
 
     private static DashboardsDto DashboardWithOneAwaitingAttendee(Guid attendeeId) => new(
-        AwaitingAvailability:
+        new DashboardTabDto<AwaitingRowDto>(1,
         [
             new AwaitingRowDto(
                 attendeeId, "A. Waiting", "a.waiting@mail.com", ["DAT"],
                 DateOnly.FromDateTime(DateTime.UtcNow), 3),
-        ],
-        NoResponse: [],
-        Events: [],
-        EmailStatuses: []);
+        ]),
+        new DashboardTabDto<NoResponseRowDto>(0, []),
+        new DashboardTabDto<EventRowDto>(0, []),
+        0,
+        0);
 
     /// <summary>Verifies the awaiting-availability tab offers each attendee's history.</summary>
     [Fact]

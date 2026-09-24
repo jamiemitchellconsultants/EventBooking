@@ -24,15 +24,11 @@
             <p class="booking-page__lead">You're booked in for:</p>
         </div>
         <div class="booking-page__status">
-            @if (_confirmed.DeliveryStatus == "Sent")
+            <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your booking is confirmed. Your confirmation email will follow shortly; use your management link below to change or cancel.</p>
+            @if (_confirmedOption is not null)
             {
-                <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your confirmation email has been sent.</p>
+                <p class="booking-page__confirmed-window">@_confirmedOption.Date.ToString("dddd, dd MMM yyyy") · @_confirmedOption.StartTime.ToString("HH\\:mm") – @_confirmedOption.EndTime.ToString("HH\\:mm")</p>
             }
-            else
-            {
-                <p class="booking-page__banner booking-page__banner--success" role="status"><strong>Booked.</strong> Your booking is confirmed. We could not confirm email delivery; use your management link below.</p>
-            }
-            <p class="booking-page__confirmed-window">@_confirmed.Date.ToString("dddd, dd MMM yyyy") · @_confirmed.StartTime.ToString("HH\\:mm") – @_confirmed.EndTime.ToString("HH\\:mm")</p>
             <p class="booking-page__note">Need to change or cancel? <a href="@ManageUrl">Use your booking management link.</a></p>
         </div>
     }
@@ -111,6 +107,7 @@
 
     private InviteDto? _invite;
     private ConfirmedBookingDto? _confirmed;
+    private InviteOptionDto? _confirmedOption;
     private Guid? _chosen;
     private string? _error;
     private bool _expired;
@@ -140,6 +137,7 @@
         _busy = false;
         _invite = null;
         _confirmed = null;
+        _confirmedOption = null;
         _chosen = null;
         _error = null;
         _expired = false;
@@ -195,6 +193,7 @@
             if (outcome.IsSuccess)
             {
                 _confirmed = outcome.Value;
+                _confirmedOption = _invite?.Options.SingleOrDefault(option => option.EventId == chosen);
                 _invite = null;
                 return;
             }

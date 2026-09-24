@@ -89,10 +89,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
 
         Assert.Equal("/api/attendees", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("", handler.Requests[0].RequestUri!.Query);
@@ -104,10 +104,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(null, "a novak@mail.com", CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, "a novak@mail.com", CancellationToken.None);
 
         Assert.Contains("search=a%20novak%40mail.com", handler.Requests[0].RequestUri!.Query);
     }
@@ -118,10 +118,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
 
         Assert.Equal("/api/attendees", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("", handler.Requests[0].RequestUri!.Query);
@@ -133,12 +133,12 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(2, null, CancellationToken.None);
+        await client.ListAsync(null, null, "AwaitingAvailability", null, null, null, CancellationToken.None);
 
-        Assert.Contains("status=2", handler.Requests[0].RequestUri!.Query);
+        Assert.Contains("status=AwaitingAvailability", handler.Requests[0].RequestUri!.Query);
         Assert.DoesNotContain("search=", handler.Requests[0].RequestUri!.Query);
     }
 
@@ -148,13 +148,13 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(5, "a novak@mail.com", CancellationToken.None);
+        await client.ListAsync(null, null, "NoResponseNeedsFollowUp", null, null, "a novak@mail.com", CancellationToken.None);
 
         var query = handler.Requests[0].RequestUri!.Query;
-        Assert.Contains("status=5", query);
+        Assert.Contains("status=NoResponseNeedsFollowUp", query);
         Assert.Contains("search=a%20novak%40mail.com", query);
     }
 
@@ -277,7 +277,12 @@ public class AttendeesClientTests
         var typeId = Guid.NewGuid();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new { inviteId, appointmentTypeIds = new[] { typeId }, emailSent = true }),
+            Content = JsonContent.Create(new
+            {
+                recoveryInviteId = inviteId,
+                locationIds = new[] { Guid.NewGuid() },
+                recoverableTypeIds = new[] { typeId },
+            }),
         };
 
         var outcome = await client.StartRecoveryAsync(attendeeId, CancellationToken.None);
@@ -286,9 +291,8 @@ public class AttendeesClientTests
         Assert.Equal(
             $"/api/attendees/{attendeeId}/recovery-invites",
             handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Equal(inviteId, outcome.Value!.InviteId);
-        Assert.Equal([typeId], outcome.Value.AppointmentTypeIds);
-        Assert.True(outcome.Value.EmailSent);
+        Assert.Equal(inviteId, outcome.Value!.RecoveryInviteId);
+        Assert.Equal([typeId], outcome.Value.RecoverableTypeIds);
     }
 
     [Fact]
@@ -337,7 +341,7 @@ public class AttendeesClientTests
     public async Task EveryResponseIsDisposedOnlyAfterTheClientHasConsumedItsContent()
     {
         var (client, handler) = Given();
-        var listContent = new TrackingContent(JsonSerializer.Serialize(new List<AttendeeDto>()));
+        var listContent = new TrackingContent(JsonSerializer.Serialize(new AttendeeListDto([], null)));
         var createContent = new TrackingContent(JsonSerializer.Serialize(Guid.NewGuid()));
         var importContent = new TrackingContent(JsonSerializer.Serialize(new ImportOutcomeDto(true, 1, [])));
         var listResponse = new TrackingResponseMessage(HttpStatusCode.OK, listContent);
@@ -362,7 +366,7 @@ public class AttendeesClientTests
         }
 
         var id = Guid.NewGuid();
-        await client.ListAsync(null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
         await client.CreateAsync("Amara Novak", "a.novak@mail.com", null, CancellationToken.None);
         await client.UpdateAsync(id, "Amara Novak", "a.novak@mail.com", null, CancellationToken.None);
         await client.DeleteAsync(id, false, CancellationToken.None);
@@ -423,45 +427,44 @@ public class AttendeesClientTests
     }
 
     [Fact]
-    public async Task CancelBookingPostsTheRebookFlagAndReadsTheOutcome()
+    public async Task CancelBookingPostsTheConfirmFlagAndReadsTheOutcome()
     {
         var handler = new StubHandler();
         var attendeeId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
+        var cancelled = Guid.NewGuid();
         handler.Responses.Enqueue(Json(
-            """{"reinvited":false,"inviteCreated":false,"deliveryStatus":"Unavailable","deliveryId":null}"""));
+            $$"""{"confirmationRequired":false,"activeBookingCount":0,"cancelledBookingId":"{{cancelled}}"}"""));
         var client = NewAttendeesClient(handler);
 
         var outcome = await client.CancelBookingAsync(
-            attendeeId, bookingId, rebook: false, CancellationToken.None);
+            attendeeId, bookingId, confirm: true, CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        Assert.False(outcome.Value!.Reinvited);
-        Assert.Equal("Unavailable", outcome.Value.DeliveryStatus);
+        Assert.False(outcome.Value!.ConfirmationRequired);
+        Assert.Equal(cancelled, outcome.Value.CancelledBookingId);
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal(
             $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel",
             handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Contains("\"rebook\":false", handler.Bodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("?confirm=true", handler.Requests[0].RequestUri!.Query);
     }
 
     [Fact]
-    public async Task CancelAndRebookReportsTheReplacementDelivery()
+    public async Task CancelBookingPreviewReadsTheConsequence()
     {
         var handler = new StubHandler();
-        var deliveryId = Guid.NewGuid();
         handler.Responses.Enqueue(Json(
-            $$"""{"reinvited":true,"inviteCreated":true,"deliveryStatus":"Sent","deliveryId":"{{deliveryId}}"}"""));
+            """{"confirmationRequired":true,"activeBookingCount":2,"cancelledBookingId":null}"""));
         var client = NewAttendeesClient(handler);
 
         var outcome = await client.CancelBookingAsync(
-            Guid.NewGuid(), Guid.NewGuid(), rebook: true, CancellationToken.None);
+            Guid.NewGuid(), Guid.NewGuid(), confirm: false, CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        Assert.True(outcome.Value!.Reinvited);
-        Assert.Equal("Sent", outcome.Value.DeliveryStatus);
-        Assert.Equal(deliveryId, outcome.Value.DeliveryId);
-        Assert.Contains("\"rebook\":true", handler.Bodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.True(outcome.Value!.ConfirmationRequired);
+        Assert.Equal(2, outcome.Value.ActiveBookingCount);
+        Assert.Equal("?confirm=false", handler.Requests[0].RequestUri!.Query);
     }
 
     [Fact]
@@ -472,7 +475,7 @@ public class AttendeesClientTests
         var client = NewAttendeesClient(handler);
 
         var outcome = await client.CancelBookingAsync(
-            Guid.NewGuid(), Guid.NewGuid(), rebook: true, CancellationToken.None);
+            Guid.NewGuid(), Guid.NewGuid(), confirm: true, CancellationToken.None);
 
         Assert.False(outcome.IsSuccess);
         Assert.Equal((int)HttpStatusCode.Conflict, outcome.StatusCode);

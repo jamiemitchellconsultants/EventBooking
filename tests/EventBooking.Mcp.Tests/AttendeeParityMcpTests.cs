@@ -28,7 +28,7 @@ public sealed class AttendeeParityMcpTests(McpFactory factory)
         var seeded = await McpScenarioSeeder.GivenAttendeeWithNoShowAsync(factory);
         factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
         using var started = await CallResultAsync("start_recovery_invite", new { attendeeId = seeded.AttendeeId });
-        var inviteId = started.RootElement.GetProperty("inviteId").GetGuid();
+        var inviteId = started.RootElement.GetProperty("recoveryInviteId").GetGuid();
         Assert.NotEqual(Guid.Empty, inviteId);
         var cancelled = await CallAsync(
             "cancel_recovery_invite", new { attendeeId = seeded.AttendeeId, inviteId });
@@ -43,9 +43,9 @@ public sealed class AttendeeParityMcpTests(McpFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
         using var result = await CallResultAsync("cancel_attendee_booking", new
         {
-            attendeeId = seeded.AttendeeId, bookingId = seeded.BookingId, rebook = false,
+            attendeeId = seeded.AttendeeId, bookingId = seeded.BookingId, confirm = true,
         });
-        Assert.False(result.RootElement.GetProperty("reinvited").GetBoolean());
+        Assert.Equal(seeded.BookingId, result.RootElement.GetProperty("cancelledBookingId").GetGuid());
     }
 
     [Fact]

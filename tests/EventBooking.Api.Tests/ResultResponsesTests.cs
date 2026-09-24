@@ -14,6 +14,10 @@ public class ResultResponsesTests
     [InlineData("not_found", 404)]
     [InlineData("conflict", 409)]
     [InlineData("appointment_version_conflict", 409)]
+    [InlineData("already-confirmed", 409)]
+    [InlineData("capacity-exhausted", 409)]
+    [InlineData("confirmation-required", 409)]
+    [InlineData("window-started", 409)]
     public void EachErrorCodeMapsToItsStatus(string code, int expected)
     {
         Assert.Equal(expected, ResultResponses.StatusCodeFor(code));

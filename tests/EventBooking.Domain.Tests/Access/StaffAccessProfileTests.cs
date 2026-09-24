@@ -45,8 +45,18 @@ public class StaffAccessProfileTests
         { [Role.Admin, Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting },
         { [Role.Coordinator], AppointmentTypeIds.DrugAndAlcoholTesting },
         { [(Role)999], null },
-        { [Role.Manager], Guid.NewGuid() },
     };
+
+    [Fact]
+    public void AdminManagedScopeIsAccepted()
+    {
+        var managed = Guid.NewGuid();
+
+        var profile = StaffAccessProfile.Create(Guid.NewGuid(), [Role.Manager], managed);
+
+        Assert.Equal(managed, profile.AppointmentTypeId);
+        Assert.True(profile.IsValid());
+    }
 
     [Fact]
     public void EmptyStaffIdentifierIsRejected()

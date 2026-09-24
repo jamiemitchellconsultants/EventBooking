@@ -6,7 +6,10 @@ namespace EventBooking.Domain.Invites;
 /// <summary>An offer of event options carrying an immutable requirement snapshot.</summary>
 public sealed class Invite
 {
-    /// <summary>Gets the number of event options every invite offers.</summary>
+    /// <summary>
+    /// Gets the fallback option count for paths that have no invite snapshot yet (the legacy
+    /// issuer, recovery start, event cancellation). New paths read the invite's own snapshot.
+    /// </summary>
     public const int RequiredOptionCount = 3;
 
     /// <summary>The version every freshly issued invite's book link is signed against.</summary>
@@ -51,6 +54,23 @@ public sealed class Invite
     /// <summary>Gets how many retries preceded this invite.</summary>
     public int RetryCount { get; private set; }
 
+    /// <summary>
+    /// The invite-expiry window in days this invite was issued under. Snapshotted at issue so a
+    /// later settings change never alters an outstanding invite.
+    /// </summary>
+    public int InviteExpiryDays { get; private set; }
+
+    /// <summary>
+    /// The automatic re-issue limit this invite was issued under. Snapshotted at issue for the
+    /// same reason.
+    /// </summary>
+    public int MaxAutoRetryCount { get; private set; }
+
+    /// <summary>
+    /// How many event options this invite offers. Snapshotted at issue for the same reason.
+    /// </summary>
+    public int InviteOptionCount { get; private set; }
+
     /// <summary>Gets the locations every offer on this invite is drawn from.</summary>
     public IReadOnlyList<InviteLocation> Locations => _locations;
 
@@ -86,6 +106,9 @@ public sealed class Invite
     /// <param name="eventIds">The event ids.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
     /// <param name="retryCount">The retry count.</param>
+    /// <param name="inviteExpiryDays">The expiry window snapshot; the uneditable default when omitted.</param>
+    /// <param name="maxAutoRetryCount">The re-issue limit snapshot; the uneditable default when omitted.</param>
+    /// <param name="inviteOptionCount">The option-count snapshot; the uneditable default when omitted.</param>
     public static Invite CreateInitial(
         Guid id,
         Guid attendeeId,
@@ -93,10 +116,14 @@ public sealed class Invite
         IEnumerable<Guid> locationIds,
         IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
-        int retryCount) =>
+        int retryCount,
+        int inviteExpiryDays = 7,
+        int maxAutoRetryCount = 2,
+        int inviteOptionCount = 3) =>
         Create(
             id, attendeeId, null, expiresAt,
-            DistinctLocations(locationIds), eventIds, appointmentTypeIds, retryCount);
+            DistinctLocations(locationIds), eventIds, appointmentTypeIds, retryCount,
+            inviteExpiryDays, maxAutoRetryCount, inviteOptionCount);
 
     /// <summary>
     /// Issues the next invite of the same journey, on the same locations. Expiry re-issue, top-up
@@ -123,7 +150,10 @@ public sealed class Invite
             originating.LocationIds,
             eventIds,
             originating.RequiredAppointmentTypeIds,
-            originating.RetryCount + 1);
+            originating.RetryCount + 1,
+            originating.InviteExpiryDays,
+            originating.MaxAutoRetryCount,
+            originating.InviteOptionCount);
     }
 
     /// <summary>Creates a recovery invite snapshotting only recoverable no-show types.</summary>
@@ -135,6 +165,9 @@ public sealed class Invite
     /// <param name="additionalLocationIds">Further locations the Coordinator opened up, or null.</param>
     /// <param name="eventIds">The event ids.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
+    /// <param name="inviteExpiryDays">The expiry window snapshot; the uneditable default when omitted.</param>
+    /// <param name="maxAutoRetryCount">The re-issue limit snapshot; the uneditable default when omitted.</param>
+    /// <param name="inviteOptionCount">The option-count snapshot; the uneditable default when omitted.</param>
     public static Invite CreateRecovery(
         Guid id,
         Guid attendeeId,
@@ -143,7 +176,10 @@ public sealed class Invite
         Guid originalLocationId,
         IEnumerable<Guid>? additionalLocationIds,
         IEnumerable<Guid> eventIds,
-        IEnumerable<Guid> appointmentTypeIds)
+        IEnumerable<Guid> appointmentTypeIds,
+        int inviteExpiryDays = 7,
+        int maxAutoRetryCount = 2,
+        int inviteOptionCount = 3)
     {
         Guard.Against(recoveryOfBookingId == Guid.Empty, "recoveryOfBookingId must not be empty.");
         Guard.Against(originalLocationId == Guid.Empty, "originalLocationId must not be empty.");
@@ -161,7 +197,8 @@ public sealed class Invite
 
         return Create(
             id, attendeeId, recoveryOfBookingId, expiresAt,
-            Bounded(locations), eventIds, appointmentTypeIds, 0);
+            Bounded(locations), eventIds, appointmentTypeIds, 0,
+            inviteExpiryDays, maxAutoRetryCount, inviteOptionCount);
     }
 
     /// <summary>Determines whether the invite can still be used at the supplied instant.</summary>
@@ -192,8 +229,8 @@ public sealed class Invite
     {
         EnsurePending("Only a pending invite's options can change.");
         Guard.Against(
-            _options.Count >= RequiredOptionCount,
-            $"An invite cannot offer more than {RequiredOptionCount} event options.");
+            _options.Count >= InviteOptionCount,
+            $"An invite cannot offer more than {InviteOptionCount} event options.");
         Guard.Against(Offers(eventId), "An invite cannot offer the same event twice.");
 
         _options.Add(InviteOption.For(Id, eventId));
@@ -224,21 +261,24 @@ public sealed class Invite
         IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
         IEnumerable<Guid> appointmentTypeIds,
-        int retryCount)
+        int retryCount,
+        int inviteExpiryDays = 7,
+        int maxAutoRetryCount = 2,
+        int inviteOptionCount = 3)
     {
         var invite = CreateCore(
-            id, attendeeId, recoveryOfBookingId, expiresAt, locationIds, eventIds, retryCount);
+            id, attendeeId, recoveryOfBookingId, expiresAt, locationIds, eventIds, retryCount,
+            inviteOptionCount);
+
+        invite.InviteExpiryDays = inviteExpiryDays;
+        invite.MaxAutoRetryCount = maxAutoRetryCount;
+        invite.InviteOptionCount = inviteOptionCount;
 
         var snapshot = appointmentTypeIds.ToList();
         Guard.Against(snapshot.Count == 0, "An invite must snapshot at least one appointment type.");
         Guard.Against(
             snapshot.Distinct().Count() != snapshot.Count,
             "An invite cannot snapshot the same appointment type twice.");
-
-        foreach (var appointmentTypeId in snapshot)
-        {
-            AppointmentTypeIds.EnsureKnown(appointmentTypeId);
-        }
 
         foreach (var appointmentTypeId in snapshot.Order())
         {
@@ -255,15 +295,16 @@ public sealed class Invite
         DateTimeOffset expiresAt,
         IReadOnlyList<Guid> locationIds,
         IEnumerable<Guid> eventIds,
-        int retryCount)
+        int retryCount,
+        int inviteOptionCount)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
         Guard.Against(attendeeId == Guid.Empty, "attendeeId must not be empty.");
 
         var offeredEventIds = eventIds.ToList();
         Guard.Against(
-            offeredEventIds.Count != RequiredOptionCount,
-            $"An invite must offer exactly {RequiredOptionCount} event options.");
+            offeredEventIds.Count != inviteOptionCount,
+            $"An invite must offer exactly {inviteOptionCount} event options.");
         Guard.Against(
             offeredEventIds.Distinct().Count() != offeredEventIds.Count,
             "An invite cannot offer the same event twice.");

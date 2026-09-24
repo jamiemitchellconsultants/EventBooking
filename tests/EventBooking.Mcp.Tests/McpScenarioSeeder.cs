@@ -114,11 +114,12 @@ public static class McpScenarioSeeder
                 0);
             var booking = Booking.Create(
                 Guid.NewGuid(), invite, bookedEvent.Id, DateTimeOffset.UtcNow);
+            invite.MarkUsed();
             var appointment = BookingAppointment.Create(
                 Guid.NewGuid(), booking.Id, AppointmentTypeIds.MedicalCheckUp);
             context.AddRange(bookedEvent);
             context.AddRange(spareEvents);
-            context.AddRange(attendee, booking, appointment);
+            context.AddRange(attendee, invite, booking, appointment);
             await context.SaveChangesAsync();
             attendeeId = attendee.Id;
             appointmentId = appointment.Id;

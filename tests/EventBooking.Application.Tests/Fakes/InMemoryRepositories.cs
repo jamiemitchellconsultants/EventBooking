@@ -7,6 +7,7 @@ using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
 using EventBooking.Domain.Events;
@@ -44,6 +45,9 @@ public sealed class InMemoryEventRepository(
 {
     public List<Event> Items { get; } = [];
 
+    /// <summary>Runs once, just before the next event lock is granted, to stage a racing writer.</summary>
+    public Func<Task>? BeforeNextLock { get; set; }
+
     public Task<Event?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("event-reloaded");
@@ -53,6 +57,12 @@ public sealed class InMemoryEventRepository(
     public async Task<Event?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("event-guard-locked");
+        if (BeforeNextLock is { } racingWriter)
+        {
+            BeforeNextLock = null;
+            await racingWriter();
+        }
+
         if (locks is not null)
         {
             await locks.AcquireAsync(id, cancellationToken);
@@ -190,6 +200,11 @@ public sealed class InMemoryAttendeeRepository(TransactionOperationLog? operatio
     public void Add(Attendee attendee) => Items.Add(attendee);
 
     public void Remove(Attendee attendee) => Items.Remove(attendee);
+
+    public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(
+        Guid groupId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Attendee>>(
+            Items.Where(c => c.AttendeeGroupId == groupId).OrderBy(c => c.Id).ToList());
 }
 
 /// <summary>Provides a controllable attendee read barrier for concurrency interleaving tests.</summary>
@@ -244,6 +259,11 @@ public sealed class BlockingAttendeeRepository : IAttendeeRepository
     public void Add(Attendee attendee) => Items.Add(attendee);
 
     public void Remove(Attendee attendee) => Items.Remove(attendee);
+
+    public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(
+        Guid groupId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Attendee>>(
+            Items.Where(c => c.AttendeeGroupId == groupId).OrderBy(c => c.Id).ToList());
 }
 
 /// <summary>Provides invite state and observable invite-lock order for application tests.</summary>
@@ -383,6 +403,14 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
                 .ToList());
     }
 
+    public Task<IReadOnlyList<Booking>> ListActiveRecoveriesAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Booking>>(
+            Items
+                .Where(b => b.Status == BookingStatus.Active && b.RecoveryOfBookingId != null)
+                .OrderBy(b => b.Id)
+                .ToList());
+
     /// <summary>Returns the original and direct recovery rows in creation and ID order.</summary>
     public Task<IReadOnlyList<Booking>> ListJourneyAsync(
         Guid originalBookingId,
@@ -405,6 +433,12 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
     }
 
     public void Add(Booking booking) => Items.Add(booking);
+
+    public Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(b => b.InviteId == inviteId));
+
+    public Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.Count(b => b.AttendeeId == attendeeId && b.Status == BookingStatus.Active));
 }
 
 /// <summary>Provides Attendee Group reference data with identifier and code lookups.</summary>
@@ -432,6 +466,12 @@ public sealed class InMemoryAttendeeGroupRepository : IAttendeeGroupRepository
                 .Where(group => group.IsActive && group.Requirements.Count > 0)
                 .OrderBy(group => group.Name)
                 .ToList());
+
+    public Task<IReadOnlyList<AttendeeGroup>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AttendeeGroup>>(
+            Items.OrderBy(group => group.Name).ToList());
+
+    public void Add(AttendeeGroup group) => Items.Add(group);
 }
 
 public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeRepository
@@ -443,6 +483,35 @@ public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeReposito
 
     public Task<AppointmentType?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(t => t.Id == id));
+
+    public Task<AppointmentType?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        var normalized = code.Trim().ToUpperInvariant();
+        return Task.FromResult(
+            Items.SingleOrDefault(t => string.Equals(t.Code, normalized, StringComparison.Ordinal)));
+    }
+
+    public void Add(AppointmentType type) => Items.Add(type);
+}
+
+public sealed class InMemoryLocationRepository : ILocationRepository
+{
+    public List<Location> Items { get; } = [];
+
+    public Task<Location?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(l => l.Id == id));
+
+    public Task<Location?> GetByCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        var normalized = code.Trim().ToUpperInvariant();
+        return Task.FromResult(
+            Items.SingleOrDefault(l => string.Equals(l.Code, normalized, StringComparison.Ordinal)));
+    }
+
+    public Task<IReadOnlyList<Location>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Location>>([.. Items.OrderBy(l => l.Name)]);
+
+    public void Add(Location location) => Items.Add(location);
 }
 
 public sealed class InMemorySystemSettingsRepository : ISystemSettingsRepository

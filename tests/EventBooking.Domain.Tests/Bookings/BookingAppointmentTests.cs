@@ -134,16 +134,25 @@ public sealed class BookingAppointmentTests
         Assert.Equal(1, appointment.Version);
     }
 
-    /// <summary>Verifies identifiers and fixed appointment-type membership at creation.</summary>
+    /// <summary>Verifies empty identifiers are refused at creation.</summary>
     [Fact]
-    public void CreationRejectsEmptyOrUnknownIdentifiers()
+    public void CreationRejectsEmptyIdentifiers()
     {
         Assert.Throws<DomainException>(() => BookingAppointment.Create(
             Guid.Empty, Guid.NewGuid(), AppointmentTypeIds.DrugAndAlcoholTesting));
         Assert.Throws<DomainException>(() => BookingAppointment.Create(
             Guid.NewGuid(), Guid.Empty, AppointmentTypeIds.DrugAndAlcoholTesting));
         Assert.Throws<DomainException>(() => BookingAppointment.Create(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()));
+            Guid.NewGuid(), Guid.NewGuid(), Guid.Empty));
+    }
+
+    /// <summary>Verifies any reference-data appointment type can back an appointment.</summary>
+    [Fact]
+    public void CreationAcceptsANonFixedAppointmentType()
+    {
+        var appointment = BookingAppointment.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.Equal(BookingAppointmentStatus.Expected, appointment.Status);
     }
 
     private static BookingAppointment NewAppointment() => BookingAppointment.Create(

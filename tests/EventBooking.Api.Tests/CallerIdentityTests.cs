@@ -13,7 +13,7 @@ public sealed class CallerIdentityTests
     public void ValidClaimIsParsedAndCanonicalised(string claim, string expected)
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(HttpContextCallerAccessor.StaffIdClaim, claim)], "test"));
+            [new Claim("staff_id", claim)], "test"));
 
         Assert.Equal(expected, HttpContextCallerAccessor.StaffIdOf(principal)!.Value);
     }

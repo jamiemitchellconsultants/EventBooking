@@ -5,6 +5,8 @@ namespace EventBooking.Web.Services;
 
 public sealed record AppointmentTypeSummaryDto(string Code, string Name);
 
+public sealed record InviteLocationDto(Guid LocationId, string Code, string Name);
+
 public sealed record AttendeeGroupOptionDto(
     Guid AttendeeGroupId,
     string Code,
@@ -15,12 +17,18 @@ public sealed record AttendeeDto(
     Guid AttendeeId,
     string Name,
     string Email,
-    Guid AttendeeGroupId,
-    string AttendeeGroupCode,
-    string AttendeeGroupName,
-    IReadOnlyList<AppointmentTypeSummaryDto> RequiredAppointmentTypes,
-    int Status,
-    string StatusDisplay);
+    string Status,
+    string StatusDisplay,
+    string GroupCode,
+    string Readiness,
+    IReadOnlyList<string> RequiredTypeCodes,
+    string? LatestDeliveryStatus,
+    string Cursor,
+    Guid? LatestDeliveryId = null);
+
+public sealed record AttendeeListDto(
+    IReadOnlyList<AttendeeDto> Items,
+    string? NextCursor);
 
 public sealed record ImportErrorDto(int LineNumber, string Message);
 
@@ -29,10 +37,9 @@ public sealed record ImportOutcomeDto(
     int ImportedCount,
     IReadOnlyList<ImportErrorDto> Errors);
 
-/// <summary>Reports the durable result of a template-aware email retry.</summary>
-/// <param name="DeliveryStatus">The provider outcome of the replacement attempt.</param>
-/// <param name="DeliveryId">The new durable delivery identifier.</param>
-public sealed record EmailRetryDto(string DeliveryStatus, Guid DeliveryId);
+/// <summary>Reports the replacement delivery staged by an email retry.</summary>
+/// <param name="EmailLogId">The new pending delivery identifier.</param>
+public sealed record EmailRetryDto(Guid EmailLogId);
 
 /// <summary>Minimum canonical detail for one incomplete appointment type.</summary>
 /// <param name="Code">The canonical appointment-type code.</param>
@@ -41,13 +48,13 @@ public sealed record EmailRetryDto(string DeliveryStatus, Guid DeliveryId);
 public sealed record OutstandingAppointmentTypeDto(string Code, string Name, bool IsRecoverable);
 
 /// <summary>Durable delivery outcome for one started recovery invite.</summary>
-/// <param name="InviteId">The new recovery Invite identifier, or empty when awaiting availability.</param>
-/// <param name="AppointmentTypeIds">The recoverable snapshot offered, or awaiting availability.</param>
-/// <param name="EmailSent">Whether the post-commit provider attempt completed successfully.</param>
+/// <param name="RecoveryInviteId">The newly issued recovery invite identifier.</param>
+/// <param name="LocationIds">The locations the recovery invite covers.</param>
+/// <param name="RecoverableTypeIds">The recoverable snapshot the recovery invite offers.</param>
 public sealed record RecoveryInviteOutcomeDto(
-    Guid InviteId,
-    IReadOnlyList<Guid> AppointmentTypeIds,
-    bool EmailSent);
+    Guid RecoveryInviteId,
+    IReadOnlyList<Guid> LocationIds,
+    IReadOnlyList<Guid> RecoverableTypeIds);
 
 /// <summary>One active booking a coordinator may cancel; carries no management token.</summary>
 /// <param name="BookingId">The booking identifier used to target a cancellation.</param>
@@ -63,15 +70,13 @@ public sealed record AttendeeBookingDto(
     TimeOnly EventEndTime);
 
 /// <summary>Coordinator-facing outcome of cancelling one attendee booking.</summary>
-/// <param name="Reinvited">Whether a replacement invite was created for the attendee.</param>
-/// <param name="InviteCreated">The explicit replacement-invite creation state.</param>
-/// <param name="DeliveryStatus">The provider outcome, or Unavailable when no replacement invite exists.</param>
-/// <param name="DeliveryId">The durable replacement delivery identifier, when one was staged.</param>
+/// <param name="ConfirmationRequired">Whether this call only previews the consequence.</param>
+/// <param name="ActiveBookingCount">How many active bookings the attendee holds (preview only).</param>
+/// <param name="CancelledBookingId">The cancelled booking identifier (confirmed call only).</param>
 public sealed record CancelAttendeeBookingDto(
-    bool Reinvited,
-    bool InviteCreated,
-    string? DeliveryStatus,
-    Guid? DeliveryId);
+    bool ConfirmationRequired,
+    int ActiveBookingCount,
+    Guid? CancelledBookingId);
 
 /// <summary>Coordinator-facing readiness for one attendee.</summary>
 /// <param name="AttendeeId">The stable attendee identifier.</param>
@@ -86,13 +91,35 @@ public sealed record AttendeeReadinessDto(
 
 public sealed class AttendeesClient(HttpClient http)
 {
-    public async Task<ApiOutcome<List<AttendeeDto>>> ListAsync(
-        int? status, string? search, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<AttendeeListDto>> ListAsync(
+        string? cursor,
+        int? limit,
+        string? status,
+        Guid? attendeeGroupId,
+        string? readiness,
+        string? search,
+        CancellationToken cancellationToken)
     {
         var parameters = new List<string>();
-        if (status is not null)
+        if (!string.IsNullOrEmpty(cursor))
         {
-            parameters.Add($"status={status.Value}");
+            parameters.Add($"cursor={Uri.EscapeDataString(cursor)}");
+        }
+        if (limit is not null)
+        {
+            parameters.Add($"limit={limit.Value}");
+        }
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            parameters.Add($"status={Uri.EscapeDataString(status)}");
+        }
+        if (attendeeGroupId is not null)
+        {
+            parameters.Add($"attendeeGroupId={attendeeGroupId.Value:D}");
+        }
+        if (!string.IsNullOrWhiteSpace(readiness))
+        {
+            parameters.Add($"readiness={Uri.EscapeDataString(readiness)}");
         }
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -104,7 +131,7 @@ public sealed class AttendeesClient(HttpClient http)
             : $"/api/attendees?{string.Join("&", parameters)}";
 
         using var response = await http.GetAsync(route, cancellationToken);
-        return await ApiCall.ReadAsync<List<AttendeeDto>>(response, cancellationToken);
+        return await ApiCall.ReadAsync<AttendeeListDto>(response, cancellationToken);
     }
 
     public async Task<ApiOutcome<List<AttendeeGroupOptionDto>>> ListGroupsAsync(
@@ -154,16 +181,33 @@ public sealed class AttendeesClient(HttpClient http)
         return await ApiCall.ReadAsync<ImportOutcomeDto>(response, cancellationToken);
     }
 
-    public async Task<ApiOutcome<bool>> TriggerInviteAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>Invites the attendee at every active location.</summary>
+    public Task<ApiOutcome<bool>> TriggerInviteAsync(Guid id, CancellationToken cancellationToken) =>
+        TriggerInviteAsync(id, [], cancellationToken);
+
+    /// <summary>Invites the attendee at the chosen locations; an empty list means every active one.</summary>
+    public async Task<ApiOutcome<bool>> TriggerInviteAsync(
+        Guid id, IReadOnlyList<Guid> locationIds, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsync($"/api/attendees/{id}/invite", null, cancellationToken);
+        using var response = await http.PostAsJsonAsync(
+            $"/api/attendees/{id}/invite", new { locationIds }, cancellationToken);
         return await ApiCall.ReadNoContentAsync(response, cancellationToken);
     }
 
-    /// <summary>Retries the latest failed or pending delivery using its server-side template.</summary>
-    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>Lists the active locations an invite can be restricted to.</summary>
+    public async Task<ApiOutcome<List<InviteLocationDto>>> ListInviteLocationsAsync(
+        CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsync($"/api/attendees/{id}/email-retry", null, cancellationToken);
+        using var response = await http.GetAsync("/api/attendees/invite-locations", cancellationToken);
+        return await ApiCall.ReadAsync<List<InviteLocationDto>>(response, cancellationToken);
+    }
+
+    /// <summary>Retries the latest failed or pending delivery using its server-side template.</summary>
+    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(
+        Guid id, Guid emailLogId, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsync(
+            $"/api/attendees/{id}/email-retry?emailLogId={emailLogId}", null, cancellationToken);
         return await ApiCall.ReadAsync<EmailRetryDto>(response, cancellationToken);
     }
 
@@ -201,24 +245,21 @@ public sealed class AttendeesClient(HttpClient http)
         return await ApiCall.ReadAsync<List<AttendeeBookingDto>>(response, cancellationToken);
     }
 
-    /// <summary>
-    /// Cancels one of the attendee's active bookings. Requesting a replacement invite is valid
-    /// only for the original booking; the API refuses it for a recovery booking.
-    /// </summary>
+    /// <summary>Cancels one of the attendee's active bookings, previewing before confirming.</summary>
     /// <param name="attendeeId">The attendee the booking belongs to.</param>
     /// <param name="bookingId">The booking to cancel.</param>
-    /// <param name="rebook">Whether to issue a replacement invite.</param>
+    /// <param name="confirm">Whether this call carries the confirmation.</param>
     /// <param name="cancellationToken">Cancels the request.</param>
     /// <returns>The cancellation outcome, or the failure the API reported.</returns>
     public async Task<ApiOutcome<CancelAttendeeBookingDto>> CancelBookingAsync(
         Guid attendeeId,
         Guid bookingId,
-        bool rebook,
+        bool confirm,
         CancellationToken cancellationToken = default)
     {
         using var response = await http.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel",
-            new { Rebook = rebook },
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm={(confirm ? "true" : "false")}",
+            new { },
             cancellationToken);
         return await ApiCall.ReadAsync<CancelAttendeeBookingDto>(response, cancellationToken);
     }

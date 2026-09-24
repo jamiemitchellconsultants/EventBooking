@@ -38,8 +38,8 @@ public sealed class EventCapacity
 
     internal static EventCapacity Initialise(Guid eventId, Guid appointmentTypeId, int totalHeadcount)
     {
-        AppointmentTypeIdsGuard(appointmentTypeId);
-
+        // No fixed-set guard: Admin-managed appointment-type ids flow here the way they
+        // flow through proposals and profiles. The listed set was validated at propose time.
         var total = Guard.Positive(totalHeadcount, "totalHeadcount");
 
         return new EventCapacity
@@ -111,7 +111,4 @@ public sealed class EventCapacity
     internal static string ExhaustedMessage(Guid appointmentTypeId) =>
         $"capacity-exhausted: appointment type {appointmentTypeId} has no remaining capacity "
         + "on this event.";
-
-    private static void AppointmentTypeIdsGuard(Guid appointmentTypeId) =>
-        AppointmentTypes.AppointmentTypeIds.EnsureKnown(appointmentTypeId);
 }

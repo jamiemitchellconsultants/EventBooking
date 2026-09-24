@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Api.Tests;
 
@@ -11,6 +12,8 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
     [Fact]
     public async Task RepostingAnAcceptanceUpdatesTheHeadcountReturnedByTheBoard()
     {
+        await factory.GivenStaffAsync(Role.Manager, AppointmentTypeIds.MedicalCheckUp);
+        await factory.GivenStaffAsync(Role.Manager, AppointmentTypeIds.UniformFitting);
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager,
             AppointmentTypeIds.DrugAndAlcoholTesting);
@@ -20,11 +23,15 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
             "/api/event-proposals",
             new
             {
+                LocationId = TransitionalLocation.Id,
                 Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(60),
                 StartTime = new TimeOnly(9, 0),
+                DurationMinutes = 240,
+                ListedAppointmentTypeIds = AppointmentTypeIds.All,
+                ProposerHeadcount = 10,
             });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var proposalId = await created.Content.ReadFromJsonAsync<Guid>();
+        var proposalId = (await created.Content.ReadFromJsonAsync<CreatedResponse>())!.ProposalId;
 
         var accepted = await client.PostAsJsonAsync(
             $"/api/event-proposals/{proposalId}/acceptance",
@@ -43,6 +50,8 @@ public class ProposalAcceptanceRevisionEndpointTests(ApiFactory factory)
         Assert.True(proposal.AcceptedByMe);
         Assert.Equal(12, proposal.MyAcceptedHeadcount);
     }
+
+    private sealed record CreatedResponse(Guid ProposalId, string Status, Guid? EventId);
 
     private sealed record BoardResponse(
         IReadOnlyList<OpenProposalResponse> OpenProposals);

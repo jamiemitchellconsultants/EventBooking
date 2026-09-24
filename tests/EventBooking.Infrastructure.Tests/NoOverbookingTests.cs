@@ -33,7 +33,7 @@ public class NoOverbookingTests(PostgresFixture fixture)
 
         Assert.Equal(1, results.Count(r => r.IsSuccess));
         Assert.Equal(9, results.Count(r => r.IsFailure));
-        Assert.All(results.Where(r => r.IsFailure), r => Assert.Equal("conflict", r.Error.Code));
+        Assert.All(results.Where(r => r.IsFailure), r => Assert.Equal("capacity-exhausted", r.Error.Code));
 
         Assert.Equal(0, await harness.RemainingCapacityAsync(eventId, DrugAndAlcohol));
         Assert.Equal(1, await harness.ActiveBookingCountAsync(eventId));
@@ -127,12 +127,11 @@ public class NoOverbookingTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ARaceLosersInviteKeepsThreeLiveOptionsWhenAReplacementExists()
+    public async Task ARaceLoserIsRefusedAndChangesNothing()
     {
         await using var harness = await ConcurrencyHarness.CreateAsync(fixture);
 
         var contested = await harness.GivenEventAsync(drugAndAlcohol: 1, medical: 50, uniform: 50);
-        var replacement = await harness.GivenEventAsync(drugAndAlcohol: 50, medical: 50, uniform: 50);
 
         var winner = await harness.GivenInvitedAttendeeAsync(contested, DrugAndAlcohol);
         var loser = await harness.GivenInvitedAttendeeAsync(contested, DrugAndAlcohol);
@@ -146,21 +145,9 @@ public class NoOverbookingTests(PostgresFixture fixture)
         Assert.Equal(1, results.Count(r => r.IsSuccess));
 
         var failure = results.Single(r => r.IsFailure);
-        Assert.Equal(
-            "That time filled up while you were choosing. Please pick from the updated options.",
-            failure.Error.Message);
+        Assert.Equal("capacity-exhausted", failure.Error.Code);
 
         Assert.Equal(0, await harness.RemainingCapacityAsync(contested, DrugAndAlcohol));
         Assert.Equal(1, await harness.ActiveBookingCountAsync(contested));
-
-        var loserToken = tokens[Enumerable.Range(0, results.Count)
-            .Single(index => results[index].IsFailure)];
-        var liveOptions = await harness.LiveOptionEventIdsAsync(loserToken);
-
-        Assert.Equal(3, liveOptions.Count);
-        Assert.Equal(3, liveOptions.Distinct().Count());
-        Assert.DoesNotContain(contested, liveOptions);
-        Assert.Contains(replacement, liveOptions);
-        Assert.All(harness.FallbackEventIds, fallback => Assert.Contains(fallback, liveOptions));
     }
 }

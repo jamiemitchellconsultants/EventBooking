@@ -19,30 +19,22 @@ public sealed record EventCapacityRowDto(string Code, int TotalHeadcount, int Re
 
 public sealed record EventRowDto(
     Guid EventId,
+    Guid LocationId,
+    string LocationName,
     DateOnly Date,
     TimeOnly StartTime,
     TimeOnly EndTime,
     IReadOnlyList<EventCapacityRowDto> Capacities,
     int ActiveBookings);
 
-/// <summary>The latest attendee delivery status projected for staff pages.</summary>
-/// <param name="AttendeeId">The attendee whose delivery is shown.</param>
-/// <param name="TemplateDisplay">Human-readable template name.</param>
-/// <param name="SentAt">The latest attempt or pending timestamp.</param>
-/// <param name="Status">The durable delivery status.</param>
-/// <param name="CanRetry">Whether current server-side state permits a retry.</param>
-public sealed record AttendeeEmailStatusDto(
-    Guid AttendeeId,
-    string TemplateDisplay,
-    DateTimeOffset SentAt,
-    string Status,
-    bool CanRetry);
+public sealed record DashboardTabDto<T>(int Count, IReadOnlyList<T> Rows);
 
 public sealed record DashboardsDto(
-    IReadOnlyList<AwaitingRowDto> AwaitingAvailability,
-    IReadOnlyList<NoResponseRowDto> NoResponse,
-    IReadOnlyList<EventRowDto> Events,
-    IReadOnlyList<AttendeeEmailStatusDto> EmailStatuses);
+    DashboardTabDto<AwaitingRowDto> AwaitingAvailability,
+    DashboardTabDto<NoResponseRowDto> NoResponse,
+    DashboardTabDto<EventRowDto> Events,
+    int FailedEmails,
+    int PendingEmails);
 
 public sealed class DashboardsClient(HttpClient http)
 {

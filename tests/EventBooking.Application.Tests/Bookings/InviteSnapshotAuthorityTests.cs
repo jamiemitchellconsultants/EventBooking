@@ -7,6 +7,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Tests.Bookings;
 
@@ -48,10 +49,15 @@ public sealed class InviteSnapshotAuthorityTests
         var invites = new InMemoryInviteRepository();
         invites.Add(invite);
         var clock = new FakeClock(DateTimeOffset.Parse("2026-09-20T00:00:00Z"));
+        var locations = new InMemoryLocationRepository();
+        locations.Items.Add(Location.Create(
+            ProposalFixture.LocationId, "LONDON_HQ", "London HQ", "1 High St",
+            "Europe/London", ProposalFixture.Zones));
 
         var result = await new ViewInviteHandler(
                 invites, attendees, events, new EligibleEventFinder(events, events, clock),
-                new RecordingAuditLogger(), new FakeUnitOfWork(), tokens, clock)
+                new RecordingAuditLogger(), new FakeUnitOfWork(), tokens, clock,
+                locations, ProposalFixture.Zones)
             .HandleAsync(new ViewInviteQuery(issued), CancellationToken.None);
 
         Assert.True(result.IsSuccess);

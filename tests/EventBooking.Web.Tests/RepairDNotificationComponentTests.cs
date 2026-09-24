@@ -16,9 +16,9 @@ public class RepairDNotificationComponentTests : BunitContext
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    /// <summary>Booking confirmation failure still displays the usable manage-link recovery.</summary>
+    /// <summary>Booking confirmation shows the chosen window without promising delivery.</summary>
     [Fact]
-    public void BookPageUsesNeutralCopyWhenConfirmationDeliveryFails()
+    public void BookPageShowsTheChosenWindowWithoutPromisingDelivery()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new InviteDto(
@@ -33,11 +33,7 @@ public class RepairDNotificationComponentTests : BunitContext
                 "Monday 14 Jan 2030, 09:00-13:00")] )));
         handler.Enqueue(_ => Json(new ConfirmedBookingDto(
             Guid.NewGuid(),
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "fresh-manage-token",
-            "Failed")));
+            "fresh-manage-token")));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
@@ -48,53 +44,16 @@ public class RepairDNotificationComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("could not confirm email delivery", cut.Markup);
+            Assert.Contains("confirmation email will follow shortly", cut.Markup);
             Assert.Contains("fresh-manage-token", cut.Markup);
-            Assert.DoesNotContain("is on its way", cut.Markup);
-        });
-    }
-
-    /// <summary>Booking confirmation pending delivery also uses neutral recovery copy.</summary>
-    [Fact]
-    public void BookPageUsesNeutralCopyWhenConfirmationDeliveryIsPending()
-    {
-        var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new InviteDto(
-            Guid.NewGuid(),
-            "Amara Novak",
-            ["DAT"],
-            [new InviteOptionDto(
-                Guid.NewGuid(),
-                new DateOnly(2030, 1, 14),
-                new TimeOnly(9, 0),
-                new TimeOnly(13, 0),
-                "Monday 14 Jan 2030, 09:00-13:00")])));
-        handler.Enqueue(_ => Json(new ConfirmedBookingDto(
-            Guid.NewGuid(),
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "fresh-manage-token",
-            "Pending")));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
-
-        var cut = Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
-        cut.WaitForAssertion(() => Assert.Contains("Confirm this time", cut.Markup));
-        cut.Find("input[type=radio]").Change(true);
-        cut.Find("button.booking-page__button").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains("could not confirm email delivery", cut.Markup);
-            Assert.Contains("fresh-manage-token", cut.Markup);
+            Assert.Contains("14 Jan 2030", cut.Markup);
             Assert.DoesNotContain("has been sent", cut.Markup);
         });
     }
 
-    /// <summary>Cancel/rebook failure displays neutral recovery rather than sent wording.</summary>
+    /// <summary>A rebooked cancellation reports the fresh invitation as on its way.</summary>
     [Fact]
-    public void ManagePageUsesNeutralCopyWhenReplacementDeliveryFails()
+    public void ManagePageReportsARebookAsOnItsWay()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new BookingDto(
@@ -103,11 +62,7 @@ public class RepairDNotificationComponentTests : BunitContext
             new TimeOnly(13, 0),
             "Monday 14 Jan 2030, 09:00-13:00",
             "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto(
-            Reinvited: true,
-            InviteCreated: true,
-            DeliveryStatus: "Failed",
-            DeliveryId: Guid.NewGuid())));
+        handler.Enqueue(_ => Json(new CancelOutcomeDto("reinvited", Guid.NewGuid())));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
@@ -117,15 +72,14 @@ public class RepairDNotificationComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("could not confirm delivery", cut.Markup);
+            Assert.Contains("fresh times is on its way", cut.Markup);
             Assert.DoesNotContain("has been sent", cut.Markup);
-            Assert.DoesNotContain("on its way", cut.Markup);
         });
     }
 
-    /// <summary>Cancel/rebook pending delivery displays neutral recovery guidance.</summary>
+    /// <summary>A still-pending recovery points back at the open invitation link.</summary>
     [Fact]
-    public void ManagePageUsesNeutralCopyWhenReplacementDeliveryIsPending()
+    public void ManagePagePointsAtThePendingInviteWhenOneIsAlreadyOpen()
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => Json(new BookingDto(
@@ -134,11 +88,7 @@ public class RepairDNotificationComponentTests : BunitContext
             new TimeOnly(13, 0),
             "Monday 14 Jan 2030, 09:00-13:00",
             "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto(
-            Reinvited: true,
-            InviteCreated: true,
-            DeliveryStatus: "Pending",
-            DeliveryId: Guid.NewGuid())));
+        handler.Enqueue(_ => Json(new CancelOutcomeDto("reinvitePending", Guid.NewGuid())));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
@@ -148,9 +98,8 @@ public class RepairDNotificationComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("could not confirm delivery", cut.Markup);
+            Assert.Contains("already have a pending invitation", cut.Markup);
             Assert.DoesNotContain("has been sent", cut.Markup);
-            Assert.DoesNotContain("on its way", cut.Markup);
         });
     }
 
@@ -165,10 +114,7 @@ public class RepairDNotificationComponentTests : BunitContext
             new TimeOnly(13, 0),
             "Monday 14 Jan 2030, 09:00-13:00",
             "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto(
-            Reinvited: false,
-            InviteCreated: false,
-            DeliveryStatus: "Unavailable")));
+        handler.Enqueue(_ => Json(new CancelOutcomeDto("noEligibleEvents")));
         Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
@@ -184,57 +130,17 @@ public class RepairDNotificationComponentTests : BunitContext
         });
     }
 
-    /// <summary>A sent replacement invite is the only state that promises delivery.</summary>
+    /// <summary>The delivery column shows the list row's latest status with no resend action.</summary>
     [Fact]
-    public void ManagePagePromisesReplacementDeliveryOnlyWhenSent()
-    {
-        var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new BookingDto(
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "Monday 14 Jan 2030, 09:00-13:00",
-            "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto(
-            Reinvited: true,
-            InviteCreated: true,
-            DeliveryStatus: "Sent",
-            DeliveryId: Guid.NewGuid())));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
-
-        var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
-        cut.WaitForAssertion(() => Assert.Contains("Cancel and choose a new time", cut.Markup));
-        cut.FindAll("button").Single(button => button.TextContent.Contains("Cancel and choose")).Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains("new invitation with fresh times has been sent", cut.Markup);
-            Assert.DoesNotContain("could not confirm delivery", cut.Markup);
-        });
-    }
-
-    /// <summary>A stale failed delivery remains visible but offers no enabled resend action.</summary>
-    [Fact]
-    public void AttendeesHideResendWhenServerMarksTheLatestContextStale()
+    public void AttendeesShowDeliveryStatusWithoutResendAction()
     {
         var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AttendeeDto>
-        {
-            new(attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited"),
-        }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Booking confirmation",
-                new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero),
-                "Failed",
-                CanRetry: false)])));
+        handler.Enqueue(_ => Json(new AttendeeListDto(
+            [new AttendeeDto(
+                attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
+                "Not yet invited", "MED", "NoActiveBooking", [], "Failed", "cursor")],
+            null)));
         handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
         Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
         Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
@@ -245,68 +151,8 @@ public class RepairDNotificationComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Booking confirmation", cut.Markup);
+            Assert.Contains("Failed", cut.Markup);
             Assert.DoesNotContain(">Resend<", cut.Markup);
-        });
-    }
-
-    /// <summary>Actionable failed and pending deliveries use the retry endpoint, not the invite endpoint.</summary>
-    [Theory]
-    [InlineData("Failed")]
-    [InlineData("Pending")]
-    public void AttendeesResendActionUsesTheTemplateAwareRetryEndpoint(string status)
-    {
-        var attendeeId = Guid.NewGuid();
-        var attendee = new AttendeeDto(
-            attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited");
-        var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Booking confirmation",
-                new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero),
-                status,
-                CanRetry: true)])));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        handler.Enqueue(_ => Json(new EmailRetryDto("Sent", Guid.NewGuid())));
-        handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Booking confirmation",
-                new DateTimeOffset(2026, 9, 7, 10, 1, 0, TimeSpan.Zero),
-                "Sent",
-                CanRetry: false)])));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
-
-        var cut = Render<Attendees>();
-        cut.WaitForAssertion(() => Assert.Contains(">Resend<", cut.Markup));
-
-        cut.FindAll("button").Single(button => button.TextContent == "Resend").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains(
-                handler.Requests,
-                request => request.Method == HttpMethod.Post
-                    && request.Path == $"/api/attendees/{attendeeId}/email-retry");
-            Assert.DoesNotContain(
-                handler.Requests,
-                request => request.Method == HttpMethod.Post
-                    && request.Path == $"/api/attendees/{attendeeId}/invite");
         });
     }
 

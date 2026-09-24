@@ -22,6 +22,16 @@ public static class ResultResponses
         Error.RecoveryNotAvailableCode => StatusCodes.Status409Conflict,
         Error.RecoveryAlreadyPendingCode => StatusCodes.Status409Conflict,
         Error.RecoveryStateChangedCode => StatusCodes.Status409Conflict,
+        Error.RecoveryActiveCode => StatusCodes.Status409Conflict,
+        Error.ReferenceDataInUseCode => StatusCodes.Status409Conflict,
+        Error.RequirementsLockedCode => StatusCodes.Status409Conflict,
+        Error.VersionConflictCode => StatusCodes.Status409Conflict,
+        Error.CapacityBelowBookingsCode => StatusCodes.Status409Conflict,
+        Error.InsufficientEventsCode => StatusCodes.Status409Conflict,
+        Error.AlreadyConfirmedCode => StatusCodes.Status409Conflict,
+        Error.CapacityExhaustedCode => StatusCodes.Status409Conflict,
+        Error.ConfirmationRequiredCode => StatusCodes.Status409Conflict,
+        Error.WindowStartedCode => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError,
     };
 

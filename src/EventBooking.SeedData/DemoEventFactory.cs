@@ -3,6 +3,7 @@ using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Application.Events;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Persistence;
 

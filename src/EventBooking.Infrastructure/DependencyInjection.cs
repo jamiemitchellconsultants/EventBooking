@@ -1,4 +1,5 @@
 using EventBooking.Application.Abstractions;
+using EventBooking.Application.ReferenceData;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Email;
@@ -33,6 +34,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<RowLocks>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
+        services.AddScoped<ILocationRepository, LocationRepository>();
+        services.AddScoped<IReferenceDataBlockingQueries, ReferenceDataBlockingQueries>();
         services.AddScoped<ISystemSettingsRepository, SystemSettingsRepository>();
         services.AddScoped<IEventProposalRepository, EventProposalRepository>();
         services.AddScoped<IEventRepository, EventRepository>();
@@ -46,11 +49,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IStaffAccessProfileRepository, StaffAccessProfileRepository>();
         services.AddScoped<IStaffIdentityRepository, StaffIdentityRepository>();
         services.AddScoped<IDashboardQueries, DashboardQueries>();
+        services.AddScoped<IAttendeeListQueries, AttendeeListQueries>();
         services.AddScoped<IAuditQueries, AuditQueries>();
+        services.AddScoped<IAuditSearchQueries, AuditSearchQueries>();
         services.AddScoped<IAppointmentWorkspaceQueries, AppointmentWorkspaceQueries>();
         services.AddScoped<IAttendeeReadinessQueries, AttendeeReadinessQueries>();
         services.AddScoped<IAttendeeBookingQueries, AttendeeBookingQueries>();
         services.AddScoped<IEventEligibilityQuery, EventEligibilityQuery>();
+        services.AddScoped<IWorkspaceQueries, WorkspaceQueries>();
 
         return services;
     }
@@ -69,8 +75,6 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IEventWindowZones, NodaTimeEventWindowZones>();
         services.AddSingleton<ITokenService, HmacTokenService>();
-
-        services.AddScoped<IEmailSender, LoggingEmailSender>();
 
         services.AddScoped<IAuditLogger, EfAuditLogger>();
 

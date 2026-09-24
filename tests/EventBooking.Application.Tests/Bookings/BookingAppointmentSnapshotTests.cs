@@ -1,13 +1,12 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Bookings;
-using EventBooking.Application.Invites;
-using EventBooking.Application.Notifications;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
+using EventBooking.Domain.Locations;
 using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Tests.Bookings;
@@ -53,26 +52,20 @@ public sealed class BookingAppointmentSnapshotTests
         var bookings = new InMemoryBookingRepository();
         var appointments = new InMemoryBookingAppointmentRepository(bookings);
         var unitOfWork = new FakeUnitOfWork();
-        var deliveries = EmailDeliveryTestFactory.Create(
-            new InMemoryEmailDeliveryRepository(),
-            new RecordingEmailSender(),
-            new FakeUnitOfWork(),
-            clock);
         var handler = new ConfirmBookingHandler(
             invites,
             attendees,
             events,
+            new InMemoryEventCapacityRepository(events),
             bookings,
             appointments,
-            new InMemoryEventCapacityRepository(events),
-            new EligibleEventFinder(events, events, clock),
+            GivenLocations(),
             tokens,
-            deliveries,
-            new RecordingAuditLogger(),
+            new InMemoryEmailDeliveryRepository(),
             unitOfWork,
+            new RecordingAuditLogger(),
             clock,
-            new AttendeePortalOptions(
-                "https://booking.example.com", "help@example.com"));
+            ProposalFixture.Zones);
 
         var result = await handler.HandleAsync(
             new ConfirmBookingCommand(token, selected.Id),
@@ -144,21 +137,16 @@ public sealed class BookingAppointmentSnapshotTests
             invites,
             attendees,
             events,
+            new InMemoryEventCapacityRepository(events),
             bookings,
             appointments,
-            new InMemoryEventCapacityRepository(events),
-            new EligibleEventFinder(events, events, clock),
+            GivenLocations(),
             tokens,
-            EmailDeliveryTestFactory.Create(
-                new InMemoryEmailDeliveryRepository(),
-                new RecordingEmailSender(),
-                new FakeUnitOfWork(),
-                clock),
-            new RecordingAuditLogger(),
+            new InMemoryEmailDeliveryRepository(),
             unitOfWork,
+            new RecordingAuditLogger(),
             clock,
-            new AttendeePortalOptions(
-                "https://booking.example.com", "help@example.com"));
+            ProposalFixture.Zones);
 
         // Each snapshot size needs its matching group so confirmation proceeds.
         var group = snapshot.Count switch
@@ -184,6 +172,19 @@ public sealed class BookingAppointmentSnapshotTests
         Assert.Equal(
             snapshot.OrderBy(value => value),
             appointments.Items.Select(value => value.AppointmentTypeId).OrderBy(value => value));
+    }
+
+    private static InMemoryLocationRepository GivenLocations()
+    {
+        var locations = new InMemoryLocationRepository();
+        locations.Add(Location.Create(
+            ProposalFixture.LocationId,
+            "TRANSITIONAL",
+            "Transitional location",
+            "Recorded against the transitional site until Phase 3.",
+            ProposalFixture.TimeZoneId,
+            ProposalFixture.Zones));
+        return locations;
     }
 
     private static Event AddEvent(

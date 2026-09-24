@@ -123,15 +123,26 @@ public sealed class MeEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task AnAnonymousCallerIsRejected()
+    public async Task AnAnonymousCallerGetsTheNoRoleViewInsteadOfA401()
     {
-        factory.SignedInAs = null;
-        factory.RolesClaim = [];
-        var client = factory.CreateClient();
+        var signedInAs = factory.SignedInAs;
+        var rolesClaim = factory.RolesClaim;
+        try
+        {
+            factory.SignedInAs = null;
+            factory.RolesClaim = [];
+            var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/me");
+            var response = await client.GetAsync("/api/me");
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("staff_id", await response.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            factory.SignedInAs = signedInAs;
+            factory.RolesClaim = rolesClaim;
+        }
     }
 
     private sealed record MeResponse(

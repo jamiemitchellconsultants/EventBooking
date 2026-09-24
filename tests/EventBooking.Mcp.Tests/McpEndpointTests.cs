@@ -14,7 +14,7 @@ public sealed class McpEndpointTests(McpFactory factory)
     [
         "propose_event", "accept_proposal", "withdraw_acceptance", "withdraw_proposal",
         "event_board", "adjust_event_capacity", "cancel_event",
-        "list_attendees", "create_attendee", "update_attendee", "delete_attendee",
+        "list_attendees", "list_invite_locations", "create_attendee", "update_attendee", "delete_attendee",
         "list_attendee_groups",
         "import_attendees", "trigger_invite", "retry_attendee_email",
         "start_recovery_invite", "cancel_recovery_invite", "list_attendee_bookings",
@@ -75,7 +75,7 @@ public sealed class McpEndpointTests(McpFactory factory)
             .ToHashSet();
 
         Assert.Equal(ExpectedTools.Order(), names.Order());
-        Assert.Equal(35, names.Count);
+        Assert.Equal(36, names.Count);
     }
 
     /// <summary>Every tool carries explicit safety hints with a closed world.</summary>

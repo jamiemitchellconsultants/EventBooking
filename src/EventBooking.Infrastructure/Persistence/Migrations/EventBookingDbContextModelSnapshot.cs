@@ -352,7 +352,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AttendeeGroupId");
 
-                    b.HasIndex("Status");
+                    b.HasIndex("Status", "Name", "Id");
 
                     b.ToTable("attendee", (string)null);
                 });
@@ -681,6 +681,18 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<int>("InviteExpiryDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("invite_expiry_days");
+
+                    b.Property<int>("InviteOptionCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("invite_option_count");
+
+                    b.Property<int>("MaxAutoRetryCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_auto_retry_count");
+
                     b.Property<Guid?>("RecoveryOfBookingId")
                         .HasColumnType("uuid")
                         .HasColumnName("recovery_of_booking_id");
@@ -843,6 +855,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("claimed_at");
 
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("text")
+                        .HasColumnName("correlation_id");
+
                     b.Property<Guid?>("EventId")
                         .HasColumnType("uuid")
                         .HasColumnName("event_id");
@@ -850,6 +866,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InviteId")
                         .HasColumnType("uuid")
                         .HasColumnName("invite_id");
+
+                    b.Property<DateTimeOffset?>("NotBefore")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("not_before");
 
                     b.Property<DateTimeOffset>("SentAt")
                         .HasColumnType("timestamp with time zone")

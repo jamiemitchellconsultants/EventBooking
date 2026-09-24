@@ -69,7 +69,7 @@ public sealed class ReanchorTests : IAsyncLifetime
         var error = await Assert.ThrowsAsync<SeedException>(
             () => seeder.RunAsync(CancellationToken.None));
 
-        Assert.Contains("must be proposed for a future date", error.Message);
+        Assert.Contains("window-not-in-future", error.Message);
     }
 
     /// <summary>Overriding the anchor to today restores the full deterministic seed.</summary>

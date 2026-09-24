@@ -37,6 +37,11 @@ public sealed class AttendeeConfiguration : IEntityTypeConfiguration<Attendee>
 
         // The unique index is on lower(email): EF cannot express a functional index, so the
         // initial migration creates ux_attendee_email_lower by hand.
-        builder.HasIndex(c => c.Status);
+        //
+        // The attendee list pages by keyset over (lower(name), id) behind a status
+        // filter. The composite serves the filter and the tiebreak as an index-only
+        // scan; its leftmost column keeps serving status-only reads, so it replaces
+        // the status-only index rather than sitting beside it.
+        builder.HasIndex(c => new { c.Status, c.Name, c.Id });
     }
 }

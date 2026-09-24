@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
@@ -121,6 +122,19 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             // The real transport constructs an AWS SES client that throws immediately outside an
             // AWS environment (no RegionEndpoint or ServiceURL configured) — exactly where CI runs.
             services.AddSingleton<IEmailTransport>(EmailTransport);
+
+            // The dispatcher loop would race test assertions on staged rows. Tests drive
+            // passes explicitly through the registered OutboxDispatcher singleton, so only
+            // the hosted loop (the factory descriptor) is removed here.
+            var loop = services
+                .Where(descriptor =>
+                    descriptor.ServiceType == typeof(IHostedService)
+                    && descriptor.ImplementationFactory is not null)
+                .ToList();
+            foreach (var descriptor in loop)
+            {
+                services.Remove(descriptor);
+            }
         });
     }
 

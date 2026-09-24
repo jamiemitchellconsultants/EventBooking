@@ -10,6 +10,7 @@ using EventBooking.Domain.Invites;
 using Microsoft.AspNetCore.Mvc;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
+using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,10 +38,10 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
-        var listed = await client.GetFromJsonAsync<List<AttendeeResponse>>($"/api/attendees?search={email}");
+        var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
         Assert.NotNull(listed);
-        Assert.Single(listed!);
-        Assert.Equal("Not yet invited", listed![0].StatusDisplay);
+        Assert.Single(listed!.Items);
+        Assert.Equal("Not yet invited", listed!.Items[0].StatusDisplay);
     }
 
     [Fact]
@@ -79,8 +80,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var updated = await client.PutAsJsonAsync(
-            "/api/admin/settings", new { InviteExpiryDays = 7, MaxAutoRetryCount = 1 });
-        Assert.Equal(HttpStatusCode.NoContent, updated.StatusCode);
+            "/api/admin/settings",
+            new { InviteExpiryDays = 7, MaxAutoRetryCount = 1, InviteOptionCount = 3, ExpectedVersion = 1 });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
 
         var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
         Assert.Equal(7, settings!.InviteExpiryDays);
@@ -155,8 +157,8 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
         Assert.Equal("attendee_group_required", problem!.Title);
 
-        var listed = await client.GetFromJsonAsync<List<AttendeeResponse>>($"/api/attendees?search={email}");
-        Assert.Empty(listed!);
+        var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
+        Assert.Empty(listed!.Items);
     }
 
     [Fact]
@@ -210,9 +212,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
                 AttendeeGroupId = AttendeeGroupIds.Engineering,
             });
 
-        var listed = await client.GetFromJsonAsync<List<AttendeeResponse>>($"/api/attendees?search={email}");
+        var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
         Assert.Equal(HttpStatusCode.NoContent, updated.StatusCode);
-        var attendee = Assert.Single(listed!);
+        var attendee = Assert.Single(listed!.Items);
         Assert.Equal("Amara Smith", attendee.Name);
     }
 
@@ -358,7 +360,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
             });
         var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
 
-        var invited = await client.PostAsync($"/api/attendees/{attendeeId}/invite", null);
+        var invited = await client.PostAsJsonAsync(
+            $"/api/attendees/{attendeeId}/invite",
+            new { LocationIds = new[] { EventBooking.Domain.Locations.TransitionalLocation.Id } });
         var unconfirmedDeletion = await client.DeleteAsync($"/api/attendees/{attendeeId}");
         var confirmedDeletion = await client.DeleteAsync($"/api/attendees/{attendeeId}?confirm=true");
 
@@ -367,22 +371,59 @@ public class AttendeeEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, confirmedDeletion.StatusCode);
     }
 
-    /// <summary>Staff retry derives the failed invite template and context on the server.</summary>
+    [Fact]
+    public async Task ACoordinatorInviteWithNoBodyDefaultsToEveryActiveLocation()
+    {
+        factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
+        var client = factory.CreateClient();
+        await GivenEligibleEventsAsync();
+        var created = await client.PostAsJsonAsync(
+            "/api/attendees",
+            new
+            {
+                Name = "Bo Lind",
+                Email = $"{Guid.NewGuid():N}@mail.com",
+                AttendeeGroupId = AttendeeGroupIds.Pilots,
+            });
+        var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
+
+        var locations = await client.GetAsync("/api/attendees/invite-locations");
+        var invited = await client.PostAsync($"/api/attendees/{attendeeId}/invite", null);
+
+        Assert.Equal(HttpStatusCode.OK, locations.StatusCode);
+        Assert.Contains(
+            EventBooking.Domain.Locations.TransitionalLocation.Id.ToString(),
+            await locations.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+    }
+
+    /// <summary>Staff retry stages a fresh delivery; the dispatcher sends the same link.</summary>
     [Fact]
     public async Task ACoordinatorCanRetryAFailedInviteWithAFreshHashedToken()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
-        var (attendeeId, link) = await GivenFailedInviteAsync();
+        var (attendeeId, link, deliveryId, email) = await GivenFailedInviteAsync();
         var client = factory.CreateClient();
 
-        var response = await client.PostAsync($"/api/attendees/{attendeeId}/email-retry", null);
+        var response = await client.PostAsync(
+            $"/api/attendees/{attendeeId}/email-retry?emailLogId={deliveryId}", null);
         var outcome = await response.Content.ReadFromJsonAsync<RetryResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("Sent", outcome!.DeliveryStatus);
+        Assert.NotEqual(Guid.Empty, outcome!.EmailLogId);
+
+        // The endpoint stages; the dispatcher sends. The test host runs no loop, so the
+        // test drives one pass explicitly.
+        using (var dispatch = factory.Services.CreateScope())
+        {
+            await dispatch.ServiceProvider.GetRequiredService<OutboxDispatcher>()
+                .DispatchOnceAsync();
+        }
+
         var message = Assert.Single(
             factory.EmailTransport.Sent,
-            sent => sent.AttendeeId == attendeeId && sent.Template == EmailTemplate.AttendeeInvite);
+            sent => sent.Recipient == email);
         Assert.Contains("/book/", message.TextBody);
 
         using var scope = factory.Services.CreateScope();
@@ -413,10 +454,12 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
     private sealed record AttendeeResponse(Guid AttendeeId, string Name, string StatusDisplay);
 
+    private sealed record AttendeeListResponse(IReadOnlyList<AttendeeResponse> Items, string? NextCursor);
+
     private sealed record AttendeeGroupResponse(
         Guid AttendeeGroupId, string Code, string Name);
 
-    private sealed record RetryResponse(string DeliveryStatus, Guid DeliveryId);
+    private sealed record RetryResponse(Guid EmailLogId);
 
     private sealed record ImportError(int LineNumber, string Message);
 
@@ -465,7 +508,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         await context.SaveChangesAsync();
     }
 
-    private async Task<(Guid AttendeeId, string OldHash)> GivenFailedInviteAsync()
+    private async Task<(Guid AttendeeId, string OldHash, Guid DeliveryId, string Email)> GivenFailedInviteAsync()
     {
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
@@ -490,10 +533,11 @@ public class AttendeeEndpointTests(ApiFactory factory)
         }
 
         var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+        var email = $"{Guid.NewGuid():N}@mail.com";
         var attendee = Attendee.Create(
             Guid.NewGuid(),
             "Retry Attendee",
-            $"{Guid.NewGuid():N}@mail.com",
+            email,
             pilots,
             ProposalFixture.Now);
         attendee.MarkInvited(ProposalFixture.Now);
@@ -521,6 +565,6 @@ public class AttendeeEndpointTests(ApiFactory factory)
         context.EmailLogs.Add(delivery);
         await context.SaveChangesAsync();
 
-        return (attendee.Id, issued);
+        return (attendee.Id, issued, delivery.Id, email);
     }
 }

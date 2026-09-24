@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Settings;
 using EventBooking.Domain.Access;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
@@ -36,20 +38,22 @@ public sealed class AdminTools
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A confirmation message.</returns>
     [McpServerTool(Name = "update_settings", Title = "Update settings", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Update the invite expiry window and the invite re-issue limit. Caller must be an admin; overwrites both settings.")]
-    public async Task<string> UpdateSettingsAsync(
+    [Description("Update the invite expiry window, the re-issue limit and the number of options per invite. Caller must be an admin; overwrites all three.")]
+    public async Task<SystemSettingsResult> UpdateSettingsAsync(
         ICallerAccessor caller,
         AdminSettingsHandler handler,
         [Description("Invite expiry window in days.")] int inviteExpiryDays,
         [Description("Maximum number of times an unanswered invite is automatically re-issued.")] int maxAutoRetryCount,
+        [Description("How many event options each invite offers, 1 to 5.")] int inviteOptionCount,
+        [Description("The version last read, for optimistic concurrency.")] long expectedVersion,
         CancellationToken cancellationToken)
     {
-        var result = await handler.UpdateAsync(
-            new UpdateSettingsCommand(
-                caller.RequireStaffUserId(), inviteExpiryDays, maxAutoRetryCount),
+        var result = await handler.SaveAsync(
+            new SaveSystemSettingsCommand(
+                caller.RequireStaffUserId(), inviteExpiryDays, maxAutoRetryCount,
+                inviteOptionCount, expectedVersion),
             cancellationToken);
-        result.ThrowIfFailure();
-        return "Settings updated.";
+        return result.ValueOrThrow();
     }
 
     /// <summary>Lists every staff access profile.</summary>
@@ -135,6 +139,9 @@ public sealed class AdminTools
     /// <summary>Returns the caller's validated staff number, roles, and scope.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The identity handler.</param>
+    /// <param name="sync">The role sync.</param>
+    /// <param name="appointmentTypes">The appointment types.</param>
+    /// <param name="claims">The claim names plus staff-number pattern.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The caller's access view, including the validated staff number.</returns>
     [McpServerTool(Name = "get_my_access", Title = "Get my access", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
@@ -142,11 +149,29 @@ public sealed class AdminTools
     public async Task<MyAccessToolView> GetMyAccessAsync(
         ICallerAccessor caller,
         MeHandler handler,
+        SyncStaffAccessProfileRolesHandler sync,
+        IAppointmentTypeRepository appointmentTypes,
+        IOptions<AuthClaimOptions> claims,
         CancellationToken cancellationToken)
     {
-        var view = await handler.GetAsync(
-            caller.RequireStaffUserId(), caller.RequireStaffId(), caller.Roles, cancellationToken);
-        return view.ToToolView();
+        var staffUserId = caller.RequireStaffUserId();
+        await sync.SyncAsync(staffUserId, caller.Roles, cancellationToken);
+        var view = (await handler.HandleAsync(
+            staffUserId,
+            caller.RequireStaffId().Value,
+            caller.DisplayName,
+            caller.Roles,
+            claims.Value.StaffIdPattern,
+            cancellationToken)).ValueOrThrow();
+        string? appointmentTypeName = null;
+        if (view.ScopeAppointmentTypeId is not null)
+        {
+            var type = await appointmentTypes.GetAsync(
+                view.ScopeAppointmentTypeId.Value, cancellationToken);
+            appointmentTypeName = type?.Name;
+        }
+
+        return view.ToToolView(appointmentTypeName);
     }
 
     private static async Task<ResolvedStaffTarget> ResolveTargetAsync(

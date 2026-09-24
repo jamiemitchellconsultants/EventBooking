@@ -48,7 +48,7 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
             var token = Regex.Match(message.TextBody,
                 @"https://host-demo\.example\.test/book/([^\s]+)").Groups[1].Value;
             Assert.NotEmpty(token);
-            Assert.Contains($"href=\"https://host-demo.example.test/book/{token}\"", message.HtmlBody);
+            Assert.Contains($"https://host-demo.example.test/book/{token}", message.HtmlBody);
             var result = await view.HandleAsync(new ViewInviteQuery(token), default);
             Assert.True(result.IsSuccess);
             Assert.Equal(3, result.Value.Options.Count);

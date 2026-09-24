@@ -8,6 +8,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Tests.Bookings;
 
@@ -17,6 +18,7 @@ public class InviteOptionReplacementTests
     private readonly InMemoryInviteRepository _invites = new();
     private readonly InMemoryAttendeeRepository _attendees = new();
     private readonly InMemoryEventRepository _events = new();
+    private readonly InMemoryLocationRepository _locations = new();
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly FakeTokenService _tokens = new();
@@ -27,10 +29,13 @@ public class InviteOptionReplacementTests
 
     private ViewInviteHandler Handler => new(
         _invites, _attendees, _events, new EligibleEventFinder(_events, _events, _clock),
-        _audit, _unitOfWork, _tokens, _clock);
+        _audit, _unitOfWork, _tokens, _clock, _locations, ProposalFixture.Zones);
 
     public InviteOptionReplacementTests()
     {
+        _locations.Items.Add(Location.Create(
+            ProposalFixture.LocationId, "LONDON_HQ", "London HQ", "1 High St",
+            "Europe/London", ProposalFixture.Zones));
         _attendee = Attendee.Create(
             Guid.NewGuid(),
             "Amara Novak",

@@ -19,7 +19,7 @@ public sealed class AgentOperationCatalogTests
             Assert.False(operation.Hints.OpenWorld);
         });
         var staff = operations.Where(x => x.McpTool is not null).ToList();
-        Assert.Equal(35, staff.Count);
+        Assert.Equal(36, staff.Count);
         Assert.Equal(staff.Count, staff.Select(x => x.McpTool).Distinct().Count());
     }
 

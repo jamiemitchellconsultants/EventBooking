@@ -1,380 +1,224 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
-using EventBooking.Application.Notifications;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
-using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
+using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Bookings;
 
-/// <summary>Defines confirm booking command for the current use case.</summary>
-/// <param name="Token">The token.</param>
-/// <param name="EventId">The event id.</param>
-public sealed record ConfirmBookingCommand(string? Token, Guid EventId);
+/// <summary>Confirms one offered event for the invite the book token names.</summary>
+/// <param name="BookToken">The attendee's single-use confirmation link.</param>
+/// <param name="EventId">The offered event being confirmed.</param>
+public sealed record ConfirmBookingCommand(string BookToken, Guid EventId);
 
-/// <summary>Returns the durable booking link and actual confirmation-email outcome.</summary>
+/// <summary>The created booking and its management link.</summary>
 /// <param name="BookingId">The newly created active booking identifier.</param>
-/// <param name="Date">The event's transitional-location date.</param>
-/// <param name="StartTime">The event's start time.</param>
-/// <param name="EndTime">The derived four-hour end time.</param>
 /// <param name="ManageToken">The raw management token returned once to the attendee.</param>
-/// <param name="DeliveryStatus">The post-commit provider outcome.</param>
-/// <param name="DeliveryId">The durable confirmation-delivery identifier.</param>
-public sealed record ConfirmBookingOutcome(
-    Guid BookingId,
-    DateOnly Date,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    string ManageToken,
-    string DeliveryStatus = "Pending",
-    Guid? DeliveryId = null);
+public sealed record ConfirmBookingOutcome(Guid BookingId, string ManageToken);
 
 /// <summary>
-/// Confirms one offered event while serializing the attendee lifecycle and capacity rows,
-/// atomically creating one operational appointment per attendee requirement.
+/// Confirms one offered event on the anonymous pipeline. Locks in canonical order —
+/// attendee, invite, event, then the required capacity rows — after a port read of the
+/// attendee id, and charges exactly the required types all-or-nothing.
 /// </summary>
-/// <param name="bookings">Persists the new booking row.</param>
-/// <param name="appointments">Snapshots one operational appointment per attendee requirement.</param>
-/// <param name="deliveries">Stages and dispatches the post-commit confirmation email.</param>
 /// <param name="invites">The invites.</param>
 /// <param name="attendees">The attendees.</param>
 /// <param name="events">The events.</param>
 /// <param name="capacities">The capacities.</param>
-/// <param name="eventFinder">The event finder.</param>
+/// <param name="bookings">The bookings.</param>
+/// <param name="appointments">The appointments.</param>
+/// <param name="locations">The locations.</param>
 /// <param name="tokens">The tokens.</param>
-/// <param name="audit">The audit.</param>
+/// <param name="emails">The emails.</param>
 /// <param name="unitOfWork">The unit of work.</param>
+/// <param name="audit">The audit.</param>
 /// <param name="clock">The clock.</param>
-/// <param name="portal">The portal.</param>
+/// <param name="zones">The zone abstraction the window's start instant is read in.</param>
 public sealed class ConfirmBookingHandler(
     IInviteRepository invites,
     IAttendeeRepository attendees,
     IEventRepository events,
+    IEventCapacityRepository capacities,
     IBookingRepository bookings,
     IBookingAppointmentRepository appointments,
-    IEventCapacityRepository capacities,
-    EligibleEventFinder eventFinder,
+    ILocationRepository locations,
     ITokenService tokens,
-    EmailDeliveryService deliveries,
-    IAuditLogger audit,
+    IEmailDeliveryRepository emails,
     IUnitOfWork unitOfWork,
+    IAuditLogger audit,
     IClock clock,
-    AttendeePortalOptions portal)
+    IEventWindowZones zones)
 {
-    private const string FilledUpMessage =
-        "That time filled up while you were choosing. Please pick from the updated options.";
-
-    /// <summary>
-    /// Confirms a attendee's offered future event while holding the eventItem, invite and capacity locks,
-    /// snapshotting one Expected operational appointment per attendee requirement in the same save.
-    /// </summary>
+    /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="ct">The cancellation token.</param>
     public async Task<Result<ConfirmBookingOutcome>> HandleAsync(
-        ConfirmBookingCommand command,
-        CancellationToken cancellationToken)
+        ConfirmBookingCommand command, CancellationToken ct)
     {
-        if (!tokens.TryRead(command.Token, out var link) || link.Purpose != TokenPurpose.Book)
-        {
+        if (!tokens.TryRead(command.BookToken, out var reference)
+            || reference.Purpose != TokenPurpose.Book
+            || reference.Version < Invite.InitialTokenVersion)
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
-        }
+                Error.Validation("This link cannot be used to confirm a booking."));
 
-        // This pre-read locates only the attendee row that defines the lock order. Invite state
-        // is re-read under lock below and this value must not be used as authority.
-        var preflightInvite = await invites.GetAsync(link.EntityId, cancellationToken);
-        if (preflightInvite is null)
-        {
-            return Result<ConfirmBookingOutcome>.Failure(
-                Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
-        }
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
 
-        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        // Port read: the attendee id without a lock, so the locks below follow the
+        // canonical order. Everything is re-validated after locking.
+        var port = await invites.GetAsync(reference.EntityId, ct);
+        if (port is null)
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such invite."));
 
-        // Lock order for every attendee lifecycle transition is Attendee -> Invite -> Booking
-        // -> Event -> EventCapacity. The attendee lock also serializes disjoint, legacy
-        // tokens that could otherwise book different events at the same time.
-        var attendee = await attendees.LockForUpdateAsync(preflightInvite.AttendeeId, cancellationToken);
+        var attendee = await attendees.LockForUpdateAsync(port.AttendeeId, ct);
         if (attendee is null)
-        {
-            return Result<ConfirmBookingOutcome>.Failure(
-                Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
-        }
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such attendee."));
 
-        var invite = await invites.LockForUpdateAsync(link.EntityId, cancellationToken);
-        if (invite is null
-            || invite.TokenVersion != link.Version
-            || !invite.IsUsableAt(clock.UtcNow))
-        {
-            return Result<ConfirmBookingOutcome>.Failure(
-                Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
-        }
-
+        var invite = await invites.LockForUpdateAsync(reference.EntityId, ct);
+        if (invite is null)
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such invite."));
         if (invite.AttendeeId != attendee.Id)
-        {
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
+                Error.Conflict("This link does not belong to this attendee."));
+        if (invite.TokenVersion != reference.Version)
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Conflict("This link has been replaced."));
+        if (invite.Status == InviteStatus.Used)
+        {
+            var existing = await bookings.GetByInviteIdAsync(invite.Id, ct);
+            await transaction.RollbackAsync(ct);
+            return Result<ConfirmBookingOutcome>.Failure(Error.AlreadyConfirmed(
+                $"This invite already confirmed booking {existing?.Id}.", existing?.Id ?? Guid.Empty));
         }
 
-        var isRecovery = invite.RecoveryOfBookingId.HasValue;
-        IReadOnlyList<Guid> required;
-        Booking? original = null;
+        if (invite.Status != InviteStatus.Pending)
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Conflict($"The invite is {invite.Status} and can no longer be used."));
+        if (!invite.IsUsableAt(clock.UtcNow))
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Conflict("This invite has expired and can no longer be used."));
+        if (!invite.Offers(command.EventId))
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Validation("The chosen event is not one of this invite's options."));
 
-        if (!isRecovery)
+        // A recovery invite confirms into a recovery booking, never a second original:
+        // without this branch every recovery confirm would die on the active-original
+        // backstop. The root is locked here, between the invite and the event, so a
+        // concurrent cancellation of the root serializes against this confirmation.
+        Booking? root = null;
+        if (invite.RecoveryOfBookingId is { } rootId)
         {
-            var existingBooking = await bookings.LockActiveForAttendeeAsync(attendee.Id, cancellationToken);
-            if (existingBooking is not null)
-            {
-                return Result<ConfirmBookingOutcome>.Failure(Error.Conflict("This attendee is already booked."));
-            }
+            root = await bookings.LockForUpdateAsync(rootId, ct);
+            if (root is null || !root.IsOriginal || root.AttendeeId != attendee.Id)
+                return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such booking."));
+            if (root.Status != BookingStatus.Active)
+                return Result<ConfirmBookingOutcome>.Failure(
+                    Error.Conflict("The original booking is no longer active."));
 
-            if (!attendee.RequiredAppointmentTypeIds
-                .Order()
-                .SequenceEqual(invite.RequiredAppointmentTypeIds.Order()))
+            // Revalidate the recovery snapshot against locked journey state: a no-show
+            // corrected after issue, or another recovery already active, makes it stale.
+            var activeRecovery = await bookings.LockActiveRecoveryAsync(root.Id, ct);
+            var journey = await bookings.ListJourneyAsync(root.Id, ct);
+            var rows = await appointments.ListForBookingsAsync(
+                journey.Select(b => b.Id).ToList(), ct);
+            var selected = new RecoveryRequirementSelector().Select(
+                attendee.RequiredAppointmentTypeIds,
+                BuildAttempts(journey, rows),
+                []);
+            if (activeRecovery is not null
+                || !selected.SequenceEqual(invite.RequiredAppointmentTypeIds.Order()))
             {
                 invite.MarkSuperseded();
-                await unitOfWork.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                return Result<ConfirmBookingOutcome>.Failure(
-                    Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
+                await unitOfWork.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return Result<ConfirmBookingOutcome>.Failure(Error.RecoveryStateChanged(
+                    "The recovery snapshot no longer matches current eligibility."));
             }
-
-            required = invite.RequiredAppointmentTypeIds;
         }
-        else
+        else if (!attendee.RequiredAppointmentTypeIds.Order()
+                     .SequenceEqual(invite.RequiredAppointmentTypeIds.Order()))
         {
-            original = await bookings.LockActiveOriginalForAttendeeAsync(attendee.Id, cancellationToken);
-            var activeRecovery = original is null
-                ? null
-                : await bookings.LockActiveRecoveryAsync(original.Id, cancellationToken);
-            if (original is null
-                || original.Id != invite.RecoveryOfBookingId
-                || activeRecovery is not null)
-            {
-                return await StaleRecoveryAsync(invite, transaction, cancellationToken);
-            }
-
-            var journey = await bookings.ListJourneyAsync(original.Id, cancellationToken);
-            var rows = await appointments.ListForBookingsAsync(
-                journey.Select(entry => entry.Id).ToList(),
-                cancellationToken);
-            var validated = new RecoveryConfirmationValidator().Validate(
-                invite,
-                attendee.RequiredAppointmentTypeIds,
-                RecoveryConfirmationValidator.BuildAttempts(journey, rows),
-                []);
-            if (validated.IsFailure)
-            {
-                return await StaleRecoveryAsync(invite, transaction, cancellationToken);
-            }
-
-            required = validated.Value;
-        }
-
-        if (!invite.Offers(command.EventId))
-        {
+            // The attendee's requirements changed after issue: this invite is stale.
+            invite.MarkSuperseded();
+            await unitOfWork.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.Conflict("That time is not one of your options."));
+                Error.Conflict("This invite is out of date. Please request a new one."));
         }
 
-        var eventItem = await events.LockForUpdateAsync(command.EventId, cancellationToken);
+        var eventItem = await events.LockForUpdateAsync(command.EventId, ct);
         if (eventItem is null)
-        {
+            return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such event."));
+        var location = await locations.GetAsync(eventItem.LocationId, ct);
+        if (location is not null && eventItem.Window.HasStarted(zones, location.TimeZoneId, clock.UtcNow))
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
-        }
+                Error.WindowStarted("This event has started and can no longer be booked."));
 
-        var actorId = invite.Id.ToString();
+        var required = invite.RequiredAppointmentTypeIds;
+        var locked = await capacities.LockForUpdateAsync(eventItem.Id, required, ct);
+        if (locked.Count != required.Count)
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Validation("The event no longer lists every required appointment type."));
 
-        var locked = await capacities.LockForUpdateAsync(
-            command.EventId,
-            required,
-            cancellationToken);
-
-        var stillAvailable =
-            eventItem.Status == EventStatus.Active
-            && eventItem.Window.StartsAfter(clock.TodayAtTransitionalLocation)
-            && locked.Count == required.Count
-            && locked.All(c => c.HasSpare);
-
-        if (!stillAvailable)
-        {
-            await DropAndReplaceOptionAsync(invite, attendee, required, eventItem.Id, actorId, cancellationToken);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-
-            return Result<ConfirmBookingOutcome>.Failure(Error.Conflict(FilledUpMessage));
-        }
-
-        var bookingId = Guid.NewGuid();
-        var manageToken = tokens.Issue(
-            TokenPurpose.Manage, bookingId, Booking.InitialManageTokenVersion);
-
-        Booking booking;
         try
         {
-            booking = isRecovery
-                ? Booking.CreateRecovery(bookingId, invite, original!, eventItem.Id, clock.UtcNow)
-                : Booking.Create(bookingId, invite, eventItem.Id, clock.UtcNow);
-
-            foreach (var capacity in locked)
-            {
-                capacity.Decrement();
-
-                audit.Record(
-                    AuditEntityTypes.Event,
-                    eventItem.Id,
-                    AuditAction.CapacityDecremented,
-                    ActorType.AttendeeToken,
-                    actorId,
-                    $"{capacity.AppointmentTypeId} now {capacity.RemainingCapacity}");
-            }
-
-            invite.MarkUsed();
-            if (!isRecovery)
-            {
-                attendee.MarkBooked(clock.UtcNow);
-            }
+            eventItem.ChargeRequiredTypes(required);
         }
         catch (DomainException ex)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return Result<ConfirmBookingOutcome>.Failure(Error.Conflict(ex.Message));
+            await transaction.RollbackAsync(ct);
+            return Result<ConfirmBookingOutcome>.Failure(Error.CapacityExhausted(ex.Message));
         }
 
+        var booking = root is null
+            ? Booking.Create(Guid.NewGuid(), invite, eventItem.Id, clock.UtcNow)
+            : Booking.CreateRecovery(Guid.NewGuid(), invite, root, eventItem.Id, clock.UtcNow);
         bookings.Add(booking);
+        foreach (var typeId in required)
+            appointments.Add(BookingAppointment.Create(Guid.NewGuid(), booking.Id, typeId));
+        invite.MarkUsed();
+        if (attendee.Status != AttendeeStatus.Booked)
+            attendee.MarkBooked(clock.UtcNow);
 
-        foreach (var appointmentTypeId in required)
-        {
-            appointments.Add(BookingAppointment.Create(
-                Guid.NewGuid(), booking.Id, appointmentTypeId));
-        }
-
-        audit.Record(
-            AuditEntityTypes.Booking,
-            bookingId,
-            isRecovery ? AuditAction.RecoveryBookingCreated : AuditAction.BookingCreated,
-            ActorType.AttendeeToken,
-            actorId,
-            isRecovery ? $"root {original!.Id} {eventItem.Window}" : eventItem.Window.ToString());
-
-        var delivery = deliveries.StagePending(
-            attendee.Id,
-            EmailTemplate.BookingConfirmation,
-            bookingId: bookingId);
-        deliveries.ClaimForDispatch(delivery);
-        var message = AttendeeEmailComposer.BookingConfirmation(
-            attendee, required, eventItem, $"{portal.BaseUrl}/manage/{manageToken}", portal);
+        audit.Record(AuditEntityTypes.Booking, booking.Id, AuditAction.BookingCreated,
+            ActorType.AttendeeToken, invite.Id.ToString(), $"event {eventItem.Id}");
+        foreach (var typeId in required)
+            audit.Record(AuditEntityTypes.Event, eventItem.Id, AuditAction.CapacityDecremented,
+                ActorType.AttendeeToken, invite.Id.ToString(), $"type {typeId}");
+        emails.Add(EmailLog.RecordPending(Guid.NewGuid(), attendee.Id,
+            EmailTemplate.BookingConfirmation, clock.UtcNow, bookingId: booking.Id));
 
         try
         {
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            await unitOfWork.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
         }
         catch (UniqueConstraintViolationException)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return Result<ConfirmBookingOutcome>.Failure(Error.Conflict("This attendee is already booked."));
+            // Two legacy pending invites for one attendee racing disjoint events: the attendee
+            // lock serialized them but each passed every check, so the backstop decides and the
+            // loser reports the same conflict a pre-check would have given.
+            await transaction.RollbackAsync(ct);
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Conflict("This attendee is already booked."));
         }
 
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
-
-        // The provider call is deliberately after the commit: a mail failure must not undo a good booking.
-        var deliveryStatus = await deliveries.DispatchClaimedAsync(delivery.Id, message, cancellationToken);
-
-        return Result<ConfirmBookingOutcome>.Success(
-            new ConfirmBookingOutcome(
-                bookingId,
-                eventItem.Window.Date,
-                eventItem.Window.StartTime,
-                eventItem.Window.EndTime,
-                manageToken,
-                deliveryStatus.ToString(),
-                delivery.Id));
+        return Result<ConfirmBookingOutcome>.Success(new ConfirmBookingOutcome(
+            booking.Id, tokens.Issue(TokenPurpose.Manage, booking.Id, booking.ManageTokenVersion)));
     }
 
-    /// <summary>
-    /// Supersedes a recovery Invite whose snapshot no longer matches locked journey state,
-    /// keeping the attendee-facing invalid-link response free of internal eligibility detail.
-    /// </summary>
-    private async Task<Result<ConfirmBookingOutcome>> StaleRecoveryAsync(
-        Domain.Invites.Invite invite,
-        ITransactionScope transaction,
-        CancellationToken cancellationToken)
+    private static IReadOnlyList<RecoveryAttempt> BuildAttempts(
+        IReadOnlyList<Booking> journey, IReadOnlyList<BookingAppointment> rows)
     {
-        invite.MarkSuperseded();
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return Result<ConfirmBookingOutcome>.Failure(
-            Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
-    }
-
-    /// <summary>
-    /// Drops an option that filled up, replacing it when capacity exists elsewhere. When no
-    /// replacement exists and the invite is left short, flags the attendee for coordinator
-    /// follow-up (Issue #242) instead of leaving them with a silently shrinking choice.
-    /// </summary>
-    private async Task DropAndReplaceOptionAsync(
-        Domain.Invites.Invite invite,
-        Attendee attendee,
-        IReadOnlyList<Guid> requiredAppointmentTypeIds,
-        Guid lostEventId,
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        invite.RemoveOption(lostEventId);
-
-        var replacement = await eventFinder.FindAsync(
-            requiredAppointmentTypeIds,
-            1,
-            invite.OfferedEventIds.Append(lostEventId).ToList(),
-            cancellationToken);
-
-        if (replacement.Count == 1)
-        {
-            invite.AddOption(replacement[0].Id);
-
-            audit.Record(
-                AuditEntityTypes.Invite,
-                invite.Id,
-                AuditAction.InviteOptionReplaced,
-                ActorType.AttendeeToken,
-                actorId,
-                $"{lostEventId} replaced by {replacement[0].Id}");
-
-            return;
-        }
-
-        audit.Record(
-            AuditEntityTypes.Invite,
-            invite.Id,
-            AuditAction.InviteOptionReplaced,
-            ActorType.AttendeeToken,
-            actorId,
-            $"{lostEventId} dropped, no replacement available");
-
-        if (invite.OfferedEventIds.Count < Domain.Invites.Invite.RequiredOptionCount
-            && attendee.Status == AttendeeStatus.Invited)
-        {
-            attendee.MarkNoResponse(clock.UtcNow);
-
-            audit.Record(
-                AuditEntityTypes.Invite,
-                invite.Id,
-                AuditAction.InviteOptionReplaced,
-                ActorType.AttendeeToken,
-                actorId,
-                $"only {invite.OfferedEventIds.Count} live option(s) remain, attendee flagged for follow-up");
-        }
+        var byId = journey.ToDictionary(b => b.Id);
+        return rows
+            .Where(r => byId.TryGetValue(r.BookingId, out var b) && b.Status != BookingStatus.Cancelled)
+            .Select(r => new RecoveryAttempt(
+                r.Id, r.AppointmentTypeId, r.Status, byId[r.BookingId].CreatedAt))
+            .ToList();
     }
 }

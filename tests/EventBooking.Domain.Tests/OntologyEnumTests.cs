@@ -89,6 +89,10 @@ public class OntologyEnumTests
                 "RecoveryInviteCreated", "RecoveryInviteCancelled",
                 "RecoveryBookingCreated", "RecoveryBookingConcluded", "StaffRolesSynced",
                 "AttendeeDeleted",
+                "LocationCreated", "LocationUpdated",
+                "AppointmentTypeCreated", "AppointmentTypeUpdated",
+                "AttendeeGroupCreated", "AttendeeGroupUpdated",
+                "SystemSettingsChanged",
             },
             Enum.GetNames<AuditAction>());
     }

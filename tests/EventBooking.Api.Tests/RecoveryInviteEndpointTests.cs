@@ -20,9 +20,9 @@ namespace EventBooking.Api.Tests;
 public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
 {
     private sealed record DeliveryOutcomeResponse(
-        Guid InviteId,
-        IReadOnlyList<Guid> AppointmentTypeIds,
-        bool EmailSent);
+        Guid RecoveryInviteId,
+        IReadOnlyList<Guid> LocationIds,
+        IReadOnlyList<Guid> RecoverableTypeIds);
 
     /// <summary>A Coordinator starts recovery for a missed appointment and gets the outcome.</summary>
     [Fact]
@@ -37,8 +37,8 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         var body = await response.Content.ReadFromJsonAsync<DeliveryOutcomeResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.NotEqual(Guid.Empty, body!.InviteId);
-        Assert.Contains(AppointmentTypeIds.MedicalCheckUp, body.AppointmentTypeIds);
+        Assert.NotEqual(Guid.Empty, body!.RecoveryInviteId);
+        Assert.Contains(AppointmentTypeIds.MedicalCheckUp, body.RecoverableTypeIds);
     }
 
     /// <summary>A Coordinator learns nothing is recoverable through the stable error code.</summary>
@@ -114,9 +114,9 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
         var outcome = await started.Content.ReadFromJsonAsync<DeliveryOutcomeResponse>();
 
         using var cancelled = await client.DeleteAsync(
-            $"/api/attendees/{attendeeId}/recovery-invites/{outcome!.InviteId}");
+            $"/api/attendees/{attendeeId}/recovery-invites/{outcome!.RecoveryInviteId}");
         using var again = await client.DeleteAsync(
-            $"/api/attendees/{attendeeId}/recovery-invites/{outcome.InviteId}");
+            $"/api/attendees/{attendeeId}/recovery-invites/{outcome.RecoveryInviteId}");
 
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, cancelled.StatusCode);
@@ -206,11 +206,12 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             0);
         var booking = Booking.Create(
             Guid.NewGuid(), invite, bookedEvent.Id, DateTimeOffset.UtcNow);
+        invite.MarkUsed();
         var appointment = BookingAppointment.Create(
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.MedicalCheckUp);
         context.AddRange(bookedEvent);
         context.AddRange(spareEvents);
-        context.AddRange(attendee, booking, appointment);
+        context.AddRange(attendee, invite, booking, appointment);
         await context.SaveChangesAsync();
 
         factory.SignedInAs = await factory.GivenStaffAsync(

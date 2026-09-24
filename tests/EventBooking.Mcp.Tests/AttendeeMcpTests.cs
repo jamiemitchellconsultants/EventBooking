@@ -20,13 +20,13 @@ public sealed class AttendeeMcpTests(McpFactory factory)
             "create_attendee",
             new { name = "Mcp Pilot", email, attendeeGroupCode = "PILOTS" });
 
-        var items = await CallToolResultAsync(
+        var page = await CallToolResultAsync(
             "list_attendees", new { search = email });
-        var item = items.EnumerateArray().Single();
+        var item = page.GetProperty("items").EnumerateArray().Single();
 
         Assert.Equal("PILOTS", item.GetProperty("attendeeGroupCode").GetString());
         Assert.False(item.TryGetProperty("requiresAttendeeGroupReconciliation", out _));
-        Assert.Equal(2, item.GetProperty("requiredAppointmentTypes").GetArrayLength());
+        Assert.Equal(2, item.GetProperty("requiredTypeCodes").GetArrayLength());
         Assert.Equal(
             "NoActiveBooking",
             item.GetProperty("readiness").GetProperty("code").GetString());
@@ -51,15 +51,19 @@ public sealed class AttendeeMcpTests(McpFactory factory)
         }
 
         var first = await CallToolResultAsync(
-            "list_attendees", new { search = prefix, page = 1, pageSize = 2 });
+            "list_attendees", new { search = prefix, pageSize = 2 });
+        var cursor = first.GetProperty("nextCursor").GetString();
+        Assert.NotNull(cursor);
         var second = await CallToolResultAsync(
-            "list_attendees", new { search = prefix, page = 2, pageSize = 2 });
+            "list_attendees", new { search = prefix, pageSize = 2, cursor });
 
-        Assert.Equal(2, first.GetArrayLength());
-        Assert.Single(second.EnumerateArray());
+        var firstItems = first.GetProperty("items").EnumerateArray().ToList();
+        var secondItems = second.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, firstItems.Count);
+        Assert.Single(secondItems);
         Assert.Empty(
-            first.EnumerateArray().Select(item => item.GetRawText())
-                .Intersect(second.EnumerateArray().Select(item => item.GetRawText())));
+            firstItems.Select(item => item.GetRawText())
+                .Intersect(secondItems.Select(item => item.GetRawText())));
     }
 
     /// <summary>An unknown status surfaces as a tool error, not a transport failure.</summary>

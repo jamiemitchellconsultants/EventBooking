@@ -28,6 +28,10 @@ public class DashboardEndpointTests(ApiFactory factory)
         Assert.NotNull(dashboards!.AwaitingAvailability);
         Assert.NotNull(dashboards.NoResponse);
         Assert.NotNull(dashboards.Events);
+        Assert.Equal(
+            dashboards.AwaitingAvailability.Rows.Count, dashboards.AwaitingAvailability.Count);
+        Assert.Equal(dashboards.NoResponse.Rows.Count, dashboards.NoResponse.Count);
+        Assert.Equal(dashboards.Events.Rows.Count, dashboards.Events.Count);
     }
 
     [Fact]
@@ -126,20 +130,20 @@ public class DashboardEndpointTests(ApiFactory factory)
 
         Assert.NotNull(dashboards);
 
-        var awaitingRow = Assert.Single(dashboards!.AwaitingAvailability, r => r.AttendeeId == awaitingId);
+        var awaitingRow = Assert.Single(dashboards!.AwaitingAvailability.Rows, r => r.AttendeeId == awaitingId);
         Assert.Equal("A. Waiting", awaitingRow.Name);
         Assert.Equal("a.waiting@mail.com", awaitingRow.Email);
         Assert.Equal(new[] { "DAT", "MED", "UNI" }, awaitingRow.RequiredCodes);
         Assert.Equal(today, awaitingRow.WaitingSince);
         Assert.Equal(0, awaitingRow.DaysWaiting);
 
-        var noResponseRow = Assert.Single(dashboards.NoResponse, r => r.AttendeeId == noResponseId);
+        var noResponseRow = Assert.Single(dashboards.NoResponse.Rows, r => r.AttendeeId == noResponseId);
         Assert.Equal("B. Stuck", noResponseRow.Name);
         Assert.Equal("b.stuck@mail.com", noResponseRow.Email);
         Assert.Equal(new[] { "MED" }, noResponseRow.RequiredCodes);
         Assert.Equal(today, noResponseRow.GaveUpOn);
 
-        var eventRow = Assert.Single(dashboards.Events, s => s.EventId == eventId);
+        var eventRow = Assert.Single(dashboards.Events.Rows, s => s.EventId == eventId);
         Assert.Equal(today.AddDays(30), eventRow.Date);
         Assert.Equal(new TimeOnly(9, 0), eventRow.StartTime);
         Assert.Equal(new TimeOnly(13, 0), eventRow.EndTime);
@@ -169,8 +173,12 @@ public class DashboardEndpointTests(ApiFactory factory)
         IReadOnlyList<EventCapacityResponse> Capacities,
         int ActiveBookings);
 
+    private sealed record TabResponse<T>(int Count, IReadOnlyList<T> Rows);
+
     private sealed record DashboardsResponse(
-        IReadOnlyList<RowResponse> AwaitingAvailability,
-        IReadOnlyList<RowResponse> NoResponse,
-        IReadOnlyList<EventResponse> Events);
+        TabResponse<RowResponse> AwaitingAvailability,
+        TabResponse<RowResponse> NoResponse,
+        TabResponse<EventResponse> Events,
+        int FailedEmails,
+        int PendingEmails);
 }

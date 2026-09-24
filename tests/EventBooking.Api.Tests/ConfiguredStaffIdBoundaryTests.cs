@@ -3,6 +3,7 @@ using EventBooking.Api.Auth;
 using EventBooking.Application.Access;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace EventBooking.Api.Tests;
 
@@ -19,7 +20,8 @@ public sealed class ConfiguredStaffIdBoundaryTests
             User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("staff_id", input)], "test")),
         };
         var accessor = new HttpContextCallerAccessor(new HttpContextAccessor { HttpContext = context },
-            NullLogger<HttpContextCallerAccessor>.Instance, new StaffIdPolicy(pattern));
+            NullLogger<HttpContextCallerAccessor>.Instance,
+            Options.Create(new AuthClaimOptions { StaffIdPattern = pattern }));
         Assert.Equal(expected, accessor.StaffId?.Value);
     }
 

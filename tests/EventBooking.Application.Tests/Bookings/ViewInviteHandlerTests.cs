@@ -7,6 +7,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Tests.Bookings;
 
@@ -21,16 +22,20 @@ public class ViewInviteHandlerTests
     private readonly FakeClock _clock = new(new DateTimeOffset(2026, 9, 3, 9, 0, 0, TimeSpan.Zero));
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly InMemoryLocationRepository _locations = new();
     private readonly Attendee _attendee;
     private readonly Invite _invite;
     private readonly string _token;
 
     private ViewInviteHandler Handler => new(
         _invites, _attendees, _events, new EligibleEventFinder(_events, _events, _clock),
-        _audit, _unitOfWork, _tokens, _clock);
+        _audit, _unitOfWork, _tokens, _clock, _locations, ProposalFixture.Zones);
 
     public ViewInviteHandlerTests()
     {
+        _locations.Items.Add(Location.Create(
+            ProposalFixture.LocationId, "LONDON_HQ", "London HQ", "1 High St",
+            "Europe/London", ProposalFixture.Zones));
         _attendee = Attendee.Create(
             Guid.NewGuid(),
             "Amara Novak",
@@ -81,7 +86,7 @@ public class ViewInviteHandlerTests
         Assert.Equal(new DateOnly(2026, 9, 10), first.Date);
         Assert.Equal(new TimeOnly(9, 0), first.StartTime);
         Assert.Equal(new TimeOnly(13, 0), first.EndTime);
-        Assert.Equal("Thursday 10 Sep 2026, 09:00-13:00", first.Display);
+        Assert.Equal("Thu 10 Sep 2026, 09:00-13:00 GMT at London HQ", first.Display);
     }
 
     [Fact]

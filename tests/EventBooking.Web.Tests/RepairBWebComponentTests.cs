@@ -116,28 +116,18 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
-    /// Verifies the latest delivery timestamp uses the same configured local-time presentation as audit history.
+    /// Verifies the delivery column shows the list row's latest delivery status.
     /// </summary>
     [Fact]
-    public void AttendeesRenderLatestDeliveryInTransitionalLocationLocalTime()
+    public void AttendeesRenderLatestDeliveryStatus()
     {
         var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AttendeeDto>
-        {
-            new(attendeeId, "C. Attendee", "attendee@example.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 3, "Invited"),
-        }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Invite",
-                new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero),
-                "Sent",
-                CanRetry: false)])));
+        handler.Enqueue(_ => Json(new AttendeeListDto(
+            [new AttendeeDto(
+                attendeeId, "C. Attendee", "attendee@example.com", "Invited",
+                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Sent", "cursor")],
+            null)));
         handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
         Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
         Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
@@ -146,7 +136,45 @@ public class RepairBWebComponentTests : BunitContext
 
         var cut = Render<Attendees>();
 
-        cut.WaitForAssertion(() => Assert.Contains("Invite 2026-06-02 00:30 +01:00 (Europe/London)", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Sent", cut.Markup));
+    }
+
+    /// <summary>
+    /// Verifies a failed delivery offers Resend, and Resend retries that exact delivery.
+    /// </summary>
+    [Fact]
+    public void AttendeesResendRetriesTheFailedDelivery()
+    {
+        var attendeeId = Guid.NewGuid();
+        var deliveryId = Guid.NewGuid();
+        var page = new AttendeeListDto(
+            [new AttendeeDto(
+                attendeeId, "C. Attendee", "attendee@example.com", "Invited",
+                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Failed", "cursor",
+                deliveryId)],
+            null);
+        string? retried = null;
+        var handler = new RoutedHandler();
+        handler.Enqueue(_ => Json(page));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        handler.Enqueue(request =>
+        {
+            retried = request.RequestUri!.PathAndQuery;
+            return Json(new EmailRetryDto(Guid.NewGuid()));
+        });
+        handler.Enqueue(_ => Json(page));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
+        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+
+        var cut = Render<Attendees>();
+        cut.WaitForAssertion(() => Assert.Contains("Failed", cut.Markup));
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Resend").Click();
+
+        cut.WaitForAssertion(() => Assert.Equal(
+            $"/api/attendees/{attendeeId}/email-retry?emailLogId={deliveryId}", retried));
     }
 
     /// <summary>

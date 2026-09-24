@@ -1,279 +1,198 @@
-using System.Text.Json;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
-using EventBooking.Application.Events;
-using EventBooking.Application.Notifications;
-using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Domain.Audit;
 using EventBooking.Domain.Attendees;
+using EventBooking.Domain.Audit;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
-using EventBooking.Domain.Events;
 
 namespace EventBooking.Application.Invites;
 
-/// <summary>Reports invite creation and the durable delivery state visible to callers.</summary>
-/// <param name="Invited">Whether a new pending invite was created.</param>
-/// <param name="InviteId">The new invite identifier, when one was created.</param>
-/// <param name="EmailSent">Whether the post-commit provider attempt completed successfully.</param>
-/// <param name="DeliveryStatus">The durable delivery status, or <c>Unavailable</c> when no invite exists.</param>
-/// <param name="DeliveryId">The durable delivery identifier, when one was staged.</param>
-public sealed record InviteIssueResult(
-    bool Invited,
-    Guid? InviteId,
-    bool EmailSent,
-    string DeliveryStatus = "Unavailable",
-    Guid? DeliveryId = null)
-{
-    internal EmailDispatchPlan? DispatchPlan { get; init; }
-}
+/// <summary>The invite the issuer created.</summary>
+/// <param name="InviteId">The new invite identifier.</param>
+public sealed record InviteIssueOutcome(Guid InviteId);
 
-internal sealed record EmailDispatchPlan(Guid DeliveryId, EmailMessage Message, Action? OnSent = null);
-
-/// <summary>
-/// Creates one invite and stages its delivery, or records that there is nothing to offer. Shared by the
-/// coordinator trigger (Task 37), the expiry sweep (Task 38) and event cancellation (Task 42).
-/// Never saves or calls a provider — the caller owns the unit of work and dispatches only after commit.
-/// </summary>
-/// <param name="invites">The invites.</param>
-/// <param name="groups">The groups.</param>
-/// <param name="eventFinder">The event finder.</param>
-/// <param name="settings">The settings.</param>
-/// <param name="tokens">The tokens.</param>
-/// <param name="deliveries">The deliveries.</param>
-/// <param name="audit">The audit.</param>
-/// <param name="clock">The clock.</param>
-/// <param name="portal">The portal.</param>
-public sealed class InviteIssuer(
-    IInviteRepository invites,
-    IAttendeeGroupRepository groups,
-    EligibleEventFinder eventFinder,
-    ISystemSettingsRepository settings,
-    ITokenService tokens,
-    EmailDeliveryService deliveries,
-    IAuditLogger audit,
-    IClock clock,
-    AttendeePortalOptions portal)
+/// <summary>Creates invites for the Coordinator trigger, the expiry sweep and recovery paths.</summary>
+public interface IInviteIssuer
 {
-    /// <summary>Issues an initial Invite from a locked, validated Attendee requirement set.</summary>
-    /// <param name="attendee">The attendee whose lifecycle is already locked by the caller.</param>
-    /// <param name="retryCount">The automated retry number to persist on the new invite.</param>
-    /// <param name="actorType">The actor recorded for invite creation.</param>
-    /// <param name="actorId">The actor identifier, when a staff identity caused the change.</param>
-    /// <param name="isReinvite">Whether the reminder template should be used.</param>
-    /// <param name="cancellationToken">Cancels repository and event reads.</param>
-    /// <returns>A pending delivery plan the caller dispatches after commit.</returns>
-    public async Task<Result<InviteIssueResult>> IssueInitialAsync(
+    /// <summary>Issues an initial invite for the attendee's own requirement snapshot.</summary>
+    /// <param name="attendee">The locked attendee.</param>
+    /// <param name="locationIds">The locations the Coordinator opened.</param>
+    /// <param name="template">The email template to stage.</param>
+    /// <param name="actor">The actor type.</param>
+    /// <param name="actorId">The actor identifier.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <param name="excludeEventIds">Events that must not be offered, such as one being cancelled in the same unsaved transaction.</param>
+    /// <param name="lockedPending">The attendee's pending invites the caller has already locked, or null to have the issuer lock and supersede the pending invite. A caller past the Invite level of the lock ladder must pass them, because taking an Invite lock there is a violation.</param>
+    Task<Result<InviteIssueOutcome>> IssueInitialAsync(
         Attendee attendee,
-        int retryCount,
-        ActorType actorType,
-        string? actorId,
-        bool isReinvite,
-        CancellationToken cancellationToken)
-    {
-        var group = await groups.GetAsync(attendee.AttendeeGroupId, cancellationToken);
-        var mapping = group?.RequiredAppointmentTypeIds
-            .Order()
-            .ToList();
-        var current = attendee.RequiredAppointmentTypeIds
-            .Order()
-            .ToList();
-        if (group is null || !group.IsActive || mapping!.Count == 0 || !mapping.SequenceEqual(current))
-        {
-            return Result<InviteIssueResult>.Failure(Error.AttendeeRequirementSnapshotMismatch(
-                "The attendee requirements do not match their attendee group."));
-        }
+        IReadOnlyList<Guid> locationIds,
+        EmailTemplate template,
+        ActorType actor,
+        string actorId,
+        CancellationToken ct,
+        IReadOnlyCollection<Guid>? excludeEventIds = null,
+        IReadOnlyCollection<Invite>? lockedPending = null);
 
-        var pending = await invites.GetPendingForAttendeeAsync(attendee.Id, cancellationToken);
-        if (pending?.Status == Domain.Invites.InviteStatus.Pending)
-        {
-            pending.MarkSuperseded();
-        }
+    /// <summary>Reissues an expired invite with the same locations and retry count plus one.</summary>
+    /// <param name="expired">The expired invite being replaced.</param>
+    /// <param name="freshEventIds">The freshly chosen event options.</param>
+    /// <param name="actor">The actor type.</param>
+    /// <param name="actorId">The actor identifier.</param>
+    /// <param name="ct">The cancellation token.</param>
+    Task<Result<InviteIssueOutcome>> IssueReissueAsync(
+        Invite expired,
+        IReadOnlyList<Guid> freshEventIds,
+        ActorType actor,
+        string actorId,
+        CancellationToken ct);
 
-        InviteIssueResult issued;
-        try
-        {
-            var options = await eventFinder.FindAsync(
-                mapping,
-                Invite.RequiredOptionCount,
-                [],
-                cancellationToken);
-
-            if (options.Count < Invite.RequiredOptionCount)
-            {
-                // FR-5.4 parks a not-yet-invited attendee on AwaitingAvailability. FR-5.7 says a
-                // failed automatic re-issue ends at NoResponseNeedsFollowUp instead, and the
-                // closed status table is what tells the two apart.
-                if (Attendee.IsLegalTransition(attendee.Status, AttendeeStatus.AwaitingAvailability))
-                {
-                    attendee.MarkAwaitingAvailability(clock.UtcNow);
-                }
-                else
-                {
-                    attendee.MarkNoResponse(clock.UtcNow);
-                }
-
-                return Result<InviteIssueResult>.Success(new InviteIssueResult(false, null, false));
-            }
-
-            var configuration = await settings.GetAsync(cancellationToken);
-
-            var inviteId = Guid.NewGuid();
-            var token = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
-
-            var invite = Invite.CreateInitial(
-                inviteId,
-                attendee.Id,
-                clock.UtcNow.AddDays(configuration.InviteExpiryDays),
-                // The Coordinator cannot choose locations until Task 12 puts them on the command,
-                // so every invite is restricted to the transitional site.
-                [TransitionalLocation.Id],
-                options.Select(o => o.Id),
-                mapping,
-                retryCount);
-
-            invites.Add(invite);
-            attendee.MarkInvited(clock.UtcNow);
-
-            audit.Record(
-                AuditEntityTypes.Invite,
-                inviteId,
-                AuditAction.InviteCreated,
-                actorType,
-                actorId,
-                $"retry {retryCount}");
-
-            var message = AttendeeEmailComposer.Invite(
-                attendee,
-                mapping,
-                options,
-                $"{portal.BaseUrl}/book/{token}",
-                isReinvite,
-                isRecovery: false);
-
-            var delivery = deliveries.StagePending(attendee.Id, message.Template, inviteId: inviteId);
-            deliveries.ClaimForDispatch(delivery);
-            var plan = new EmailDispatchPlan(
-                delivery.Id,
-                message,
-                () => audit.Record(
-                    AuditEntityTypes.Invite,
-                    inviteId,
-                    AuditAction.InviteSent,
-                    actorType,
-                    actorId,
-                    $"invite {inviteId}"));
-
-            issued = new InviteIssueResult(true, inviteId, false, EmailStatus.Pending.ToString(), delivery.Id)
-            {
-                DispatchPlan = plan,
-            };
-        }
-        catch (DomainException ex)
-        {
-            return Result<InviteIssueResult>.Failure(Error.Validation(ex.Message));
-        }
-
-        return Result<InviteIssueResult>.Success(issued);
-    }
-
-    /// <summary>Issues a recovery Invite for already-selected no-show types from locked journey state.</summary>
-    /// <param name="attendee">The attendee whose lifecycle is already locked by the caller.</param>
-    /// <param name="rootBookingId">The original journey-root Booking the recovery belongs to.</param>
-    /// <param name="selectedTypeIds">The recoverable snapshot, already revalidated under lock.</param>
-    /// <param name="options">Exactly three future events with capacity for every selected type.</param>
-    /// <param name="actorType">The actor recorded for invite creation.</param>
-    /// <param name="actorId">The actor identifier, when a staff identity caused the change.</param>
-    /// <param name="cancellationToken">Cancels repository reads.</param>
-    /// <returns>A pending delivery plan the caller dispatches after commit.</returns>
-    public async Task<Result<InviteIssueResult>> IssueRecoveryAsync(
+    /// <summary>Issues a recovery invite for already-selected no-show types.</summary>
+    /// <param name="attendee">The locked attendee.</param>
+    /// <param name="rootBookingId">The booking being recovered.</param>
+    /// <param name="selectedAppointmentTypeIds">The selected no-show types.</param>
+    /// <param name="locationIds">The locations the Coordinator opened.</param>
+    /// <param name="freshEventIds">The freshly chosen event options.</param>
+    /// <param name="actor">The actor type.</param>
+    /// <param name="actorId">The actor identifier.</param>
+    /// <param name="ct">The cancellation token.</param>
+    Task<Result<InviteIssueOutcome>> IssueRecoveryAsync(
         Attendee attendee,
         Guid rootBookingId,
-        IReadOnlyList<Guid> selectedTypeIds,
-        IReadOnlyList<Event> options,
-        ActorType actorType,
-        string? actorId,
-        CancellationToken cancellationToken)
+        IReadOnlyList<Guid> selectedAppointmentTypeIds,
+        IReadOnlyList<Guid> locationIds,
+        IReadOnlyList<Guid> freshEventIds,
+        ActorType actor,
+        string actorId,
+        CancellationToken ct);
+}
+
+/// <summary>Creates invites against live eligibility and stages their emails for sending.</summary>
+/// <param name="invites">The invite repository.</param>
+/// <param name="settings">The system settings repository.</param>
+/// <param name="emails">The email delivery repository.</param>
+/// <param name="audit">The audit logger.</param>
+/// <param name="clock">The clock.</param>
+/// <param name="eligibility">The event eligibility query.</param>
+public sealed class InviteIssuer(
+    IInviteRepository invites,
+    ISystemSettingsRepository settings,
+    IEmailDeliveryRepository emails,
+    IAuditLogger audit,
+    IClock clock,
+    IEventEligibilityQuery eligibility) : IInviteIssuer
+{
+    /// <summary>Issues an initial invite for the attendee's own requirement snapshot.</summary>
+    /// <param name="attendee">The locked attendee.</param>
+    /// <param name="locationIds">The locations the Coordinator opened.</param>
+    /// <param name="template">The email template to stage.</param>
+    /// <param name="actor">The actor type.</param>
+    /// <param name="actorId">The actor identifier.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <param name="excludeEventIds">Events that must not be offered.</param>
+    /// <param name="lockedPending">Pending invites the caller already holds locks on, if any.</param>
+    public async Task<Result<InviteIssueOutcome>> IssueInitialAsync(
+        Attendee attendee,
+        IReadOnlyList<Guid> locationIds,
+        EmailTemplate template,
+        ActorType actor,
+        string actorId,
+        CancellationToken ct,
+        IReadOnlyCollection<Guid>? excludeEventIds = null,
+        IReadOnlyCollection<Invite>? lockedPending = null)
     {
-        if (options.Count != Invite.RequiredOptionCount)
+        var configuration = await settings.GetAsync(ct);
+        var found = await eligibility.FindEligibleEventsAsync(
+            attendee.RequiredAppointmentTypeIds, locationIds, excludeEventIds ?? [],
+            configuration.InviteOptionCount, clock.UtcNow, ct);
+        if (found.Count < configuration.InviteOptionCount)
+            return Result<InviteIssueOutcome>.Failure(Error.InsufficientEvents(
+                $"Only {found.Count} eligible events for {configuration.InviteOptionCount} options.",
+                found.Count, configuration.InviteOptionCount));
+
+        if (lockedPending is null)
         {
-            return Result<InviteIssueResult>.Failure(Error.Validation(
-                "A recovery invite must offer exactly three event options."));
+            (await invites.LockPendingForAttendeeAsync(attendee.Id, ct))?.MarkSuperseded();
+        }
+        else
+        {
+            foreach (var pending in lockedPending.Where(i => i.Status == InviteStatus.Pending))
+                pending.MarkSuperseded();
         }
 
-        InviteIssueResult issued;
-        try
-        {
-            var configuration = await settings.GetAsync(cancellationToken);
-
-            var inviteId = Guid.NewGuid();
-            var token = tokens.Issue(TokenPurpose.Book, inviteId, Invite.InitialTokenVersion);
-
-            var invite = Invite.CreateRecovery(
-                inviteId,
-                attendee.Id,
-                rootBookingId,
-                clock.UtcNow.AddDays(configuration.InviteExpiryDays),
-                TransitionalLocation.Id,
-                null,
-                options.Select(o => o.Id),
-                selectedTypeIds);
-
-            invites.Add(invite);
-
-            var codes = selectedTypeIds
-                .Select(AppointmentTypeIds.CodeOf)
-                .Order(StringComparer.Ordinal)
-                .ToList();
-            audit.Record(
-                AuditEntityTypes.Invite,
-                inviteId,
-                AuditAction.RecoveryInviteCreated,
-                actorType,
-                actorId,
-                JsonSerializer.Serialize(
-                    new RecoveryInviteAudit(rootBookingId, codes),
-                    RecoveryAuditJson));
-
-            var message = AttendeeEmailComposer.Invite(
-                attendee,
-                selectedTypeIds,
-                options,
-                $"{portal.BaseUrl}/book/{token}",
-                isReinvite: false,
-                isRecovery: true);
-
-            var delivery = deliveries.StagePending(attendee.Id, message.Template, inviteId: inviteId);
-            deliveries.ClaimForDispatch(delivery);
-            var plan = new EmailDispatchPlan(
-                delivery.Id,
-                message,
-                () => audit.Record(
-                    AuditEntityTypes.Invite,
-                    inviteId,
-                    AuditAction.InviteSent,
-                    actorType,
-                    actorId,
-                    $"invite {inviteId}"));
-
-            issued = new InviteIssueResult(true, inviteId, false, EmailStatus.Pending.ToString(), delivery.Id)
-            {
-                DispatchPlan = plan,
-            };
-        }
-        catch (DomainException ex)
-        {
-            return Result<InviteIssueResult>.Failure(Error.Validation(ex.Message));
-        }
-
-        return Result<InviteIssueResult>.Success(issued);
+        var invite = Invite.CreateInitial(
+            Guid.NewGuid(), attendee.Id, clock.UtcNow.AddDays(configuration.InviteExpiryDays),
+            locationIds, found, attendee.RequiredAppointmentTypeIds, 0,
+            configuration.InviteExpiryDays, configuration.MaxAutoRetryCount,
+            configuration.InviteOptionCount);
+        invites.Add(invite);
+        emails.Add(EmailLog.RecordPending(
+            Guid.NewGuid(), attendee.Id, template, clock.UtcNow, inviteId: invite.Id));
+        audit.Record(AuditEntityTypes.Invite, invite.Id, AuditAction.InviteCreated,
+            actor, actorId, $"locations {locationIds.Count}");
+        attendee.MarkInvited(clock.UtcNow);
+        return Result<InviteIssueOutcome>.Success(new InviteIssueOutcome(invite.Id));
     }
 
-    private static readonly JsonSerializerOptions RecoveryAuditJson = new()
+    /// <summary>Reissues an expired invite with the same locations and retry count plus one.</summary>
+    /// <param name="expired">The expired invite being replaced.</param>
+    /// <param name="freshEventIds">The freshly chosen event options.</param>
+    /// <param name="actor">The actor type.</param>
+    /// <param name="actorId">The actor identifier.</param>
+    /// <param name="ct">The cancellation token.</param>
+    public async Task<Result<InviteIssueOutcome>> IssueReissueAsync(
+        Invite expired,
+        IReadOnlyList<Guid> freshEventIds,
+        ActorType actor,
+        string actorId,
+        CancellationToken ct)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+        var invite = Invite.Reissue(Guid.NewGuid(), expired,
+            clock.UtcNow.AddDays(expired.InviteExpiryDays), freshEventIds);
+        invites.Add(invite);
+        emails.Add(EmailLog.RecordPending(
+            Guid.NewGuid(), invite.AttendeeId, EmailTemplate.AttendeeReinvite, clock.UtcNow,
+            inviteId: invite.Id));
+        audit.Record(AuditEntityTypes.Invite, invite.Id, AuditAction.InviteCreated,
+            actor, actorId, $"locations {invite.LocationIds.Count}");
+        return Result<InviteIssueOutcome>.Success(new InviteIssueOutcome(invite.Id));
+    }
 
-    private sealed record RecoveryInviteAudit(Guid RootBookingId, IReadOnlyList<string> RequirementCodes);
+    /// <summary>Issues a recovery invite for already-selected no-show types.</summary>
+    /// <param name="attendee">The locked attendee.</param>
+    /// <param name="rootBookingId">The booking being recovered.</param>
+    /// <param name="selectedAppointmentTypeIds">The selected no-show types.</param>
+    /// <param name="locationIds">The locations the Coordinator opened.</param>
+    /// <param name="freshEventIds">The freshly chosen event options.</param>
+    /// <param name="actor">The actor type.</param>
+    /// <param name="actorId">The actor identifier.</param>
+    /// <param name="ct">The cancellation token.</param>
+    public async Task<Result<InviteIssueOutcome>> IssueRecoveryAsync(
+        Attendee attendee,
+        Guid rootBookingId,
+        IReadOnlyList<Guid> selectedAppointmentTypeIds,
+        IReadOnlyList<Guid> locationIds,
+        IReadOnlyList<Guid> freshEventIds,
+        ActorType actor,
+        string actorId,
+        CancellationToken ct)
+    {
+        Guard.Against(locationIds.Count == 0, "At least one location is required.");
+
+        var configuration = await settings.GetAsync(ct);
+        var invite = Invite.CreateRecovery(
+            Guid.NewGuid(), attendee.Id, rootBookingId,
+            clock.UtcNow.AddDays(configuration.InviteExpiryDays),
+            locationIds[0], locationIds.Skip(1).ToList(), freshEventIds,
+            selectedAppointmentTypeIds,
+            configuration.InviteExpiryDays, configuration.MaxAutoRetryCount,
+            configuration.InviteOptionCount);
+        invites.Add(invite);
+        emails.Add(EmailLog.RecordPending(
+            Guid.NewGuid(), attendee.Id, EmailTemplate.AttendeeInvite, clock.UtcNow,
+            inviteId: invite.Id));
+        audit.Record(AuditEntityTypes.Invite, invite.Id, AuditAction.RecoveryInviteCreated,
+            actor, actorId, $"locations {locationIds.Count}");
+        return Result<InviteIssueOutcome>.Success(new InviteIssueOutcome(invite.Id));
+    }
 }

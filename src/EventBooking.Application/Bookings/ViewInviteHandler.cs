@@ -1,12 +1,12 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
-using EventBooking.Application.Notifications;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Bookings;
 
@@ -49,6 +49,8 @@ public sealed record ViewInviteQuery(string? Token);
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="tokens">The tokens.</param>
 /// <param name="clock">The clock.</param>
+/// <param name="locations">The locations.</param>
+/// <param name="zones">The zones.</param>
 public sealed class ViewInviteHandler(
     IInviteRepository invites,
     IAttendeeRepository attendees,
@@ -57,7 +59,9 @@ public sealed class ViewInviteHandler(
     IAuditLogger audit,
     IUnitOfWork unitOfWork,
     ITokenService tokens,
-    IClock clock)
+    IClock clock,
+    ILocationRepository locations,
+    IEventWindowZones zones)
 {
     /// <summary>
     /// One message for every failure. A caller must not be able to tell a forged token from an
@@ -149,7 +153,7 @@ public sealed class ViewInviteHandler(
             mutated = true;
         }
 
-        if (options.Count < Domain.Invites.Invite.RequiredOptionCount
+        if (options.Count < invite.InviteOptionCount
             && attendee.Status == AttendeeStatus.Invited)
         {
             attendee.MarkNoResponse(clock.UtcNow);
@@ -169,19 +173,31 @@ public sealed class ViewInviteHandler(
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
+        var optionViews = new List<InviteOptionView>();
+        foreach (var option in options.OrderBy(s => s.Window))
+        {
+            var location = await locations.GetAsync(option.LocationId, cancellationToken)
+                ?? throw new InvalidOperationException($"Location {option.LocationId} is gone.");
+            optionViews.Add(new InviteOptionView(
+                option.Id,
+                option.Window.Date,
+                option.Window.StartTime,
+                option.Window.EndTime,
+                WindowText.Format(
+                    option.Window.Date,
+                    option.Window.StartTime,
+                    option.Window.EndTime,
+                    location.Name,
+                    zones.AbbreviationOf(
+                        option.Window.StartInstant(zones, location.TimeZoneId),
+                        location.TimeZoneId))));
+        }
+
         var view = new InviteView(
             invite.Id,
             attendee.Name,
             invite.RequiredAppointmentTypeIds.Select(AppointmentTypeIds.NameOf).ToList(),
-            options
-                .OrderBy(s => s.Window)
-                .Select(s => new InviteOptionView(
-                    s.Id,
-                    s.Window.Date,
-                    s.Window.StartTime,
-                    s.Window.EndTime,
-                    AttendeeEmailComposer.FormatWindow(s.Window)))
-                .ToList(),
+            optionViews,
             invite.RecoveryOfBookingId is not null);
 
         return Result<InviteView>.Success(view);

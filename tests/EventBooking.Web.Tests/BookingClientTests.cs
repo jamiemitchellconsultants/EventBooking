@@ -123,7 +123,7 @@ public class BookingClientTests
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = JsonContent.Create(new ConfirmedBookingDto(
-                Guid.NewGuid(), new DateOnly(2026, 9, 11), new TimeOnly(13, 0), new TimeOnly(17, 0), "manage-token")),
+                Guid.NewGuid(), "manage-token")),
         };
 
         var outcome = await client.ConfirmAsync("tok", eventId, CancellationToken.None);
@@ -170,20 +170,21 @@ public class BookingClientTests
     }
 
     [Fact]
-    public async Task CancellingSendsTheRebookFlag()
+    public async Task CancellingSendsTheRequestNewTimeFlag()
     {
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new CancelOutcomeDto(true)),
+            Content = JsonContent.Create(new CancelOutcomeDto("reinvited", Guid.NewGuid())),
         };
 
         var outcome = await client.CancelAsync("mtok", true, CancellationToken.None);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/booking/manage/mtok/cancel", handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Contains("true", handler.Bodies[0]);
-        Assert.True(outcome.Value!.Reinvited);
+        Assert.Contains("requestNewTime", handler.Bodies[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("reinvited", outcome.Value!.Outcome);
+        Assert.NotNull(outcome.Value.InviteId);
     }
 
     [Fact]
@@ -192,13 +193,13 @@ public class BookingClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new CancelOutcomeDto(false)),
+            Content = JsonContent.Create(new CancelOutcomeDto("noEligibleEvents")),
         };
 
         var outcome = await client.CancelAsync("mtok", true, CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        Assert.False(outcome.Value!.Reinvited);
+        Assert.Equal("noEligibleEvents", outcome.Value!.Outcome);
     }
 
     [Fact]
@@ -210,13 +211,13 @@ public class BookingClientTests
             new TrackingContent("""{"inviteId":"00000000-0000-0000-0000-000000000001","attendeeName":"Amara Novak","appointmentTypeNames":["Uniform Fitting"],"options":[]}"""));
         var confirmedResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
-            new TrackingContent("""{"bookingId":"00000000-0000-0000-0000-000000000002","date":"2026-09-11","startTime":"13:00:00","endTime":"17:00:00","manageToken":"manage-token"}"""));
+            new TrackingContent("""{"bookingId":"00000000-0000-0000-0000-000000000002","manageToken":"manage-token"}"""));
         var bookingResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
             new TrackingContent("""{"date":"2026-09-11","startTime":"13:00:00","endTime":"17:00:00","display":"Friday 11 Sep 2026","attendeeName":"Amara Novak"}"""));
         var cancelResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
-            new TrackingContent("""{"reinvited":false}"""));
+            new TrackingContent("""{"outcome":"cancelled","inviteId":null}"""));
         var responses = new[] { inviteResponse, confirmedResponse, bookingResponse, cancelResponse };
 
         foreach (var response in responses)

@@ -7,26 +7,30 @@ namespace EventBooking.Api.Auth;
 
 public static class LocalAuthenticationExtensions
 {
-    /// <summary>A generic OIDC Bearer [REDACTED] against a Keycloak realm's issuer and
-    /// audience — the Auth:Local configuration section (Authority, Audience). The local realm
-    /// is served over plain HTTP, so HTTPS metadata is disabled; this provider is never used
-    /// outside a local deployment.</summary>
-    public static AuthenticationBuilder AddLocalAuthentication(
-        this IServiceCollection services, IConfiguration authLocalSection) =>
-        services
+    /// <summary>Provider-neutral OIDC Bearer [REDACTED] the Auth configuration section
+    /// (Authority, Audience, RequireHttpsMetadata). Claim mapping reads the configured names,
+    /// so inbound claim mapping stays off: it would rename the very claims
+    /// AuthClaimOptions is configured to find.</summary>
+    public static AuthenticationBuilder AddEventBookingAuthentication(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        var auth = configuration.GetSection("Auth");
+
+        return services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
-                options.Authority = authLocalSection["Authority"];
-                options.Audience = authLocalSection["Audience"];
-                options.RequireHttpsMetadata = false;
+                options.Authority = auth["Authority"];
+                options.Audience = auth["Audience"];
 
-                // Without this, JwtBearer remaps well-known claim names (notably "roles") to
-                // legacy http://schemas.xmlsoap.org/... / ClaimTypes URIs via
-                // JwtSecurityTokenHandler.DefaultInboundClaimTypeMap, so HttpContextCallerAccessor's
-                // literal "roles" / "oid" / "staff_id" lookups silently find nothing.
-                // Microsoft.Identity.Web (the EntraId provider) already disables this internally,
-                // which is why only this local Keycloak path needs it here.
+                // Defaults to requiring HTTPS. A local realm opts out explicitly through
+                // Auth__RequireHttpsMetadata=false; nothing opts out by omission.
+                options.RequireHttpsMetadata =
+                    !bool.TryParse(auth["RequireHttpsMetadata"], out var required) || required;
+
+                // Left off deliberately: inbound claim mapping renames the very claims
+                // AuthClaimOptions is configured to find.
                 options.MapInboundClaims = false;
             });
+    }
 }

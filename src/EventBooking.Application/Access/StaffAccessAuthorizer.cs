@@ -52,27 +52,10 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
             return Result<StaffAccessContext>.Failure(Denied);
         }
 
-        // A Manager or AppointmentStaff profile with no appointment-type scope grants no
-        // capabilities on its own: the null scope denies every capability unless another role
-        // on the same profile grants it.
-        if (StaffAccessProfile.NeedsScope(profile.Roles)
-            && profile.AppointmentTypeId is null
-            && !IsAllowed(profile.IsAdmin, profile.IsCoordinator, false, false, capability))
-        {
-            return Result<StaffAccessContext>.Failure(Denied);
-        }
-
         var scopedCapability = capability is
             StaffCapability.ManageEventNegotiation or
             StaffCapability.ViewEventOperations or
             StaffCapability.ConductAppointments;
-
-        if (scopedCapability
-            && StaffAccessProfile.NeedsScope(profile.Roles)
-            && profile.AppointmentTypeId is null)
-        {
-            return Result<StaffAccessContext>.Failure(Denied);
-        }
 
         if (requiredAppointmentTypeId is not null
             && scopedCapability
@@ -87,14 +70,12 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
             profile.AppointmentTypeId));
     }
 
-    private static bool IsAllowed(StaffAccessProfile profile, StaffCapability capability) =>
-        IsAllowed(profile.IsAdmin, profile.IsCoordinator, profile.IsManager, profile.IsAppointmentStaff, capability);
-
-    private static bool IsAllowed(bool isAdmin, bool isCoordinator, bool isManager, bool isAppointmentStaff, StaffCapability capability)
+    private static bool IsAllowed(StaffAccessProfile profile, StaffCapability capability)
     {
         // Explicit attendee-data deny for Admin is retained even though valid profiles make Admin
-        // exclusive. It fails closed if invalid data reaches this method in a future refactor.
-        if (isAdmin && capability is
+        // exclusive. It fails closed if invalid data reaches this method in a future refactor,
+        // and even if a refactor mislabels a table row.
+        if (profile.IsAdmin && capability is
             StaffCapability.ManageAttendees or
             StaffCapability.ViewAttendeeDashboards or
             StaffCapability.ViewAttendeeAudit)
@@ -102,21 +83,21 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
             return false;
         }
 
-        return capability switch
+        // A scoped role with a null scope contributes no grant at all (FR-10.7): the
+        // Manager or AppointmentStaff role is set aside, and the capability is granted only
+        // when another held role grants it through an unscoped table row.
+        var granting = profile.Roles;
+        if (profile.AppointmentTypeId is null)
         {
-            StaffCapability.ManageSettings => isAdmin,
-            StaffCapability.ManageStaffAccess => isAdmin,
-            StaffCapability.ManageAttendees => isCoordinator,
-            StaffCapability.ViewAttendeeDashboards => isCoordinator,
-            StaffCapability.ViewAttendeeAudit => isCoordinator,
-            StaffCapability.ViewEventAudit => isAdmin || isCoordinator,
-            StaffCapability.ManageEventNegotiation => isManager,
-            StaffCapability.ViewEventOperations =>
-                isAdmin || isCoordinator || isManager || isAppointmentStaff,
-            StaffCapability.CancelEvent =>
-                isAdmin || isCoordinator || isManager,
-            StaffCapability.ConductAppointments => isManager || isAppointmentStaff,
-            _ => false,
-        };
+            granting = granting
+                .Where(role => role is not (Role.Manager or Role.AppointmentStaff))
+                .ToHashSet();
+        }
+
+        var name = capability.ToString();
+        return CapabilityMatrix.Grants.Any(grant =>
+            grant.Capability == name
+            && granting.Contains(Enum.Parse<Role>(grant.Role))
+            && (!grant.NeedsScope || profile.AppointmentTypeId is not null));
     }
 }

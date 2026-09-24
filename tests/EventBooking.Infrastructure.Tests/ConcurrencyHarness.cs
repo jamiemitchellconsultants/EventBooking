@@ -46,8 +46,10 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
     /// <summary>Sends nothing. Email delivery is not what this task is testing.</summary>
     private sealed class SilentTransport : IEmailTransport
     {
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task<EmailSendOutcome> SendAsync(
+            string recipient, string subject, string textBody, string htmlBody,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(EmailSendOutcome.Sent);
     }
 
     /// <summary>
@@ -226,51 +228,6 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
             await Task.WhenAll(attempts).WaitAsync(CompletionTimeout);
             throw;
         }
-    }
-
-    /// <summary>
-    /// Reloads a pending invite by its raw token and verifies that all three option IDs identify
-    /// active events with spare capacity for the attendee's required appointment types.
-    /// </summary>
-    public async Task<IReadOnlyList<Guid>> LiveOptionEventIdsAsync(string token)
-    {
-        if (!_services.GetRequiredService<ITokenService>().TryRead(token, out var link)
-            || link.Purpose != TokenPurpose.Book)
-        {
-            throw new InvalidOperationException("The supplied book token does not verify.");
-        }
-
-        await using var context = _fixture.NewContext();
-        var invite = await context.Invites
-            .Include(i => i.Options)
-            .SingleAsync(i => i.Id == link.EntityId && i.TokenVersion == link.Version);
-        if (invite.Status != InviteStatus.Pending)
-        {
-            throw new InvalidOperationException("Only a pending invite can retain live options.");
-        }
-
-        var optionIds = invite.OfferedEventIds;
-        if (optionIds.Count != Invite.RequiredOptionCount || optionIds.Distinct().Count() != optionIds.Count)
-        {
-            throw new InvalidOperationException("A live invite must retain three distinct options.");
-        }
-
-        var attendee = await context.Attendees
-            .Include(c => c.Requirements)
-            .SingleAsync(c => c.Id == invite.AttendeeId);
-        var events = await context.Events
-            .Include(s => s.Capacities)
-            .Where(s => optionIds.Contains(s.Id))
-            .ToListAsync();
-
-        if (events.Count != optionIds.Count
-            || events.Any(eventItem => eventItem.Status != EventStatus.Active)
-            || events.Any(eventItem => !eventItem.HasSpareCapacityForAll(attendee.RequiredAppointmentTypeIds)))
-        {
-            throw new InvalidOperationException("Every invite option must be a live eligible eventItem.");
-        }
-
-        return optionIds;
     }
 
     public async Task<int> RemainingCapacityAsync(Guid eventId, Guid appointmentTypeId)

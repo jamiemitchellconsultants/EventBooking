@@ -4,6 +4,7 @@ using EventBooking.Application.Invites;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Tests.Invites;
 

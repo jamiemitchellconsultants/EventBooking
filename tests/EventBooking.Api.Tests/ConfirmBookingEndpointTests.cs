@@ -7,6 +7,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Notifications;
 using Microsoft.EntityFrameworkCore;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,19 +36,14 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var outcome = await response.Content.ReadFromJsonAsync<ConfirmResponse>();
         Assert.NotEqual(Guid.Empty, outcome!.BookingId);
-        Assert.Equal(chosen.Date, outcome.Date);
-        Assert.Equal(chosen.StartTime, outcome.StartTime);
-        Assert.Equal(chosen.EndTime, outcome.EndTime);
         Assert.False(string.IsNullOrWhiteSpace(outcome.ManageToken));
-        Assert.Equal("Sent", outcome.DeliveryStatus);
     }
 
-    /// <summary>Booking confirmation remains successful while a provider rejection is reported.</summary>
+    /// <summary>Confirmation stages the confirmation email for the outbox instead of sending it.</summary>
     [Fact]
-    public async Task AProviderFailureReturnsAConfirmedBookingAndFailedDeliveryStatus()
+    public async Task AConfirmationStagesItsEmailAsPending()
     {
         var invite = await GivenAnInvitedAttendee();
-        factory.EmailTransport.FailNextSend = true;
         factory.SignedInAs = null;
         var client = factory.CreateClient();
         var view = await client.GetFromJsonAsync<BookingEndpointTests.InviteResponse>(
@@ -59,8 +55,13 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         var outcome = await response.Content.ReadFromJsonAsync<ConfirmResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("Failed", outcome!.DeliveryStatus);
-        Assert.False(string.IsNullOrWhiteSpace(outcome.ManageToken));
+        Assert.False(string.IsNullOrWhiteSpace(outcome!.ManageToken));
+
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        var staged = await context.EmailLogs.SingleAsync(e => e.BookingId == outcome.BookingId);
+        Assert.Equal(EmailTemplate.BookingConfirmation, staged.TemplateName);
+        Assert.Equal(EmailStatus.Pending, staged.Status);
     }
 
     /// <summary>The same confirmation link cannot be consumed twice.</summary>
@@ -81,12 +82,13 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             $"/api/booking/{invite.Token}/confirm", new { EventId = chosen });
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, second.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Contains("already-confirmed", await second.Content.ReadAsStringAsync());
     }
 
-    /// <summary>A event absent from the invitation is rejected as a conflict.</summary>
+    /// <summary>A event absent from the invitation is rejected as a bad request.</summary>
     [Fact]
-    public async Task ChoosingAEventThatWasNeverOfferedIsAConflict()
+    public async Task ChoosingAEventThatWasNeverOfferedIsRejected()
     {
         var invite = await GivenAnInvitedAttendee();
         factory.SignedInAs = null;
@@ -95,16 +97,10 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         var response = await client.PostAsJsonAsync(
             $"/api/booking/{invite.Token}/confirm", new { EventId = invite.UnofferedEventId });
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    private sealed record ConfirmResponse(
-        Guid BookingId,
-        DateOnly Date,
-        TimeOnly StartTime,
-        TimeOnly EndTime,
-        string ManageToken,
-        string DeliveryStatus);
+    private sealed record ConfirmResponse(Guid BookingId, string ManageToken);
 
     private async Task<InviteFixture> GivenAnInvitedAttendee()
     {

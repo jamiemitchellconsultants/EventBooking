@@ -41,8 +41,15 @@ public sealed class EmailLog
     public DateTimeOffset? ClaimedAt { get; private set; }
 
     /// <summary>How many times a worker has claimed this attempt. The input to the backoff the
-    /// dispatcher gains in Task 18; here it only has to be recorded.</summary>
+    /// dispatcher applies on each transient failure.</summary>
     public int ClaimCount { get; private set; }
+
+    /// <summary>The earliest instant the row may be claimed again after a transient failure,
+    /// or null when no backoff applies.</summary>
+    public DateTimeOffset? NotBefore { get; private set; }
+
+    /// <summary>The dispatch pass that holds or last held the claim, for log correlation.</summary>
+    public string? CorrelationId { get; private set; }
 
     /// <summary>Creates a legacy email attempt without a regeneration context.</summary>
     /// <param name="id">The id.</param>
@@ -105,6 +112,15 @@ public sealed class EmailLog
         ClaimedAt = now;
         ClaimCount++;
         return true;
+    }
+
+    /// <summary>Releases the claim behind a backoff: the row stays pending but cannot be
+    /// claimed again until the not-before instant passes.</summary>
+    /// <param name="notBefore">The earliest instant the row may be claimed again.</param>
+    public void SetNotBefore(DateTimeOffset notBefore)
+    {
+        NotBefore = notBefore;
+        ClaimedAt = null;
     }
 
     /// <summary>Marks the claimed delivery as successfully sent.</summary>

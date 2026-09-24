@@ -13,9 +13,15 @@ public enum LockLevel
     /// <summary>The negotiation root.</summary>
     EventProposal = 2,
 
+    /// <summary>One invite, locked after its attendee and before any booking.</summary>
+    Invite = 3,
+
+    /// <summary>One booking, locked after its invite and before its event.</summary>
+    Booking = 4,
+
     /// <summary>One event, locked by id. Several events are locked in ascending id order.</summary>
-    Event = 3,
+    Event = 5,
 
     /// <summary>The capacity rows, locked last and in (event id, appointment type id) order.</summary>
-    EventCapacity = 4,
+    EventCapacity = 6,
 }

@@ -49,7 +49,7 @@ public sealed class InviteRequirementSnapshotTests
         Assert.Equal(InviteStatus.Cancelled, invite.Status);
     }
 
-    /// <summary>Empty, duplicate, unknown, and oversized snapshots are rejected.</summary>
+    /// <summary>Empty, duplicate, and oversized snapshots are rejected.</summary>
     [Theory]
     [MemberData(nameof(InvalidSnapshots))]
     public void InvalidSnapshotsCannotBeCreated(Guid[] snapshot)
@@ -69,8 +69,29 @@ public sealed class InviteRequirementSnapshotTests
     {
         { [] },
         { [AppointmentTypeIds.MedicalCheckUp, AppointmentTypeIds.MedicalCheckUp] },
-        { [Guid.NewGuid()] },
         { [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
             AppointmentTypeIds.UniformFitting, AppointmentTypeIds.DrugAndAlcoholTesting] },
     };
+
+    /// <summary>
+    /// Admin-managed ids flow: the fixed-set guard is gone, so a snapshot may name an
+    /// appointment type the fixed three never contained. Existence is checked against the
+    /// type repository by the handler, not by the domain.
+    /// </summary>
+    [Fact]
+    public void AdminManagedIdsAreAccepted()
+    {
+        var managed = Guid.NewGuid();
+
+        var invite = Invite.CreateInitial(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddDays(1),
+            [ProposalFixture.LocationId],
+            Options,
+            [managed],
+            0);
+
+        Assert.Equal([managed], invite.RequiredAppointmentTypeIds);
+    }
 }

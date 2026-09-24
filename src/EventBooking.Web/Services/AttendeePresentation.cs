@@ -3,19 +3,13 @@ namespace EventBooking.Web.Services;
 /// <summary>Maps the API's raw attendee status value to the attendee-list visual state.</summary>
 internal static class AttendeePresentation
 {
-    // AttendeeStatus is serialized as its documented numeric value across the API boundary.
-    private const int NotYetInvited = 1;
-    private const int AwaitingAvailability = 2;
-    private const int Invited = 3;
-    private const int Booked = 4;
-    private const int NoResponseNeedsFollowUp = 5;
-
-    internal static string StatusCssClass(int rawStatus) => rawStatus switch
+    // AttendeeStatus is serialized as its name across the API boundary.
+    internal static string StatusCssClass(string status) => status switch
     {
-        NotYetInvited => "status-new",
-        AwaitingAvailability or NoResponseNeedsFollowUp => "status-warning",
-        Booked => "status-success",
-        Invited => "status-neutral",
+        "NotYetInvited" => "status-new",
+        "AwaitingAvailability" or "NoResponseNeedsFollowUp" => "status-warning",
+        "Booked" => "status-success",
+        "Invited" => "status-neutral",
         _ => "status-neutral",
     };
 

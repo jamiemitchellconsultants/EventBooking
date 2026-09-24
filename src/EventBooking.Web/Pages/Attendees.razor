@@ -175,15 +175,15 @@
                                     <td data-label="Status"><span class="attendee-status @AttendeePresentation.StatusCssClass(attendee.Status)">@attendee.StatusDisplay</span></td>
                                     <td data-label="Readiness"><span>—</span></td>
                                     <td data-label="Delivery">
-                                        @if (_emailStatus.TryGetValue(attendee.AttendeeId, out var email))
+                                        @if (attendee.LatestDeliveryStatus is not null)
                                         {
-                                            <span class="@(email.Status == "Failed" ? "error" : email.Status == "Pending" ? "warning" : "")">
-                                                @email.TemplateDisplay @TimePresentation.Format(email.SentAt)
+                                            <span class="@(attendee.LatestDeliveryStatus == "Failed" ? "error" : attendee.LatestDeliveryStatus == "Pending" ? "warning" : "")">
+                                                @attendee.LatestDeliveryStatus
                                             </span>
-                                            @if (email.Status is "Failed" or "Pending" && email.CanRetry)
+                                            @if (attendee.LatestDeliveryStatus == "Failed" && attendee.LatestDeliveryId is { } failedDeliveryId)
                                             {
-                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId)" disabled="@_busy"
-                                                        title="Sends the same email again to the same address.">Resend</button>
+                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId, failedDeliveryId)" disabled="@_busy"
+                                                        title="Queues the same email again to the same address.">Resend</button>
                                             }
                                         }
                                         else
@@ -199,6 +199,24 @@
                                                     title="Saves the edited details. Existing invitations are not resent.">Save</button>
                                             <button class="button button-quiet button-small" @onclick="CancelEdit" disabled="@_busy">Cancel</button>
                                         </div>
+                                        @if (_choosingInviteFor == attendee.AttendeeId)
+                                        {
+                                            <fieldset class="invite-locations">
+                                                <legend>Offer events at</legend>
+                                                @foreach (var location in _inviteLocations)
+                                                {
+                                                    <label>
+                                                        <input type="checkbox"
+                                                               checked="@_inviteLocationSelection.Contains(location.LocationId)"
+                                                               @onchange="e => SetInviteLocation(location.LocationId, e.Value is true)" />
+                                                        @location.Name
+                                                    </label>
+                                                }
+                                                <button class="button button-primary button-small"
+                                                        @onclick="() => InviteAtSelectedLocationsAsync(attendee)"
+                                                        disabled="@(_busy || _inviteLocationSelection.Count == 0)">Send invite</button>
+                                            </fieldset>
+                                        }
                                     </td>
                                 }
                                 else
@@ -207,9 +225,9 @@
                                     <td data-label="Email"><a href="mailto:@attendee.Email">@attendee.Email</a></td>
                                     <td data-label="Required types">
                                         <div class="chip-row">
-                                            @foreach (var requiredType in attendee.RequiredAppointmentTypes)
+                                            @foreach (var requiredType in attendee.RequiredTypeCodes)
                                             {
-                                                <span class="chip">@requiredType.Code</span>
+                                                <span class="chip">@requiredType</span>
                                             }
                                         </div>
                                     </td>
@@ -285,15 +303,15 @@
                                         }
                                     </td>
                                     <td data-label="Delivery">
-                                        @if (_emailStatus.TryGetValue(attendee.AttendeeId, out var email))
+                                        @if (attendee.LatestDeliveryStatus is not null)
                                         {
-                                            <span class="@(email.Status == "Failed" ? "error" : email.Status == "Pending" ? "warning" : "")">
-                                                @email.TemplateDisplay @TimePresentation.Format(email.SentAt)
+                                            <span class="@(attendee.LatestDeliveryStatus == "Failed" ? "error" : attendee.LatestDeliveryStatus == "Pending" ? "warning" : "")">
+                                                @attendee.LatestDeliveryStatus
                                             </span>
-                                            @if (email.Status is "Failed" or "Pending" && email.CanRetry)
+                                            @if (attendee.LatestDeliveryStatus == "Failed" && attendee.LatestDeliveryId is { } failedDeliveryId)
                                             {
-                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId)" disabled="@_busy"
-                                                        title="Sends the same email again to the same address.">Resend</button>
+                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId, failedDeliveryId)" disabled="@_busy"
+                                                        title="Queues the same email again to the same address.">Resend</button>
                                             }
                                         }
                                         else
@@ -336,20 +354,11 @@
                                                                     @(booking.IsOriginal ? null : " (recovery)")
                                                                 </span>
                                                                 <button class="button button-danger button-small"
-                                                                        @onclick="() => CancelBookingAsync(attendee.AttendeeId, booking.BookingId, false)"
+                                                                        @onclick="() => CancelBookingAsync(attendee.AttendeeId, booking.BookingId)"
                                                                         disabled="@_busy"
                                                                         title="Cancels this booking and releases its places.">
                                                                     @(_bookingCancelAwaitingConfirmation == booking.BookingId ? "Confirm cancel" : "Cancel booking")
                                                                 </button>
-                                                                @if (booking.IsOriginal)
-                                                                {
-                                                                    <button class="button button-small"
-                                                                            @onclick="() => CancelBookingAsync(attendee.AttendeeId, booking.BookingId, true)"
-                                                                            disabled="@_busy"
-                                                                            title="Cancels this booking and emails a fresh booking link.">
-                                                                        @(_bookingRebookAwaitingConfirmation == booking.BookingId ? "Confirm cancel" : "Cancel & rebook")
-                                                                    </button>
-                                                                }
                                                             </li>
                                                         }
                                                     </ul>
@@ -372,7 +381,9 @@
                                             <button class="button button-small button-icon-edit" @onclick="() => StartEdit(attendee)" disabled="@(_busy || _editingId.HasValue)"
                                                     title="Change the name, email address or attendee group.">Edit</button>
                                             <button class="button button-primary button-small" @onclick="() => InviteAsync(attendee)" disabled="@(_busy || _editingId.HasValue)"
-                                                    title="Emails a single-use booking link showing only the windows this attendee can take.">Invite now</button>
+                                                    title="Emails a single-use booking link offering events at every active location.">Invite now</button>
+                                            <button class="button button-quiet button-small" @onclick="() => ToggleInviteLocationsAsync(attendee.AttendeeId)" disabled="@(_busy || _editingId.HasValue)"
+                                                    title="Choose which locations the invite offers events at, for example just one.">Choose locations</button>
                                             <button class="button button-danger button-small button-icon-delete" @onclick="() => DeleteAsync(attendee.AttendeeId)" disabled="@(_busy || _editingId.HasValue)"
                                                     title="Removes the attendee. Press a second time to confirm.">
                                                 @(awaitingDeleteConfirmation ? "Confirm delete" : "Delete")
@@ -403,15 +414,16 @@
 
     private List<AttendeeDto>? _attendees;
     private List<AttendeeGroupOptionDto> _groups = [];
+    private List<InviteLocationDto> _inviteLocations = [];
+    private readonly HashSet<Guid> _inviteLocationSelection = [];
+    private Guid? _choosingInviteFor;
     private List<ImportErrorDto> _importErrors = [];
     private string? _error;
     private bool _busy;
     private bool _isLoading = true;
 
     private string _search = string.Empty;
-    private int? _statusFilter;
-    private IReadOnlyDictionary<Guid, AttendeeEmailStatusDto> _emailStatus =
-        new Dictionary<Guid, AttendeeEmailStatusDto>();
+    private string? _statusFilter;
     private readonly Dictionary<Guid, AttendeeReadinessDto> _readiness = new();
     private readonly HashSet<Guid> _expandedReadiness = new();
     private readonly HashSet<Guid> _readinessLoading = new();
@@ -426,15 +438,14 @@
     private readonly Dictionary<Guid, string> _bookingOutcomes = new();
     private readonly Dictionary<Guid, string> _bookingErrors = new();
     private Guid? _bookingCancelAwaitingConfirmation;
-    private Guid? _bookingRebookAwaitingConfirmation;
 
-    private static readonly (int Value, string Label)[] StatusChoices =
+    private static readonly (string Value, string Label)[] StatusChoices =
     [
-        (1, "Not yet invited"),
-        (2, "Awaiting availability"),
-        (3, "Invited (pending response)"),
-        (4, "Booked"),
-        (5, "No response - needs follow-up"),
+        ("NotYetInvited", "Not yet invited"),
+        ("AwaitingAvailability", "Awaiting availability"),
+        ("Invited", "Invited (pending response)"),
+        ("Booked", "Booked"),
+        ("NoResponseNeedsFollowUp", "No response - needs follow-up"),
     ];
     private string _newName = string.Empty;
     private string _newEmail = string.Empty;
@@ -523,26 +534,34 @@
     private async Task ReloadAsync()
     {
         _isLoading = true;
+        _error = null;
 
         try
         {
-            var attendeesTask = AttendeesApi.ListAsync(_statusFilter, _search, CancellationToken.None);
-            var dashboardsTask = Dashboards.GetAsync(CancellationToken.None);
-            var groupsTask = AttendeesApi.ListGroupsAsync(CancellationToken.None);
-            await Task.WhenAll(attendeesTask, dashboardsTask, groupsTask);
-
-            var outcome = attendeesTask.Result;
-            if (outcome.IsSuccess)
+            // The list is keyset-paged; the page walks every page so the coordinator
+            // keeps seeing the whole filtered set.
+            var attendees = new List<AttendeeDto>();
+            string? cursor = null;
+            do
             {
-                _attendees = outcome.Value;
-                _error = null;
-            }
-            else
+                var outcome = await AttendeesApi.ListAsync(
+                    cursor, null, _statusFilter, null, null, _search, CancellationToken.None);
+                if (!outcome.IsSuccess)
+                {
+                    _error = outcome.ErrorMessage ?? UnexpectedError;
+                    break;
+                }
+
+                attendees.AddRange(outcome.Value?.Items ?? []);
+                cursor = outcome.Value?.NextCursor;
+            } while (cursor is not null);
+
+            if (_error is null)
             {
-                _error = outcome.ErrorMessage ?? UnexpectedError;
+                _attendees = attendees;
             }
 
-            var groupsOutcome = groupsTask.Result;
+            var groupsOutcome = await AttendeesApi.ListGroupsAsync(CancellationToken.None);
             if (groupsOutcome.IsSuccess)
             {
                 _groups = groupsOutcome.Value ?? [];
@@ -551,10 +570,6 @@
             {
                 _error = groupsOutcome.ErrorMessage ?? UnexpectedError;
             }
-
-            _emailStatus = dashboardsTask.Result.Value?.EmailStatuses
-                .ToDictionary(e => e.AttendeeId)
-                ?? new Dictionary<Guid, AttendeeEmailStatusDto>();
         }
         catch (Exception)
         {
@@ -594,7 +609,8 @@
         _editingId = attendee.AttendeeId;
         _editName = attendee.Name;
         _editEmail = attendee.Email;
-        _editAttendeeGroupId = attendee.AttendeeGroupId.ToString();
+        _editAttendeeGroupId = _groups
+            .Single(group => group.Code == attendee.GroupCode).AttendeeGroupId.ToString();
     }
 
     private void CancelEdit() => _editingId = null;
@@ -644,13 +660,70 @@
         }
     }
 
+    private Task RetryEmailAsync(Guid id, Guid emailLogId) =>
+        RunAsync(() => AttendeesApi.RetryEmailAsync(id, emailLogId, CancellationToken.None));
+
     private Task InviteAsync(AttendeeDto attendee)
     {
+        _choosingInviteFor = null;
         return RunAsync(() => AttendeesApi.TriggerInviteAsync(attendee.AttendeeId, CancellationToken.None));
     }
 
-    private Task RetryEmailAsync(Guid id) =>
-        RunAsync(() => AttendeesApi.RetryEmailAsync(id, CancellationToken.None));
+    private async Task ToggleInviteLocationsAsync(Guid attendeeId)
+    {
+        if (_choosingInviteFor == attendeeId)
+        {
+            _choosingInviteFor = null;
+            return;
+        }
+
+        try
+        {
+            if (_inviteLocations.Count == 0)
+            {
+                var outcome = await AttendeesApi.ListInviteLocationsAsync(CancellationToken.None);
+                if (!outcome.IsSuccess)
+                {
+                    _error = outcome.ErrorMessage ?? UnexpectedError;
+                    return;
+                }
+
+                _inviteLocations = outcome.Value ?? [];
+            }
+
+            // Start from every active location: narrowing is the exception, so the coordinator
+            // unticks rather than ticks.
+            _inviteLocationSelection.Clear();
+            _inviteLocationSelection.UnionWith(_inviteLocations.Select(l => l.LocationId));
+            _choosingInviteFor = attendeeId;
+            _error = null;
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+    }
+
+    private void SetInviteLocation(Guid locationId, bool selected)
+    {
+        if (selected)
+        {
+            _inviteLocationSelection.Add(locationId);
+        }
+        else
+        {
+            _inviteLocationSelection.Remove(locationId);
+        }
+    }
+
+    private Task InviteAtSelectedLocationsAsync(AttendeeDto attendee)
+    {
+        var chosen = _inviteLocationSelection.ToList();
+        _choosingInviteFor = null;
+        return RunAsync(() => AttendeesApi.TriggerInviteAsync(
+            attendee.AttendeeId, chosen, CancellationToken.None));
+    }
+
 
     private static List<string> RecoverableTypeNames(AttendeeReadinessDto readiness) =>
         readiness.OutstandingAppointmentTypes
@@ -687,17 +760,9 @@
             }
 
             var result = outcome.Value;
-            var scope = DescribeRecoveryScope(recoverableNames, result.AppointmentTypeIds.Count);
-            if (result.InviteId == Guid.Empty)
-            {
-                _recoveryOutcomes[attendeeId] = $"No appointments are available yet for {scope}.";
-                return;
-            }
-
-            _pendingRecoveryInvites[attendeeId] = result.InviteId;
-            _recoveryOutcomes[attendeeId] = result.EmailSent
-                ? $"Recovery started for {scope}. Email sent."
-                : $"Recovery started for {scope}, but the email could not be sent.";
+            var scope = DescribeRecoveryScope(recoverableNames, result.RecoverableTypeIds.Count);
+            _pendingRecoveryInvites[attendeeId] = result.RecoveryInviteId;
+            _recoveryOutcomes[attendeeId] = $"Recovery started for {scope}.";
         }
         catch (Exception)
         {
@@ -773,27 +838,21 @@
         }
     }
 
-    // Each action confirms on its own second click, and the two actions never share a pending
-    // confirmation: arming one disarms the other.
-    private async Task CancelBookingAsync(Guid attendeeId, Guid bookingId, bool rebook)
+    // The first click arms the button; the second carries the API confirmation.
+    private async Task CancelBookingAsync(Guid attendeeId, Guid bookingId)
     {
         if (_busy)
         {
             return;
         }
 
-        var armed = rebook
-            ? _bookingRebookAwaitingConfirmation == bookingId
-            : _bookingCancelAwaitingConfirmation == bookingId;
-        if (!armed)
+        if (_bookingCancelAwaitingConfirmation != bookingId)
         {
-            _bookingCancelAwaitingConfirmation = rebook ? null : bookingId;
-            _bookingRebookAwaitingConfirmation = rebook ? bookingId : null;
+            _bookingCancelAwaitingConfirmation = bookingId;
             return;
         }
 
         _bookingCancelAwaitingConfirmation = null;
-        _bookingRebookAwaitingConfirmation = null;
         _busy = true;
         _bookingErrors.Remove(attendeeId);
         _bookingOutcomes.Remove(attendeeId);
@@ -801,14 +860,14 @@
         try
         {
             var outcome = await AttendeesApi.CancelBookingAsync(
-                attendeeId, bookingId, rebook, CancellationToken.None);
+                attendeeId, bookingId, true, CancellationToken.None);
             if (outcome is not { IsSuccess: true, Value: not null })
             {
                 _bookingErrors[attendeeId] = outcome.ErrorMessage ?? UnexpectedError;
                 return;
             }
 
-            _bookingOutcomes[attendeeId] = CancellationMessage(outcome.Value);
+            _bookingOutcomes[attendeeId] = "Booking cancelled.";
         }
         catch (Exception)
         {
@@ -823,19 +882,6 @@
         _bookings.Remove(attendeeId);
         await LoadBookingsAsync(attendeeId);
         await ReloadAsync();
-    }
-
-    /// <summary>Distinguishes a plain cancellation from a delivered and an undelivered replacement.</summary>
-    private static string CancellationMessage(CancelAttendeeBookingDto outcome)
-    {
-        if (!outcome.Reinvited)
-        {
-            return "Booking cancelled.";
-        }
-
-        return outcome.DeliveryStatus == "Sent"
-            ? "Booking cancelled; replacement invite sent."
-            : "Booking cancelled; replacement invite could not be delivered.";
     }
 
     private async Task CancelRecoveryAsync(Guid attendeeId)

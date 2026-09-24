@@ -6,6 +6,7 @@ using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
+using EventBooking.Application.Recovery;
 using EventBooking.Domain.Attendees;
 using ModelContextProtocol.Server;
 
@@ -21,15 +22,26 @@ public sealed record AttendeeToolView
     public required string Email { get; init; }
     /// <summary>Gets the attendee lifecycle status name.</summary>
     public required string Status { get; init; }
-    /// <summary>Gets the assigned Attendee Group name.</summary>
-    public required string AttendeeGroupName { get; init; }
     /// <summary>Gets the canonical Attendee Group code.</summary>
     public required string AttendeeGroupCode { get; init; }
-    /// <summary>Gets read-only derived Appointment Type summaries.</summary>
-    public required IReadOnlyList<AppointmentTypeSummary> RequiredAppointmentTypes { get; init; }
+    /// <summary>Gets the required type codes, on awaiting-availability rows only.</summary>
+    public required IReadOnlyList<string> RequiredTypeCodes { get; init; }
+    /// <summary>Gets the latest delivery status, or null when never invited.</summary>
+    public required string? LatestDeliveryStatus { get; init; }
+    /// <summary>Gets the latest delivery's id, which retry_attendee_email needs.</summary>
+    public required Guid? LatestDeliveryId { get; init; }
+    /// <summary>Gets the row's page cursor.</summary>
+    public required string Cursor { get; init; }
     /// <summary>Gets internal readiness without exposing recovery mutation.</summary>
     public required AttendeeReadiness? Readiness { get; init; }
 }
+
+/// <summary>One keyset page of attendee tool views.</summary>
+/// <param name="Items">The rows.</param>
+/// <param name="NextCursor">The next page cursor, or null when exhausted.</param>
+public sealed record AttendeeListToolView(
+    IReadOnlyList<AttendeeToolView> Items,
+    string? NextCursor);
 
 /// <summary>Tool-safe readiness including Coordinator display wording.</summary>
 /// <param name="AttendeeId">The attendee the readiness was calculated for.</param>
@@ -50,29 +62,35 @@ public sealed class AttendeeTools
 
     private const int MaxPageSize = 200;
 
-    /// <summary>Lists attendees, optionally filtered by status or search text.</summary>
+    /// <summary>Lists one keyset page of attendees, optionally filtered.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
-    /// <param name="readiness">Resolves internal readiness per listed attendee.</param>
+    /// <param name="readinessHandler">Resolves internal readiness per listed attendee.</param>
+    /// <param name="groups">Resolves the assigned Attendee Group.</param>
     /// <param name="status">The attendee status name, or null for all.</param>
-    /// <param name="search">Free-text filter, or null.</param>
-    /// <param name="page">The 1-based page number.</param>
+    /// <param name="search">Name-or-email prefix filter, or null.</param>
+    /// <param name="attendeeGroupCode">The canonical Attendee Group code, or null for all.</param>
+    /// <param name="readiness">The readiness label, or null for all.</param>
+    /// <param name="cursor">The opaque page cursor, or null for the first page.</param>
     /// <param name="pageSize">Results per page, clamped to the tool maximum.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The bounded page of attendee views.</returns>
     [McpServerTool(Name = "list_attendees", Title = "List attendees", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List attendees, optionally filtered by status name and search text. Caller must be a coordinator or admin.")]
-    public async Task<IReadOnlyList<AttendeeToolView>> ListAttendeesAsync(
+    [Description("List attendees, optionally filtered by status name and search text. Caller must be a coordinator.")]
+    public async Task<AttendeeListToolView> ListAttendeesAsync(
         ICallerAccessor caller,
         ListAttendeesHandler handler,
-        GetAttendeeReadinessHandler readiness,
+        GetAttendeeReadinessHandler readinessHandler,
+        IAttendeeGroupRepository groups,
         [Description("Attendee status name (e.g. Invited) or null for all.")] string? status = null,
-        [Description("Free-text name or email filter or null.")] string? search = null,
-        [Description("1-based page number.")] int page = 1,
+        [Description("Name-or-email prefix filter or null.")] string? search = null,
+        [Description("Canonical attendee group code (e.g. PILOTS) or null for all.")] string? attendeeGroupCode = null,
+        [Description("Readiness label or null for all.")] string? readiness = null,
+        [Description("Opaque page cursor, or null for the first page.")] string? cursor = null,
         [Description("Results per page, at most 200.")] int pageSize = DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        AttendeeStatus? parsed = null;
+        string? parsed = null;
         if (status is not null)
         {
             if (!Enum.TryParse<AttendeeStatus>(status, ignoreCase: false, out var value) ||
@@ -82,20 +100,31 @@ public sealed class AttendeeTools
                     "Status must be a recognised AttendeeStatus name.");
             }
 
-            parsed = value;
+            parsed = value.ToString();
+        }
+
+        Guid? groupId = null;
+        if (attendeeGroupCode is not null)
+        {
+            groupId = await ResolveGroupIdAsync(groups, attendeeGroupCode, cancellationToken);
         }
 
         var staffUserId = caller.RequireStaffUserId();
-        var result = await handler.HandleAsync(
-            new ListAttendeesQuery(staffUserId, parsed, search),
-            cancellationToken);
-        var bounded = Math.Clamp(pageSize, 1, MaxPageSize);
-        var skipped = Math.Max(page - 1, 0) * bounded;
+        var page = (await handler.HandleAsync(
+            new ListAttendeesQuery(
+                staffUserId,
+                cursor,
+                Math.Clamp(pageSize, 1, MaxPageSize),
+                parsed,
+                groupId,
+                readiness,
+                search),
+            cancellationToken)).ValueOrThrow();
 
         var views = new List<AttendeeToolView>();
-        foreach (var item in result.ValueOrThrow().Skip(skipped).Take(bounded))
+        foreach (var item in page.Items)
         {
-            var readinessResult = await readiness.HandleAsync(
+            var readinessResult = await readinessHandler.HandleAsync(
                 new GetAttendeeReadinessQuery(staffUserId, item.AttendeeId),
                 cancellationToken);
             views.Add(new AttendeeToolView
@@ -103,15 +132,17 @@ public sealed class AttendeeTools
                 AttendeeId = item.AttendeeId,
                 Name = item.Name,
                 Email = item.Email,
-                Status = item.Status.ToString(),
-                AttendeeGroupName = item.AttendeeGroupName,
-                AttendeeGroupCode = item.AttendeeGroupCode,
-                RequiredAppointmentTypes = item.RequiredAppointmentTypes,
+                Status = item.Status,
+                AttendeeGroupCode = item.GroupCode,
+                RequiredTypeCodes = item.RequiredTypeCodes,
+                LatestDeliveryStatus = item.LatestDeliveryStatus,
+                LatestDeliveryId = item.LatestDeliveryId,
+                Cursor = item.Cursor,
                 Readiness = readinessResult.IsSuccess ? readinessResult.Value : null,
             });
         }
 
-        return views;
+        return new AttendeeListToolView(views, page.NextCursor);
     }
 
     /// <summary>Lists the Attendee Groups available for attendee assignment.</summary>
@@ -129,6 +160,23 @@ public sealed class AttendeeTools
         var result = await handler.HandleAsync(
             new ListAttendeeGroupsQuery(caller.RequireStaffUserId()),
             cancellationToken);
+        return result.ValueOrThrow();
+    }
+
+    /// <summary>Lists the active locations an invite can be restricted to.</summary>
+    /// <param name="caller">The signed-in staff identity.</param>
+    /// <param name="handler">The list handler.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The active locations.</returns>
+    [McpServerTool(Name = "list_invite_locations", Title = "List invite locations", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("List the active locations an invite can offer events at. Caller must have ManageAttendees.")]
+    public async Task<IReadOnlyList<InviteLocationItem>> ListInviteLocationsAsync(
+        ICallerAccessor caller,
+        ListInviteLocationsHandler handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.HandleAsync(
+            new ListInviteLocationsQuery(caller.RequireStaffUserId()), cancellationToken);
         return result.ValueOrThrow();
     }
 
@@ -253,38 +301,42 @@ public sealed class AttendeeTools
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The invite handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="locationIds">The locations to open for this invite; omit for every active location.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invite issue result.</returns>
+    /// <returns>The invite issue outcome.</returns>
     [McpServerTool(Name = "trigger_invite", Title = "Trigger invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Issue a fresh three-option invite to a attendee. Caller must be a coordinator or admin; sends an invite email.")]
-    public async Task<InviteIssueResult> TriggerInviteAsync(
+    [Description("Issue a fresh invite to a attendee at the given locations, or every active location when none are given. Caller must be a coordinator or admin; stages an invite email for sending.")]
+    public async Task<InviteAttendeeOutcome> TriggerInviteAsync(
         ICallerAccessor caller,
-        TriggerInviteHandler handler,
+        InviteAttendeeHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        CancellationToken cancellationToken)
+        [Description("The locations to open for this invite; omit for every active location.")] Guid[]? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new TriggerInviteCommand(caller.RequireStaffUserId(), attendeeId),
+            new InviteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, locationIds ?? []),
             cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Retries the latest unresolved email for a attendee.</summary>
+    /// <summary>Retries one failed email delivery for a attendee.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The retry handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="emailLogId">The failed delivery identifier.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The retry outcome.</returns>
     [McpServerTool(Name = "retry_attendee_email", Title = "Retry attendee email", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Retry the latest unresolved attendee email delivery. Caller must be a coordinator or admin; resends the latest unresolved email.")]
+    [Description("Retry one failed attendee email delivery. Caller must have ManageAttendees; stages a fresh pending delivery for the dispatcher.")]
     public async Task<RetryEmailOutcome> RetryAttendeeEmailAsync(
         ICallerAccessor caller,
         RetryEmailHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
+        [Description("The failed delivery identifier.")] Guid emailLogId,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new RetryEmailCommand(caller.RequireStaffUserId(), attendeeId),
+            new RetryEmailCommand(caller.RequireStaffUserId(), attendeeId, emailLogId),
             cancellationToken);
         return result.ValueOrThrow();
     }
@@ -293,18 +345,22 @@ public sealed class AttendeeTools
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The recovery handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="locationIds">Further locations the coordinator opens up.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The recovery invite issue result.</returns>
     [McpServerTool(Name = "start_recovery_invite", Title = "Start recovery invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Start a recovery invite for a attendee with a missed appointment. Caller must have ManageAttendees; sends a recovery invite email.")]
-    public async Task<StartRecoveryResult> StartRecoveryInviteAsync(
+    [Description("Start a recovery invite for a attendee with a missed appointment. Caller must have ManageAttendees; stages a recovery invite email.")]
+    public async Task<StartRecoveryOutcome> StartRecoveryInviteAsync(
         ICallerAccessor caller,
         StartRecoveryHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        CancellationToken cancellationToken)
+        [Description("Further locations the coordinator opens up.")] Guid[]? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new StartRecoveryCommand(caller.RequireStaffUserId(), attendeeId), cancellationToken);
+            new StartRecoveryCommand(
+                caller.RequireStaffUserId(), attendeeId, locationIds?.ToList() ?? []),
+            cancellationToken);
         return result.ValueOrThrow();
     }
 
@@ -349,26 +405,26 @@ public sealed class AttendeeTools
         return result.ValueOrThrow();
     }
 
-    /// <summary>Cancels one attendee booking, optionally rebooking the attendee.</summary>
+    /// <summary>Cancels one attendee booking in two steps: preview, then confirm.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The cancellation handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
     /// <param name="bookingId">The booking identifier.</param>
-    /// <param name="rebook">Whether to issue a replacement invite.</param>
+    /// <param name="confirm">Whether this call carries the confirmation.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The cancellation outcome.</returns>
     [McpServerTool(Name = "cancel_attendee_booking", Title = "Cancel attendee booking", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Cancel one attendee booking, optionally rebooking. Caller must have ManageAttendees; cancels the booking and optionally sends a replacement invite.")]
-    public async Task<CancelBookingOutcome> CancelAttendeeBookingAsync(
+    [Description("Cancel one attendee booking in two steps. Caller must have ManageAttendees; call first with confirm false to preview the consequence, then with confirm true to cancel.")]
+    public async Task<CoordinatorCancelOutcome> CancelAttendeeBookingAsync(
         ICallerAccessor caller,
-        CancelAttendeeBookingHandler handler,
+        CancelBookingByCoordinatorHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
         [Description("The booking identifier.")] Guid bookingId,
-        [Description("Whether to issue a replacement invite.")] bool rebook,
+        [Description("Whether this call carries the confirmation.")] bool confirm,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new CancelAttendeeBookingCommand(caller.RequireStaffUserId(), attendeeId, bookingId, rebook), cancellationToken);
+            new CancelBookingByCoordinatorCommand(caller.RequireStaffUserId(), attendeeId, bookingId, confirm), cancellationToken);
         return result.ValueOrThrow();
     }
 

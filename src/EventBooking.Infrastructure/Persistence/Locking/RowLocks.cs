@@ -71,6 +71,37 @@ public sealed class RowLocks(EventBookingDbContext context, TransactionLocks loc
         return attendee;
     }
 
+    /// <summary>
+    /// Locks every member of one attendee group in ascending id order and loads each member's
+    /// requirements. The group-requirement replacement takes these before re-deriving, so two
+    /// concurrent replacements of any groups serialize on the shared rows in the same order.
+    /// </summary>
+    /// <param name="groupId">The group id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task<IReadOnlyList<Attendee>> LockAttendeesByGroupAsync(
+        Guid groupId, CancellationToken cancellationToken)
+    {
+        locks.Enter(LockLevel.Attendee);
+
+        var members = await context.Attendees
+            .FromSql(
+                $"""
+                 SELECT * FROM attendee
+                 WHERE attendee_group_id = {groupId}
+                 ORDER BY id
+                 FOR UPDATE
+                 """)
+            .ToListAsync(cancellationToken);
+
+        foreach (var member in members)
+        {
+            await context.Entry(member).Collection(item => item.Requirements)
+                .LoadAsync(cancellationToken);
+        }
+
+        return members;
+    }
+
     /// <summary>Locks one proposal and loads its acceptances and listed types.</summary>
     /// <param name="id">The proposal id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -119,6 +150,19 @@ public sealed class RowLocks(EventBookingDbContext context, TransactionLocks loc
 
         return proposal;
     }
+
+    /// <summary>
+    /// Records an invite lock the invite repository is about to take. The SQL stays in the
+    /// repository with its option loading; the order is recorded here, through the same tracker
+    /// as every other level, so a descent fails in a test instead of deadlocking in production.
+    /// </summary>
+    public void EnterInvite() => locks.Enter(LockLevel.Invite);
+
+    /// <summary>
+    /// Records a booking lock the booking repository is about to take. The SQL stays in the
+    /// repository; the order is recorded here, through the same tracker as every other level.
+    /// </summary>
+    public void EnterBooking() => locks.Enter(LockLevel.Booking);
 
     /// <summary>Takes the event row only if it is free, returning null when it is held.</summary>
     /// <param name="id">The event id.</param>
