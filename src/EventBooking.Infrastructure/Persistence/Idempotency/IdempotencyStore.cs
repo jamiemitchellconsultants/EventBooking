@@ -21,14 +21,17 @@ public sealed class IdempotencyStore(EventBookingDbContext context) : IIdempoten
 
         return row is null
             ? null
-            : new IdempotentResponse(row.RequestHash, row.StatusCode, row.Body);
+            : new IdempotentResponse(
+                row.RequestHash, row.StatusCode, row.Body, row.ContentType, row.Location);
     }
 
     /// <inheritdoc />
     public async Task SaveAsync(
-        Guid staffUserId, string route, string key, string requestHash,
-        int statusCode, string body, DateTimeOffset now, CancellationToken ct)
+        Guid staffUserId, string route, string key, IdempotentResponse response,
+        DateTimeOffset now, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(response);
+
         // Delete the expired instance of this exact primary key before adding its replacement.
         // Doing this after Add would fail the 25-hour reuse case at the unique key.
         var cutoff = now - IIdempotencyStore.Retention;
@@ -42,9 +45,11 @@ public sealed class IdempotencyStore(EventBookingDbContext context) : IIdempoten
             StaffUserId = staffUserId,
             Route = route,
             Key = key,
-            RequestHash = requestHash,
-            StatusCode = statusCode,
-            Body = body,
+            RequestHash = response.RequestHash,
+            StatusCode = response.StatusCode,
+            Body = response.Body,
+            ContentType = response.ContentType,
+            Location = response.Location,
             CreatedAt = now,
         });
         await context.SaveChangesAsync(ct);

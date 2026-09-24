@@ -4,7 +4,10 @@ namespace EventBooking.Application.Abstractions;
 /// <param name="RequestHash">The hash of the body the key was first used with.</param>
 /// <param name="StatusCode">The status the first call returned.</param>
 /// <param name="Body">The body the first call returned.</param>
-public sealed record IdempotentResponse(string RequestHash, int StatusCode, string Body);
+/// <param name="ContentType">The content type the first call returned, if any.</param>
+/// <param name="Location">The Location header the first call returned, if any.</param>
+public sealed record IdempotentResponse(
+    string RequestHash, int StatusCode, string Body, string? ContentType, string? Location);
 
 /// <summary>Retains create-endpoint responses against their Idempotency-Key for 24 hours.</summary>
 public interface IIdempotencyStore
@@ -22,17 +25,15 @@ public interface IIdempotencyStore
     Task<IdempotentResponse?> TryGetAsync(
         Guid staffUserId, string route, string key, DateTimeOffset now, CancellationToken ct);
 
-/// <summary>Retains one response after replacing an expired row for the same key.</summary>
+    /// <summary>Retains one response after replacing an expired row for the same key.</summary>
     /// <param name="staffUserId">The calling staff identity.</param>
     /// <param name="route">The route pattern the key was used on.</param>
     /// <param name="key">The caller's key.</param>
-    /// <param name="requestHash">The hash of the request body.</param>
-    /// <param name="statusCode">The status returned.</param>
-    /// <param name="body">The body returned.</param>
+    /// <param name="response">The response to retain.</param>
     /// <param name="now">The current instant.</param>
     /// <param name="ct">The cancellation token.</param>
     /// <returns>A task tracking the write.</returns>
     Task SaveAsync(
-        Guid staffUserId, string route, string key, string requestHash,
-        int statusCode, string body, DateTimeOffset now, CancellationToken ct);
+        Guid staffUserId, string route, string key, IdempotentResponse response,
+        DateTimeOffset now, CancellationToken ct);
 }
