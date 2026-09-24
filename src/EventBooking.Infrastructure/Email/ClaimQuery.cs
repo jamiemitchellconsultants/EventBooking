@@ -29,4 +29,14 @@ public static class ClaimQuery
              ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED)
         RETURNING id, claim_count;
         """;
+
+    public const string OneSql = """
+        UPDATE email_log SET claimed_at = @now, claim_count = claim_count + 1,
+            correlation_id = @correlationId
+         WHERE id = @deliveryId
+           AND status = 3
+           AND (claimed_at IS NULL OR claimed_at < @now - make_interval(mins => 5))
+           AND (not_before IS NULL OR not_before <= @now)
+        RETURNING id;
+        """;
 }

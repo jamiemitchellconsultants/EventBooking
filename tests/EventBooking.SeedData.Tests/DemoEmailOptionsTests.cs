@@ -23,7 +23,6 @@ public sealed class DemoEmailOptionsTests
         Assert.Equal("localhost", options.Smtp.Host);
         Assert.Equal(1025, options.Smtp.Port);
         Assert.Equal(EmailProvider.Smtp, options.Sender.Provider);
-        Assert.Equal("Europe/London", options.Clock.TimeZoneId);
     }
 
     /// <summary>Explicit deployment settings drive usable links and email transport.</summary>
@@ -36,7 +35,6 @@ public sealed class DemoEmailOptionsTests
         values["Email__FromAddress"] = "demo@example.com";
         values["Email__FromName"] = "Demo recruitment";
         values["Portal__CoordinatorContact"] = "help@example.com";
-        values["Clock__TimeZoneId"] = "UTC";
         var options = DemoEmailOptions.From(values.GetValueOrDefault);
         var token = new HmacTokenService(options.Tokens)
             .Issue(TokenPurpose.Book, Guid.NewGuid(), 1);
@@ -48,7 +46,6 @@ public sealed class DemoEmailOptionsTests
         Assert.Equal("demo@example.com", options.Sender.FromAddress);
         Assert.Equal("Demo recruitment", options.Sender.FromName);
         Assert.Equal("help@example.com", options.Portal.CoordinatorContact);
-        Assert.Equal("UTC", options.Clock.TimeZoneId);
         Assert.DoesNotContain(values["Tokens__SigningKey"]!, options.ToString());
     }
 
@@ -78,7 +75,6 @@ public sealed class DemoEmailOptionsTests
     [InlineData("Email__Smtp__Port", "invalid-port")]
     [InlineData("Email__Smtp__Host", " ")]
     [InlineData("Email__FromAddress", "not-an-email")]
-    [InlineData("Clock__TimeZoneId", "missing/timezone")]
     public void InvalidConfigurationFailsWithoutValueDisclosure(string key, string value)
     {
         var values = Complete();

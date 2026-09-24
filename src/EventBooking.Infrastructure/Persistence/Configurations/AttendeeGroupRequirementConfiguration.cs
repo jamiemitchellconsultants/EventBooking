@@ -21,20 +21,5 @@ public sealed class AttendeeGroupRequirementConfiguration : IEntityTypeConfigura
             .WithMany()
             .HasForeignKey(requirement => requirement.AppointmentTypeId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasData(
-            Requirement(AttendeeGroupIds.CabinCrew, AppointmentTypeIds.DrugAndAlcoholTesting),
-            Requirement(AttendeeGroupIds.CabinCrew, AppointmentTypeIds.MedicalCheckUp),
-            Requirement(AttendeeGroupIds.CabinCrew, AppointmentTypeIds.UniformFitting),
-            Requirement(AttendeeGroupIds.Pilots, AppointmentTypeIds.DrugAndAlcoholTesting),
-            Requirement(AttendeeGroupIds.Pilots, AppointmentTypeIds.UniformFitting),
-            Requirement(AttendeeGroupIds.GroundOperationsAgent, AppointmentTypeIds.MedicalCheckUp),
-            Requirement(AttendeeGroupIds.Engineering, AppointmentTypeIds.MedicalCheckUp),
-            Requirement(AttendeeGroupIds.GroundTransportServices, AppointmentTypeIds.DrugAndAlcoholTesting),
-            Requirement(AttendeeGroupIds.GroundTransportServices, AppointmentTypeIds.MedicalCheckUp),
-            Requirement(AttendeeGroupIds.GroundTransportServices, AppointmentTypeIds.UniformFitting));
     }
-
-    private static object Requirement(Guid attendeeGroupId, Guid appointmentTypeId) =>
-        new { AttendeeGroupId = attendeeGroupId, AppointmentTypeId = appointmentTypeId };
 }

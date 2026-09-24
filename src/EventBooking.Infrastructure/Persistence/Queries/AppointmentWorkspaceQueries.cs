@@ -79,7 +79,7 @@ public sealed class AppointmentWorkspaceQueries(EventBookingDbContext context, I
         Guid eventId,
         CancellationToken cancellationToken)
     {
-        var earliest = clock.TodayAtTransitionalLocation.AddDays(-AppointmentWorkspaceAllowance.RecentPastDays);
+        var earliest = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime).AddDays(-AppointmentWorkspaceAllowance.RecentPastDays);
         var header = await (
             from appointment in context.BookingAppointments.AsNoTracking()
             join booking in context.Bookings.AsNoTracking()

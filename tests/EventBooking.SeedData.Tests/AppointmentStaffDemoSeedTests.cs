@@ -1,6 +1,5 @@
 using System.Text.Json;
 using EventBooking.Domain.Access;
-using EventBooking.Domain.AppointmentTypes;
 using EventBooking.SeedData;
 
 namespace EventBooking.SeedData.Tests;
@@ -12,15 +11,20 @@ public sealed class AppointmentStaffDemoSeedTests
     private static readonly Guid AppointmentStaffId =
         Guid.Parse("dc5f9a90-7f54-46d1-8603-d4c317f47226");
 
-    /// <summary>Verifies one AppointmentStaff-only profile is scoped to Uniform Fitting.</summary>
+    /// <summary>Verifies the scoped profile carries MED and the unscoped one carries no scope.</summary>
     [Fact]
-    public void SeedContainsOneScopedAppointmentStaffProfile()
+    public void SeedContainsScopedAndUnscopedAppointmentStaffProfiles()
     {
-        var profile = Assert.Single(DemoSeedSpec.Staff(), value =>
-            value.Roles.SequenceEqual([Role.AppointmentStaff]));
+        var scoped = Assert.Single(DemoSeedSpec.Staff(), value =>
+            value.Username == "appointment.med");
+        Assert.Equal([Role.AppointmentStaff], scoped.Roles);
+        var medical = DemoSeedSpec.Build().AppointmentTypes.Single(type => type.Code == "MED");
+        Assert.Equal(medical.Id, scoped.AppointmentTypeId);
 
-        Assert.Equal(AppointmentStaffId, profile.UserId);
-        Assert.Equal(AppointmentTypeIds.UniformFitting, profile.AppointmentTypeId);
+        var unscoped = Assert.Single(DemoSeedSpec.Staff(), value =>
+            value.Username == "appointment.unscoped");
+        Assert.Equal([Role.AppointmentStaff], unscoped.Roles);
+        Assert.Null(unscoped.AppointmentTypeId);
     }
 
     /// <summary>Verifies Keycloak supplies the fixed identity and AppointmentStaff role.</summary>

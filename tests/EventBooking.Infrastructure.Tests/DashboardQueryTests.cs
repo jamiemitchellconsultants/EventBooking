@@ -34,7 +34,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task AwaitingAttendeesUseTransitionalLocationDatesAcrossTheUtcMidnightBoundary()
+    public async Task AwaitingAttendeesUseUtcDatesAcrossTheUtcMidnightBoundary()
     {
         await fixture.ResetAsync();
         var clock = new MovableLondonClock(new DateTimeOffset(2026, 9, 2, 23, 30, 0, TimeSpan.Zero));
@@ -64,7 +64,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
 
         Assert.Equal("C. Diallo", row.Name);
         Assert.Equal(new[] { "DAT", "MED" }, row.RequiredCodes);
-        Assert.Equal(new DateOnly(2026, 9, 3), row.WaitingSince);
+        Assert.Equal(new DateOnly(2026, 9, 2), row.WaitingSince);
         Assert.Equal(1, row.DaysWaiting);
     }
 
@@ -187,7 +187,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task TheFollowUpListUsesTheTransitionalLocationDayTheAutoRetryGaveUp()
+    public async Task TheFollowUpListUsesTheUtcDayTheAutoRetryGaveUp()
     {
         await fixture.ResetAsync();
         var clock = new MovableLondonClock(new DateTimeOffset(2026, 9, 2, 23, 30, 0, TimeSpan.Zero));
@@ -212,7 +212,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
             .NoResponseAsync(CancellationToken.None));
 
         Assert.Equal("D. Reyes", row.Name);
-        Assert.Equal(new DateOnly(2026, 9, 3), row.GaveUpOn);
+        Assert.Equal(new DateOnly(2026, 9, 2), row.GaveUpOn);
     }
 
     [Fact]

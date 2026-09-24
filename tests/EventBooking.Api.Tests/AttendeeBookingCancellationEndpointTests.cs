@@ -206,7 +206,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var today = DateOnly.FromDateTime(scope.ServiceProvider.GetRequiredService<IClock>().UtcNow.UtcDateTime);
 
         var bookedEvent = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today.AddDays(30), new TimeOnly(9, 0), 240),
@@ -259,7 +259,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var today = DateOnly.FromDateTime(scope.ServiceProvider.GetRequiredService<IClock>().UtcNow.UtcDateTime);
 
         var recoveryEvent = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today.AddDays(40), new TimeOnly(13, 0), 240),

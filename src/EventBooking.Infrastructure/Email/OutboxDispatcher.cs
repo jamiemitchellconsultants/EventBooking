@@ -1,6 +1,5 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Notifications;
-using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Events;
@@ -64,16 +63,7 @@ public sealed class OutboxDispatcher(
                 if (renewed == 0) continue;
 
                 var row = await context.EmailLogs.SingleAsync(e => e.Id == id, ct);
-                try
-                {
-                    await SendRowAsync(scope, row, now, ct);
-                    sent++;
-                }
-                catch (Exception ex) when (!ct.IsCancellationRequested)
-                {
-                    logger.LogError(ex, "Outbox send failed for delivery {DeliveryId}.", id);
-                    await MarkTransientAsync(scope, row, now, ct);
-                }
+                sent += await DispatchClaimedAsync(scope, row, now, ct);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
@@ -84,6 +74,39 @@ public sealed class OutboxDispatcher(
         }
 
         return sent;
+    }
+
+    /// <summary>Claims and dispatches only the selected delivery, leaving other due rows alone.</summary>
+    /// <param name="deliveryId">The delivery to send.</param>
+    /// <param name="ct">The cancellation token.</param>
+    public async Task<int> DispatchOneAsync(Guid deliveryId, CancellationToken ct = default)
+    {
+        using var scope = scopes.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+        var now = clock.UtcNow;
+        var ids = await context.Database.SqlQueryRaw<Guid>(ClaimQuery.OneSql,
+            new NpgsqlParameter("@now", now),
+            new NpgsqlParameter("@correlationId", Guid.NewGuid().ToString()),
+            new NpgsqlParameter("@deliveryId", deliveryId)).ToListAsync(ct);
+        if (ids.Count == 0) return 0;
+        var row = await context.EmailLogs.SingleAsync(x => x.Id == deliveryId, ct);
+        return await DispatchClaimedAsync(scope, row, now, ct);
+    }
+
+    private async Task<int> DispatchClaimedAsync(
+        IServiceScope scope, EmailLog row, DateTimeOffset now, CancellationToken ct)
+    {
+        try
+        {
+            await SendRowAsync(scope, row, now, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Outbox send failed for delivery {DeliveryId}.", row.Id);
+            await MarkTransientAsync(scope, row, now, ct);
+        }
+        return row.Status == EmailStatus.Sent ? 1 : 0;
     }
 
     /// <inheritdoc />
@@ -194,15 +217,16 @@ public sealed class OutboxDispatcher(
         var attendees = scope.ServiceProvider.GetRequiredService<IAttendeeRepository>();
         var attendee = await attendees.GetAsync(row.AttendeeId, ct)
             ?? throw new InvalidOperationException($"Attendee {row.AttendeeId} is gone.");
+        var codes = await TypeCodesAsync(scope, ct);
 
         var context = row.TemplateName switch
         {
             EmailTemplate.AttendeeInvite or EmailTemplate.AttendeeReinvite =>
-                await InviteContextAsync(scope, row, ct),
+                await InviteContextAsync(scope, row, codes, ct),
             EmailTemplate.BookingConfirmation =>
-                await BookingContextAsync(scope, row, attendee.Id, ct),
+                await BookingContextAsync(scope, row, attendee.Id, codes, ct),
             EmailTemplate.EventCancelledRebookingNeeded =>
-                await CancellationContextAsync(scope, row, attendee.Id, ct),
+                await CancellationContextAsync(scope, row, attendee.Id, codes, ct),
             _ => throw new InvalidOperationException($"Template {row.TemplateName} cannot be rendered."),
         };
 
@@ -215,8 +239,23 @@ public sealed class OutboxDispatcher(
         };
     }
 
+    /// <summary>Resolves every appointment-type code from the database, so Admin-managed types
+    /// created after the predecessor's fixed three render exactly like the originals.</summary>
+    private static async Task<IReadOnlyDictionary<Guid, string>> TypeCodesAsync(
+        IServiceScope scope, CancellationToken ct)
+    {
+        var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        return await context.AppointmentTypes.AsNoTracking()
+            .ToDictionaryAsync(type => type.Id, type => type.Code, ct);
+    }
+
+    private static string CodeOf(IReadOnlyDictionary<Guid, string> codes, Guid appointmentTypeId) =>
+        codes.TryGetValue(appointmentTypeId, out var code)
+            ? code
+            : throw new InvalidOperationException($"Appointment type {appointmentTypeId} is gone.");
+
     private async Task<EmailContext> InviteContextAsync(
-        IServiceScope scope, EmailLog row, CancellationToken ct)
+        IServiceScope scope, EmailLog row, IReadOnlyDictionary<Guid, string> codes, CancellationToken ct)
     {
         var invites = scope.ServiceProvider.GetRequiredService<IInviteRepository>();
         var events = scope.ServiceProvider.GetRequiredService<IEventRepository>();
@@ -248,7 +287,7 @@ public sealed class OutboxDispatcher(
             await WindowTextAsync(scope, first, ct);
         var issued = tokens.Issue(TokenPurpose.Book, invite.Id, invite.TokenVersion);
         return new EmailContext(
-            invite.RequiredAppointmentTypeIds.Select(AppointmentTypeIds.CodeOf).ToList(),
+            invite.RequiredAppointmentTypeIds.Select(id => CodeOf(codes, id)).ToList(),
             locationName,
             locationAddress,
             windowText,
@@ -260,7 +299,7 @@ public sealed class OutboxDispatcher(
     }
 
     private async Task<EmailContext> BookingContextAsync(
-        IServiceScope scope, EmailLog row, Guid attendeeId, CancellationToken ct)
+        IServiceScope scope, EmailLog row, Guid attendeeId, IReadOnlyDictionary<Guid, string> codes, CancellationToken ct)
     {
         var bookings = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
         var events = scope.ServiceProvider.GetRequiredService<IEventRepository>();
@@ -285,7 +324,7 @@ public sealed class OutboxDispatcher(
             await WindowTextAsync(scope, eventItem, ct);
         var issued = tokens.Issue(TokenPurpose.Manage, booking.Id, booking.ManageTokenVersion);
         return new EmailContext(
-            snapshot.Select(AppointmentTypeIds.CodeOf).ToList(),
+            snapshot.Select(id => CodeOf(codes, id)).ToList(),
             locationName,
             locationAddress,
             windowText,
@@ -297,7 +336,7 @@ public sealed class OutboxDispatcher(
     }
 
     private async Task<EmailContext> CancellationContextAsync(
-        IServiceScope scope, EmailLog row, Guid attendeeId, CancellationToken ct)
+        IServiceScope scope, EmailLog row, Guid attendeeId, IReadOnlyDictionary<Guid, string> codes, CancellationToken ct)
     {
         var bookings = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
         var events = scope.ServiceProvider.GetRequiredService<IEventRepository>();
@@ -336,7 +375,7 @@ public sealed class OutboxDispatcher(
         var (locationName, locationAddress, windowText) =
             await WindowTextAsync(scope, eventItem, ct);
         return new EmailContext(
-            snapshot.Select(AppointmentTypeIds.CodeOf).ToList(),
+            snapshot.Select(id => CodeOf(codes, id)).ToList(),
             locationName,
             locationAddress,
             windowText,

@@ -11,10 +11,10 @@ public sealed class KeycloakSeedContractTests
     [Fact]
     public void Staff_ExposesUsernameProviderIdStaffIdAndRoles()
     {
-        var admin = DemoSeedSpec.Staff().Single(value => value.Username == "admin.user");
+        var admin = DemoSeedSpec.Staff().Single(value => value.Username == "admin");
 
-        Assert.Equal(Guid.Parse("17e8cd60-b849-470f-a7d1-44ff39993688"), admin.UserId);
-        Assert.Equal("U000001", admin.StaffId.Value);
+        Assert.Equal(Guid.Parse("40000000-0000-0000-0000-000000000001"), admin.UserId);
+        Assert.Equal("DEMO001", admin.StaffId.Value);
         Assert.Equal([Role.Admin], admin.Roles);
     }
 

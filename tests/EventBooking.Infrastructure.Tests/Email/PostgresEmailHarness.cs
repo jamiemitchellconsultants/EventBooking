@@ -112,7 +112,6 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
         services.AddLogging();
         services.AddEventBookingInfrastructure(
             fixture.ConnectionString,
-            new ClockOptions("Europe/London"),
             new TokenOptions("a-test-signing-key-that-is-long-enough-here"));
         services.RemoveAll<IClock>();
         services.AddSingleton<IClock>(Clock);
@@ -130,12 +129,21 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
     protected async Task<Guid> StagePendingAsync(EmailTemplate template)
     {
         await fixture.ResetAsync();
+        return await StageAdditionalAsync(template, "Amy", "amy@example.invalid");
+    }
+
+    /// <summary>Stages a second pending row without resetting, for targeted-dispatch tests.</summary>
+    /// <param name="template">The template.</param>
+    /// <param name="name">The attendee name.</param>
+    /// <param name="email">The attendee email.</param>
+    protected async Task<Guid> StageAdditionalAsync(EmailTemplate template, string name, string email)
+    {
         await using var seed = fixture.NewContext();
         var group = AttendeeGroup.Define(
             Guid.NewGuid(), $"DAT_ONLY_{Guid.NewGuid():N}".ToUpperInvariant(), "DAT only", true,
             [AppointmentTypeIds.DrugAndAlcoholTesting]);
         var attendee = Attendee.Create(
-            Guid.NewGuid(), "Amy", "amy@example.invalid", group, ProposalFixture.Now);
+            Guid.NewGuid(), name, email, group, ProposalFixture.Now);
         var eventIds = new List<Guid>();
         foreach (var day in new[] { 30, 31, 32 })
         {

@@ -11,8 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 var settings = EventBookingConfiguration.Read(builder.Configuration);
 
-builder.Services.AddEventBookingInfrastructure(
-    settings.ConnectionString, settings.Clock, settings.Tokens);
+builder.Services.AddEventBookingInfrastructure(settings.ConnectionString, settings.Tokens);
 builder.Services.AddLocalEmailTransport(settings.Email, settings.Smtp);
 builder.Services.AddEventBookingApplication(
     settings.Portal,

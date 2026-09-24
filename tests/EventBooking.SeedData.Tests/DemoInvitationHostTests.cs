@@ -7,7 +7,6 @@ using EventBooking.Application.Notifications;
 using EventBooking.Domain.Notifications;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Persistence;
-using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Tokens;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,13 +30,13 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
         await _postgres.DisposeAsync();
     }
 
-    /// <summary>The console sends clickable HTML/text emails and a second invocation sends none.</summary>
+    /// <summary>The console sends one clickable HTML/text email and a second invocation sends none.</summary>
     [Fact]
     public async Task ConsoleSeedSendsUsableMailAndRerunDoesNotDuplicate()
     {
-        var first = await RunAsync(false);
+        var first = await RunAsync(demo: true);
         Assert.True(first.ExitCode == 0, first.Output);
-        Assert.Equal(5, _smtp.Messages.Count);
+        Assert.Single(_smtp.Messages);
         using var services = VerificationServices();
         using var scope = services.CreateScope();
         var view = scope.ServiceProvider.GetRequiredService<ViewInviteHandler>();
@@ -55,16 +54,16 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
             Assert.DoesNotContain(token, first.Output);
         }
         Assert.DoesNotContain(SigningKey, first.Output);
-        var second = await RunAsync(false);
+        var second = await RunAsync(demo: true);
         Assert.True(second.ExitCode == 0, second.Output);
-        Assert.Equal(5, _smtp.Messages.Count);
+        Assert.Single(_smtp.Messages);
     }
 
     /// <summary>Migration-only bypasses even invalid email settings and creates no demo Attendees.</summary>
     [Fact]
     public async Task MigrationOnlyDoesNotReadEmailConfiguration()
     {
-        var result = await RunAsync(true, new Dictionary<string, string?>
+        var result = await RunAsync(demo: false, new Dictionary<string, string?>
         {
             ["Tokens__SigningKey"] = "invalid",
             ["Portal__BaseUrl"] = "invalid",
@@ -84,9 +83,9 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
     public async Task ConsoleFailureCanResumeAfterSmtpRecovery()
     {
         _smtp.RejectMessages = true;
-        var failed = await RunAsync(false);
+        var failed = await RunAsync(demo: true);
         Assert.Equal(2, failed.ExitCode);
-        Assert.Contains("delivery failed", failed.Output);
+        Assert.Contains("Demo invitation delivery", failed.Output);
         Assert.Empty(_smtp.Messages);
         using (var services = VerificationServices())
         using (var scope = services.CreateScope())
@@ -95,9 +94,9 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
             Assert.Equal(1, await database.EmailLogs.CountAsync(e => e.Status == EmailStatus.Failed));
         }
         _smtp.RejectMessages = false;
-        var resumed = await RunAsync(false);
+        var resumed = await RunAsync(demo: true);
         Assert.True(resumed.ExitCode == 0, resumed.Output);
-        Assert.Equal(5, _smtp.Messages.Count);
+        Assert.Single(_smtp.Messages);
     }
 
     private ServiceProvider VerificationServices()
@@ -105,7 +104,7 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddEventBookingInfrastructure(_postgres.GetConnectionString(),
-            new ClockOptions("Europe/London"), new TokenOptions(SigningKey));
+            new TokenOptions(SigningKey));
         services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
             new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
         services.AddEventBookingApplication(new AttendeePortalOptions(
@@ -114,7 +113,7 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
     }
 
     private async Task<(int ExitCode, string Output)> RunAsync(
-        bool skipSeed, Dictionary<string, string?>? overrides = null)
+        bool demo, Dictionary<string, string?>? overrides = null)
     {
         var root = RepoRoot();
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
@@ -140,13 +139,10 @@ public sealed class DemoInvitationHostTests : IAsyncLifetime
         start.Environment["Portal__BaseUrl"] = "https://host-demo.example.test/";
         start.Environment["Email__Smtp__Host"] = "127.0.0.1";
         start.Environment["Email__Smtp__Port"] = _smtp.Port.ToString(CultureInfo.InvariantCulture);
-        if (skipSeed) start.ArgumentList.Add("--skip-seed");
-        else
+        if (demo)
         {
+            start.ArgumentList.Add("--demo");
             start.ArgumentList.Add("--reanchor");
-            start.ArgumentList.Add(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
-                DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Europe/London")).DateTime)
-                .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         }
         if (overrides is not null)
             foreach (var (key, value) in overrides) start.Environment[key] = value;

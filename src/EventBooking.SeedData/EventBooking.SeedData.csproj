@@ -9,8 +9,4 @@
     <ProjectReference Include="..\EventBooking.Infrastructure\EventBooking.Infrastructure.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="demo-seed.json" />
-  </ItemGroup>
-
 </Project>

@@ -140,20 +140,7 @@ public sealed class KeycloakSeeder
                 await SendAsync(
                     HttpMethod.Post,
                     $"admin/realms/{Escape(options.Realm)}/users",
-                    JsonContent.Create(new
-                    {
-                        id = person.UserId,
-                        username = person.Username,
-                        enabled = true,
-                        attributes = new Dictionary<string, string[]>
-                        {
-                            ["staffId"] = [person.StaffId.Value],
-                        },
-                        credentials = new[]
-                        {
-                            new { type = "password", value = options.DemoPassword, temporary = false },
-                        },
-                    }, options: Json),
+                    JsonContent.Create(BuildUserRepresentation(person, options.DemoPassword), options: Json),
                     cancellationToken);
                 userWrites++;
                 matches = await GetAsync<List<UserRepresentation>>(userPath, cancellationToken);
@@ -298,6 +285,19 @@ public sealed class KeycloakSeeder
             && desired.Config.All(pair =>
                 mapper.Config.TryGetValue(pair.Key, out var value) && value == pair.Value);
     }
+
+    private static object BuildUserRepresentation(StaffProfileSpec person, string password) => new
+    {
+        id = person.UserId,
+        username = person.Username,
+        enabled = true,
+        firstName = person.GivenName,
+        lastName = person.FamilyName,
+        email = person.Email,
+        emailVerified = true,
+        attributes = new Dictionary<string, string[]> { ["staffId"] = [person.StaffId.Value] },
+        credentials = new[] { new { type = "password", value = password, temporary = false } },
+    };
 
     private static string Escape(string value) => Uri.EscapeDataString(value);
 

@@ -24,43 +24,14 @@ public sealed class IdentityProviderRoleBoundaryTests
         Assert.Equal(ExpectedRoles.OrderBy(value => value), names.OrderBy(value => value));
     }
 
-    /// <summary>Verifies every local demo user has the reviewed role assignment.</summary>
-    [Fact]
-    public void LocalDemoUsersHaveExpectedRealmRoleAssignments()
-    {
-        using var seed = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("src/EventBooking.SeedData/demo-seed.json")));
-        var expected = seed.RootElement.GetProperty("staff").EnumerateArray()
-            .ToDictionary(
-                row => row.GetProperty("username").GetString()!,
-                row => row.GetProperty("roles").EnumerateArray()
-                    .Select(role => role.GetString()!).OrderBy(role => role).ToArray());
-        using var realm = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("deploy/keycloak/realm-export.json")));
-
-        var actual = realm.RootElement.GetProperty("users").EnumerateArray()
-            .ToDictionary(
-                user => user.GetProperty("username").GetString()!,
-                user => user.GetProperty("realmRoles").EnumerateArray()
-                    .Select(role => role.GetString()!).OrderBy(role => role).ToArray());
-
-        Assert.Equal(expected.Keys.OrderBy(value => value), actual.Keys.OrderBy(value => value));
-        Assert.All(expected, pair => Assert.Equal(pair.Value, actual[pair.Key]));
-    }
-
-    /// <summary>Verifies the seed retains a non-empty role array and no legacy singular role.</summary>
+    /// <summary>Verifies every demo identity carries a non-empty business-role set.</summary>
     [Fact]
     public void DemoAccessRowsUseRoleArrays()
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("src/EventBooking.SeedData/demo-seed.json")));
+        var staff = DemoSeedSpec.Staff();
 
-        Assert.All(document.RootElement.GetProperty("staff").EnumerateArray(), row =>
-        {
-            Assert.False(row.TryGetProperty("role", out _));
-            Assert.Equal(JsonValueKind.Array, row.GetProperty("roles").ValueKind);
-            Assert.NotEmpty(row.GetProperty("roles").EnumerateArray());
-        });
+        Assert.Equal(8, staff.Count);
+        Assert.All(staff, person => Assert.NotEmpty(person.Roles));
     }
 
     /// <summary>Verifies both clients emit the same flat multi-valued `roles` claim.</summary>
@@ -126,44 +97,15 @@ public sealed class IdentityProviderRoleBoundaryTests
             .GetProperty("pattern").GetString();
         Assert.Equal("^[A-Za-z0-9]{1,32}$", pattern);
 
-        using var seed = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("src/EventBooking.SeedData/demo-seed.json")));
         var expression = new Regex(
             pattern!, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-        Assert.All(seed.RootElement.GetProperty("staff").EnumerateArray(), row =>
+        Assert.All(DemoSeedSpec.Staff(), person =>
         {
-            var value = row.GetProperty("staffId").GetString()!;
+            var value = person.StaffId.Value;
             var match = expression.Match(value);
             Assert.True(match.Success && match.Index == 0 && match.Length == value.Length,
                 $"Seed staffId '{value}' must satisfy the realm profile pattern.");
         });
-    }
-
-    /// <summary>Verifies realm users and executable seed share stable identities and staff numbers.</summary>
-    [Fact]
-    public void RealmUsersAndDemoSeedAgreeOnIdentityKeys()
-    {
-        using var realm = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("deploy/keycloak/realm-export.json")));
-        using var seed = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("src/EventBooking.SeedData/demo-seed.json")));
-        var realmKeys = realm.RootElement.GetProperty("users").EnumerateArray()
-            .ToDictionary(
-                user => user.GetProperty("username").GetString()!,
-                user => (
-                    user.GetProperty("id").GetString()!,
-                    user.GetProperty("attributes").GetProperty("staffId")[0].GetString()!));
-        var seedKeys = seed.RootElement.GetProperty("staff").EnumerateArray()
-            .ToDictionary(
-                row => row.GetProperty("username").GetString()!,
-                row => (
-                    row.GetProperty("userId").GetString()!,
-                    row.GetProperty("staffId").GetString()!));
-
-        Assert.Equal(6, realmKeys.Count);
-        Assert.Equal(seedKeys, realmKeys);
-        Assert.Equal(6, realmKeys.Values.Select(value => value.Item1).Distinct().Count());
-        Assert.Equal(6, realmKeys.Values.Select(value => value.Item2).Distinct().Count());
     }
 
     private static JsonElement Client(JsonDocument document) =>

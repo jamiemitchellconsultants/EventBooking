@@ -67,7 +67,6 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
 
         services.AddEventBookingInfrastructure(
             fixture.ConnectionString,
-            new ClockOptions("Europe/London"),
             new TokenOptions("a-concurrency-test-signing-key-long-enough"));
 
         services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(

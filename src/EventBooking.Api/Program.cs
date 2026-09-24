@@ -33,8 +33,7 @@ builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole(options => options.IncludeScopes = false);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 
-builder.Services.AddEventBookingInfrastructure(
-    settings.ConnectionString, settings.Clock, settings.Tokens);
+builder.Services.AddEventBookingInfrastructure(settings.ConnectionString, settings.Tokens);
 builder.Services.AddLocalEmailTransport(settings.Email, settings.Smtp);
 builder.Services.AddEventBookingApplication(
     settings.Portal,

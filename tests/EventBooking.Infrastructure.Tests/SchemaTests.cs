@@ -34,21 +34,23 @@ public class SchemaTests(PostgresFixture fixture)
             // invite settings snapshots, the migration adding the outbox backoff and
             // correlation columns, the migration replacing the attendee status
             // index with the list page's composite, the migration adding the
-            // Idempotency-Key retention table, and the migration retaining the replayed
-            // response's Location and content type. Committed migrations are never
+            // Idempotency-Key retention table, the migration retaining the replayed
+            // response's Location and content type, and the migration retiring the
+            // predecessor's fixed reference seeds. Committed migrations are never
             // rewritten: the chain is what keeps the schema regenerable.
             Assert.Equal(
                 ["20260920120000_InitialSchema", "20260920145721_RequireEventStartInstant",
                     "20260923202304_InviteSettingsSnapshots", "20260924040652_EmailOutboxColumns",
                     "20260924045221_AttendeeListIndex", "20260924095643_IdempotencyRetention",
-                    "20260924123603_IdempotencyReplayHeaders"],
+                    "20260924123603_IdempotencyReplayHeaders", "20260924201133_RetireTransitionalSeedRows"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();
 
             Assert.Empty(await context.Database.GetPendingMigrationsAsync());
-            var types = await context.AppointmentTypes.OrderBy(t => t.Code).ToListAsync();
-            Assert.Equal(["DAT", "MED", "UNI"], types.Select(t => t.Code));
+            Assert.Empty(await context.AppointmentTypes.ToListAsync());
+            Assert.Empty(await context.AttendeeGroups.ToListAsync());
+            Assert.Empty(await context.Locations.ToListAsync());
             Assert.Equal(1, (await context.SystemSettings.SingleAsync()).Id);
         }
         finally

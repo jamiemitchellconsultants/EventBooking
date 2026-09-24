@@ -35,19 +35,5 @@ public sealed class LocationConfiguration : IEntityTypeConfiguration<Location>
         builder.Property(location => location.Version).HasColumnName("version").IsConcurrencyToken();
 
         builder.HasIndex(location => location.Code).IsUnique();
-
-        // The single site every proposal, event and invite is made at until Phase 3, matching the
-        // transitional clock's zone. It is seeded here for the same reason the three appointment
-        // types are: the rest of the schema references it, and nothing manages locations yet.
-        builder.HasData(new
-        {
-            Id = TransitionalLocation.Id,
-            Code = "TRANSITIONAL",
-            Name = "Transitional location",
-            Address = "Recorded against the transitional site until Phase 3.",
-            TimeZoneId = TransitionalLocation.TimeZoneId,
-            IsActive = true,
-            Version = 1L,
-        });
     }
 }

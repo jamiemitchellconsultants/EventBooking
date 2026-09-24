@@ -9,6 +9,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Tests.Appointments;
 
@@ -104,6 +105,10 @@ public sealed class RecentPastRecoveryEligibilityTests
             Guid.NewGuid(), booking.Id, AppointmentTypeIds.DrugAndAlcoholTesting);
         var appointments = new InMemoryBookingAppointmentRepository(bookings, operations);
         appointments.Add(appointment);
+        var locations = new InMemoryLocationRepository();
+        locations.Add(Location.Create(
+            ProposalFixture.LocationId, "LONDON_HQ", "London HQ", "1 High St",
+            "Europe/London", ProposalFixture.Zones));
         var handler = new UpdateBookingAppointmentStatusHandler(
             new StaffAccessAuthorizer(profiles),
             appointments,
@@ -114,7 +119,9 @@ public sealed class RecentPastRecoveryEligibilityTests
             new RecoveryBookingOutcomeCoordinator(),
             new RecordingAuditLogger(),
             new FakeUnitOfWork(operations),
-            new FakeClock(now));
+            new FakeClock(now),
+            ProposalFixture.Zones,
+            locations);
         return new Scenario(staff, attendee, booking, appointment, handler);
     }
 

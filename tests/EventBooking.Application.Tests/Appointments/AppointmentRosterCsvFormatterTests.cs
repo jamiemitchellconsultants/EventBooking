@@ -10,7 +10,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     private const string Header =
         "Attendee Name,Attendee Email,Appointment Type,Status,Checked In At,Outcome At";
 
-    private static AppointmentRosterCsvFormatter Formatter() => new(new FakeClock());
+    private static AppointmentRosterCsvFormatter Formatter() => new();
 
     private static string[] LinesOf(string csv) =>
         csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -54,7 +54,7 @@ public sealed class AppointmentRosterCsvFormatterTests
     }
 
     [Fact]
-    public void FormatNonNullTimestampsRenderAsTransitionalLocationIso8601()
+    public void FormatNonNullTimestampsRenderAsUtcIso8601()
     {
         var checkedInAt = new DateTimeOffset(2026, 9, 15, 9, 35, 0, TimeSpan.Zero);
         var outcomeAt = new DateTimeOffset(2026, 9, 15, 10, 5, 0, TimeSpan.Zero);

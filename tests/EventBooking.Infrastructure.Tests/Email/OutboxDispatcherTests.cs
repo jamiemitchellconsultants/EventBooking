@@ -7,6 +7,19 @@ namespace EventBooking.Infrastructure.Tests.Email;
 public sealed class OutboxDispatcherTests(PostgresFixture fixture) : PostgresEmailHarness(fixture)
 {
     [Fact]
+    public async Task Targeted_dispatch_leaves_other_due_rows_unclaimed()
+    {
+        var other = await StagePendingAsync(EmailTemplate.BookingConfirmation);
+        var selected = await StageAdditionalAsync(EmailTemplate.AttendeeInvite, "Zed", "zed@example.invalid");
+
+        Assert.Equal(1, await Dispatcher(transportA).DispatchOneAsync(selected, default));
+
+        Assert.Equal(EmailStatus.Sent, await StatusOfAsync(selected));
+        Assert.Equal(EmailStatus.Pending, await StatusOfAsync(other));
+        Assert.Single(transportA.Sent);
+    }
+
+    [Fact]
     public async Task Two_dispatchers_never_send_the_same_row_twice()
     {
         var rowId = await StagePendingAsync(EmailTemplate.AttendeeInvite);

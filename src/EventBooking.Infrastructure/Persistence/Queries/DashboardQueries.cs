@@ -17,18 +17,19 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
     public async Task<IReadOnlyList<AwaitingAvailabilityRow>> AwaitingAvailabilityAsync(
         CancellationToken cancellationToken)
     {
-        var today = clock.TodayAtTransitionalLocation;
+        var today = UtcToday();
+        var codes = await TypeCodesAsync(cancellationToken);
         var rows = await AttendeeRows(AttendeeStatus.AwaitingAvailability).ToListAsync(cancellationToken);
 
         return rows
             .Select(row =>
             {
-                var since = clock.DateAtTransitionalLocation(row.StatusChangedAt);
+                var since = DateOnly.FromDateTime(row.StatusChangedAt.UtcDateTime);
                 return new AwaitingAvailabilityRow(
                     row.Id,
                     row.Name,
                     row.Email,
-                    row.AppointmentTypeIds.Select(AppointmentTypeIds.CodeOf)
+                    row.AppointmentTypeIds.Select(id => CodeOf(codes, id))
                         .OrderBy(code => code, StringComparer.Ordinal).ToList(),
                     since,
                     Math.Max(0, today.DayNumber - since.DayNumber));
@@ -39,6 +40,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
 
     public async Task<IReadOnlyList<NoResponseRow>> NoResponseAsync(CancellationToken cancellationToken)
     {
+        var codes = await TypeCodesAsync(cancellationToken);
         var rows = await AttendeeRows(AttendeeStatus.NoResponseNeedsFollowUp).ToListAsync(cancellationToken);
 
         return rows
@@ -46,9 +48,9 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 row.Id,
                 row.Name,
                 row.Email,
-                row.AppointmentTypeIds.Select(AppointmentTypeIds.CodeOf)
+                row.AppointmentTypeIds.Select(id => CodeOf(codes, id))
                     .OrderBy(code => code, StringComparer.Ordinal).ToList(),
-                clock.DateAtTransitionalLocation(row.StatusChangedAt)))
+                DateOnly.FromDateTime(row.StatusChangedAt.UtcDateTime)))
             .OrderBy(row => row.GaveUpOn)
             .ToList();
     }
@@ -57,7 +59,8 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
     {
         // Past events can no longer be cancelled, so the operations list shows only
         // today and future events.
-        var today = clock.TodayAtTransitionalLocation;
+        var today = UtcToday();
+        var codes = await TypeCodesAsync(cancellationToken);
         var rows = await context.Events
             .AsNoTracking()
             .Where(eventItem => eventItem.Status == EventStatus.Active && eventItem.Window.Date >= today)
@@ -94,7 +97,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 row.StartTime,
                 row.StartTime.Add(TimeSpan.FromMinutes(row.DurationMinutes)),
                 row.Capacities.Select(capacity => new EventCapacityRow(
-                    AppointmentTypeIds.CodeOf(capacity.AppointmentTypeId),
+                    CodeOf(codes, capacity.AppointmentTypeId),
                     capacity.TotalHeadcount,
                     capacity.RemainingCapacity))
                     .OrderBy(capacity => capacity.Code, StringComparer.Ordinal).ToList(),
@@ -360,6 +363,22 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 attendee.Email,
                 attendee.StatusChangedAt,
                 attendee.Requirements.Select(requirement => requirement.AppointmentTypeId).ToList()));
+
+    /// <summary>The current UTC date, used for every location-less aggregate cutoff now that the
+    /// single-zone clock is retired. Multi-location cutoffs are inherently approximate; per-event
+    /// zone logic lives with the event's own location.</summary>
+    private DateOnly UtcToday() => DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+
+    /// <summary>Resolves every appointment-type code from the database, so Admin-managed types
+    /// created after the predecessor's fixed three render exactly like the originals.</summary>
+    private async Task<IReadOnlyDictionary<Guid, string>> TypeCodesAsync(CancellationToken ct) =>
+        await context.AppointmentTypes.AsNoTracking()
+            .ToDictionaryAsync(type => type.Id, type => type.Code, ct);
+
+    private static string CodeOf(IReadOnlyDictionary<Guid, string> codes, Guid appointmentTypeId) =>
+        codes.TryGetValue(appointmentTypeId, out var code)
+            ? code
+            : throw new InvalidOperationException($"Appointment type {appointmentTypeId} is gone.");
 
     private sealed record AttendeeRow(
         Guid Id,

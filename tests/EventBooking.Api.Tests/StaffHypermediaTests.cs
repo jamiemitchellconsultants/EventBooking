@@ -31,7 +31,7 @@ public sealed class StaffHypermediaTests(ApiFactory factory)
         using (var scope = factory.Services.CreateScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-            var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+            var today = DateOnly.FromDateTime(scope.ServiceProvider.GetRequiredService<IClock>().UtcNow.UtcDateTime);
             context.Events.Add(EventFixture.Create(
                 Guid.NewGuid(), new EventWindow(today.AddDays(3), new TimeOnly(9, 0), 240),
                 AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)));

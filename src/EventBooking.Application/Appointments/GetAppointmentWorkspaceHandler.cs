@@ -41,7 +41,7 @@ public sealed class GetAppointmentWorkspaceHandler(
 
         return Result<AppointmentWorkspaceEventList>.Success(
             await queries.ListEventsAsync(
-                appointmentTypeId, clock.TodayAtTransitionalLocation, cancellationToken));
+                appointmentTypeId, DateOnly.FromDateTime(clock.UtcNow.UtcDateTime), cancellationToken));
     }
 
     /// <summary>Gets one active event inside the caller's trusted appointment type.</summary>

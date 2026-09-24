@@ -447,7 +447,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var today = DateOnly.FromDateTime(scope.ServiceProvider.GetRequiredService<IClock>().UtcNow.UtcDateTime);
         var listed = listedTypes ?? AppointmentTypeIds.All;
         var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today.AddDays(daysOffset), new TimeOnly(9, 0), 240),

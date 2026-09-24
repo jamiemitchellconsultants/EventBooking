@@ -231,7 +231,6 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
             services.AddLogging();
             services.AddEventBookingInfrastructure(
                 fixture.ConnectionString,
-                new ClockOptions("Europe/London"),
                 new TokenOptions("a-repair-c-concurrency-signing-key-long-enough"));
             services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(
                 new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones());
