@@ -51,6 +51,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IDashboardQueries, DashboardQueries>();
         services.AddScoped<IAttendeeListQueries, AttendeeListQueries>();
         services.AddScoped<IAuditQueries, AuditQueries>();
+        services.AddScoped<IAuditSearchQueries, AuditSearchQueries>();
         services.AddScoped<IAppointmentWorkspaceQueries, AppointmentWorkspaceQueries>();
         services.AddScoped<IAttendeeReadinessQueries, AttendeeReadinessQueries>();
         services.AddScoped<IAttendeeBookingQueries, AttendeeBookingQueries>();

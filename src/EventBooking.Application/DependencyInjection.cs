@@ -1,5 +1,6 @@
 using EventBooking.Application.Access;
 using EventBooking.Application.Appointments;
+using EventBooking.Application.Audit;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
@@ -58,6 +59,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<GetEventOperationsHandler>();
         services.AddScoped<GetAuditHistoryHandler>();
         services.AddScoped<GetAuditSearchHandler>();
+        services.AddScoped<SearchAuditHandler>();
+        services.AddScoped<AttendeeHistoryHandler>();
+        services.AddScoped<EventHistoryHandler>();
 
         // Administration.
         services.AddScoped<AdminSettingsHandler>();
