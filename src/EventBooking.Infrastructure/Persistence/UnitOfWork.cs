@@ -49,10 +49,11 @@ public sealed class UnitOfWork(EventBookingDbContext context, TransactionLocks l
         locks.Reset();
 
         var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        return new EfTransactionScope(transaction, locks);
+        return new EfTransactionScope(transaction, locks, context);
     }
 
-    private sealed class EfTransactionScope(IDbContextTransaction transaction, TransactionLocks locks)
+    private sealed class EfTransactionScope(
+        IDbContextTransaction transaction, TransactionLocks locks, EventBookingDbContext context)
         : ITransactionScope
     {
         public async Task CommitAsync(CancellationToken cancellationToken)
@@ -65,6 +66,11 @@ public sealed class UnitOfWork(EventBookingDbContext context, TransactionLocks l
         {
             await transaction.RollbackAsync(cancellationToken);
             locks.Reset();
+
+            // Everything read or changed in the rolled-back transaction is void. Left tracked,
+            // it would be served back as current by a retry on this scoped context, and any
+            // in-memory change would be saved by the next SaveChanges.
+            context.ChangeTracker.Clear();
         }
 
         public async ValueTask DisposeAsync()

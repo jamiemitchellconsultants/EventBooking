@@ -51,6 +51,27 @@ public sealed class CancelEventHandlerTests
     }
 
     [Fact]
+    public async Task A_booking_confirmed_between_snapshot_and_event_lock_is_not_stranded()
+    {
+        var fixture = BookingFixture.Create();
+        await ConfirmedBookingAsync(fixture, "IND");
+        fixture.Eligibility.EligibleInOrder = [fixture.EventId, Guid.NewGuid(), Guid.NewGuid()];
+
+        // The confirmation lands after the handler's unlocked snapshot but before it holds the
+        // event lock, which is the gap the ladder forces it to leave.
+        fixture.Events.BeforeNextLock = () => ConfirmedBookingAsync(fixture, "MED");
+
+        var result = await Handler(fixture).HandleAsync(
+            new CancelEventCommand(fixture.Coordinator, fixture.EventId, true),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, $"{result.Error?.Code} {result.Error?.Message}");
+        Assert.Equal(2, result.Value.CancelledCount);
+        Assert.Equal(Domain.Events.EventStatus.Cancelled, fixture.Events.Items.Single().Status);
+        Assert.DoesNotContain(fixture.Bookings.Items, b => b.Status == BookingStatus.Active);
+    }
+
+    [Fact]
     public async Task Cancel_event_with_confirm_cancels_in_attendee_order_with_replacements()
     {
         var fixture = BookingFixture.Create();

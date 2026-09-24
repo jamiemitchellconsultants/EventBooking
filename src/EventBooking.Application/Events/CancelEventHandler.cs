@@ -59,6 +59,10 @@ public sealed class CancelEventHandler(
     IEventWindowZones zones,
     IInviteIssuer issuer)
 {
+    // Each retry needs another booking to have committed in the snapshot-to-lock gap, so a
+    // stale snapshot cannot repeat more often than the event has bookings racing it.
+    private const int MaxAttempts = 10;
+
     /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
     /// <param name="ct">The cancellation token.</param>
@@ -69,14 +73,32 @@ public sealed class CancelEventHandler(
             command.StaffUserId, StaffCapability.CancelEvent, null, ct);
         if (authorized.IsFailure) return Result<CancelEventOutcome>.Failure(authorized.Error);
 
-        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        if (!command.Confirm) return await PreviewAsync(command, authorized.Value, ct);
 
-        if (!command.Confirm)
+        // The snapshot below is taken before the event lock, because the ladder puts the event
+        // below every attendee. A booking confirmed in that gap makes the snapshot stale; the
+        // attempt then rolls back and starts over rather than surfacing a refusal the caller
+        // can do nothing about. Each retry needs a booking to have committed in the gap, and
+        // once the event lock is held no more can be, so the loop converges.
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            var result = await CancelAsync(command, authorized.Value, ct);
+            if (result is not null) return result;
+        }
+
+        return Result<CancelEventOutcome>.Failure(
+            Error.Conflict("The event's bookings kept changing while cancelling. Please retry."));
+    }
+
+    private async Task<Result<CancelEventOutcome>> PreviewAsync(
+        CancelEventCommand command, StaffAccessContext authorized, CancellationToken ct)
+    {
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         {
             var preview = await events.LockForUpdateAsync(command.EventId, ct);
             if (preview is null)
                 return Result<CancelEventOutcome>.Failure(Error.NotFound("No such event."));
-            if (authorized.Value.AppointmentTypeId is { } previewScopedType
+            if (authorized.AppointmentTypeId is { } previewScopedType
                 && !preview.Capacities.Any(c => c.AppointmentTypeId == previewScopedType))
                 return Result<CancelEventOutcome>.Failure(
                     Error.Forbidden("This event does not list the manager's appointment type."));
@@ -89,6 +111,14 @@ public sealed class CancelEventHandler(
             await transaction.CommitAsync(ct);
             return Result<CancelEventOutcome>.Success(new CancelEventOutcome(previewActive.Count, 0, 0));
         }
+    }
+
+    /// <summary>Runs one cancellation attempt; null means the snapshot went stale and it should be retried.</summary>
+    private async Task<Result<CancelEventOutcome>?> CancelAsync(
+        CancelEventCommand command, StaffAccessContext authorized, CancellationToken ct)
+    {
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+
 
         // Snapshot without locks, then each booking's locks in canonical order with
         // re-validation under lock: every attendee first, then every booking, then every
@@ -142,11 +172,10 @@ public sealed class CancelEventHandler(
         if (current.Any(b => !known.Contains(b.Id)))
         {
             await transaction.RollbackAsync(ct);
-            return Result<CancelEventOutcome>.Failure(
-                Error.Conflict("The event's bookings changed while cancelling. Please retry."));
+            return null;
         }
 
-        if (authorized.Value.AppointmentTypeId is { } scopedType
+        if (authorized.AppointmentTypeId is { } scopedType
             && !eventItem.Capacities.Any(c => c.AppointmentTypeId == scopedType))
             return Result<CancelEventOutcome>.Failure(
                 Error.Forbidden("This event does not list the manager's appointment type."));

@@ -45,6 +45,9 @@ public sealed class InMemoryEventRepository(
 {
     public List<Event> Items { get; } = [];
 
+    /// <summary>Runs once, just before the next event lock is granted, to stage a racing writer.</summary>
+    public Func<Task>? BeforeNextLock { get; set; }
+
     public Task<Event?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("event-reloaded");
@@ -54,6 +57,12 @@ public sealed class InMemoryEventRepository(
     public async Task<Event?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
         operations?.Record("event-guard-locked");
+        if (BeforeNextLock is { } racingWriter)
+        {
+            BeforeNextLock = null;
+            await racingWriter();
+        }
+
         if (locks is not null)
         {
             await locks.AcquireAsync(id, cancellationToken);
