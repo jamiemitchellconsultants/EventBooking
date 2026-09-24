@@ -232,6 +232,7 @@
     private Tab _tab = Tab.Awaiting;
     private string? _error;
     private bool _busy;
+    private readonly PendingSubmission _reinviteSubmission = new();
     private bool _isLoading = true;
     private Guid? _locationId;
     private readonly List<(Guid Id, string Name)> _knownLocations = [];
@@ -337,12 +338,14 @@
         try
         {
             var outcome = await AttendeesApi.InviteAsync(
-                attendeeId, [], IdempotencySubmission.Start(), CancellationToken.None);
+                attendeeId, [], _reinviteSubmission.For(attendeeId), CancellationToken.None);
             if (!outcome.IsSuccess)
             {
                 _error = outcome.ErrorMessage ?? UnexpectedError;
                 return;
             }
+
+            _reinviteSubmission.Complete();
 
             await ReloadAsync();
             if (_error is not null)

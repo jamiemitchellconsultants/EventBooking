@@ -14,10 +14,18 @@ public static class ApiCall
         var status = (int)response.StatusCode;
         if (response.IsSuccessStatusCode && status != (int)System.Net.HttpStatusCode.NoContent)
         {
-            var value = await response.Content.ReadFromJsonAsync<T>(Json, ct);
+            T? value;
+            try
+            {
+                value = await response.Content.ReadFromJsonAsync<T>(Json, ct);
+            }
+            catch (JsonException)
+            {
+                value = default;
+            }
+
             if (value is not null) return ApiOutcome<T>.Success(value, status);
-            return ApiOutcome<T>.Failure(
-                new ApiProblem("unexpected", null, status, Generic, [], null, null, null, null));
+            return ApiOutcome<T>.Failure(Unexpected(status));
         }
         var problem = await ParseAsync(response, ct);
         return ApiOutcome<T>.Failure(problem with { Status = status });
@@ -43,70 +51,59 @@ public static class ApiCall
         return ApiOutcome<T>.Failure(problem with { Status = (int)response.StatusCode });
     }
 
-    // Compatibility for the predecessor appointments client until Task 26 replaces it.
-    public static async Task<ApiOutcome<TextWithHeader>> ReadTextWithHeaderAsync(
-        HttpResponseMessage response, string headerName, CancellationToken cancellationToken)
-    {
-        var status = (int)response.StatusCode;
-        if (!response.IsSuccessStatusCode)
-        {
-            var failure = await ParseAsync(response, cancellationToken);
-            return ApiOutcome<TextWithHeader>.Failure(failure.Detail ?? Generic, status, failure.Type);
-        }
-
-        // Deliberately not the JSON path: the successful body here is raw text, not JSON.
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        var header =
-            (response.Content.Headers.TryGetValues(headerName, out var contentValues)
-                ? contentValues.FirstOrDefault()
-                : null)
-            ?? (response.Headers.TryGetValues(headerName, out var values)
-                ? values.FirstOrDefault()
-                : null)
-            ?? string.Empty;
-
-        return ApiOutcome<TextWithHeader>.Success(new TextWithHeader(body, header), status);
-    }
-
     private static async Task<ApiProblem> ParseAsync(
         HttpResponseMessage response, CancellationToken ct)
     {
+        var status = (int)response.StatusCode;
         try
         {
             using var document = await JsonDocument.ParseAsync(
                 await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
             var root = document.RootElement;
-            IReadOnlyList<FieldProblem> Errors() => root.TryGetProperty("errors", out var list)
-                ? list.EnumerateArray().Select(x => new FieldProblem(
-                    x.TryGetProperty("field", out var field) ? field.GetString() : null,
-                    x.TryGetProperty("line", out var line) && line.ValueKind == JsonValueKind.Number
-                        ? line.GetInt32() : null,
-                    x.TryGetProperty("code", out var code) ? code.GetString() ?? "invalid" : "invalid",
-                    x.TryGetProperty("message", out var message) ? message.GetString() : null))
-                    .ToArray()
-                : [];
-            JsonElement? Element(string name) => root.TryGetProperty(name, out var value)
-                ? value.Clone() : null;
-            if (!root.TryGetProperty("type", out var type))
-                return new("unexpected", null, (int)response.StatusCode, Generic, Errors(),
-                    null, null, null, null);
+            // A gateway or proxy can answer with any JSON at all; only an object whose `type`
+            // is a string is a problem document this client branches on.
+            if (root.ValueKind != JsonValueKind.Object) return Unexpected(status);
+            if (!root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
+                return Unexpected(status) with { Errors = Errors(root) };
             return new(
-                type.GetString() ?? "unexpected",
-                root.TryGetProperty("title", out var title) ? title.GetString() : null,
-                (int)response.StatusCode,
-                root.TryGetProperty("detail", out var detail) ? detail.GetString() : null,
-                Errors(),
-                Element("current"), Element("consequence"),
-                root.TryGetProperty("minimum", out var minimum) &&
-                    minimum.ValueKind == JsonValueKind.Number ? minimum.GetInt32() : null,
-                Element("blocking"));
+                type.GetString()!,
+                String(root, "title"),
+                status,
+                String(root, "detail"),
+                Errors(root),
+                Element(root, "current"), Element(root, "consequence"),
+                root.TryGetProperty("minimum", out var minimum)
+                    && minimum.ValueKind == JsonValueKind.Number
+                    && minimum.TryGetInt32(out var value) ? value : null,
+                Element(root, "blocking"));
         }
         catch (JsonException)
         {
-            return new("unexpected", null, (int)response.StatusCode, Generic, [],
-                null, null, null, null);
+            return Unexpected(status);
         }
     }
-}
 
-public sealed record TextWithHeader(string Text, string Header);
+    private static IReadOnlyList<FieldProblem> Errors(JsonElement root) =>
+        root.TryGetProperty("errors", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray()
+                .Where(x => x.ValueKind == JsonValueKind.Object)
+                .Select(x => new FieldProblem(
+                    String(x, "field"),
+                    x.TryGetProperty("line", out var line)
+                        && line.ValueKind == JsonValueKind.Number
+                        && line.TryGetInt32(out var number) ? number : null,
+                    String(x, "code") ?? "invalid",
+                    String(x, "message")))
+                .ToArray()
+            : [];
+
+    private static string? String(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() : null;
+
+    private static JsonElement? Element(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) ? value.Clone() : null;
+
+    private static ApiProblem Unexpected(int status) =>
+        new("unexpected", null, status, Generic, [], null, null, null, null);
+}

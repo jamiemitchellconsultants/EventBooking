@@ -44,6 +44,29 @@ public sealed class CoordinatorPageTests : BunitContext
     }
 
     [Fact]
+    public async Task RetryingAnInviteAfterALostResponseReusesTheIdempotencyKey()
+    {
+        var attendeeId = Guid.Parse("50000000-0000-0000-0000-000000000005");
+        var london = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var api = new FakeAttendeesClient { InviteThrows = 1 };
+        api.Rows.Add(new AttendeeDto(attendeeId, "T. Okafor", "t@example.org", "AwaitingAvailability", "Awaiting availability", "OFFICE", "AppointmentsOutstanding", ["IND"], "Failed", "cursor", Guid.NewGuid(), new Dictionary<string, ApiLink>
+        {
+            ["invite"] = new($"/api/attendees/{attendeeId}/invites", "POST", "inviteAttendee"),
+        }));
+        Services.AddSingleton<IAttendeesClient>(api);
+        Services.AddSingleton<IAuditClient>(new FakeAuditClient());
+        var cut = Render<Attendees>();
+        cut.WaitForElement("[data-action='invite']").Click();
+        cut.Find($"input[value='{london}']").Change(true);
+
+        await cut.WaitForElement("[data-action='send-invite']").ClickAsync(new());
+        await cut.WaitForElement("[data-action='send-invite']").ClickAsync(new());
+
+        Assert.Equal(2, api.InviteKeys.Count);
+        Assert.Equal(api.InviteKeys[0], api.InviteKeys[1]);
+    }
+
+    [Fact]
     public async Task FailedImportListsEveryLineWithoutImporting()
     {
         Services.AddSingleton<IAttendeesClient>(new FakeAttendeesClient
@@ -147,8 +170,14 @@ public sealed class CoordinatorPageTests : BunitContext
             LastLocations = locationIds;
             return Task.FromResult(ApiOutcome<EligibleEventCountDto>.Success(new(locationIds.Count, 3)));
         }
-        public Task<ApiOutcome<InviteOutcomeDto>> InviteAsync(Guid id, IReadOnlyList<Guid> locationIds, IdempotencySubmission submission, CancellationToken ct) =>
-            Task.FromResult(ApiOutcome<InviteOutcomeDto>.Success(new(Guid.NewGuid(), "Invited")));
+        public List<string> InviteKeys { get; } = [];
+        public int InviteThrows { get; set; }
+        public Task<ApiOutcome<InviteOutcomeDto>> InviteAsync(Guid id, IReadOnlyList<Guid> locationIds, IdempotencySubmission submission, CancellationToken ct)
+        {
+            InviteKeys.Add(submission.Key);
+            if (InviteThrows-- > 0) throw new HttpRequestException("response lost");
+            return Task.FromResult(ApiOutcome<InviteOutcomeDto>.Success(new(Guid.NewGuid(), "Invited")));
+        }
         public Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(Guid id, CancellationToken ct) =>
             Task.FromResult(ApiOutcome<EmailRetryDto>.Success(new(Guid.NewGuid())));
         public Task<ApiOutcome<PageDto<AttendeeBookingDto>>> GetBookingsAsync(Guid attendeeId, CancellationToken ct) =>

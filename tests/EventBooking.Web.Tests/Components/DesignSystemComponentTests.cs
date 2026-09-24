@@ -268,5 +268,50 @@ public sealed class DesignSystemComponentTests : BunitContext
         }
     }
 
+    [Fact]
+    public void DataTableAlignsEachCapacityCellUnderItsTypeHeader()
+    {
+        TypeCapacity Capacity(string code, int total) =>
+            new(Guid.NewGuid(), code, $"Type {code}", total, total);
+        var first = new Row(Guid.NewGuid(), [Capacity("OPS", 1), Capacity("CAB", 2)]);
+        var second = new Row(Guid.NewGuid(), [Capacity("CAB", 7)]);
+        RenderFragment<Row> name = item => builder => builder.AddContent(0, item.Id);
+
+        var cut = Render<DataTable<Row>>(p => p
+            .Add(x => x.Items, [first, second])
+            .Add(x => x.RowKey, x => x.Id)
+            .Add(x => x.Columns, [new TableColumn<Row>("Row", name)])
+            .Add(x => x.Capacities, x => x.Capacities));
+
+        var headers = cut.FindAll("th[data-type-code]").Select(x => x.GetAttribute("data-type-code")).ToArray();
+        var rows = cut.FindAll("tbody tr");
+        Assert.All(rows, row => Assert.Equal(1 + headers.Length, row.QuerySelectorAll("td").Length));
+        var secondCells = rows[1].QuerySelectorAll("td").Skip(1).ToArray();
+        var cabIndex = Array.IndexOf(headers, "CAB");
+        var opsIndex = Array.IndexOf(headers, "OPS");
+        Assert.Contains("7 total", secondCells[cabIndex].TextContent);
+        Assert.Equal("CAB", secondCells[cabIndex].GetAttribute("data-label"));
+        Assert.DoesNotContain("total", secondCells[opsIndex].TextContent);
+    }
+
+    [Fact]
+    public void CollapsedDataTableRendersOnlyTheCapacityColumn()
+    {
+        var capacities = Enumerable.Range(0, 6)
+            .Select(i => new TypeCapacity(Guid.NewGuid(), $"T{i:00}", $"Type {i}", i + 1, i + 2))
+            .ToArray();
+        var row = new Row(Guid.NewGuid(), capacities);
+        RenderFragment<Row> name = item => builder => builder.AddContent(0, item.Id);
+
+        var cut = Render<DataTable<Row>>(p => p
+            .Add(x => x.Items, [row])
+            .Add(x => x.RowKey, x => x.Id)
+            .Add(x => x.Columns, [new TableColumn<Row>("Row", name)])
+            .Add(x => x.Capacities, x => x.Capacities));
+
+        Assert.Equal(2, cut.FindAll("thead th").Count);
+        Assert.Equal(2, cut.FindAll("tbody tr td").Count);
+    }
+
     private sealed record Row(Guid Id, IReadOnlyList<TypeCapacity> Capacities);
 }

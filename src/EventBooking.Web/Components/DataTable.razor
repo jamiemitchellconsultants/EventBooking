@@ -15,17 +15,23 @@
     }
     else
     {
+        var typeCodes = TypeCodes(Items);
+        var collapsed = typeCodes.Count > MaximumTypeColumns;
+        if (collapsed)
+        {
+            typeCodes = [];
+        }
         <table>
             <thead><tr>
                 @foreach (var column in Columns)
                 {
                     <th scope="col">@column.Title</th>
                 }
-                @foreach (var typeCode in TypeCodes(Items))
+                @foreach (var typeCode in typeCodes)
                 {
                     <th scope="col" data-type-code="@typeCode">@typeCode</th>
                 }
-                @if (CollapsesTypes(Items))
+                @if (collapsed)
                 {
                     <th scope="col">Capacity</th>
                 }
@@ -38,11 +44,13 @@
                         {
                             <td data-label="@column.Title">@column.Cell(item)</td>
                         }
-                        @foreach (var capacity in Capacities(item))
+                        @* One cell per header column, looked up by code, so a row lacking a type
+                           leaves that cell empty instead of shifting the rest left. *@
+                        @foreach (var typeCode in typeCodes)
                         {
-                            <td data-label="@capacity.TypeCode">@capacity.TotalHeadcount total, @capacity.RemainingCapacity left</td>
+                            <td data-label="@typeCode">@CapacityText(item, typeCode)</td>
                         }
-                        @if (CollapsesTypes(Items))
+                        @if (collapsed)
                         {
                             <td data-label="Capacity"><ul class="capacity-breakdown">
                                 @foreach (var capacity in Capacities(item))
@@ -73,10 +81,11 @@
     [Parameter] public string EmptyHint { get; set; } = "";
     [Parameter] public string EmptyActionLabel { get; set; } = "";
     [Parameter] public EventCallback EmptyAction { get; set; }
-    private bool CollapsesTypes(IReadOnlyList<TItem> items) =>
-        items.SelectMany(Capacities).Select(x => x.TypeCode).Distinct().Count() > 5;
-    private IEnumerable<string> TypeCodes(IReadOnlyList<TItem> items) =>
-        CollapsesTypes(items)
-            ? []
-            : items.SelectMany(Capacities).Select(x => x.TypeCode).Distinct();
+    private const int MaximumTypeColumns = 5;
+    private IReadOnlyList<string> TypeCodes(IReadOnlyList<TItem> items) =>
+        items.SelectMany(Capacities).Select(x => x.TypeCode).Distinct().ToArray();
+    private string? CapacityText(TItem item, string typeCode) =>
+        Capacities(item).FirstOrDefault(x => x.TypeCode == typeCode) is { } capacity
+            ? $"{capacity.TotalHeadcount} total, {capacity.RemainingCapacity} left"
+            : null;
 }

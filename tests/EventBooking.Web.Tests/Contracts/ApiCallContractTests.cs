@@ -53,4 +53,22 @@ public sealed class ApiCallContractTests
         Assert.Equal(retryKey, first.Key);
         Assert.NotEqual(first.Key, second.Key);
     }
+
+    [Fact]
+    public void PendingSubmissionReusesItsKeyUntilThePayloadChangesOrItCompletes()
+    {
+        var pending = new PendingSubmission();
+
+        var first = pending.For(("a", 1));
+        var retry = pending.For(("a", 1));
+        var edited = pending.For(("a", 2));
+        pending.Complete();
+        var next = pending.For(("a", 2));
+
+        Assert.Equal(first.Key, retry.Key);
+        Assert.False(first.IsRetry);
+        Assert.True(retry.IsRetry);
+        Assert.NotEqual(first.Key, edited.Key);
+        Assert.NotEqual(edited.Key, next.Key);
+    }
 }

@@ -94,7 +94,17 @@
             return;
         }
 
-        _me = await Me.GetAsync(CancellationToken.None);
+        // The authorization handler throws rather than returning a response when no token is
+        // available yet, and the network can throw too. Either must not escape: this runs from
+        // an async void handler, where an exception would take down the whole app.
+        try
+        {
+            _me = await Me.GetAsync(CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            _me = ApiOutcome<MeDto>.Failure("Something went wrong. Please try again.");
+        }
     }
 
     private void SignOut() => Navigation.NavigateToLogout("authentication/logout");

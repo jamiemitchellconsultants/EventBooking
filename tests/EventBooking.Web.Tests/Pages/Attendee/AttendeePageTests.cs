@@ -45,6 +45,50 @@ public sealed class AttendeePageTests : BunitContext
         Assert.Empty(cut.FindAll("[data-action='cancel-booking']"));
     }
 
+    [Fact]
+    public async Task RetryingAConfirmAfterALostResponseReusesTheIdempotencyKey()
+    {
+        var api = new FakeBookingClient { ConfirmThrows = 1 };
+        Services.AddSingleton<IBookingClient>(api);
+        var cut = Render<Book>(p => p.Add(x => x.Token, "book-token"));
+        cut.WaitForElement("input[value='10000000-0000-0000-0000-000000000001']").Change(true);
+
+        await cut.Find("[data-action='confirm-booking']").ClickAsync(new());
+        await cut.Find("[data-action='confirm-booking']").ClickAsync(new());
+
+        Assert.Equal(2, api.ConfirmKeys.Count);
+        Assert.Equal(api.ConfirmKeys[0], api.ConfirmKeys[1]);
+    }
+
+    [Fact]
+    public async Task ChoosingAnotherTimeStartsANewSubmission()
+    {
+        var api = new FakeBookingClient { ConfirmThrows = 1 };
+        Services.AddSingleton<IBookingClient>(api);
+        var cut = Render<Book>(p => p.Add(x => x.Token, "book-token"));
+        cut.WaitForElement("input[value='10000000-0000-0000-0000-000000000001']").Change(true);
+        await cut.Find("[data-action='confirm-booking']").ClickAsync(new());
+
+        cut.Find("input[value='20000000-0000-0000-0000-000000000002']").Change(true);
+        await cut.Find("[data-action='confirm-booking']").ClickAsync(new());
+
+        Assert.NotEqual(api.ConfirmKeys[0], api.ConfirmKeys[1]);
+    }
+
+    [Fact]
+    public async Task RetryingACancelAfterALostResponseReusesTheIdempotencyKey()
+    {
+        var api = new FakeBookingClient { CancelThrows = 1 };
+        Services.AddSingleton<IBookingClient>(api);
+        var cut = Render<ManageBooking>(p => p.Add(x => x.Token, "manage-token"));
+
+        await cut.WaitForElement("[data-action='cancel-booking']").ClickAsync(new());
+        await cut.WaitForElement("[data-action='cancel-booking']").ClickAsync(new());
+
+        Assert.Equal(2, api.CancelKeys.Count);
+        Assert.Equal(api.CancelKeys[0], api.CancelKeys[1]);
+    }
+
     private sealed class FakeBookingClient(bool includeCancelLink = true) : IBookingClient
     {
         private static readonly Guid London = Guid.Parse("10000000-0000-0000-0000-000000000001");
@@ -58,8 +102,22 @@ public sealed class AttendeePageTests : BunitContext
             {
                 ["confirm"] = new("/api/booking/book-token/confirm", "POST", "confirmBooking"),
             })));
-        public Task<ApiOutcome<ConfirmBookingOutcomeDto>> ConfirmAsync(string token, Guid eventId, IdempotencySubmission submission, CancellationToken ct) => Task.FromResult(ConfirmProblem is null ? ApiOutcome<ConfirmBookingOutcomeDto>.Success(new(Guid.NewGuid(), "manage-token")) : ApiOutcome<ConfirmBookingOutcomeDto>.Failure(ConfirmProblem));
+        public List<string> ConfirmKeys { get; } = [];
+        public int ConfirmThrows { get; set; }
+        public Task<ApiOutcome<ConfirmBookingOutcomeDto>> ConfirmAsync(string token, Guid eventId, IdempotencySubmission submission, CancellationToken ct)
+        {
+            ConfirmKeys.Add(submission.Key);
+            if (ConfirmThrows-- > 0) throw new HttpRequestException("response lost");
+            return Task.FromResult(ConfirmProblem is null ? ApiOutcome<ConfirmBookingOutcomeDto>.Success(new(Guid.NewGuid(), "manage-token")) : ApiOutcome<ConfirmBookingOutcomeDto>.Failure(ConfirmProblem));
+        }
         public Task<ApiOutcome<ManagedBookingDto>> ViewManagedAsync(string token, CancellationToken ct) => Task.FromResult(ApiOutcome<ManagedBookingDto>.Success(new("Ravi", "London HQ", "1 Example St", TestContractFactory.EventTime("Tue 14 Oct 2026, 09:30–11:00 BST"), ["Medical check"], includeCancelLink ? new Dictionary<string, ApiLink> { ["cancel"] = new("/cancel", "POST", "cancelManagedBooking") } : new Dictionary<string, ApiLink>())));
-        public Task<ApiOutcome<CancelBookingOutcomeDto>> CancelAsync(string token, bool requestNewTime, IdempotencySubmission submission, CancellationToken ct) => Task.FromResult(ApiOutcome<CancelBookingOutcomeDto>.Success(new(Outcome, Outcome == "reinvited" ? Guid.NewGuid() : null)));
+        public List<string> CancelKeys { get; } = [];
+        public int CancelThrows { get; set; }
+        public Task<ApiOutcome<CancelBookingOutcomeDto>> CancelAsync(string token, bool requestNewTime, IdempotencySubmission submission, CancellationToken ct)
+        {
+            CancelKeys.Add(submission.Key);
+            if (CancelThrows-- > 0) throw new HttpRequestException("response lost");
+            return Task.FromResult(ApiOutcome<CancelBookingOutcomeDto>.Success(new(Outcome, Outcome == "reinvited" ? Guid.NewGuid() : null)));
+        }
     }
 }

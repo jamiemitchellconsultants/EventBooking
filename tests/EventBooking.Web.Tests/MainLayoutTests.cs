@@ -101,6 +101,48 @@ public class MainLayoutTests : BunitContext
         cut.WaitForAssertion(() => Assert.Equal(1, handler.Calls));
     }
 
+    [Fact]
+    public void AFailedIdentityFetchLeavesTheShellUsable()
+    {
+        // AuthorizationMessageHandler throws (AccessTokenNotAvailableException) rather than
+        // returning a response when no token is available yet; the network can throw too.
+        this.AddAuthorization().SetAuthorized("Cory Coordinator");
+        Services.AddSingleton<IMeClient>(new ThrowingMeClient());
+        Services.AddSingleton(new ProductOptions("EventBooking", null, "events@example.com"));
+
+        var cut = RenderTopbar();
+
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Loading…", cut.Markup));
+        Assert.Contains("Sign out", cut.Markup);
+    }
+
+    [Fact]
+    public void AFailedIdentityFetchAfterSignInDoesNotEscapeTheHandler()
+    {
+        var auth = new FlipFlopAuthProvider();
+        this.AddAuthorization();
+        Services.AddSingleton<AuthenticationStateProvider>(auth);
+        var me = new ThrowingMeClient();
+        Services.AddSingleton<IMeClient>(me);
+        Services.AddSingleton(new ProductOptions("EventBooking", null, "events@example.com"));
+        RenderTopbar();
+
+        auth.SignIn("Cory Coordinator");
+
+        Assert.Equal(1, me.Calls);
+    }
+
+    private sealed class ThrowingMeClient : IMeClient
+    {
+        public int Calls { get; private set; }
+
+        public Task<ApiOutcome<MeDto>> GetAsync(CancellationToken ct)
+        {
+            Calls++;
+            throw new HttpRequestException("offline");
+        }
+    }
+
     private void RegisterMe(MeDto me)
     {
         var handler = new StubHandler(new HttpResponseMessage(HttpStatusCode.OK)

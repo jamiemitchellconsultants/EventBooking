@@ -103,6 +103,7 @@
     private bool _expired;
     private bool _loading = true;
     private bool _busy;
+    private readonly PendingSubmission _cancelSubmission = new();
     private bool _cancelled;
     private string? _cancelOutcome;
     private int _requestVersion;
@@ -168,7 +169,7 @@
         try
         {
             var outcome = await Booking.CancelAsync(
-                Token, rebook, IdempotencySubmission.Start(), CancellationToken.None);
+                Token, rebook, _cancelSubmission.For(rebook), CancellationToken.None);
             if (version != _requestVersion)
             {
                 return;
@@ -176,6 +177,7 @@
 
             if (outcome.IsSuccess)
             {
+                _cancelSubmission.Complete();
                 _cancelOutcome = outcome.Value?.Outcome;
                 _cancelled = true;
                 _booking = null;

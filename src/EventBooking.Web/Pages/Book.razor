@@ -117,6 +117,7 @@
     private bool _expired;
     private bool _loading = true;
     private bool _busy;
+    private readonly PendingSubmission _confirmSubmission = new();
     private int _requestVersion;
 
     private string CoordinatorContact =>
@@ -192,7 +193,7 @@
         try
         {
             var outcome = await Booking.ConfirmAsync(
-                Token, chosen, IdempotencySubmission.Start(), CancellationToken.None);
+                Token, chosen, _confirmSubmission.For(chosen), CancellationToken.None);
             if (version != _requestVersion)
             {
                 return;
@@ -200,6 +201,7 @@
 
             if (outcome.IsSuccess)
             {
+                _confirmSubmission.Complete();
                 _confirmed = outcome.Value;
                 _confirmedOption = _invite?.Options.SingleOrDefault(option => option.EventId == chosen);
                 _invite = null;

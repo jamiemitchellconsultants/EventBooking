@@ -485,6 +485,9 @@
     private ImportOutcomeDto? _uploadResult;
     private string? _error;
     private bool _busy;
+    private readonly PendingSubmission _createSubmission = new();
+    private readonly PendingSubmission _inviteSubmission = new();
+    private readonly PendingSubmission _importSubmission = new();
     private bool _isLoading = true;
     private bool _showAdd;
 
@@ -704,9 +707,11 @@
         await RunAsync(
             () => AttendeesApi.CreateAsync(
                 _newName, _newEmail, ParseAttendeeGroupId(_newAttendeeGroupId),
-                IdempotencySubmission.Start(), CancellationToken.None),
+                _createSubmission.For((_newName, _newEmail, _newAttendeeGroupId)),
+                CancellationToken.None),
             () =>
             {
+                _createSubmission.Complete();
                 _newName = string.Empty;
                 _newEmail = string.Empty;
                 _newAttendeeGroupId = string.Empty;
@@ -855,12 +860,15 @@
 
         try
         {
+            var locationIds = _inviteLocationSelection.Order().ToList();
             var outcome = await AttendeesApi.InviteAsync(
-                attendee.AttendeeId, _inviteLocationSelection.ToList(),
-                IdempotencySubmission.Start(), CancellationToken.None);
+                attendee.AttendeeId, locationIds,
+                _inviteSubmission.For((attendee.AttendeeId, string.Join(',', locationIds))),
+                CancellationToken.None);
             _error = outcome.IsSuccess ? null : outcome.ErrorMessage ?? UnexpectedError;
             if (outcome.IsSuccess)
             {
+                _inviteSubmission.Complete();
                 CloseInvite();
                 await ReloadAsync();
             }
@@ -1141,8 +1149,14 @@
 
             await using var stream = _importFile.OpenReadStream(MaximumUploadBytes);
             var outcome = await AttendeesApi.ImportAsync(
-                stream, _importFile.Name, IdempotencySubmission.Start(), CancellationToken.None);
+                stream, _importFile.Name,
+                _importSubmission.For((_importFile.Name, _importFile.Size, _importFile.LastModified)),
+                CancellationToken.None);
             _error = outcome.IsSuccess ? null : outcome.ErrorMessage ?? UnexpectedError;
+            if (outcome.IsSuccess)
+            {
+                _importSubmission.Complete();
+            }
 
             if (outcome.IsSuccess && outcome.Value is not null)
             {

@@ -141,7 +141,7 @@ else
             _reference = reference.Value;
             _scopeTypeName = _reference.AppointmentTypes.FirstOrDefault(x => x.Id == _reference.CallerAppointmentTypeId)?.Name;
             await LoadProposalsFirstPageAsync();
-            await LoadEventsFirstPageAsync();
+            await RefreshEventsAsync();
         }
         catch (Exception) { _error = "Something went wrong. Please try again."; }
         _loading = false;
@@ -153,19 +153,27 @@ else
         _proposals.Clear(); _proposals.AddRange(page.Value.Items);
         _proposalsCursor = page.Value.NextCursor;
     }
-    private async Task LoadEventsFirstPageAsync()
+    // Refreshes the confirmed events without undoing the Manager's view of them: every page
+    // already loaded is read again, and _capacityInputs holds only unsaved edits, which a
+    // refresh after saving (or accepting) somewhere else must not discard.
+    private async Task RefreshEventsAsync()
     {
-        var page = await Api.ListEventsAsync(null, null, null, null, CancellationToken.None);
-        if (!page.IsSuccess || page.Value is null) { _error = page.ErrorMessage; return; }
-        _events.Clear(); _events.AddRange(page.Value.Items);
-        _eventsCursor = page.Value.NextCursor;
-        _capacityInputs.Clear(); _capacityErrors.Clear();
-        foreach (var evt in _events)
-            foreach (var capacity in evt.Capacities)
-                _capacityInputs[(evt.Id, capacity.AppointmentTypeId)] = capacity.TotalHeadcount.ToString();
+        var loaded = Math.Max(_events.Count, 1);
+        var events = new List<EventDto>();
+        string? cursor = null;
+        do
+        {
+            var page = await Api.ListEventsAsync(null, null, null, cursor, CancellationToken.None);
+            if (!page.IsSuccess || page.Value is null) { _error = page.ErrorMessage; return; }
+            events.AddRange(page.Value.Items);
+            cursor = page.Value.NextCursor;
+        }
+        while (cursor is not null && events.Count < loaded);
+        _events.Clear(); _events.AddRange(events);
+        _eventsCursor = cursor;
     }
     private async Task LoadMoreProposalsAsync() { _busy = true; try { var page = await Api.ListProposalsAsync(_proposalsCursor, CancellationToken.None); if (page.IsSuccess && page.Value is not null) { _proposals.AddRange(page.Value.Items); _proposalsCursor = page.Value.NextCursor; } else _error = page.ErrorMessage; } catch (Exception) { _error = "Something went wrong. Please try again."; } _busy = false; }
-    private async Task LoadMoreEventsAsync() { _busy = true; try { var page = await Api.ListEventsAsync(null, null, null, _eventsCursor, CancellationToken.None); if (page.IsSuccess && page.Value is not null) { _events.AddRange(page.Value.Items); _eventsCursor = page.Value.NextCursor; foreach (var evt in page.Value.Items) foreach (var capacity in evt.Capacities) _capacityInputs.TryAdd((evt.Id, capacity.AppointmentTypeId), capacity.TotalHeadcount.ToString()); } else _error = page.ErrorMessage; } catch (Exception) { _error = "Something went wrong. Please try again."; } _busy = false; }
+    private async Task LoadMoreEventsAsync() { _busy = true; try { var page = await Api.ListEventsAsync(null, null, null, _eventsCursor, CancellationToken.None); if (page.IsSuccess && page.Value is not null) { _events.AddRange(page.Value.Items); _eventsCursor = page.Value.NextCursor; } else _error = page.ErrorMessage; } catch (Exception) { _error = "Something went wrong. Please try again."; } _busy = false; }
     private string AcceptHeadcountFor(Guid id) => _acceptHeadcount.TryGetValue(id, out var value) ? value : "";
     private void SetAcceptHeadcount(Guid id, string? value) { if (value is not null) _acceptHeadcount[id] = value; }
     private string CapacityInputFor(Guid eventId, EventCapacityDto capacity) => _capacityInputs.TryGetValue((eventId, capacity.AppointmentTypeId), out var value) ? value : capacity.TotalHeadcount.ToString();
@@ -196,7 +204,7 @@ else
             var result = await Api.ProposeAsync(new ProposeEventRequest(
                 _dialog.LocationId, _dialog.Date, _dialog.Start, _dialog.DurationMinutes,
                 _dialog.TypeIds, _dialog.Headcount), _submission!, CancellationToken.None);
-            if (result.IsSuccess) { _busy = false; CloseDialog(); await LoadProposalsFirstPageAsync(); await LoadEventsFirstPageAsync(); return; }
+            if (result.IsSuccess) { _busy = false; CloseDialog(); await LoadProposalsFirstPageAsync(); await RefreshEventsAsync(); return; }
             _error = result.ErrorMessage;
             if (result.Problem is { } problem)
                 foreach (var item in problem.Errors)
@@ -216,7 +224,7 @@ else
         try
         {
             var result = await Api.RecordAcceptanceAsync(proposal.Id, headcount, CancellationToken.None);
-            if (result.IsSuccess) { _busy = false; await LoadProposalsFirstPageAsync(); await LoadEventsFirstPageAsync(); return; }
+            if (result.IsSuccess) { _busy = false; await LoadProposalsFirstPageAsync(); await RefreshEventsAsync(); return; }
             if (result.ErrorCode == "proposal-not-open")
             {
                 _notice = "That proposal is no longer open; the board has been refreshed.";
@@ -273,7 +281,7 @@ else
         {
             var result = await Api.AdjustCapacityAsync(evt.Id, capacity.AppointmentTypeId, total, CancellationToken.None);
             _capacityErrors.Remove(key);
-            if (result.IsSuccess) { _busy = false; await LoadEventsFirstPageAsync(); return; }
+            if (result.IsSuccess) { _capacityInputs.Remove(key); _busy = false; await RefreshEventsAsync(); return; }
             if (result.ErrorCode == "capacity-below-bookings" && result.Problem is { } problem)
             {
                 var server = problem.Current?.GetProperty("totalHeadcount").GetInt32();

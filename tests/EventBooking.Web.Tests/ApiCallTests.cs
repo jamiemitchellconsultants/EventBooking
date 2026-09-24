@@ -82,4 +82,39 @@ public class ApiCallTests
         Assert.Equal("validation-failed", outcome.ErrorCode);
         Assert.Equal("headcount must be greater than zero.", outcome.ErrorMessage);
     }
+
+    [Theory]
+    [InlineData("\"Bad gateway\"")]
+    [InlineData("[1,2]")]
+    [InlineData("""{"type":42}""")]
+    [InlineData("""{"type":"validation-failed","errors":{"name":["Required"]}}""")]
+    [InlineData("""{"type":"validation-failed","errors":[{"line":99999999999}]}""")]
+    public async Task AnUnexpectedlyShapedProblemBodyIsAGenericFailureNotAnException(string body)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.BadGateway)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+
+        var outcome = await ApiCall.ReadAsync<Payload>(response, CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal(502, outcome.StatusCode);
+        Assert.NotNull(outcome.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AMalformedSuccessBodyIsAGenericFailureNotAnException()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{not json", Encoding.UTF8, "application/json"),
+        };
+
+        var outcome = await ApiCall.ReadAsync<Payload>(response, CancellationToken.None);
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal("unexpected", outcome.ErrorCode);
+        Assert.Equal(200, outcome.StatusCode);
+    }
 }

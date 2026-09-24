@@ -72,14 +72,15 @@ public interface IAttendeesClient
         Guid attendeeId, CancellationToken ct);
 }
 
-public sealed class AttendeesClient(HttpClient http) : IAttendeesClient
+public sealed class AttendeesClient(HttpClient http, IMeClient me) : IAttendeesClient
 {
+    public AttendeesClient(HttpClient http) : this(http, new MeClient(http)) { }
+
     public async Task<ApiOutcome<CoordinatorReferenceData>> GetReferenceDataAsync(CancellationToken ct)
     {
-        using var meResponse = await http.GetAsync("/api/me", ct);
-        var me = await ApiCall.ReadAsync<MeDto>(meResponse, ct);
-        if (!me.IsSuccess || me.Value is null)
-            return ApiOutcome<CoordinatorReferenceData>.Failure(me.Problem ?? Unexpected());
+        var current = await me.GetAsync(ct);
+        if (!current.IsSuccess || current.Value is null)
+            return ApiOutcome<CoordinatorReferenceData>.Failure(current.Problem ?? Unexpected());
         using var locationsResponse = await http.GetAsync("/api/locations?includeInactive=false", ct);
         var locations = await ApiCall.ReadAsync<PageDto<LocationDto>>(locationsResponse, ct);
         if (!locations.IsSuccess || locations.Value is null)
@@ -100,7 +101,7 @@ public sealed class AttendeesClient(HttpClient http) : IAttendeesClient
                 x.Id, x.Code, x.Name, x.RequirementTypeIds)).ToArray(),
             types.Value.Items.Select(x => new TypeSummaryDto(
                 x.Id, x.Code, x.Name, x.IsActive, x.HasManager)).ToArray(),
-            me.Value.Links));
+            current.Value.Links));
     }
 
     public Task<ApiOutcome<PageDto<AttendeeDto>>> ListAsync(

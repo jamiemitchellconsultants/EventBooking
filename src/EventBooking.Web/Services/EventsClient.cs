@@ -56,15 +56,16 @@ public interface IEventsClient
     Task<ApiOutcome<CancelEventOutcome>> CancelAsync(Guid eventId, bool confirm, CancellationToken ct);
 }
 
-public sealed class EventsClient(HttpClient http) : IEventsClient
+public sealed class EventsClient(HttpClient http, IMeClient me) : IEventsClient
 {
+    public EventsClient(HttpClient http) : this(http, new MeClient(http)) { }
+
     public async Task<ApiOutcome<NegotiationReferenceData>> GetReferenceDataAsync(CancellationToken ct)
     {
-        using var meResponse = await http.GetAsync("/api/me", ct);
-        var me = await ApiCall.ReadAsync<MeDto>(meResponse, ct);
-        if (!me.IsSuccess || me.Value is null)
-            return ApiOutcome<NegotiationReferenceData>.Failure(me.Problem ?? Unexpected());
-        if (me.Value.ScopeAppointmentTypeId is null)
+        var current = await me.GetAsync(ct);
+        if (!current.IsSuccess || current.Value is null)
+            return ApiOutcome<NegotiationReferenceData>.Failure(current.Problem ?? Unexpected());
+        if (current.Value.ScopeAppointmentTypeId is null)
             return ApiOutcome<NegotiationReferenceData>.Failure(ApiProblem.FromSlug(
                 "unexpected", "Your staff profile has no appointment-type scope."));
         using var locationsResponse = await http.GetAsync("/api/locations?includeInactive=false", ct);
@@ -82,8 +83,8 @@ public sealed class EventsClient(HttpClient http) : IEventsClient
                 x.IsActive)).ToArray(),
             types.Value.Items.Select(x => new TypeSummaryDto(
                 x.Id, x.Code, x.Name, x.IsActive, x.HasManager)).ToArray(),
-            me.Value.ScopeAppointmentTypeId.Value,
-            me.Value.Links));
+            current.Value.ScopeAppointmentTypeId.Value,
+            current.Value.Links));
     }
 
     public Task<ApiOutcome<PageDto<EventProposalDto>>> ListProposalsAsync(string? cursor, CancellationToken ct) =>

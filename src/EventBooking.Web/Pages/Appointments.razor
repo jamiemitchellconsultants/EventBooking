@@ -1,10 +1,11 @@
 @page "/appointments"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IAppointmentsClient Api
+@inject Microsoft.JSInterop.IJSRuntime JS
 <PageTitle>Appointments</PageTitle>
 <section class="page appointments-workspace" aria-labelledby="appointments-heading" aria-busy="@(_loading || _busy ? "true" : "false")">
 <div class="page-header"><div><span class="eyebrow">Appointment workspace</span><h1 id="appointments-heading">Appointments@(_context is not null ? $" — {_context.ScopeTypeName}" : "")</h1></div>
-@if (_selectedEventId is not null) { <a class="button" href="@Api.RosterCsvUri(_selectedEventId.Value)">Download roster (CSV)</a> }</div>
+@if (_selectedEventId is not null) { <button type="button" data-action="download-roster" class="button" disabled="@_downloading" @onclick="DownloadRosterAsync">@(_downloading ? "Preparing…" : "Download roster (CSV)")</button> }</div>
 @if (_error is not null) { <Banner Variant="BannerVariant.Error" Message="@_error" Retry="LoadAsync" /> }
 @if (_announcement is not null) { <Banner Variant="BannerVariant.Info" Message="@_announcement" /> }
 @if (_loading) { <p role="status">Loading…</p> }
@@ -50,7 +51,7 @@ else if (row.AppointmentStatus == "Expected") { <span class="hint">No-show is av
     private readonly List<WorkspaceEventDto> _events = [];
     private readonly List<WorkspaceRosterRowDto> _rows = [];
     private Guid? _selectedEventId;
-    private bool _loading = true; private bool _busy; private bool _rosterLoading;
+    private bool _loading = true; private bool _busy; private bool _rosterLoading; private bool _downloading;
     private string? _error; private string? _announcement;
     private static string EventLabel(WorkspaceEventDto evt) =>
         $"{evt.Time.StartLocal:ddd d MMM yyyy, HH:mm}–{evt.Time.EndLocal:HH:mm} {evt.Time.ZoneAbbreviation}";
@@ -95,6 +96,21 @@ else if (row.AppointmentStatus == "Expected") { <span class="hint">No-show is av
         }
         catch (Exception) { _error = "Something went wrong. Please try again."; }
         _rosterLoading = false;
+    }
+    private async Task DownloadRosterAsync()
+    {
+        if (_selectedEventId is null || _downloading) return;
+        _downloading = true; _error = null;
+        try
+        {
+            var file = await Api.DownloadRosterCsvAsync(_selectedEventId.Value, CancellationToken.None);
+            if (file.IsSuccess && file.Value is not null)
+                await JS.InvokeVoidAsync("saveTextFile", file.Value.FileName, file.Value.Content);
+            else
+                _error = file.ErrorMessage;
+        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _downloading = false;
     }
     private async Task SetStatusAsync(WorkspaceRosterRowDto row, string targetStatus)
     {

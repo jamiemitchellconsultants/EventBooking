@@ -78,6 +78,45 @@ public sealed class EventNegotiationPageTests : BunitContext
         Assert.Contains("server total is 8", cut.Markup);
     }
 
+    [Fact]
+    public async Task SavingOneCapacityKeepsUnsavedEditsInOtherRows()
+    {
+        var api = new FakeEventsClient();
+        var adjust = new Dictionary<string, ApiLink> { ["adjust"] = new("/test", "PUT", "adjust") };
+        api.Events.Add(new EventDto(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "LON", "London HQ",
+            TestContractFactory.EventTime("Tue 14 Oct 2026, 09:30–11:00 BST"), "Active",
+            [
+                new(Guid.NewGuid(), "MED", "Medical check", 4, 4, adjust),
+                new(Guid.NewGuid(), "FIT", "Equipment fitting", 6, 6, adjust),
+            ],
+            0, new Dictionary<string, ApiLink>()));
+        Services.AddSingleton<IEventsClient>(api);
+        var cut = Render<EventNegotiation>();
+
+        cut.FindAll("input[name='totalHeadcount']")[0].Change("5");
+        cut.FindAll("input[name='totalHeadcount']")[1].Change("9");
+        await cut.FindAll("[data-action='save-capacity']")[0].ClickAsync(new());
+
+        Assert.Equal("9", cut.FindAll("input[name='totalHeadcount']")[1].GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task ReloadingAfterASaveKeepsEveryLoadedPage()
+    {
+        var api = new FakeEventsClient { PageSize = 1 };
+        api.Events.Add(FakeEventsClient.EventWithCapacityLinks(("adjust", "PUT")));
+        api.Events.Add(FakeEventsClient.EventWithCapacityLinks(("adjust", "PUT")));
+        Services.AddSingleton<IEventsClient>(api);
+        var cut = Render<EventNegotiation>();
+        await cut.FindAll("button").Single(x => x.TextContent.Trim() == "Load more").ClickAsync(new());
+        Assert.Equal(2, cut.FindAll("[data-action='save-capacity']").Count);
+
+        await cut.FindAll("[data-action='save-capacity']")[0].ClickAsync(new());
+
+        Assert.Equal(2, cut.FindAll("[data-action='save-capacity']").Count);
+    }
+
     private static IReadOnlyDictionary<string, ApiLink> Links(params (string Rel, string Method)[] values) =>
         values.ToDictionary(x => x.Rel, x => new ApiLink("/test", x.Method, x.Rel));
 
@@ -105,7 +144,14 @@ public sealed class EventNegotiationPageTests : BunitContext
             Task.FromResult(ApiOutcome<RecordAcceptanceOutcome>.Success(new(proposalId, "Open", null, true)));
         public Task<ApiOutcome<object>> WithdrawAcceptanceAsync(Guid proposalId, CancellationToken ct) => Task.FromResult(ApiOutcome<object>.Success(new()));
         public Task<ApiOutcome<object>> WithdrawProposalAsync(Guid proposalId, CancellationToken ct) => Task.FromResult(ApiOutcome<object>.Success(new()));
-        public Task<ApiOutcome<PageDto<EventDto>>> ListEventsAsync(Guid? locationId, DateOnly? from, DateOnly? to, string? cursor, CancellationToken ct) => Task.FromResult(ApiOutcome<PageDto<EventDto>>.Success(new(Events, null)));
+        public int PageSize { get; init; } = int.MaxValue;
+        public Task<ApiOutcome<PageDto<EventDto>>> ListEventsAsync(Guid? locationId, DateOnly? from, DateOnly? to, string? cursor, CancellationToken ct)
+        {
+            var start = cursor is null ? 0 : int.Parse(cursor);
+            var page = Events.Skip(start).Take(PageSize).ToArray();
+            var next = start + page.Length < Events.Count ? (start + page.Length).ToString() : null;
+            return Task.FromResult(ApiOutcome<PageDto<EventDto>>.Success(new(page, next)));
+        }
         public Task<ApiOutcome<AdjustEventCapacityOutcome>> AdjustCapacityAsync(Guid eventId, Guid appointmentTypeId, int totalHeadcount, CancellationToken ct) => Task.FromResult(CapacityResult);
         public Task<ApiOutcome<CancelEventOutcome>> CancelAsync(Guid eventId, bool confirm, CancellationToken ct) => Task.FromResult(ApiOutcome<CancelEventOutcome>.Success(new(1, 1, 0)));
         public static EventDto EventWithCapacityLinks(params (string Rel, string Method)[] links) => new(
