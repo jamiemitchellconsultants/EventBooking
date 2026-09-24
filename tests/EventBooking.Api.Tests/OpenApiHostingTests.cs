@@ -18,7 +18,7 @@ public sealed class OpenApiHostingTests(ApiFactory factory)
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("EventBooking API", json.RootElement.GetProperty("info").GetProperty("title").GetString());
         Assert.Equal("v1", json.RootElement.GetProperty("info").GetProperty("version").GetString());
-        Assert.True(json.RootElement.GetProperty("paths").TryGetProperty("/health", out _));
+        Assert.True(json.RootElement.GetProperty("paths").TryGetProperty("/health/live", out _));
     }
 
     /// <summary>The browser documentation is available outside Development-only conditionals.</summary>

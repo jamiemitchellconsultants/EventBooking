@@ -9,6 +9,7 @@ using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -34,7 +35,7 @@ public sealed class OutboxDispatcher(
     public async Task<int> DispatchOnceAsync(CancellationToken ct = default)
     {
         var correlationId = Guid.NewGuid().ToString();
-        List<Guid> claimed;
+        List<(Guid Id, int ClaimCount)> claimed;
         using (var claimScope = scopes.CreateScope())
         {
             var claimContext = claimScope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
@@ -43,7 +44,7 @@ public sealed class OutboxDispatcher(
         }
 
         var sent = 0;
-        foreach (var id in claimed)
+        foreach (var (id, claimCount) in claimed)
         {
             // A scope per row: one failed save leaves its entities in the change tracker, and
             // a shared context would replay that failure into every later row of the batch.
@@ -54,9 +55,11 @@ public sealed class OutboxDispatcher(
             {
                 // Renew the lease before the send: a batch of slow sends can outlast it, and
                 // an expired lease lets a second dispatcher claim and re-send this row. If the
-                // row was already reclaimed, it is no longer ours to send.
+                // row was already reclaimed, its count moved on and it is no longer ours to
+                // send. The count is the ownership token because the correlation is
+                // write-once: a staged request identifier survives every claim.
                 var renewed = await context.Database.ExecuteSqlInterpolatedAsync(
-                    $"UPDATE email_log SET claimed_at = {now} WHERE id = {id} AND correlation_id = {correlationId} AND status = 3",
+                    $"UPDATE email_log SET claimed_at = {now} WHERE id = {id} AND claim_count = {claimCount} AND status = 3",
                     ct);
                 if (renewed == 0) continue;
 
@@ -106,15 +109,32 @@ public sealed class OutboxDispatcher(
         }
     }
 
-    private static async Task<List<Guid>> ClaimAsync(
+    private static async Task<List<(Guid Id, int ClaimCount)>> ClaimAsync(
         EventBookingDbContext context, string correlationId, DateTimeOffset now, CancellationToken ct)
     {
-        var ids = await context.Database
-            .SqlQueryRaw<Guid>(ClaimQuery.Sql,
-                new NpgsqlParameter("@now", now),
-                new NpgsqlParameter("@correlationId", correlationId))
-            .ToListAsync(ct);
-        return ids.Order().ToList();
+        await context.Database.OpenConnectionAsync(ct);
+        try
+        {
+            var connection = (NpgsqlConnection)context.Database.GetDbConnection();
+            await using var command = new NpgsqlCommand(ClaimQuery.Sql, connection);
+            command.Transaction =
+                context.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
+            command.Parameters.Add(new NpgsqlParameter("@now", now));
+            command.Parameters.Add(new NpgsqlParameter("@correlationId", correlationId));
+
+            var claimed = new List<(Guid Id, int ClaimCount)>();
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                claimed.Add((reader.GetGuid(0), reader.GetInt32(1)));
+            }
+
+            return claimed.OrderBy(x => x.Id).ToList();
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
     }
 
     private async Task SendRowAsync(IServiceScope scope, EmailLog row, DateTimeOffset now, CancellationToken ct)

@@ -114,7 +114,7 @@ public sealed class ConfirmBookingHandlerTests
             new ConfirmBookingCommand("not-a-token", fixture.EventId), CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("validation", result.Error.Code);
+        Assert.Equal("token-invalid", result.Error.Code);
         Assert.Empty(fixture.Bookings.Items);
     }
 }

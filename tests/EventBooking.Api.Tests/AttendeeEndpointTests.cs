@@ -130,11 +130,11 @@ public class AttendeeEndpointTests(ApiFactory factory)
             $"/api/attendees/{attendeeId}",
             new { Name = "Amara Updated", Email = email, AttendeeGroupId = (Guid?)null });
 
-        Assert.Equal(HttpStatusCode.BadRequest, missingOnCreate.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, nullOnCreate.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, missingOnCreate.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, nullOnCreate.StatusCode);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, missingOnUpdate.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, nullOnUpdate.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, missingOnUpdate.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, nullOnUpdate.StatusCode);
     }
 
     [Fact]
@@ -153,9 +153,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
                 AppointmentTypeIds = new[] { AppointmentTypeIds.DrugAndAlcoholTesting },
             });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.Equal("attendee_group_required", problem!.Title);
+        Assert.Equal("validation-failed", problem!.Type);
 
         var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
         Assert.Empty(listed!.Items);
@@ -248,7 +248,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var response = await client.PostAsync(
             "/api/attendees/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     [Fact]

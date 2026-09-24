@@ -68,7 +68,7 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("conflict", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal("conflict", problem.RootElement.GetProperty("type").GetString());
         Assert.Equal(BookingStatus.Cancelled, await StatusOfAsync(bookingId));
     }
 

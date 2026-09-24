@@ -12,14 +12,15 @@ public sealed class RetiredLocationConfigurationTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:EventBooking"] = "Host=localhost;Database=test;Username=test;Password=test",
-            ["Clock:TimeZoneId"] = "Europe/London",
             ["Tokens:SigningKey"] = "a-test-signing-key-that-is-at-least-32-characters",
+            ["Auth:Authority"] = "https://issuer.example.test/",
+            ["Auth:Audience"] = "event-booking-tests",
+            ["Email:Smtp:Host"] = "smtp.example.test",
             ["Email:FromAddress"] = "test@example.test",
             ["Email:FromName"] = "Test sender",
-            ["Email:Provider"] = "Smtp",
-            ["Auth:Provider"] = "Local",
             ["Portal:BaseUrl"] = "http://localhost:5002",
             ["Portal:CoordinatorContact"] = "help@example.test",
+            ["Cors:AllowedOrigins:0"] = "https://web.example.test",
         }).Build();
 
         var values = EventBookingConfiguration.Read(configuration);

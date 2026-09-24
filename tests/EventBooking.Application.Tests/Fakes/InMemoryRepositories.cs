@@ -520,6 +520,9 @@ public sealed class InMemorySystemSettingsRepository : ISystemSettingsRepository
 
     public Task<SystemSettings> GetAsync(CancellationToken cancellationToken) =>
         Task.FromResult(Settings);
+
+    public Task<SystemSettings> LockAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(Settings);
 }
 
 public sealed class InMemoryStaffAccessProfileRepository :

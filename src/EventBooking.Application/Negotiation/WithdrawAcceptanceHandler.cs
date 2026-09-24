@@ -56,8 +56,8 @@ public sealed class WithdrawAcceptanceHandler(
         // conflict into a validation error.
         catch (ProposalNotOpenException ex)
         {
-            return Result.Failure(
-                Error.Conflict($"The proposal is {ex.CurrentStatus} and can no longer be changed."));
+            return Result.Failure(Error.ProposalNotOpen(
+                $"The proposal is {ex.CurrentStatus} and can no longer be changed."));
         }
         catch (DomainException ex)
         {

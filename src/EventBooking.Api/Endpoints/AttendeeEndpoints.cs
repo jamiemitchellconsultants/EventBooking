@@ -1,6 +1,7 @@
 using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
+using EventBooking.Api.Pagination;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Common;
@@ -40,13 +41,27 @@ public static class AttendeeEndpoints
             HttpRequest request,
             ICallerAccessor caller,
             ListAttendeesHandler handler,
+            PageCursor cursors,
             CancellationToken cancellationToken) =>
         {
+            if (!PageRequest.TryBind(cursor, limit, out var page, out var field))
+            {
+                return ResultResponses.ValidationFailed(
+                    field!, "out-of-range", "Limit must be between 1 and 200.");
+            }
+
+            string? inner = null;
+            if (page.Cursor is not null && !cursors.TryUnprotect(page.Cursor, out inner!))
+            {
+                return ResultResponses.ValidationFailed(
+                    "cursor", "cursor-invalid", "That cursor is not valid.");
+            }
+
             var result = await handler.HandleAsync(
                 new ListAttendeesQuery(
                     caller.RequireStaffUserId(),
-                    cursor,
-                    limit ?? 50,
+                    inner,
+                    page.Limit,
                     status,
                     attendeeGroupId,
                     readiness,
@@ -57,13 +72,17 @@ public static class AttendeeEndpoints
                 return result.ToResponse();
             }
 
+            var signed = new AttendeeListView(
+                result.Value.Items,
+                result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor));
             return Results.Ok(AttendeeListResourceResponse.From(
-                result.Value, request.QueryString.Value ?? string.Empty));
+                signed, request.QueryString.Value ?? string.Empty));
         })
             .WithAgentMetadata("listAttendees")
             .Produces(200)
             .ProducesProblem(400)
-            .ProducesProblem(403);
+            .ProducesProblem(403)
+            .ProducesProblem(422);
 
         group.MapPost("/", async (
             SaveAttendeeRequest request,

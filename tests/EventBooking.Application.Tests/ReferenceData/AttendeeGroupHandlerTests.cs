@@ -129,4 +129,26 @@ public sealed class AttendeeGroupHandlerTests
         Assert.Equal(3L, result.Error.Data!["members"]);
         Assert.True(_groups.Items.Single().IsActive);
     }
+
+    [Fact]
+    public async Task Reactivate_group_with_an_inactive_required_type_is_a_validation_error()
+    {
+        var group = (await Creator.HandleAsync(
+            new CreateAttendeeGroupCommand(Admin, "NHS", "NHS staff", [_med]),
+            CancellationToken.None)).Value;
+        var activer = new SetAttendeeGroupActiveHandler(_groups, _types, _profiles, _blocking, _unitOfWork, _audit);
+        var deactivated = await activer.HandleAsync(
+            new SetAttendeeGroupActiveCommand(Admin, group.Id, false, 1),
+            CancellationToken.None);
+        Assert.True(deactivated.IsSuccess);
+        _types.Items.Single(t => t.Id == _med).Deactivate(AppointmentTypeUsage.None);
+
+        var result = await activer.HandleAsync(
+            new SetAttendeeGroupActiveCommand(Admin, group.Id, true, deactivated.Value.Version),
+            CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation", result.Error.Code);
+        Assert.False(_groups.Items.Single().IsActive);
+    }
 }

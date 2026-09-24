@@ -67,7 +67,7 @@ public class EventEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task AWindowInThePastIsRejectedWithFourHundred()
+    public async Task AWindowInThePastIsRejected()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager, AppointmentTypeIds.MedicalCheckUp);
@@ -85,7 +85,7 @@ public class EventEndpointTests(ApiFactory factory)
                 ProposerHeadcount = 10,
             });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     [Fact]

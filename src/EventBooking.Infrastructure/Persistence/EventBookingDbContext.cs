@@ -1,3 +1,4 @@
+using EventBooking.Application.Abstractions;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Audit;
@@ -15,7 +16,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence;
 
-public sealed class EventBookingDbContext(DbContextOptions<EventBookingDbContext> options)
+public sealed class EventBookingDbContext(
+    DbContextOptions<EventBookingDbContext> options,
+    ICorrelationContext? correlation = null)
     : DbContext(options)
 {
     // The IANA rules are versioned data, not configuration, and the resolver is a pure function
@@ -56,6 +59,9 @@ public sealed class EventBookingDbContext(DbContextOptions<EventBookingDbContext
 
     public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
 
+    /// <summary>Gets the Idempotency-Key retention rows.</summary>
+    public DbSet<Idempotency.IdempotencyRecord> IdempotencyRecords => Set<Idempotency.IdempotencyRecord>();
+
     /// <summary>
     /// Fills in the derived start instant for any event being inserted that has not had one
     /// computed, so the column the eligibility query filters and orders on cannot be left empty by
@@ -68,6 +74,22 @@ public sealed class EventBookingDbContext(DbContextOptions<EventBookingDbContext
         CancellationToken cancellationToken = default)
     {
         await EventStartInstants.StampPendingAsync(this, Zones, cancellationToken);
+
+        // The same shape as the start-instant backstop, and for the same reason: an outbox
+        // row is staged from a handful of handlers plus the seeder, and a derived column cannot
+        // depend on which path inserted the row. The stamp is write-once, so a row that already
+        // names its correlation keeps it. A null context means no stamp, which is the right
+        // answer outside the host — a row written by a test has no request to correlate with.
+        if (correlation is not null)
+        {
+            foreach (var entry in ChangeTracker.Entries<EmailLog>())
+            {
+                if (entry.State == EntityState.Added)
+                {
+                    entry.Entity.StampCorrelation(correlation.CorrelationId);
+                }
+            }
+        }
 
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }

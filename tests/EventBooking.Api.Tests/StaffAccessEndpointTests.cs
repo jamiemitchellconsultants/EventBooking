@@ -86,7 +86,7 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         var response = await factory.CreateClient().DeleteAsync(
             $"/api/admin/staff-access/{target}?expectedVersion=1");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     [Fact]

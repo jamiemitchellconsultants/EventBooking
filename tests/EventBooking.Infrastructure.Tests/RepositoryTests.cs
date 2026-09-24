@@ -107,6 +107,27 @@ public class RepositoryTests(PostgresFixture fixture)
         Assert.Equal(3, settings.InviteOptionCount);
     }
 
+    [Fact]
+    public async Task ASecondSettingsLockWaitsForTheFirst()
+    {
+        await fixture.ResetAsync();
+
+        await using var first = fixture.NewContext();
+        await using var firstTransaction = await first.Database.BeginTransactionAsync();
+        var locked = await new SystemSettingsRepository(first).LockAsync(CancellationToken.None);
+        Assert.Equal(7, locked.InviteExpiryDays);
+
+        await using var second = fixture.NewContext();
+        await using var secondTransaction = await second.Database.BeginTransactionAsync();
+        await second.Database.ExecuteSqlRawAsync("SET LOCAL statement_timeout = '2s'");
+        var timedOut = await Assert.ThrowsAsync<Npgsql.PostgresException>(() =>
+            new SystemSettingsRepository(second).LockAsync(CancellationToken.None));
+        Assert.Equal("57014", timedOut.SqlState);
+
+        await firstTransaction.RollbackAsync();
+        await secondTransaction.RollbackAsync();
+    }
+
     private static EventProposal ProposalOn(DateOnly date, out Event eventItem)
     {
         var proposal = ProposalFixture.Create(

@@ -52,6 +52,18 @@ public sealed class OutboxDispatcherTests(PostgresFixture fixture) : PostgresEma
     }
 
     [Fact]
+    public async Task A_staged_request_correlation_survives_claim_and_send()
+    {
+        var rowId = await StagePendingAsync(EmailTemplate.AttendeeInvite);
+        await StampCorrelationAsync(rowId, "request-123");
+
+        await Dispatcher(transportA).DispatchOnceAsync();
+
+        Assert.Equal(EmailStatus.Sent, await StatusOfAsync(rowId));
+        Assert.Contains("request-123", await AllColumnsAsync(rowId));
+    }
+
+    [Fact]
     public async Task Resent_email_carries_the_same_link_as_original()
     {
         var rowId = await StagePendingAsync(EmailTemplate.AttendeeInvite);

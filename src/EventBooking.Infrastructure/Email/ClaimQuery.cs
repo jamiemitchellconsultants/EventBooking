@@ -15,16 +15,18 @@ public static class ClaimQuery
     /// <summary>
     /// Claims up to 20 pending rows whose claim expired or was never taken and whose
     /// backoff has passed, oldest first, skipping rows locked by another dispatcher.
+    /// The correlation is write-once — a staged request identifier survives the claim —
+    /// so ownership is the returned claim count, which no two passes can share.
     /// </summary>
     public const string Sql = """
         UPDATE email_log SET claimed_at = @now, claim_count = claim_count + 1,
-            correlation_id = @correlationId
+            correlation_id = COALESCE(correlation_id, @correlationId)
          WHERE id IN (
             SELECT id FROM email_log
              WHERE status = 3
                AND (claimed_at IS NULL OR claimed_at < @now - make_interval(mins => 5))
                AND (not_before IS NULL OR not_before <= @now)
              ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED)
-        RETURNING id;
+        RETURNING id, claim_count;
         """;
 }

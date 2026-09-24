@@ -6,6 +6,7 @@ using EventBooking.Domain.Audit;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Invites;
 using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Bookings;
@@ -64,10 +65,13 @@ public sealed class ViewInviteHandler(
     IEventWindowZones zones)
 {
     /// <summary>
-    /// One message for every failure. A caller must not be able to tell a forged token from an
-    /// expired one.
+    /// One message for every failure except a lapsed expiry. A caller must not be able to tell
+    /// a forged token from a used, superseded or cancelled one.
     /// </summary>
     public const string InvalidLinkMessage = "This booking link is no longer valid.";
+
+    /// <summary>The one disclosure: a real link that has lapsed, so the page can say who to ask.</summary>
+    public const string ExpiredLinkMessage = "This booking link has expired.";
 
     /// <summary>
     /// Projects the usable future appointment options for the supplied attendee invite token.
@@ -80,19 +84,31 @@ public sealed class ViewInviteHandler(
     {
         if (!tokens.TryRead(query.Token, out var link) || link.Purpose != TokenPurpose.Book)
         {
-            return Result<InviteView>.Failure(Error.NotFound(InvalidLinkMessage));
+            return Result<InviteView>.Failure(Error.TokenInvalid(InvalidLinkMessage));
         }
 
         var invite = await invites.GetAsync(link.EntityId, cancellationToken);
-        if (invite is null || invite.TokenVersion != link.Version || !invite.IsUsableAt(clock.UtcNow))
+        if (invite is null || invite.TokenVersion != link.Version)
         {
-            return Result<InviteView>.Failure(Error.NotFound(InvalidLinkMessage));
+            return Result<InviteView>.Failure(Error.TokenInvalid(InvalidLinkMessage));
+        }
+
+        // The signature verified, the row resolved and the stored version matched, so the holder
+        // demonstrably received this link. Telling them it has lapsed discloses nothing they did not
+        // already know and is what design 06's expired page needs. A Used, Superseded or Cancelled
+        // invite stays indistinguishable from a forgery, because those states are not the holder's.
+        if (!invite.IsUsableAt(clock.UtcNow))
+        {
+            return Result<InviteView>.Failure(
+                invite.Status == InviteStatus.Pending
+                    ? Error.TokenExpired(ExpiredLinkMessage)
+                    : Error.TokenInvalid(InvalidLinkMessage));
         }
 
         var attendee = await attendees.GetAsync(invite.AttendeeId, cancellationToken);
         if (attendee is null)
         {
-            return Result<InviteView>.Failure(Error.NotFound(InvalidLinkMessage));
+            return Result<InviteView>.Failure(Error.TokenInvalid(InvalidLinkMessage));
         }
 
         var required = invite.RequiredAppointmentTypeIds;
@@ -176,8 +192,11 @@ public sealed class ViewInviteHandler(
         var optionViews = new List<InviteOptionView>();
         foreach (var option in options.OrderBy(s => s.Window))
         {
-            var location = await locations.GetAsync(option.LocationId, cancellationToken)
-                ?? throw new InvalidOperationException($"Location {option.LocationId} is gone.");
+            var location = await locations.GetAsync(option.LocationId, cancellationToken);
+            if (location is null)
+            {
+                return Result<InviteView>.Failure(Error.TokenInvalid(InvalidLinkMessage));
+            }
             optionViews.Add(new InviteOptionView(
                 option.Id,
                 option.Window.Date,

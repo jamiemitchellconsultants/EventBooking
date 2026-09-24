@@ -106,10 +106,20 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         await context.SaveChangesAsync();
     }
 
+    private static readonly string TestSigningKey = Convert.ToBase64String(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:EventBooking", _container.GetConnectionString());
-        builder.UseSetting("Tokens:SigningKey", "a-test-signing-key-that-is-long-enough-here");
+        builder.UseSetting("Tokens:SigningKey", TestSigningKey);
+        builder.UseSetting("Auth:Authority", "https://issuer.example.test/");
+        builder.UseSetting("Auth:Audience", "event-booking-tests");
+        builder.UseSetting("Email:Smtp:Host", "smtp.example.test");
+        builder.UseSetting("Email:FromAddress", "events@example.test");
+        builder.UseSetting("Portal:BaseUrl", "https://portal.example.test/");
+        builder.UseSetting("Portal:CoordinatorContact", "events@example.test");
+        builder.UseSetting("Cors:AllowedOrigins:0", "https://web.example.test");
 
         builder.ConfigureTestServices(services =>
         {

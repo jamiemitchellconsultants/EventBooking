@@ -930,6 +930,49 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EventBooking.Infrastructure.Persistence.Idempotency.IdempotencyRecord", b =>
+                {
+                    b.Property<Guid>("StaffUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("staff_user_id");
+
+                    b.Property<string>("Route")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("route");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("request_hash");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_code");
+
+                    b.HasKey("StaffUserId", "Route", "Key");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_idempotency_record_created_at");
+
+                    b.ToTable("idempotency_record", (string)null);
+                });
+
             modelBuilder.Entity("EventBooking.Domain.Access.StaffAccessProfile", b =>
                 {
                     b.HasOne("EventBooking.Domain.AppointmentTypes.AppointmentType", null)

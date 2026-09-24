@@ -46,7 +46,7 @@ public sealed class ViewBookingHandler(
     {
         if (!tokens.TryRead(query.ManageToken, out var link) || link.Purpose != TokenPurpose.Manage)
         {
-            return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
+            return Result<BookingView>.Failure(Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         }
 
         var booking = await bookings.GetAsync(link.EntityId, cancellationToken);
@@ -55,7 +55,7 @@ public sealed class ViewBookingHandler(
             || booking.ManageTokenVersion != link.Version
             || booking.Status != BookingStatus.Active)
         {
-            return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
+            return Result<BookingView>.Failure(Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         }
 
         var eventItem = await events.GetAsync(booking.EventId, cancellationToken);
@@ -63,11 +63,17 @@ public sealed class ViewBookingHandler(
 
         if (eventItem is null || attendee is null)
         {
-            return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
+            return Result<BookingView>.Failure(Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         }
 
-        var location = await locations.GetAsync(eventItem.LocationId, cancellationToken)
-            ?? throw new InvalidOperationException($"Location {eventItem.LocationId} is gone.");
+        // Design 06: nothing invalidates a manage token in the first release, so there is no
+        // lapsed state to disclose and every failure is one answer — including a location the
+        // database no longer holds, which the holder experiences as a link that shows nothing.
+        var location = await locations.GetAsync(eventItem.LocationId, cancellationToken);
+        if (location is null)
+        {
+            return Result<BookingView>.Failure(Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
+        }
 
         return Result<BookingView>.Success(new BookingView(
             eventItem.Window.Date,

@@ -195,6 +195,10 @@ public sealed class SetAttendeeGroupActiveHandler(
         {
             return Result<AttendeeGroupResult>.Failure(Error.ReferenceDataInUse(ex.Message, ex.Blocking));
         }
+        catch (DomainException ex)
+        {
+            return Result<AttendeeGroupResult>.Failure(Error.Validation(ex.Message));
+        }
 
         var memberCount = await blocking.AttendeeGroupMemberCountAsync(group.Id, ct);
         if (group.Version == beforeVersion)

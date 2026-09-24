@@ -1,3 +1,4 @@
+using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Application.Bookings;
@@ -6,9 +7,6 @@ namespace EventBooking.Api.Endpoints;
 
 public static class BookingEndpoints
 {
-    /// <summary>Named so Task 58's registration and these routes cannot drift apart.</summary>
-    public const string RateLimiterPolicy = "attendee-links";
-
     public sealed record ConfirmBookingRequest(Guid EventId);
 
     public sealed record CancelBookingRequest(bool RequestNewTime);
@@ -17,7 +15,7 @@ public static class BookingEndpoints
     {
         var group = app.MapGroup("/api/booking")
             .AllowAnonymous()
-            .RequireRateLimiting(RateLimiterPolicy);
+            .RequireRateLimiting(TokenPrefixRateLimiterPolicy.PolicyName);
 
         group.MapGet("/{token}", async (
             string token,

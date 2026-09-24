@@ -9,7 +9,7 @@ namespace EventBooking.Api.Tests;
 public class ResultResponsesTests
 {
     [Theory]
-    [InlineData("validation", 400)]
+    [InlineData("validation", 422)]
     [InlineData("forbidden", 403)]
     [InlineData("not_found", 404)]
     [InlineData("conflict", 409)]
@@ -18,15 +18,18 @@ public class ResultResponsesTests
     [InlineData("capacity-exhausted", 409)]
     [InlineData("confirmation-required", 409)]
     [InlineData("window-started", 409)]
+    [InlineData("token-invalid", 404)]
+    [InlineData("token-expired", 410)]
+    [InlineData("proposal-not-open", 409)]
     public void EachErrorCodeMapsToItsStatus(string code, int expected)
     {
-        Assert.Equal(expected, ResultResponses.StatusCodeFor(code));
+        Assert.Equal(expected, ProblemCatalogue.For(code).Status);
     }
 
     [Fact]
-    public void AnUnrecognisedCodeIsAServerError()
+    public void AnUnmappedCodeThrowsRatherThanBecomingAServerError()
     {
-        Assert.Equal(500, ResultResponses.StatusCodeFor("something-new"));
+        Assert.Throws<InvalidOperationException>(() => ProblemCatalogue.For("something-new"));
     }
 
     [Fact]
@@ -54,7 +57,8 @@ public class ResultResponsesTests
         Assert.Equal(409, context.Response.StatusCode);
         Assert.Equal("application/problem+json", context.Response.ContentType);
         var problem = await ReadJson(context);
-        Assert.Equal("conflict", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal("conflict", problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal("That is not possible right now.", problem.RootElement.GetProperty("title").GetString());
         Assert.Equal("No remaining capacity.", problem.RootElement.GetProperty("detail").GetString());
         Assert.Equal(409, problem.RootElement.GetProperty("status").GetInt32());
     }

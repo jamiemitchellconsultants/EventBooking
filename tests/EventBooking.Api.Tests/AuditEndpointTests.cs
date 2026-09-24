@@ -219,7 +219,7 @@ public class AuditEndpointTests(ApiFactory factory)
 
         var response = await client.GetAsync("/api/audit/search?from=yesterday");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     [Fact]

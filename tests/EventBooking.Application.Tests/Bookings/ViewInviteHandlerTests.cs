@@ -108,7 +108,7 @@ public class ViewInviteHandlerTests
         var result = await Handler.HandleAsync(new ViewInviteQuery(token), CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("not_found", result.Error.Code);
+        Assert.Equal("token-invalid", result.Error.Code);
         Assert.Equal(InvalidLink, result.Error.Message);
     }
 
@@ -124,13 +124,15 @@ public class ViewInviteHandlerTests
     }
 
     [Fact]
-    public async Task AnExpiredInviteGivesTheSameMessage()
+    public async Task AnExpiredInviteDisclosesItsExpiry()
     {
         _clock.Advance(TimeSpan.FromDays(5));
 
         var result = await Handler.HandleAsync(new ViewInviteQuery(_token), CancellationToken.None);
 
-        Assert.Equal(InvalidLink, result.Error.Message);
+        Assert.True(result.IsFailure);
+        Assert.Equal("token-expired", result.Error.Code);
+        Assert.Equal(ViewInviteHandler.ExpiredLinkMessage, result.Error.Message);
     }
 
     [Fact]

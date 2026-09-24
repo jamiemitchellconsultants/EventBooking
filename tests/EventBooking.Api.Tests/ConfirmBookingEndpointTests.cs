@@ -97,7 +97,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         var response = await client.PostAsJsonAsync(
             $"/api/booking/{invite.Token}/confirm", new { EventId = invite.UnofferedEventId });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     private sealed record ConfirmResponse(Guid BookingId, string ManageToken);

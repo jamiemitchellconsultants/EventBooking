@@ -44,6 +44,10 @@ public sealed class MeHandler(IStaffAccessProfileRepository profiles)
             return Result<StaffMeView>.Success(new StaffMeView(
                 displayName, staffId!.Value, OrderedNames(roles), null, [],
                 "No staff profile: no roles have been synced for this identity."));
+        if (!profile.IsValid())
+            return Result<StaffMeView>.Success(new StaffMeView(
+                displayName, staffId!.Value, OrderedNames(roles), null, [],
+                "Staff profile is not valid: ask an administrator to review it."));
 
         var capabilities = CapabilityMatrix.Grants
             .Where(g => profile.HasRole(Enum.Parse<Role>(g.Role))

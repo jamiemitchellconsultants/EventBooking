@@ -117,7 +117,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     [Theory]
     [InlineData("Unknown", 1)]
     [InlineData("CheckedIn", 0)]
-    public async Task MalformedUpdateReturnsBadRequest(string status, long expectedVersion)
+    public async Task MalformedUpdateReturnsUnprocessableEntity(string status, long expectedVersion)
     {
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
@@ -126,7 +126,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             $"/api/appointment-workspace/appointments/{Guid.NewGuid()}/status",
             new { status, expectedVersion });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     /// <summary>Verifies missing and cross-type identifiers have indistinguishable responses.</summary>
