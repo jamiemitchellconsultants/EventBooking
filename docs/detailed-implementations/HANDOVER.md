@@ -38,7 +38,7 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
 | Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 merged on 21 September 2026. Hand-authored, like Phase 3, so no build or test has ever run against them |
 | Phase 5 — master Tasks 24–27 | **Written and reviewed, never executed.** Four task documents plus the overview. Hand-authored by the user's settled choice; Task 24 creates the Playwright/axe safety net and Task 27 is the phase gate |
-| Phase 6 — master Tasks 28–31 | **Written, reviewed and merged, not executed.** Four task documents plus the overview. Task 28 retires the single-zone clock and adds the settled LAB type; Task 31 is the phase gate. PR #34 merged on 23 September 2026 |
+| Phase 6 — master Tasks 28–31 | **Executed on `codex/phase-6-seed-and-deployment`, awaiting pull request.** Tasks 28–31 implemented test-first; the Task 31 phase gate is green (see the §8 execution record). Plans merged through PR #34 on 23 September 2026 |
 | Phase 7 — master Tasks 32–33 | **Written, not executed.** The load fixture, capacity-lock metric, 500-way k6 gate, application README and operator runbook are hand-authored. No build, burst or fresh-clone walk has been observed |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
@@ -72,7 +72,7 @@ Documents written so far:
 | 3 | `phase-3-application.md` | `phase-3a-reference-data-settings.md`, `phase-3b-negotiation.md`, `phase-3c-invite-engine.md`, `phase-3d-booking-cancellation.md`, `phase-3e-recovery-workspace.md`, `phase-3f-staff-authorization.md`, `phase-3g-notification-outbox.md`, `phase-3h-background-jobs.md`, `phase-3i-dashboards-attendees.md`, `phase-3j-audit-search.md` (hand-authored, unexecuted; Task 20 split into 20a/20b) |
 | 4 | `phase-4-api-and-mcp.md` | `phase-4a-api-conventions.md` (Task 21), `phase-4b-event-read-models.md` (22a), `phase-4c-endpoint-catalogue.md` (22b), `phase-4d-mcp-parity.md` (23, phase gate) (hand-authored, unexecuted) |
 | 5 | `phase-5-web.md` | `phase-5a-design-system.md` (Task 24), `phase-5b-admin-screens.md` (25), `phase-5c-manager-and-operations.md` (26), `phase-5d-coordinator-attendee-help.md` (27, phase gate) (hand-authored, unexecuted) |
-| 6 | `phase-6-seed-and-deployment.md` | `phase-6a-seed-cli.md` (Task 28), `phase-6b-local-compose.md` (29), `phase-6c-home-lab.md` (30), `phase-6d-images-and-release.md` (31, phase gate) (hand-authored, unexecuted) |
+| 6 | `phase-6-seed-and-deployment.md` | `phase-6a-seed-cli.md` (Task 28), `phase-6b-local-compose.md` (29), `phase-6c-home-lab.md` (30), `phase-6d-images-and-release.md` (31, phase gate) (hand-authored; executed 24 September 2026, gate green) |
 | 7 | `phase-7-verification-and-documentation.md` | `phase-7a-load-test.md` (Task 32), `phase-7b-documentation.md` (33, final phase gate) (hand-authored, unexecuted) |
 
 `README.md` is the entry point for an executor. `phase-0-port-and-strip.md` is the model for a
@@ -587,6 +587,27 @@ contradiction it closes carry one number between them.
   local topology, Task 30 owns the home-lab topology and Task 31 owns publication and the phase
   gate. Existing ported Docker and realm files are modifications even where master Task 29's short
   file list calls them creations.
+
+### Phase 6 execution record (24 September 2026, executor: Muse Code)
+
+- Branch `codex/phase-6-seed-and-deployment`: Task 28 `c2f0948`, Task 29 `87d761a`, Task 30
+  `17c544d`, Task 31 (this commit).
+- Test counts measured by the executor, 0 failed and 0 skipped in every project: Domain 362,
+  Application 391, Web 221, Mcp 59, Api 388, SeedData 70, Infrastructure 255, Web.E2E 62; 1808 in
+  total. No number is copied forward from Task 11 or the plan.
+- Task 31 gate, all green: the five images built locally and every runtime user is non-root
+  (api, mcp and seed run as uid 1654, web as uid 101, web-caddy as 1000:1000); the migration
+  bundle built with EF tools 10.0.0 and its help path exited 0; the local Compose gate passed
+  (demo seed reported 3 locations, 6 appointment types, 9 attendees and 1 invitation, then
+  readiness, discovery and Mailpit probes passed); home-lab shell, realm and Compose checks
+  passed; the ontology build check passed.
+- The Task 30 rehearsal record lives in the home-lab README: install 19.9 s, upgrade 10.2 s,
+  fresh-volume restore 35 s against the two-hour objective.
+- Deviations from the plan: the seed project gained a direct reference to the EF Core design
+  package, mirroring the API project, because the bundle startup project otherwise cannot build;
+  the bundle help path ran inside a linux/amd64 container because the executor host is macOS
+  arm64; rehearsal and gate timings were measured on macOS arm64 Docker Desktop rather than a
+  Linux host.
 
 ### Phase 7 settlements (binding on execution)
 

@@ -9,4 +9,8 @@
     <ProjectReference Include="..\EventBooking.Infrastructure\EventBooking.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+  </ItemGroup>
+
 </Project>
