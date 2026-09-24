@@ -85,6 +85,25 @@ public sealed class ParityTests(McpFactory factory)
         Assert.All(tools.Keys, name => Assert.Matches("^[a-z][a-z0-9_]*$", name));
     }
 
+    /// <summary>
+    /// updateAttendee is a whole replacement on both surfaces: the handler refuses a missing
+    /// group, name or email rather than keeping the stored value. A schema that let an agent
+    /// omit one would advertise a partial update that every such call is refused for.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAttendeeRequiresEveryFieldTheHandlerReplaces()
+    {
+        factory.SignedInAs = await factory.GivenStaffAsync([Role.Admin], null);
+        var tools = await ToolsAsync();
+
+        var required = tools["update_attendee"].GetProperty("inputSchema").GetProperty("required")
+            .EnumerateArray().Select(x => x.GetString()).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Superset(
+            new HashSet<string?>(["attendeeId", "name", "email", "attendeeGroupId"], StringComparer.Ordinal),
+            required);
+    }
+
     private async Task<IReadOnlyDictionary<string, JsonElement>> ToolsAsync()
     {
         var client = new McpClient(factory.CreateClient());

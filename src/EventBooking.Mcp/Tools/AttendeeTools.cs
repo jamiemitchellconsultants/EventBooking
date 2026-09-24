@@ -75,9 +75,9 @@ public sealed class AttendeeTools
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The save handler.</param>
     /// <param name="attendeeId">The attendee.</param>
-    /// <param name="name">The full name, or null to leave it alone.</param>
-    /// <param name="email">The email address, or null to leave it alone.</param>
-    /// <param name="attendeeGroupId">The group, or null to leave it alone.</param>
+    /// <param name="name">The full name.</param>
+    /// <param name="email">The email address.</param>
+    /// <param name="attendeeGroupId">The group, whose requirements are derived.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A confirmation message.</returns>
     [McpServerTool(
@@ -88,10 +88,11 @@ public sealed class AttendeeTools
         ICallerAccessor caller,
         SaveAttendeeHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("Full name, or omit to leave it unchanged.")] string? name = null,
-        [Description("Email address, or omit to leave it unchanged.")] string? email = null,
-        [Description("The attendee group identifier, or omit to leave it unchanged.")]
-        Guid? attendeeGroupId = null,
+        // Required, like the REST body: the update replaces all three, and the handler
+        // refuses a missing one rather than keeping the stored value.
+        [Description("Full name.")] string name,
+        [Description("Email address.")] string email,
+        [Description("The attendee group identifier.")] Guid attendeeGroupId,
         CancellationToken cancellationToken = default)
     {
         var result = await handler.UpdateAsync(
