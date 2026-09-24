@@ -86,6 +86,30 @@ public class AttendeeListQueryTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task The_latest_delivery_id_travels_with_its_status_so_it_can_be_retried()
+    {
+        await fixture.ResetAsync();
+        await using var context = fixture.NewContext();
+        var group = await AddGroupAsync(context, "PILOTS");
+        var attendeeId = await AddAttendeeAsync(context, "Amy", AttendeeStatus.Invited, group);
+        var at = new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero);
+        var failed = EventBooking.Domain.Notifications.EmailLog.RecordPending(
+            Guid.NewGuid(), attendeeId, EventBooking.Domain.Notifications.EmailTemplate.AttendeeInvite, at);
+        failed.MarkFailed(at.AddMinutes(1));
+        context.EmailLogs.Add(failed);
+        await context.SaveChangesAsync();
+
+        var page = await new AttendeeListQueries(context).ListAttendeesAsync(
+            Coordinator, null, 50, null, null, null, null, CancellationToken.None);
+
+        var row = Assert.Single(page.Items);
+        Assert.Equal("Failed", row.LatestDeliveryStatus);
+        Assert.Equal(failed.Id, row.LatestDeliveryId);
+
+        await fixture.ResetAsync();
+    }
+
+    [Fact]
     public async Task An_admin_shaped_caller_reads_no_attendees()
     {
         await fixture.ResetAsync();

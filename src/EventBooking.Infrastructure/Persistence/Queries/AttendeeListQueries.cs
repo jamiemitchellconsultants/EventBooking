@@ -43,11 +43,12 @@ public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttend
                         WHERE r.attendee_id = c.id)
                    END,
                    '{}'::text[]) AS required_codes,
-               latest.status AS latest_delivery_status
+               latest.status AS latest_delivery_status,
+               latest.id AS latest_delivery_id
           FROM attendee c
           JOIN attendee_group g ON g.id = c.attendee_group_id
           LEFT JOIN LATERAL (
-              SELECT e.status
+              SELECT e.status, e.id
                 FROM email_log e
                WHERE e.attendee_id = c.id
                ORDER BY e.sent_at DESC NULLS LAST, e.id DESC
@@ -138,7 +139,8 @@ public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttend
                     AttendeeReadiness.Of(attendeeStatus, delivery),
                     reader.GetFieldValue<string[]>(5),
                     delivery,
-                    AttendeeCursor.Encode(name.ToLowerInvariant(), id)));
+                    AttendeeCursor.Encode(name.ToLowerInvariant(), id),
+                    await reader.IsDBNullAsync(7, ct) ? null : reader.GetGuid(7)));
             }
 
             // Readiness is a derived label, not a column, so it cannot be filtered in

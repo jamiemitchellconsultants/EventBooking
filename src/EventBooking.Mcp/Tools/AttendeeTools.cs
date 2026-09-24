@@ -28,6 +28,8 @@ public sealed record AttendeeToolView
     public required IReadOnlyList<string> RequiredTypeCodes { get; init; }
     /// <summary>Gets the latest delivery status, or null when never invited.</summary>
     public required string? LatestDeliveryStatus { get; init; }
+    /// <summary>Gets the latest delivery's id, which retry_attendee_email needs.</summary>
+    public required Guid? LatestDeliveryId { get; init; }
     /// <summary>Gets the row's page cursor.</summary>
     public required string Cursor { get; init; }
     /// <summary>Gets internal readiness without exposing recovery mutation.</summary>
@@ -134,6 +136,7 @@ public sealed class AttendeeTools
                 AttendeeGroupCode = item.GroupCode,
                 RequiredTypeCodes = item.RequiredTypeCodes,
                 LatestDeliveryStatus = item.LatestDeliveryStatus,
+                LatestDeliveryId = item.LatestDeliveryId,
                 Cursor = item.Cursor,
                 Readiness = readinessResult.IsSuccess ? readinessResult.Value : null,
             });

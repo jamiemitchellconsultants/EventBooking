@@ -26,10 +26,12 @@ public sealed record ListAttendeesQuery(
 /// <param name="RequiredTypeCodes">The required type codes, on awaiting-availability rows only.</param>
 /// <param name="LatestDeliveryStatus">The latest delivery status, or null when never invited.</param>
 /// <param name="Cursor">The row's page cursor.</param>
+/// <param name="LatestDeliveryId">The latest delivery's id, which a Coordinator needs to retry it.</param>
 public sealed record AttendeeListItem(
     Guid AttendeeId,
     string Name, string Email, string Status, string GroupCode, string Readiness,
-    IReadOnlyList<string> RequiredTypeCodes, string? LatestDeliveryStatus, string Cursor);
+    IReadOnlyList<string> RequiredTypeCodes, string? LatestDeliveryStatus, string Cursor,
+    Guid? LatestDeliveryId = null);
 
 /// <summary>One keyset page of the attendee list.</summary>
 /// <param name="Items">The rows.</param>

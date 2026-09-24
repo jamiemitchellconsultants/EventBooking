@@ -23,7 +23,8 @@ public sealed record AttendeeDto(
     string Readiness,
     IReadOnlyList<string> RequiredTypeCodes,
     string? LatestDeliveryStatus,
-    string Cursor);
+    string Cursor,
+    Guid? LatestDeliveryId = null);
 
 public sealed record AttendeeListDto(
     IReadOnlyList<AttendeeDto> Items,
@@ -36,10 +37,9 @@ public sealed record ImportOutcomeDto(
     int ImportedCount,
     IReadOnlyList<ImportErrorDto> Errors);
 
-/// <summary>Reports the durable result of a template-aware email retry.</summary>
-/// <param name="DeliveryStatus">The provider outcome of the replacement attempt.</param>
-/// <param name="DeliveryId">The new durable delivery identifier.</param>
-public sealed record EmailRetryDto(string DeliveryStatus, Guid DeliveryId);
+/// <summary>Reports the replacement delivery staged by an email retry.</summary>
+/// <param name="EmailLogId">The new pending delivery identifier.</param>
+public sealed record EmailRetryDto(Guid EmailLogId);
 
 /// <summary>Minimum canonical detail for one incomplete appointment type.</summary>
 /// <param name="Code">The canonical appointment-type code.</param>
@@ -203,9 +203,11 @@ public sealed class AttendeesClient(HttpClient http)
     }
 
     /// <summary>Retries the latest failed or pending delivery using its server-side template.</summary>
-    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(
+        Guid id, Guid emailLogId, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsync($"/api/attendees/{id}/email-retry", null, cancellationToken);
+        using var response = await http.PostAsync(
+            $"/api/attendees/{id}/email-retry?emailLogId={emailLogId}", null, cancellationToken);
         return await ApiCall.ReadAsync<EmailRetryDto>(response, cancellationToken);
     }
 

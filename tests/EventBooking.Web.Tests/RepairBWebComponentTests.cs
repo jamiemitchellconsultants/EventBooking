@@ -140,6 +140,44 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
+    /// Verifies a failed delivery offers Resend, and Resend retries that exact delivery.
+    /// </summary>
+    [Fact]
+    public void AttendeesResendRetriesTheFailedDelivery()
+    {
+        var attendeeId = Guid.NewGuid();
+        var deliveryId = Guid.NewGuid();
+        var page = new AttendeeListDto(
+            [new AttendeeDto(
+                attendeeId, "C. Attendee", "attendee@example.com", "Invited",
+                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Failed", "cursor",
+                deliveryId)],
+            null);
+        string? retried = null;
+        var handler = new RoutedHandler();
+        handler.Enqueue(_ => Json(page));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        handler.Enqueue(request =>
+        {
+            retried = request.RequestUri!.PathAndQuery;
+            return Json(new EmailRetryDto(Guid.NewGuid()));
+        });
+        handler.Enqueue(_ => Json(page));
+        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
+        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
+        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
+        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+
+        var cut = Render<Attendees>();
+        cut.WaitForAssertion(() => Assert.Contains("Failed", cut.Markup));
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Resend").Click();
+
+        cut.WaitForAssertion(() => Assert.Equal(
+            $"/api/attendees/{attendeeId}/email-retry?emailLogId={deliveryId}", retried));
+    }
+
+    /// <summary>
     /// Verifies a event-board transport exception becomes an alert and restores the page busy state.
     /// </summary>
     [Fact]

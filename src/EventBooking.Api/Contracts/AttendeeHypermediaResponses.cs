@@ -27,6 +27,8 @@ public sealed record AttendeeResourceResponse(
     string? LatestDeliveryStatus,
     /// <summary>Gets the row's page cursor.</summary>
     string Cursor,
+    /// <summary>Gets the latest delivery's id, which the retry operation needs.</summary>
+    Guid? LatestDeliveryId,
     /// <summary>Gets the safe follow-up operations for the Attendee.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
@@ -44,6 +46,7 @@ public sealed record AttendeeResourceResponse(
             item.RequiredTypeCodes,
             item.LatestDeliveryStatus,
             item.Cursor,
+            item.LatestDeliveryId,
             AttendeeLinks.ForAttendee(item.AttendeeId, status));
     }
 

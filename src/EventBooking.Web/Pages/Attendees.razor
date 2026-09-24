@@ -180,6 +180,11 @@
                                             <span class="@(attendee.LatestDeliveryStatus == "Failed" ? "error" : attendee.LatestDeliveryStatus == "Pending" ? "warning" : "")">
                                                 @attendee.LatestDeliveryStatus
                                             </span>
+                                            @if (attendee.LatestDeliveryStatus == "Failed" && attendee.LatestDeliveryId is { } failedDeliveryId)
+                                            {
+                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId, failedDeliveryId)" disabled="@_busy"
+                                                        title="Queues the same email again to the same address.">Resend</button>
+                                            }
                                         }
                                         else
                                         {
@@ -303,6 +308,11 @@
                                             <span class="@(attendee.LatestDeliveryStatus == "Failed" ? "error" : attendee.LatestDeliveryStatus == "Pending" ? "warning" : "")">
                                                 @attendee.LatestDeliveryStatus
                                             </span>
+                                            @if (attendee.LatestDeliveryStatus == "Failed" && attendee.LatestDeliveryId is { } failedDeliveryId)
+                                            {
+                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId, failedDeliveryId)" disabled="@_busy"
+                                                        title="Queues the same email again to the same address.">Resend</button>
+                                            }
                                         }
                                         else
                                         {
@@ -649,6 +659,9 @@
             _busy = false;
         }
     }
+
+    private Task RetryEmailAsync(Guid id, Guid emailLogId) =>
+        RunAsync(() => AttendeesApi.RetryEmailAsync(id, emailLogId, CancellationToken.None));
 
     private Task InviteAsync(AttendeeDto attendee)
     {
