@@ -2,6 +2,7 @@ using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Application.Bookings;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Api.Endpoints;
 
@@ -25,12 +26,13 @@ public static class BookingEndpoints
         group.MapGet("/{token}", async (
             string token,
             ViewInviteHandler handler,
+            IEventWindowZones zones,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(new ViewInviteQuery(token), cancellationToken);
             return result.IsFailure
                 ? result.ToResponse()
-                : Results.Ok(ApiResponses.Invite(result.Value, token));
+                : Results.Ok(ApiResponses.Invite(result.Value, zones, token));
         })
             .WithAgentMetadata("viewInvite")
             .Produces<InviteResponse>(200)
@@ -50,10 +52,10 @@ public static class BookingEndpoints
                 ? result.ToResponse()
                 : Results.Created(
                     $"/api/manage/{result.Value.ManageToken}",
-                    new { bookingId = result.Value.BookingId, manageToken = result.Value.ManageToken });
+                    new ConfirmBookingResponse(result.Value.BookingId, result.Value.ManageToken));
         })
             .WithAgentMetadata("confirmBooking")
-            .Produces(201)
+            .Produces<ConfirmBookingResponse>(201)
             .ProducesProblem(404)
             .ProducesProblem(409)
             .ProducesProblem(410)

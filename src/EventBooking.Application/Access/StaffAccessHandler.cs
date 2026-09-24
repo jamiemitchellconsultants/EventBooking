@@ -52,9 +52,11 @@ public sealed record ClearStaffAccessProfileScopeCommand(
 /// <summary>Returns a profile mutation and any displaced manager identity.</summary>
 /// <param name="Profile">The profile.</param>
 /// <param name="FormerManagerStaffUserId">The former manager staff user id.</param>
+/// <param name="FormerManagerDisplayName">The displaced Manager's display name, if known.</param>
 public sealed record StaffAccessMutationView(
     StaffAccessProfileView Profile,
-    Guid? FormerManagerStaffUserId);
+    Guid? FormerManagerStaffUserId,
+    string? FormerManagerDisplayName);
 
 /// <summary>Authorizes and applies complete staff-access administration operations.</summary>
 /// <param name="profiles">The profiles.</param>
@@ -223,9 +225,19 @@ public sealed class StaffAccessHandler(
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        string? formerManagerDisplayName = null;
+        if (formerManagerId is not null)
+        {
+            formerManagerDisplayName = (await identities.ListAsync(cancellationToken))
+                .SingleOrDefault(identity => identity.StaffUserId == formerManagerId)
+                ?.DisplayName;
+        }
+
         return Result<StaffAccessMutationView>.Success(
             new StaffAccessMutationView(
-                await ToViewAsync(current, null, cancellationToken), formerManagerId));
+                await ToViewAsync(current, null, cancellationToken),
+                formerManagerId,
+                formerManagerDisplayName));
     }
 
     /// <summary>Clears scope without deleting or changing identity-provider roles.</summary>

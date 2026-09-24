@@ -19,6 +19,7 @@ public static class MeEndpoints
             MeHandler handler,
             SyncStaffAccessProfileRolesHandler sync,
             IAppointmentTypeRepository appointmentTypes,
+            CallerCapabilities capabilities,
             IOptions<AuthClaimOptions> claims,
             CancellationToken cancellationToken) =>
         {
@@ -38,61 +39,77 @@ public static class MeEndpoints
                 claims.Value.StaffIdPattern,
                 cancellationToken);
             var view = me.Value;
+            string? appointmentTypeCode = null;
             string? appointmentTypeName = null;
             if (view.ScopeAppointmentTypeId is not null)
             {
                 var type = await appointmentTypes.GetAsync(
                     view.ScopeAppointmentTypeId.Value, cancellationToken);
+                appointmentTypeCode = type?.Code;
                 appointmentTypeName = type?.Name;
             }
 
-            return Results.Ok(MeResourceResponse.From(
+            var held = await capabilities.GetAsync(cancellationToken);
+            return Results.Ok(CurrentStaffResponse.From(
+                view.DisplayName,
                 view.StaffId,
                 view.Roles,
                 view.ScopeAppointmentTypeId,
+                appointmentTypeCode,
                 appointmentTypeName,
                 view.Capabilities,
-                view.Problem));
+                view.Problem,
+                held));
         }).AllowAnonymous()
             .WithAgentMetadata("getMyAccess")
-            .Produces(200);
+            .Produces<CurrentStaffResponse>(200);
 
         return app;
     }
 }
 
 /// <summary>The signed-in staff identity plus self and collection entry affordances.</summary>
-public sealed record MeResourceResponse(
+public sealed record CurrentStaffResponse(
+    /// <summary>Gets the human-readable name from the token, or null when it carries none.</summary>
+    string? DisplayName,
     /// <summary>Gets the caller's enterprise staff number, or null until recorded.</summary>
     string? StaffId,
     /// <summary>Gets the caller's current role names.</summary>
     IReadOnlyList<string> Roles,
     /// <summary>Gets the caller's scoped appointment-type identifier, or null when unscoped.</summary>
-    Guid? AppointmentTypeId,
+    Guid? ScopeAppointmentTypeId,
+    /// <summary>Gets the caller's scoped appointment-type code, or null when unscoped.</summary>
+    string? ScopeAppointmentTypeCode,
     /// <summary>Gets the caller's scoped appointment-type name, or null when unscoped.</summary>
-    string? AppointmentTypeName,
+    string? ScopeAppointmentTypeName,
     /// <summary>Gets the capability names the caller's profile grants.</summary>
     IReadOnlyList<string> Capabilities,
     /// <summary>Gets the no-role explanation, or null for a full view.</summary>
     string? Problem,
-    /// <summary>Gets the self and role-relevant collection entry affordances. Links are discoverability hints, not authorization.</summary>
+    /// <summary>Gets the self, role-relevant collection entry, and capability-gated collection mutation affordances. Links are discoverability hints, not authorization.</summary>
     [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
     /// <summary>Builds the identity resource with self plus role-relevant entry links.</summary>
+    /// <param name="displayName">The human-readable name from the token, or null.</param>
     /// <param name="staffId">The caller's enterprise staff number, or null until recorded.</param>
     /// <param name="roles">The caller's current role names.</param>
-    /// <param name="appointmentTypeId">The caller's scoped appointment-type identifier, or null.</param>
-    /// <param name="appointmentTypeName">The caller's scoped appointment-type name, or null.</param>
+    /// <param name="scopeAppointmentTypeId">The caller's scoped appointment-type identifier, or null.</param>
+    /// <param name="scopeAppointmentTypeCode">The caller's scoped appointment-type code, or null.</param>
+    /// <param name="scopeAppointmentTypeName">The caller's scoped appointment-type name, or null.</param>
     /// <param name="capabilities">The capability names the caller's profile grants.</param>
     /// <param name="problem">The no-role explanation, or null for a full view.</param>
+    /// <param name="held">The capability names the caller's profile grants now.</param>
     /// <returns>The API resource with identity links.</returns>
-    public static MeResourceResponse From(
+    public static CurrentStaffResponse From(
+        string? displayName,
         string? staffId,
         IReadOnlyList<string> roles,
-        Guid? appointmentTypeId,
-        string? appointmentTypeName,
+        Guid? scopeAppointmentTypeId,
+        string? scopeAppointmentTypeCode,
+        string? scopeAppointmentTypeName,
         IReadOnlyList<string> capabilities,
-        string? problem)
+        string? problem,
+        IReadOnlySet<string> held)
     {
         var links = new Dictionary<string, ApiLink>
         {
@@ -123,7 +140,36 @@ public sealed record MeResourceResponse(
             links["staffAccess"] = new("/api/staff-access", "GET", "listStaffAccess");
         }
 
-        return new MeResourceResponse(
-            staffId, roles, appointmentTypeId, appointmentTypeName, capabilities, problem, links);
+        // Mutation affordances live here — not on rows — so an empty collection page still
+        // offers create without testing a role. Each is gated by the capability its route
+        // demands, exactly as the row links are.
+        var mutations = CallerLinks.For(
+            held,
+            new LinkCandidate(
+                "createLocation", "createLocation", "/api/locations",
+                nameof(StaffCapability.ManageReferenceData)),
+            new LinkCandidate(
+                "createAppointmentType", "createAppointmentType", "/api/appointment-types",
+                nameof(StaffCapability.ManageReferenceData)),
+            new LinkCandidate(
+                "createAttendeeGroup", "createAttendeeGroup", "/api/attendee-groups",
+                nameof(StaffCapability.ManageReferenceData)),
+            new LinkCandidate(
+                "proposeEvent", "proposeEvent", "/api/event-proposals",
+                nameof(StaffCapability.ManageEventNegotiation)),
+            new LinkCandidate(
+                "createAttendee", "createAttendee", "/api/attendees",
+                nameof(StaffCapability.ManageAttendees)),
+            new LinkCandidate(
+                "importAttendees", "importAttendees", "/api/attendees/import",
+                nameof(StaffCapability.ManageAttendees)));
+        foreach (var (relation, link) in mutations)
+        {
+            links[relation] = link;
+        }
+
+        return new CurrentStaffResponse(
+            displayName, staffId, roles, scopeAppointmentTypeId, scopeAppointmentTypeCode,
+            scopeAppointmentTypeName, capabilities, problem, links);
     }
 }

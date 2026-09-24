@@ -34,7 +34,15 @@ public static class OpenApiConfiguration
             });
             options.AddOperationTransformer((operation, context, _) =>
             {
-                var name = context.Description.ActionDescriptor.EndpointMetadata
+                var metadata = context.Description.ActionDescriptor.EndpointMetadata;
+                if (metadata.OfType<EventBookingListMetadata>().Any())
+                {
+                    operation.Extensions ??= new Dictionary<string, IOpenApiExtension>();
+                    operation.Extensions["x-eventbooking-list"] =
+                        new JsonNodeExtension(JsonValue.Create(true)!);
+                }
+
+                var name = metadata
                     .OfType<EndpointNameMetadata>()
                     .FirstOrDefault()?.EndpointName;
                 if (name is null || !AgentOperationCatalog.All.TryGetValue(name, out var entry))

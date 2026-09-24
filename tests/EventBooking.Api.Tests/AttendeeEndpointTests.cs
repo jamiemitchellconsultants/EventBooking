@@ -266,7 +266,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var assignedBody = await assigned.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(
             AppointmentTypeIds.UniformFitting,
-            assignedBody.GetProperty("profile").GetProperty("appointmentTypeId").GetGuid());
+            assignedBody.GetProperty("appointmentTypeId").GetGuid());
+        Assert.Equal(
+            managerUserId, assignedBody.GetProperty("targetStaffUserId").GetGuid());
 
         var staff = await client.GetFromJsonAsync<JsonElement>("/api/staff-access");
         Assert.Equal(

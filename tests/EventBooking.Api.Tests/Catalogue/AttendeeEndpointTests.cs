@@ -129,6 +129,25 @@ public sealed class AttendeeEndpointTests(ApiFactory factory)
             "AwaitingAvailability", (await BodyAsync(invited)).GetProperty("status").GetString());
     }
 
+    [Fact]
+    public async Task TheEligibleCountNamesTheRequiredOptionCount()
+    {
+        var type = await GivenAppointmentTypeAsync("AE1");
+        var group = await GivenAttendeeGroupAsync("ATT_CNT", type);
+        var attendee = await GivenAttendeeAsync(group, "ada-cnt@example.com");
+        var location = await GivenLocationAsync("ATT_CNT_LOC");
+        var admin = await AdminAsync("U700309");
+        var required = (await BodyAsync(await admin.GetAsync("/api/settings")))
+            .GetProperty("inviteOptionCount").GetInt32();
+        var client = await CoordinatorAsync("U700310");
+
+        var counted = await BodyAsync(await client.GetAsync(
+            $"/api/attendees/{attendee}/eligible-event-count?locationIds={location}"));
+
+        Assert.True(counted.TryGetProperty("count", out _));
+        Assert.Equal(required, counted.GetProperty("requiredOptionCount").GetInt32());
+    }
+
     /// <summary>Settlement #13: readiness is a dashboard read, not an attendee-management one.</summary>
     [Fact]
     public async Task ReadinessAnswersUnderTheDashboardCapability()

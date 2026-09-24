@@ -6,17 +6,23 @@ using EventBooking.Domain.Time;
 namespace EventBooking.Application.Bookings;
 
 /// <summary>Defines booking view for the current use case.</summary>
+/// <param name="LocationName">The location display name.</param>
+/// <param name="Address">The location address.</param>
+/// <param name="TimeZoneId">The location's time zone.</param>
 /// <param name="Date">The date.</param>
 /// <param name="StartTime">The start time.</param>
-/// <param name="EndTime">The end time.</param>
-/// <param name="Display">The display.</param>
+/// <param name="DurationMinutes">The window length.</param>
+/// <param name="AppointmentTypeNames">The booked appointment type names.</param>
 /// <param name="AttendeeName">The attendee name.</param>
 /// <param name="CanCancel">Whether the window has not started and cancellation is still possible.</param>
 public sealed record BookingView(
+    string LocationName,
+    string Address,
+    string TimeZoneId,
     DateOnly Date,
     TimeOnly StartTime,
-    TimeOnly EndTime,
-    string Display,
+    int DurationMinutes,
+    IReadOnlyList<string> AppointmentTypeNames,
     string AttendeeName,
     bool CanCancel);
 
@@ -32,6 +38,8 @@ public sealed record ViewBookingQuery(string? ManageToken);
 /// <param name="locations">The locations.</param>
 /// <param name="zones">The zones.</param>
 /// <param name="clock">The clock the cancellation window is read against.</param>
+/// <param name="invites">The invites the booking's type names are read from.</param>
+/// <param name="types">The appointment types names resolve against.</param>
 public sealed class ViewBookingHandler(
     IBookingRepository bookings,
     IAttendeeRepository attendees,
@@ -39,7 +47,9 @@ public sealed class ViewBookingHandler(
     ITokenService tokens,
     ILocationRepository locations,
     IEventWindowZones zones,
-    IClock clock)
+    IClock clock,
+    IInviteRepository invites,
+    IAppointmentTypeRepository types)
 {
     /// <summary>Defines handle async for the current use case.</summary>
     /// <param name="query">The query.</param>
@@ -83,17 +93,23 @@ public sealed class ViewBookingHandler(
         // window, which this read does not lock. A true flag with a started recovery window
         // still comes back window-started.
         var canCancel = !eventItem.Window.HasStarted(zones, location.TimeZoneId, clock.UtcNow);
+        var invite = await invites.GetAsync(booking.InviteId, cancellationToken);
+        if (invite is null)
+        {
+            return Result<BookingView>.Failure(Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
+        }
+
+        var names = (await types.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t.Name);
         return Result<BookingView>.Success(new BookingView(
+            location.Name,
+            location.Address,
+            location.TimeZoneId,
             eventItem.Window.Date,
             eventItem.Window.StartTime,
-            eventItem.Window.EndTime,
-            WindowText.Format(
-                eventItem.Window.Date,
-                eventItem.Window.StartTime,
-                eventItem.Window.EndTime,
-                location.Name,
-                zones.AbbreviationOf(
-                    eventItem.Window.StartInstant(zones, location.TimeZoneId), location.TimeZoneId)),
+            eventItem.Window.DurationMinutes,
+            invite.RequiredAppointmentTypeIds
+                .Select(id => names.GetValueOrDefault(id, id.ToString()))
+                .ToList(),
             attendee.Name,
             canCancel));
     }

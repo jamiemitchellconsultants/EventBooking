@@ -29,7 +29,7 @@ public class InviteOptionReplacementTests
 
     private ViewInviteHandler Handler => new(
         _invites, _attendees, _events, new EligibleEventFinder(_events, _events, _clock),
-        _audit, _unitOfWork, _tokens, _clock, _locations, ProposalFixture.Zones,
+        _audit, _unitOfWork, _tokens, _clock, _locations,
         new InMemoryAppointmentTypeRepository());
 
     public InviteOptionReplacementTests()

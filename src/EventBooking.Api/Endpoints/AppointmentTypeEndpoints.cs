@@ -46,11 +46,12 @@ public static class AppointmentTypeEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(new Page<AppointmentTypeListResponse>(
-                [.. result.Value.Select(x => AppointmentTypeListResponse.From(x, held))], null));
+            return Results.Ok(new Page<AppointmentTypeResponse>(
+                [.. result.Value.Select(x => ApiResponses.AppointmentType(x, held))], null));
         })
             .WithAgentMetadata("listAppointmentTypes")
-            .Produces<Page<AppointmentTypeListResponse>>(200)
+            .WithEventBookingList()
+            .Produces<Page<AppointmentTypeResponse>>(200)
             .ProducesProblem(401)
             .ProducesProblem(403);
 
@@ -73,7 +74,7 @@ public static class AppointmentTypeEndpoints
             var held = await capabilities.GetAsync(cancellationToken);
             return Results.Created(
                 $"/api/appointment-types/{result.Value.Id}",
-                ApiResponses.AppointmentType(result.Value, held));
+                ApiResponses.AppointmentType(result.Value, held, hasManager: false));
         })
             .WithAgentMetadata("createAppointmentType")
             .Produces<AppointmentTypeResponse>(201)
@@ -100,7 +101,9 @@ public static class AppointmentTypeEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(ApiResponses.AppointmentType(result.Value, held));
+            var managed = await capabilities.ManagerTypeIdsAsync(cancellationToken);
+            return Results.Ok(ApiResponses.AppointmentType(
+                result.Value, held, managed.Contains(result.Value.Id)));
         })
             .WithAgentMetadata("updateAppointmentType")
             .Produces<AppointmentTypeResponse>(200)
@@ -110,36 +113,5 @@ public static class AppointmentTypeEndpoints
             .ProducesProblem(422);
 
         return app;
-    }
-}
-
-/// <summary>One row of the appointment-type list, with the links its caller may follow.</summary>
-/// <param name="Id">The identifier.</param>
-/// <param name="Code">The canonical code.</param>
-/// <param name="Name">The display name.</param>
-/// <param name="IsActive">Whether the type is in use.</param>
-/// <param name="ManagerDisplayName">The current Manager's display name.</param>
-/// <param name="Links">The affordances the caller holds.</param>
-public sealed record AppointmentTypeListResponse(
-    Guid Id, string Code, string Name, bool IsActive, string? ManagerDisplayName,
-    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
-    IReadOnlyDictionary<string, ApiLink> Links)
-{
-    /// <summary>Projects one list row.</summary>
-    /// <param name="item">The application row.</param>
-    /// <param name="capabilities">The caller's capabilities.</param>
-    /// <returns>The response row.</returns>
-    public static AppointmentTypeListResponse From(
-        AppointmentTypeListItem item, IReadOnlySet<string> capabilities)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        return new AppointmentTypeListResponse(
-            item.Id, item.Code, item.Name, item.IsActive, item.ManagerDisplayName,
-            CallerLinks.For(
-                capabilities,
-                new LinkCandidate("self", "listAppointmentTypes", "/api/appointment-types", null),
-                new LinkCandidate(
-                    "update", "updateAppointmentType", $"/api/appointment-types/{item.Id}",
-                    nameof(StaffCapability.ManageReferenceData))));
     }
 }

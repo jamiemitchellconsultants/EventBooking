@@ -17,7 +17,7 @@ namespace EventBooking.Api.Tests;
 public class ManageBookingEndpointTests(ApiFactory factory)
 {
     [Fact]
-    public async Task TheManageLinkShowsTheBookedTime()
+    public async Task TheManageLinkShowsTheBookedTimeVenueAndTypes()
     {
         var booking = await GivenABooking();
         var client = factory.CreateClient();
@@ -27,10 +27,18 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
         Assert.NotNull(view);
         Assert.Equal("Amara Novak", view!.AttendeeName);
-        Assert.Contains("-", view.Display);
+        Assert.Equal("Transitional location", view.LocationName);
+        Assert.Equal(
+            "Recorded against the transitional site until Phase 3.", view.Address);
+        Assert.Equal(new DateOnly(2030, 1, 14), view.Time.Date);
+        Assert.Equal(new TimeOnly(9, 0), view.Time.StartTime);
+        Assert.Equal("Europe/London", view.Time.TimeZoneId);
+        Assert.Equal(["Drug & Alcohol Testing", "Uniform Fitting"], view.AppointmentTypeNames);
 
         using var document = System.Text.Json.JsonDocument.Parse(
             await client.GetStringAsync($"/api/manage/{booking.ManageToken}"));
+        Assert.False(document.RootElement.TryGetProperty("display", out _));
+        Assert.False(document.RootElement.TryGetProperty("canCancel", out _));
         var links = document.RootElement.GetProperty("_links");
         var cancel = links.GetProperty("cancel");
         Assert.Equal(
@@ -38,6 +46,25 @@ public class ManageBookingEndpointTests(ApiFactory factory)
             cancel.GetProperty("href").GetString());
         Assert.Equal("POST", cancel.GetProperty("method").GetString());
         Assert.Equal("cancelManagedBooking", cancel.GetProperty("operationId").GetString());
+    }
+
+    [Fact]
+    public void TheCancelLinkAppearsOnlyWhileCancellationIsAllowed()
+    {
+        var zones = new EventBooking.Infrastructure.Time.NodaTimeEventWindowZones();
+        var allowed = EventBooking.Api.Contracts.ApiResponses.ManagedBooking(
+            View(canCancel: true), zones, "token");
+        var refused = EventBooking.Api.Contracts.ApiResponses.ManagedBooking(
+            View(canCancel: false), zones, "token");
+
+        Assert.True(allowed.Links.ContainsKey("cancel"));
+        Assert.False(refused.Links.ContainsKey("cancel"));
+
+        static EventBooking.Application.Bookings.BookingView View(bool canCancel) =>
+            new(
+                "Transitional location", "Somewhere", "Europe/London",
+                new DateOnly(2030, 1, 14), new TimeOnly(9, 0), 240,
+                ["Drug & Alcohol Testing"], "Amara Novak", canCancel);
     }
 
     [Fact]
@@ -223,7 +250,15 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         int RemainingCapacity,
         IReadOnlyList<Guid> PendingInviteIds);
 
-    private sealed record BookingResponse(DateOnly Date, string Display, string AttendeeName);
+    private sealed record BookingTimeResponse(
+        DateOnly Date, TimeOnly StartTime, int DurationMinutes, string TimeZoneId);
+
+    private sealed record BookingResponse(
+        string AttendeeName,
+        string LocationName,
+        string Address,
+        BookingTimeResponse Time,
+        IReadOnlyList<string> AppointmentTypeNames);
 
     private sealed record CancelResponse(string Outcome, Guid? InviteId);
 }

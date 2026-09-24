@@ -2,6 +2,7 @@ using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Application.Dashboards;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Api.Endpoints;
 
@@ -19,6 +20,7 @@ public static class DashboardEndpoints
             Guid? locationId,
             ICallerAccessor caller,
             GetDashboardsHandler handler,
+            IEventWindowZones zones,
             CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
@@ -31,7 +33,7 @@ public static class DashboardEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(ApiResponses.Dashboards(result.Value, held));
+            return Results.Ok(ApiResponses.Dashboards(result.Value, zones, held));
         })
             .RequireAuthorization(AuthenticationExtensions.StaffPolicy)
             .RequireRateLimiting(StaffRateLimiterPolicy.PolicyName)

@@ -20,6 +20,7 @@ public sealed class AuditQueries(EventBookingDbContext context) : IAuditQueries
             .Where(a => a.EntityType == entityType && a.EntityId == entityId)
             .OrderByDescending(a => a.Timestamp)
             .Select(a => new AuditHistoryRow(
+                a.Id,
                 a.Timestamp,
                 a.EntityType,
                 a.EntityId,
@@ -57,6 +58,7 @@ public sealed class AuditQueries(EventBookingDbContext context) : IAuditQueries
                 || bookingAppointmentIds.Contains(a.EntityId))
             .OrderByDescending(a => a.Timestamp)
             .Select(a => new AuditHistoryRow(
+                a.Id,
                 a.Timestamp,
                 a.EntityType,
                 a.EntityId,
@@ -130,6 +132,7 @@ public sealed class AuditQueries(EventBookingDbContext context) : IAuditQueries
                 a.Id,
                 a.Timestamp,
                 Row = new AuditHistoryRow(
+                    a.Id,
                     a.Timestamp,
                     a.EntityType,
                     a.EntityId,

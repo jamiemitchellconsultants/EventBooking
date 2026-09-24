@@ -2,6 +2,7 @@ using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Api.Pagination;
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
@@ -83,6 +84,7 @@ public static class AttendeeEndpoints
                 result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor)));
         })
             .WithAgentMetadata("listAttendees")
+            .WithEventBookingList()
             .Produces<Page<AttendeeResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(422);
@@ -201,17 +203,23 @@ public static class AttendeeEndpoints
             Guid[] locationIds,
             ICallerAccessor caller,
             CountEligibleEventsHandler handler,
+            ISystemSettingsRepository settings,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
                 new CountEligibleEventsQuery(caller.RequireStaffUserId(), id, locationIds),
                 cancellationToken);
-            return result.IsFailure
-                ? result.ToResponse()
-                : Results.Ok(new { count = result.Value });
+            if (result.IsFailure)
+            {
+                return result.ToResponse();
+            }
+
+            var options = await settings.GetAsync(cancellationToken);
+            return Results.Ok(new EligibleEventCountResponse(
+                result.Value, options.InviteOptionCount));
         })
             .WithAgentMetadata("countEligibleEvents")
-            .Produces(200)
+            .Produces<EligibleEventCountResponse>(200)
             .ProducesProblem(403)
             .ProducesProblem(404)
             .ProducesProblem(422);
@@ -293,6 +301,7 @@ public static class AttendeeEndpoints
                 null));
         })
             .WithAgentMetadata("listAttendeeBookings")
+            .WithEventBookingList()
             .Produces<Page<AttendeeBookingResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(404);

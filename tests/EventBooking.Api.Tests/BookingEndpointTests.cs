@@ -44,24 +44,30 @@ public class BookingEndpointTests(ApiFactory factory)
                 Guid.Parse("00000000-0000-0000-0000-000000000050"),
             ],
             view.Options.Select(option => option.EventId));
-        Assert.Equal(
-            [new DateOnly(2030, 1, 14), new DateOnly(2030, 1, 15), new DateOnly(2030, 1, 16)],
-            view.Options.Select(option => option.Date));
 
         // Catches omitted or incorrectly mapped attendee-facing window fields.
         Assert.Equal(
+            [new DateOnly(2030, 1, 14), new DateOnly(2030, 1, 15), new DateOnly(2030, 1, 16)],
+            view.Options.Select(option => option.Time.Date));
+        Assert.Equal(
             [new TimeOnly(9, 0), new TimeOnly(11, 0), new TimeOnly(13, 0)],
-            view.Options.Select(option => option.StartTime));
-        Assert.Equal(
-            [new TimeOnly(13, 0), new TimeOnly(15, 0), new TimeOnly(17, 0)],
-            view.Options.Select(option => option.EndTime));
-        Assert.Equal(
-            [
-                "Mon 14 Jan 2030, 09:00-13:00 GMT at Transitional location",
-                "Tue 15 Jan 2030, 11:00-15:00 GMT at Transitional location",
-                "Wed 16 Jan 2030, 13:00-17:00 GMT at Transitional location",
-            ],
-            view.Options.Select(option => option.Display));
+            view.Options.Select(option => option.Time.StartTime));
+        Assert.All(
+            view.Options.Select(option => option.Time),
+            time =>
+            {
+                Assert.Equal(240, time.DurationMinutes);
+                Assert.Equal("Europe/London", time.TimeZoneId);
+                Assert.Equal("GMT", time.ZoneAbbreviation);
+            });
+
+        // Catches an option that names its event but not where to go.
+        Assert.All(view.Options, option =>
+        {
+            Assert.Equal("Transitional location", option.LocationName);
+            Assert.Equal(
+                "Recorded against the transitional site until Phase 3.", option.Address);
+        });
 
         // Catches returning a domain event/capacity object instead of the attendee-facing projection.
         using var document = JsonDocument.Parse(json);
@@ -87,7 +93,8 @@ public class BookingEndpointTests(ApiFactory factory)
             "tokenHash",
             "offeredEventIds",
             "expiresAt",
-            "usedAt");
+            "usedAt",
+            "display");
     }
 
     [Fact]
@@ -194,12 +201,18 @@ public class BookingEndpointTests(ApiFactory factory)
 
     internal sealed record InviteOptionFixture(Guid Id, DateOnly Date, TimeOnly StartTime);
 
-    internal sealed record InviteOptionResponse(
-        Guid EventId,
+    internal sealed record InviteOptionTimeResponse(
         DateOnly Date,
         TimeOnly StartTime,
-        TimeOnly EndTime,
-        string Display);
+        int DurationMinutes,
+        string TimeZoneId,
+        string ZoneAbbreviation);
+
+    internal sealed record InviteOptionResponse(
+        Guid EventId,
+        string LocationName,
+        string Address,
+        InviteOptionTimeResponse Time);
 
     internal sealed record InviteResponse(
         Guid InviteId,

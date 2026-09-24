@@ -117,6 +117,62 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task LocationListRowsCarryTheFieldsAnEditFormNeeds()
+    {
+        var client = await AdminAsync();
+        var created = await BodyAsync(await PostAsync(client, "/api/locations", new
+        {
+            code = "REF_FULL", name = "Full", address = "1 Test Street",
+            timeZoneId = "Europe/London",
+        }));
+        var id = created.GetProperty("id").GetGuid();
+
+        var row = (await BodyAsync(await client.GetAsync("/api/locations?includeInactive=true")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == id);
+
+        Assert.Equal("1 Test Street", row.GetProperty("address").GetString());
+        Assert.Equal("Europe/London", row.GetProperty("timeZoneId").GetString());
+        Assert.Equal(
+            created.GetProperty("version").GetInt64(), row.GetProperty("version").GetInt64());
+    }
+
+    [Fact]
+    public async Task AppointmentTypeListRowsNameTheirManagerAssignmentExplicitly()
+    {
+        var managedId = await GivenAppointmentTypeAsync("RF_MGD");
+        var unmanagedId = await GivenAppointmentTypeAsync("RF_UMGD");
+        await Factory.GivenStaffAsync(
+            [EventBooking.Domain.Access.Role.Manager], managedId);
+        var client = await AdminAsync();
+
+        var rows = (await BodyAsync(await client.GetAsync("/api/appointment-types?includeInactive=true")))
+            .GetProperty("items").EnumerateArray()
+            .Where(x => x.GetProperty("id").GetGuid() is var rowId
+                && (rowId == managedId || rowId == unmanagedId))
+            .ToDictionary(x => x.GetProperty("id").GetGuid());
+
+        Assert.True(rows[managedId].GetProperty("hasManager").GetBoolean());
+        Assert.False(rows[unmanagedId].GetProperty("hasManager").GetBoolean());
+        Assert.True(rows[managedId].TryGetProperty("version", out _));
+    }
+
+    [Fact]
+    public async Task AttendeeGroupListRowsCarryTheirVersion()
+    {
+        var typeId = await GivenAppointmentTypeAsync("RF_GRP");
+        var groupId = await GivenAttendeeGroupAsync("RF_VER", typeId);
+        var client = await AdminAsync();
+
+        var row = (await BodyAsync(await client.GetAsync("/api/attendee-groups?includeInactive=true")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == groupId);
+
+        Assert.True(row.TryGetProperty("version", out var version));
+        Assert.True(version.GetInt64() > 0);
+    }
+
+    [Fact]
     public async Task SettingsRoundTripThroughTheirOwnRoute()
     {
         var client = await AdminAsync();

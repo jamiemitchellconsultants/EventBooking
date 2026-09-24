@@ -37,6 +37,7 @@ public class AuditEndpointTests(ApiFactory factory)
         var page = await client.GetFromJsonAsync<SearchPageResponse>($"/api/audit/events/{eventId}");
 
         var row = Assert.Single(page!.Items);
+        Assert.NotEqual(Guid.Empty, row.Id);
         Assert.Equal(Now, row.Timestamp);
         Assert.Equal(AuditEntityTypes.Event, row.EntityType);
         Assert.Equal(eventId, row.EntityId);
@@ -44,6 +45,45 @@ public class AuditEndpointTests(ApiFactory factory)
         Assert.Equal("Staff", row.ActorType);
         Assert.Equal("staff-1", row.ActorId);
         Assert.Equal("6 headcount total", row.Details);
+    }
+
+    [Fact]
+    public async Task ARowByAKnownStaffActorNamesTheirDisplayName()
+    {
+        var staffUserId = await factory.GivenStaffAsync(Role.Coordinator);
+        factory.SignedInAs = staffUserId;
+        factory.NameClaim = "Riley Coordinator";
+        var staffIdClaim = factory.StaffIdClaim;
+        factory.StaffIdClaim = $"U{Math.Abs(Guid.NewGuid().GetHashCode()) % 900000 + 100000}";
+        var eventId = Guid.NewGuid();
+        try
+        {
+            // One authed request records the identity the audit row resolves against.
+            using (var recorder = factory.CreateClient())
+            {
+                await recorder.GetAsync("/api/me");
+            }
+
+            using (var scope = factory.Services.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+                context.AuditLogs.Add(AuditLog.Record(
+                    Guid.NewGuid(), AuditEntityTypes.Event, eventId, AuditAction.EventConfirmed,
+                    ActorType.Staff, staffUserId.ToString(), Now, null));
+                await context.SaveChangesAsync();
+            }
+
+            var page = await factory.CreateClient().GetFromJsonAsync<SearchPageResponse>(
+                $"/api/audit/events/{eventId}");
+
+            var row = Assert.Single(page!.Items);
+            Assert.Equal("Riley Coordinator", row.ActorDisplay);
+        }
+        finally
+        {
+            factory.NameClaim = null;
+            factory.StaffIdClaim = staffIdClaim;
+        }
     }
 
     [Fact]
@@ -262,11 +302,13 @@ public class AuditEndpointTests(ApiFactory factory)
     private sealed record SearchPageResponse(List<RowResponse> Items, string? NextCursor);
 
     private sealed record RowResponse(
+        Guid Id,
         DateTimeOffset Timestamp,
         string EntityType,
         Guid EntityId,
         string Action,
         string ActorType,
         string? ActorId,
+        string? ActorDisplay,
         string? Details);
 }

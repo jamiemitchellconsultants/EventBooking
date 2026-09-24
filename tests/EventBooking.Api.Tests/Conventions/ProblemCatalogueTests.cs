@@ -93,6 +93,22 @@ public sealed class ProblemCatalogueTests(ApiFactory factory)
         Assert.Equal(2L, blocking["futureEvents"]);
     }
 
+    /// <summary>A below-bookings refusal names the minimum and the row's current values.</summary>
+    [Fact]
+    public void ACapacityBelowBookingsBodyCarriesMinimumBesideCurrent()
+    {
+        var body = ResultResponses.ProblemBodyFor(
+            Error.CapacityBelowBookings("Too low.", 5, 8, 3));
+
+        Assert.Equal("capacity-below-bookings", body.Type);
+        Assert.Equal(409, body.Status);
+        Assert.Equal(5L, Assert.IsType<long>(body.Extensions["minimum"]));
+        var current = Assert.IsAssignableFrom<IReadOnlyDictionary<string, long>>(
+            body.Extensions["current"]);
+        Assert.Equal(8L, current["totalHeadcount"]);
+        Assert.Equal(3L, current["remainingCapacity"]);
+    }
+
     /// <summary>A field error travels in errors[], per the design's example body.</summary>
     [Fact]
     public void AnAlreadyConfirmedBodyCarriesItsBookingId()

@@ -128,7 +128,8 @@ public sealed class ListEventProposalsHandlerTests
     private static EventProposalListItem Item(string date) =>
         new(Guid.NewGuid(), Guid.NewGuid(), "LON", "London", "Europe/London",
             DateOnly.Parse(date), new TimeOnly(9, 30), 240, "Open", 1, 1, 10,
-            true, false, KeysetCursor.Encode(date, Guid.NewGuid()));
+            true, false, KeysetCursor.Encode(date, Guid.NewGuid()),
+            [new ProposalListedType("MED", "Medical check")], Guid.NewGuid());
 
     private sealed class RecordingProposalQueries : IEventProposalListQueries
     {

@@ -35,6 +35,26 @@ public sealed class EventEndpointTests(ApiFactory factory)
         Assert.Equal(seeded.SecondType, only.GetProperty("appointmentTypeId").GetGuid());
     }
 
+    [Fact]
+    public async Task OnlyTheCallersOwnCapacityRowOffersAdjust()
+    {
+        var seeded = await GivenConfirmedEventAsync("EVT_ADJ", "EA2");
+
+        var manager = await ManagerAsync(seeded.SecondType, "U700206");
+        var own = await BodyAsync(await manager.GetAsync($"/api/events/{seeded.EventId}"));
+        var only = Assert.Single(own.GetProperty("capacities").EnumerateArray());
+        Assert.True(only.GetProperty("_links").TryGetProperty("adjust", out var adjust));
+        Assert.Equal(
+            $"/api/events/{seeded.EventId}/capacities/{seeded.SecondType}",
+            adjust.GetProperty("href").GetString());
+
+        var coordinator = await CoordinatorAsync("U700207");
+        var every = await BodyAsync(await coordinator.GetAsync($"/api/events/{seeded.EventId}"));
+        Assert.All(
+            every.GetProperty("capacities").EnumerateArray(),
+            row => Assert.False(row.GetProperty("_links").TryGetProperty("adjust", out _)));
+    }
+
     /// <summary>
     /// An Admin reads the same full view a Coordinator does, and the row carries no attendee
     /// data at all — the operations surface is capacity, never people.
@@ -199,7 +219,7 @@ public sealed class EventEndpointTests(ApiFactory factory)
             appointmentTypeIds = new[] { proposerType, secondType },
             headcount = 8,
         }));
-        var proposalId = created.GetProperty("id").GetGuid();
+        var proposalId = created.GetProperty("proposalId").GetGuid();
 
         var second = await ManagerAsync(secondType, $"U7004{tag}");
         var confirmed = await BodyAsync(await second.PutAsJsonAsync(

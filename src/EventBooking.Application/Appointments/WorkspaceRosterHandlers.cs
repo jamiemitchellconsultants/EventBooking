@@ -10,7 +10,8 @@ using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Appointments;
 
-/// <summary>One roster row: delivery-list fields only, never identifiers.</summary>
+/// <summary>One roster row: delivery-list fields plus the stable command identifier.</summary>
+/// <param name="AppointmentId">The booking-appointment command identifier.</param>
 /// <param name="Name">The attendee display name.</param>
 /// <param name="Email">The attendee email.</param>
 /// <param name="ScopeTypeCode">The caller's scope type code.</param>
@@ -18,8 +19,8 @@ namespace EventBooking.Application.Appointments;
 /// <param name="CheckedInAt">The check-in instant, when checked in.</param>
 /// <param name="Version">The appointment version for stale-page detection.</param>
 public sealed record WorkspaceRosterRow(
-    string Name, string Email, string ScopeTypeCode, string AppointmentStatus,
-    DateTimeOffset? CheckedInAt, long Version);
+    Guid AppointmentId, string Name, string Email, string ScopeTypeCode,
+    string AppointmentStatus, DateTimeOffset? CheckedInAt, long Version);
 
 /// <summary>Reads one event's workspace roster.</summary>
 /// <param name="StaffUserId">The appointment-staff identity asking.</param>
@@ -86,10 +87,13 @@ public sealed class GetWorkspaceRosterHandler(
             var attendee = await attendees.GetAsync(attendeeId, ct);
             if (attendee is null) continue;
 
-            // Names and emails travel because the roster is the delivery list; no
-            // identifiers do, so a leaked roster cannot be joined back to other records.
+            // Names and emails travel because the roster is the delivery list. The
+            // appointment identifier travels too: the workspace client addresses its
+            // status command with it, and a random identifier joins nothing without
+            // the capability-gated API itself. Attendee, booking and requirement
+            // identifiers still never leave this handler.
             roster.Add(new WorkspaceRosterRow(
-                attendee.Name, attendee.Email, scopeCode,
+                appointment.Id, attendee.Name, attendee.Email, scopeCode,
                 appointment.Status.ToString(), appointment.CheckedInAt,
                 appointment.Version));
         }

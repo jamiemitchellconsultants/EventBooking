@@ -40,7 +40,7 @@ public sealed class WorkspaceHandlerTests
         Assert.All(roster.Value, row => Assert.Equal("MED", row.ScopeTypeCode));
 
         var csv = RosterCsv.Render(
-            [new WorkspaceRosterRow("=cmd", "+x", "MED", "Expected", null, 1)],
+            [new WorkspaceRosterRow(Guid.NewGuid(), "=cmd", "+x", "MED", "Expected", null, 1)],
             ["Name", "Email", "Status", "CheckedInAt", "Version"]);
         Assert.Contains("'=cmd", csv);
         Assert.Contains("'+x", csv);

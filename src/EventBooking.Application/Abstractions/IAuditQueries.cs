@@ -1,6 +1,7 @@
 namespace EventBooking.Application.Abstractions;
 
 /// <summary>A single row of audit history for one state change recorded in the audit log.</summary>
+/// <param name="Id">The audit entry identifier.</param>
 /// <param name="Timestamp">When the audited state change was recorded.</param>
 /// <param name="EntityType">The audited entity type the row describes.</param>
 /// <param name="EntityId">The identifier of the audited entity instance.</param>
@@ -9,6 +10,7 @@ namespace EventBooking.Application.Abstractions;
 /// <param name="ActorId">The actor identifier, or null for a system actor.</param>
 /// <param name="Details">Fixed identifiers, codes, and statuses only; never personal data.</param>
 public sealed record AuditHistoryRow(
+    Guid Id,
     DateTimeOffset Timestamp,
     string EntityType,
     Guid EntityId,

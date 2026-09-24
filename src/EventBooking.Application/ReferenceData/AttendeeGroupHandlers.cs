@@ -192,7 +192,7 @@ public sealed class ListAttendeeGroupsHandler(
                      .OrderBy(g => g.Code, StringComparer.Ordinal))
         {
             items.Add(new AttendeeGroupListItem(group.Id, group.Code, group.Name, group.IsActive,
-                group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct)));
+                group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Version));
         }
 
         return Result<IReadOnlyList<AttendeeGroupListItem>>.Success(items);

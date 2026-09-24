@@ -143,7 +143,7 @@ public sealed class ListLocationsHandler(ILocationRepository locations)
         return Result<IReadOnlyList<LocationListItem>>.Success(
             rows.Where(l => query.IncludeInactive || l.IsActive)
                 .OrderBy(l => l.Code, StringComparer.Ordinal)
-                .Select(l => new LocationListItem(l.Id, l.Code, l.Name, l.IsActive))
+                .Select(l => new LocationListItem(l.Id, l.Code, l.Name, l.IsActive, l.Address, l.TimeZoneId, l.Version))
                 .ToList());
     }
 }

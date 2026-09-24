@@ -51,11 +51,12 @@ public static class LocationEndpoints
             }
 
             var held = await capabilities.GetAsync(cancellationToken);
-            return Results.Ok(new Page<LocationListResponse>(
-                [.. result.Value.Select(x => LocationListResponse.From(x, held))], null));
+            return Results.Ok(new Page<LocationResponse>(
+                [.. result.Value.Select(x => ApiResponses.Location(x, held))], null));
         })
             .WithAgentMetadata("listLocations")
-            .Produces<Page<LocationListResponse>>(200)
+            .WithEventBookingList()
+            .Produces<Page<LocationResponse>>(200)
             .ProducesProblem(401)
             .ProducesProblem(403);
 
@@ -116,35 +117,5 @@ public static class LocationEndpoints
             .ProducesProblem(422);
 
         return app;
-    }
-}
-
-/// <summary>One row of the location list, with the links its caller may follow.</summary>
-/// <param name="Id">The identifier.</param>
-/// <param name="Code">The canonical code.</param>
-/// <param name="Name">The display name.</param>
-/// <param name="IsActive">Whether the location is in use.</param>
-/// <param name="Links">The affordances the caller holds.</param>
-public sealed record LocationListResponse(
-    Guid Id, string Code, string Name, bool IsActive,
-    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
-    IReadOnlyDictionary<string, ApiLink> Links)
-{
-    /// <summary>Projects one list row.</summary>
-    /// <param name="item">The application row.</param>
-    /// <param name="capabilities">The caller's capabilities.</param>
-    /// <returns>The response row.</returns>
-    public static LocationListResponse From(
-        LocationListItem item, IReadOnlySet<string> capabilities)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        return new LocationListResponse(
-            item.Id, item.Code, item.Name, item.IsActive,
-            CallerLinks.For(
-                capabilities,
-                new LinkCandidate("self", "listLocations", "/api/locations", null),
-                new LinkCandidate(
-                    "update", "updateLocation", $"/api/locations/{item.Id}",
-                    nameof(StaffCapability.ManageReferenceData))));
     }
 }

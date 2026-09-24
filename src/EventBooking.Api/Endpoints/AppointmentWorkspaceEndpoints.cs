@@ -3,9 +3,11 @@ using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Api.Pagination;
+using EventBooking.Application.Abstractions;
 using EventBooking.Application.Appointments;
 using EventBooking.Application.Common;
 using EventBooking.Domain.Bookings;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Api.Endpoints;
 
@@ -30,6 +32,7 @@ public static class AppointmentWorkspaceEndpoints
             Guid? locationId,
             ICallerAccessor caller,
             ListWorkspaceEventsHandler handler,
+            IEventWindowZones zones,
             CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
@@ -43,9 +46,10 @@ public static class AppointmentWorkspaceEndpoints
 
             var held = await capabilities.GetAsync(cancellationToken);
             return Results.Ok(new Page<WorkspaceEventResponse>(
-                [.. result.Value.Select(x => ApiResponses.WorkspaceEvent(x, held))], null));
+                [.. result.Value.Select(x => ApiResponses.WorkspaceEvent(x, zones, held))], null));
         })
             .WithAgentMetadata("listWorkspaceEvents")
+            .WithEventBookingList()
             .Produces<Page<WorkspaceEventResponse>>(200)
             .ProducesProblem(403);
 
@@ -53,17 +57,37 @@ public static class AppointmentWorkspaceEndpoints
             Guid eventId,
             ICallerAccessor caller,
             GetWorkspaceRosterHandler handler,
+            IEventRepository events,
+            IClock clock,
+            CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
                 new GetWorkspaceRosterQuery(caller.RequireStaffUserId(), eventId),
                 cancellationToken);
-            return result.IsFailure
-                ? result.ToResponse()
-                : Results.Ok(new Page<WorkspaceRosterRow>(result.Value, null));
+            if (result.IsFailure)
+            {
+                return result.ToResponse();
+            }
+
+            // The roster handler has already answered 404 for a missing event, so the
+            // window read below cannot fail: it only feeds the link computation.
+            var eventItem = await events.GetAsync(eventId, cancellationToken);
+            var localNow = clock.NowAtTransitionalLocation;
+            var localDate = DateOnly.FromDateTime(localNow.DateTime);
+            var localTime = TimeOnly.FromDateTime(localNow.DateTime);
+            var checkInAllowed = eventItem!.Window.Date == localDate;
+            var noShowAllowed = eventItem.Window.Date < localDate
+                || (eventItem.Window.Date == localDate && localTime >= eventItem.Window.EndTime);
+            var held = await capabilities.GetAsync(cancellationToken);
+            return Results.Ok(new Page<WorkspaceRosterRowResponse>(
+                [.. result.Value.Select(row => ApiResponses.WorkspaceRosterRow(
+                    row, checkInAllowed, noShowAllowed, held))],
+                null));
         })
             .WithAgentMetadata("getWorkspaceRoster")
-            .Produces<Page<WorkspaceRosterRow>>(200)
+            .WithEventBookingList()
+            .Produces<Page<WorkspaceRosterRowResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(404);
 
