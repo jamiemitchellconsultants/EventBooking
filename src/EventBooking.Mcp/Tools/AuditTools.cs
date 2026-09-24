@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
+using EventBooking.Api.Pagination;
 using EventBooking.Api.Endpoints;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Dashboards;
@@ -15,6 +16,7 @@ public sealed class AuditTools
     /// <summary>Searches the audit log within the caller's buckets.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The search handler.</param>
+    /// <param name="cursors">The REST cursor signer.</param>
     /// <param name="limit">The page size.</param>
     /// <param name="entityType">The entity-type bucket, or null for every bucket.</param>
     /// <param name="action">The action filter, or null for every action.</param>
@@ -33,6 +35,7 @@ public sealed class AuditTools
     public async Task<AuditSearchPage> SearchAuditAsync(
         ICallerAccessor caller,
         GetAuditSearchHandler handler,
+        PageCursor cursors,
         [Description("Page size, 1 to 200.")] int limit = 50,
         [Description("Narrow to one entity type.")] string? entityType = null,
         [Description("Narrow to one action.")] string? action = null,
@@ -61,9 +64,10 @@ public sealed class AuditTools
         var result = await handler.HandleAsync(
             new GetAuditSearchQuery(
                 caller.RequireStaffUserId(), fromBound, toBound, actorType, action,
-                actorId ?? entityId?.ToString("D"), entityType, cursor, limit),
+                actorId ?? entityId?.ToString("D"), entityType, cursors.Unwrap(cursor), limit),
             cancellationToken);
-        return result.ValueOrThrow();
+        var page = result.ValueOrThrow();
+        return page with { NextCursor = cursors.Wrap(page.NextCursor) };
     }
 
     /// <summary>Reads one attendee's audit history.</summary>

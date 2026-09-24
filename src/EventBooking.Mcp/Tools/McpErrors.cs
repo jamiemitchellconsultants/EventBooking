@@ -20,6 +20,7 @@ internal static class McpErrors
         if (result.IsFailure) throw ToMcpException(result.Error);
     }
 
-    private static McpException ToMcpException(Error error) =>
+    /// <summary>The code-bearing refusal for one application error.</summary>
+    internal static McpException ToMcpException(Error error) =>
         new($"{error.Code}: {error.Message}");
 }

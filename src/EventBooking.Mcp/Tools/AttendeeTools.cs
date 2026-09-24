@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
+using EventBooking.Api.Pagination;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
@@ -16,6 +17,7 @@ public sealed class AttendeeTools
     /// <summary>Lists attendees.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
+    /// <param name="cursors">The REST cursor signer.</param>
     /// <param name="limit">The page size.</param>
     /// <param name="status">The status filter, or null for every status.</param>
     /// <param name="groupId">The group filter, or null for every group.</param>
@@ -31,6 +33,7 @@ public sealed class AttendeeTools
     public async Task<AttendeeListView> ListAttendeesAsync(
         ICallerAccessor caller,
         ListAttendeesHandler handler,
+        PageCursor cursors,
         [Description("Page size, 1 to 200.")] int limit = 50,
         [Description("Narrow to one status.")] string? status = null,
         [Description("Narrow to one attendee group.")] Guid? groupId = null,
@@ -41,10 +44,15 @@ public sealed class AttendeeTools
     {
         var result = await handler.HandleAsync(
             new ListAttendeesQuery(
-                caller.RequireStaffUserId(), cursor, limit, status, groupId, readiness,
-                search),
+                caller.RequireStaffUserId(), cursors.Unwrap(cursor), limit, status, groupId,
+                readiness, search),
             cancellationToken);
-        return result.ValueOrThrow();
+        var page = result.ValueOrThrow();
+
+        // Each row's own cursor is signed too, as the REST list signs it.
+        return new AttendeeListView(
+            [.. page.Items.Select(x => x with { Cursor = cursors.Protect(x.Cursor) })],
+            cursors.Wrap(page.NextCursor));
     }
 
     /// <summary>Creates an attendee.</summary>

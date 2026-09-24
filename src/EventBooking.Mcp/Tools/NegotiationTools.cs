@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
+using EventBooking.Api.Pagination;
 using EventBooking.Application.Negotiation;
 using ModelContextProtocol.Server;
 
@@ -12,6 +13,7 @@ public sealed class NegotiationTools
     /// <summary>Lists the caller's type's proposals.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
+    /// <param name="cursors">The REST cursor signer.</param>
     /// <param name="status">The status filter, or null for every status.</param>
     /// <param name="locationId">The location filter, or null for every site.</param>
     /// <param name="cursor">The page cursor, or null for the first page.</param>
@@ -25,6 +27,7 @@ public sealed class NegotiationTools
     public async Task<EventProposalListView> ListEventProposalsAsync(
         ICallerAccessor caller,
         ListEventProposalsHandler handler,
+        PageCursor cursors,
         [Description("Page size, 1 to 200.")] int limit = 50,
         [Description("Open, Confirmed or Withdrawn; omit for every status.")] string? status = null,
         [Description("Narrow to one location.")] Guid? locationId = null,
@@ -33,9 +36,12 @@ public sealed class NegotiationTools
     {
         var result = await handler.HandleAsync(
             new ListEventProposalsQuery(
-                caller.RequireStaffUserId(), status, locationId, cursor, limit),
+                caller.RequireStaffUserId(), status, locationId, cursors.Unwrap(cursor), limit),
             cancellationToken);
-        return result.ValueOrThrow();
+        var page = result.ValueOrThrow();
+        return new EventProposalListView(
+            [.. page.Items.Select(x => x with { Cursor = cursors.Protect(x.Cursor) })],
+            cursors.Wrap(page.NextCursor));
     }
 
     /// <summary>Proposes an event.</summary>
