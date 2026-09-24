@@ -10,8 +10,9 @@ namespace EventBooking.Application.Recovery;
 
 /// <summary>Cancels one pending recovery invite without touching capacity or appointments.</summary>
 /// <param name="StaffUserId">The coordinator cancelling the recovery invite.</param>
+/// <param name="AttendeeId">The attendee the invite must belong to.</param>
 /// <param name="InviteId">The pending recovery invite to cancel.</param>
-public sealed record CancelRecoveryInviteCommand(Guid StaffUserId, Guid InviteId);
+public sealed record CancelRecoveryInviteCommand(Guid StaffUserId, Guid AttendeeId, Guid InviteId);
 
 /// <summary>Cancels one pending recovery invite without changing capacity or attendee status.</summary>
 /// <param name="attendees">The attendees.</param>
@@ -43,13 +44,15 @@ public sealed class CancelRecoveryInviteHandler(
         // trips the guard. Reading the invite unlocked to learn its attendee, then
         // locking downwards, is the order every other lifecycle handler already uses.
         var invite = await invites.GetAsync(command.InviteId, ct);
-        if (invite is null) return Result.Failure(Error.NotFound("No such invite."));
+        if (invite is null || invite.AttendeeId != command.AttendeeId)
+            return Result.Failure(Error.NotFound("No such invite."));
 
         var attendee = await attendees.LockForUpdateAsync(invite.AttendeeId, ct);
         if (attendee is null) return Result.Failure(Error.NotFound("No such attendee."));
 
         var locked = await invites.LockForUpdateAsync(command.InviteId, ct);
-        if (locked is null) return Result.Failure(Error.NotFound("No such invite."));
+        if (locked is null || locked.AttendeeId != attendee.Id)
+            return Result.Failure(Error.NotFound("No such invite."));
 
         // Re-read under the lock: the unlocked read above established lock order only,
         // and the invite may have been answered in between.

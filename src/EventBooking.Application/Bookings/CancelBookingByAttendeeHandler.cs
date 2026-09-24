@@ -5,6 +5,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Common;
+using EventBooking.Domain.Events;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Time;
@@ -30,31 +31,29 @@ public sealed record AttendeeCancelOutcome(string Outcome, Guid? InviteId);
 /// <param name="attendees">The attendees.</param>
 /// <param name="invites">The invites.</param>
 /// <param name="events">The events.</param>
-/// <param name="capacities">The capacities.</param>
 /// <param name="locations">The locations.</param>
 /// <param name="tokens">The tokens.</param>
 /// <param name="unitOfWork">The unit of work.</param>
-/// <param name="audit">The audit.</param>
 /// <param name="clock">The clock.</param>
 /// <param name="zones">The zone abstraction the window's start instant is read in.</param>
 /// <param name="eligibility">The event eligibility query.</param>
 /// <param name="settings">The system settings repository.</param>
 /// <param name="issuer">The invite issuer.</param>
+/// <param name="bookingCanceller">Cancels a locked booking and releases its own appointment snapshot.</param>
 public sealed class CancelBookingByAttendeeHandler(
     IBookingRepository bookings,
     IAttendeeRepository attendees,
     IInviteRepository invites,
     IEventRepository events,
-    IEventCapacityRepository capacities,
     ILocationRepository locations,
     ITokenService tokens,
     IUnitOfWork unitOfWork,
-    IAuditLogger audit,
     IClock clock,
     IEventWindowZones zones,
     IEventEligibilityQuery eligibility,
     ISystemSettingsRepository settings,
-    IInviteIssuer issuer)
+    IInviteIssuer issuer,
+    BookingCanceller bookingCanceller)
 {
     /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
@@ -97,68 +96,100 @@ public sealed class CancelBookingByAttendeeHandler(
             return Result<AttendeeCancelOutcome>.Failure(
                 Error.Conflict($"The booking is {booking.Status} and cannot be cancelled."));
 
-        var eventItem = await events.LockForUpdateAsync(booking.EventId, ct);
-        if (eventItem is null)
-            return Result<AttendeeCancelOutcome>.Failure(Error.NotFound("No such event."));
-        var location = await locations.GetAsync(eventItem.LocationId, ct);
-        if (location is not null && eventItem.Window.HasStarted(zones, location.TimeZoneId, clock.UtcNow))
-            return Result<AttendeeCancelOutcome>.Failure(
-                Error.WindowStarted("This event has started and can no longer be cancelled."));
+        // An original booking's active recovery booking is part of the same journey: it is
+        // locked with the original so cancelling the original can never strand its capacity.
+        var activeRecovery = booking.IsOriginal
+            ? await bookings.LockActiveRecoveryAsync(booking.Id, ct)
+            : null;
 
-        var required = invite?.RequiredAppointmentTypeIds
-            ?? attendee.RequiredAppointmentTypeIds;
-        await capacities.LockForUpdateAsync(eventItem.Id, required, ct);
-
-        if (!command.RequestNewTime)
+        var eventIds = new SortedSet<Guid> { booking.EventId };
+        if (activeRecovery is not null) eventIds.Add(activeRecovery.EventId);
+        var lockedEvents = new Dictionary<Guid, Event>();
+        foreach (var lockedEventId in eventIds)
         {
-            booking.Cancel();
-            eventItem.ReleaseTypes(required);
-            attendee.ResetToNotYetInvited(clock.UtcNow);
-            audit.Record(AuditEntityTypes.Booking, booking.Id, AuditAction.BookingCancelled,
-                ActorType.AttendeeToken, booking.Id.ToString(), "by attendee");
+            var locked = await events.LockForUpdateAsync(lockedEventId, ct);
+            if (locked is null)
+                return Result<AttendeeCancelOutcome>.Failure(Error.NotFound("No such event."));
+            lockedEvents[lockedEventId] = locked;
+        }
+
+        var eventItem = lockedEvents[booking.EventId];
+        foreach (var locked in lockedEvents.Values)
+        {
+            var lockedLocation = await locations.GetAsync(locked.LocationId, ct);
+            if (lockedLocation is not null
+                && locked.Window.HasStarted(zones, lockedLocation.TimeZoneId, clock.UtcNow))
+                return Result<AttendeeCancelOutcome>.Failure(
+                    Error.WindowStarted("This event has started and can no longer be cancelled."));
+        }
+
+        // Cancelling a recovery booking leaves the original live: release only its own
+        // appointments and keep the attendee Booked.
+        if (!booking.IsOriginal)
+        {
+            var releasedRecovery = await bookingCanceller.CancelLockedAsync(
+                booking, eventItem, ActorType.AttendeeToken, booking.Id.ToString(), ct);
+            if (releasedRecovery.IsFailure)
+                return Result<AttendeeCancelOutcome>.Failure(releasedRecovery.Error);
             await unitOfWork.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             return Result<AttendeeCancelOutcome>.Success(new AttendeeCancelOutcome("cancelled", null));
         }
 
-        var configuration = await settings.GetAsync(ct);
-        var originalLocations = invite?.LocationIds ?? [eventItem.LocationId];
-        var eligible = await eligibility.CountEligibleEventsAsync(
-            required, originalLocations, [eventItem.Id], clock.UtcNow, ct);
+        var required = invite?.RequiredAppointmentTypeIds ?? attendee.RequiredAppointmentTypeIds;
         var recoveryWasPending = pendingRecovery?.RecoveryOfBookingId is not null;
-
-        if (eligible < configuration.InviteOptionCount)
+        var reinvite = false;
+        IReadOnlyList<Guid> originalLocations = invite?.LocationIds ?? [eventItem.LocationId];
+        if (command.RequestNewTime)
         {
-            if (recoveryWasPending)
+            var configuration = await settings.GetAsync(ct);
+            var eligible = await eligibility.CountEligibleEventsAsync(
+                required, originalLocations, [eventItem.Id], clock.UtcNow, ct);
+            if (eligible >= configuration.InviteOptionCount)
+                reinvite = true;
+            else if (recoveryWasPending)
                 return Result<AttendeeCancelOutcome>.Success(
                     new AttendeeCancelOutcome("reinvitePending", pendingRecovery!.Id));
-
-            booking.Cancel();
-            eventItem.ReleaseTypes(required);
-            attendee.ResetToNotYetInvited(clock.UtcNow);
-            audit.Record(AuditEntityTypes.Booking, booking.Id, AuditAction.BookingCancelled,
-                ActorType.AttendeeToken, booking.Id.ToString(), "by attendee; no eligible events");
-            await unitOfWork.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-            return Result<AttendeeCancelOutcome>.Success(new AttendeeCancelOutcome("noEligibleEvents", null));
         }
 
-        booking.Cancel();
-        eventItem.ReleaseTypes(required);
-        pendingRecovery?.MarkSuperseded();
-        var freshEvents = await eligibility.FindEligibleEventsAsync(
-            required, originalLocations, [eventItem.Id], configuration.InviteOptionCount,
-            clock.UtcNow, ct);
-        var issued = await issuer.IssueRecoveryAsync(attendee, booking.Id, required,
-            originalLocations, freshEvents, ActorType.AttendeeToken, booking.Id.ToString(), ct);
+        // The issuer supersedes a pending invite itself, so it is superseded here only when
+        // no fresh invite follows.
+        if (!reinvite && recoveryWasPending) pendingRecovery!.MarkSuperseded();
+
+        if (activeRecovery is not null)
+        {
+            var releasedActive = await bookingCanceller.CancelLockedAsync(
+                activeRecovery, lockedEvents[activeRecovery.EventId],
+                ActorType.AttendeeToken, booking.Id.ToString(), ct);
+            if (releasedActive.IsFailure)
+                return Result<AttendeeCancelOutcome>.Failure(releasedActive.Error);
+        }
+
+        var released = await bookingCanceller.CancelLockedAsync(
+            booking, eventItem, ActorType.AttendeeToken, booking.Id.ToString(), ct);
+        if (released.IsFailure)
+            return Result<AttendeeCancelOutcome>.Failure(released.Error);
+        attendee.ResetToNotYetInvited(clock.UtcNow);
+
+        if (!reinvite)
+        {
+            await unitOfWork.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return Result<AttendeeCancelOutcome>.Success(new AttendeeCancelOutcome(
+                command.RequestNewTime ? "noEligibleEvents" : "cancelled", null));
+        }
+
+        // The cancelled booking can never root a recovery (Booking.CreateRecovery needs an
+        // active original), so a new time is a fresh initial invite on the same locations.
+        var issued = await issuer.IssueInitialAsync(attendee, originalLocations,
+            EmailTemplate.AttendeeInvite, ActorType.AttendeeToken, booking.Id.ToString(), ct,
+            lockedPending: pendingRecovery is null ? [] : [pendingRecovery]);
         if (issued.IsFailure)
         {
             await transaction.RollbackAsync(ct);
             return Result<AttendeeCancelOutcome>.Failure(issued.Error);
         }
 
-        audit.Record(AuditEntityTypes.Booking, booking.Id, AuditAction.BookingCancelled,
-            ActorType.AttendeeToken, booking.Id.ToString(), "by attendee; rebooked");
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Result<AttendeeCancelOutcome>.Success(new AttendeeCancelOutcome("reinvited", issued.Value.InviteId));

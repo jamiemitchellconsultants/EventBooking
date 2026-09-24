@@ -44,8 +44,6 @@ public sealed record CancelEventOutcome(
 /// <param name="clock">The clock.</param>
 /// <param name="zones">The zone abstraction the window's start instant is read in.</param>
 /// <param name="issuer">The invite issuer.</param>
-/// <param name="eligibility">The event eligibility query.</param>
-/// <param name="settings">The system settings repository.</param>
 public sealed class CancelEventHandler(
     IEventRepository events,
     IEventCapacityRepository capacities,
@@ -59,9 +57,7 @@ public sealed class CancelEventHandler(
     IAuditLogger audit,
     IClock clock,
     IEventWindowZones zones,
-    IInviteIssuer issuer,
-    IEventEligibilityQuery eligibility,
-    ISystemSettingsRepository settings)
+    IInviteIssuer issuer)
 {
     /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
@@ -85,6 +81,10 @@ public sealed class CancelEventHandler(
                 return Result<CancelEventOutcome>.Failure(
                     Error.Forbidden("This event does not list the manager's appointment type."));
 
+            if (preview.Status == EventStatus.Cancelled)
+                return Result<CancelEventOutcome>.Failure(
+                    Error.Conflict("This event has already been cancelled."));
+
             var previewActive = await bookings.ListActiveForEventAsync(command.EventId, ct);
             await transaction.CommitAsync(ct);
             return Result<CancelEventOutcome>.Success(new CancelEventOutcome(previewActive.Count, 0, 0));
@@ -104,16 +104,17 @@ public sealed class CancelEventHandler(
             lockedAttendees.Add((attendee, snapshot));
         }
 
-        var lockedInvites = new List<(Attendee Attendee, Booking Snapshot, Domain.Invites.Invite? Invite)>(
+        var lockedInvites = new List<(Attendee Attendee, Booking Snapshot, Domain.Invites.Invite? Invite, Domain.Invites.Invite? Pending)>(
             lockedAttendees.Count);
         foreach (var (attendee, snapshot) in lockedAttendees)
         {
             var invite = await invites.LockForUpdateAsync(snapshot.InviteId, ct);
-            lockedInvites.Add((attendee, snapshot, invite));
+            var pending = await invites.LockPendingForAttendeeAsync(attendee.Id, ct);
+            lockedInvites.Add((attendee, snapshot, invite, pending));
         }
 
         var targets = new List<CancelTarget>(lockedInvites.Count);
-        foreach (var (attendee, snapshot, invite) in lockedInvites)
+        foreach (var (attendee, snapshot, invite, pending) in lockedInvites)
         {
             var booking = await bookings.LockByIdForAttendeeAsync(snapshot.Id, attendee.Id, ct);
             if (booking is null || booking.Status != BookingStatus.Active) continue;
@@ -121,12 +122,29 @@ public sealed class CancelEventHandler(
                 attendee,
                 booking,
                 invite?.RequiredAppointmentTypeIds ?? attendee.RequiredAppointmentTypeIds,
-                invite?.LocationIds));
+                invite?.LocationIds,
+                pending));
         }
 
         var eventItem = await events.LockForUpdateAsync(command.EventId, ct);
         if (eventItem is null)
             return Result<CancelEventOutcome>.Failure(Error.NotFound("No such event."));
+
+        if (eventItem.Status == EventStatus.Cancelled)
+            return Result<CancelEventOutcome>.Failure(
+                Error.Conflict("This event has already been cancelled."));
+
+        // Bookings are confirmed under the event lock, so once it is held the active set can
+        // no longer grow: any booking that was not in the pre-lock snapshot means the
+        // snapshot is stale and cancelling now would strand it.
+        var known = ordered.Select(b => b.Id).ToHashSet();
+        var current = await bookings.ListActiveForEventAsync(command.EventId, ct);
+        if (current.Any(b => !known.Contains(b.Id)))
+        {
+            await transaction.RollbackAsync(ct);
+            return Result<CancelEventOutcome>.Failure(
+                Error.Conflict("The event's bookings changed while cancelling. Please retry."));
+        }
 
         if (authorized.Value.AppointmentTypeId is { } scopedType
             && !eventItem.Capacities.Any(c => c.AppointmentTypeId == scopedType))
@@ -149,7 +167,6 @@ public sealed class CancelEventHandler(
         audit.Record(AuditEntityTypes.Event, eventItem.Id, AuditAction.EventCancelled,
             ActorType.Staff, command.StaffUserId.ToString(), $"{active.Count} bookings");
 
-        var configuration = await settings.GetAsync(ct);
         var cancelled = 0;
         var reinvited = 0;
         var awaiting = 0;
@@ -164,28 +181,20 @@ public sealed class CancelEventHandler(
             cancelled++;
 
             var originalLocations = target.LocationIds ?? [eventItem.LocationId];
-            var fresh = await eligibility.FindEligibleEventsAsync(
-                requiredAppointmentTypeIds: target.Required,
-                locationIds: originalLocations,
-                excludeEventIds: [eventItem.Id],
-                count: configuration.InviteOptionCount,
-                asOf: clock.UtcNow,
-                cancellationToken: ct);
-            if (fresh.Count >= configuration.InviteOptionCount)
+
+            // A fresh initial invite: a recovery invite cannot be rooted at the booking that
+            // was just cancelled. The cancelled event is excluded because its cancellation is
+            // still unsaved and the eligibility query cannot see it.
+            var issued = await issuer.IssueInitialAsync(target.Attendee, originalLocations,
+                EmailTemplate.EventCancelledRebookingNeeded, ActorType.Staff,
+                command.StaffUserId.ToString(), ct, [eventItem.Id],
+                target.Pending is null ? [] : [target.Pending]);
+            if (issued.IsSuccess)
             {
-                var issued = await issuer.IssueRecoveryAsync(target.Attendee, target.Booking.Id, target.Required,
-                    originalLocations, fresh.Take(configuration.InviteOptionCount).ToList(),
-                    ActorType.Staff, command.StaffUserId.ToString(), ct);
-                if (issued.IsSuccess)
-                {
-                    reinvited++;
-                    emails.Add(EmailLog.RecordPending(Guid.NewGuid(), target.Attendee.Id,
-                        EmailTemplate.EventCancelledRebookingNeeded, clock.UtcNow,
-                        bookingId: target.Booking.Id, eventId: eventItem.Id));
-                    audit.Record(AuditEntityTypes.Booking, target.Booking.Id, AuditAction.BookingCancelled,
-                        ActorType.Staff, command.StaffUserId.ToString(), "replacement created");
-                    continue;
-                }
+                reinvited++;
+                audit.Record(AuditEntityTypes.Booking, target.Booking.Id, AuditAction.BookingCancelled,
+                    ActorType.Staff, command.StaffUserId.ToString(), "replacement created");
+                continue;
             }
 
             awaiting++;
@@ -203,5 +212,6 @@ public sealed class CancelEventHandler(
     }
 
     private sealed record CancelTarget(
-        Attendee Attendee, Booking Booking, IReadOnlyList<Guid> Required, IReadOnlyList<Guid>? LocationIds);
+        Attendee Attendee, Booking Booking, IReadOnlyList<Guid> Required, IReadOnlyList<Guid>? LocationIds,
+        Domain.Invites.Invite? Pending);
 }

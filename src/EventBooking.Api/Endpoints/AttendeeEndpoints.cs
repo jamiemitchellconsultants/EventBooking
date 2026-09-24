@@ -227,7 +227,7 @@ public static class AttendeeEndpoints
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
                 new CancelRecoveryInviteCommand(
-                     caller.RequireStaffUserId(), inviteId),
+                     caller.RequireStaffUserId(), attendeeId, inviteId),
                 cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("cancelRecoveryInvite")

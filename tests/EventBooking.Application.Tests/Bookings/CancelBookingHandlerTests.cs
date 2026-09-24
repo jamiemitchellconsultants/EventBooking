@@ -32,11 +32,12 @@ public sealed class CancelBookingHandlerTests
         var booking = fixture.Bookings.Items.Single(b => b.Id == bookingId);
         var canceller = new CancelBookingByAttendeeHandler(
             fixture.Bookings, fixture.Attendees, fixture.Invites, fixture.Events,
-            fixture.Capacities, fixture.Locations, fixture.Tokens,
-            fixture.UnitOfWork, fixture.Audit, fixture.Clock, BookingTestZones.Instance,
+            fixture.Locations, fixture.Tokens,
+            fixture.UnitOfWork, fixture.Clock, BookingTestZones.Instance,
             fixture.Eligibility, fixture.Settings,
             new InviteIssuer(fixture.Invites, fixture.Settings, fixture.Emails,
-                fixture.Audit, fixture.Clock, fixture.Eligibility));
+                fixture.Audit, fixture.Clock, fixture.Eligibility),
+            new BookingCanceller(fixture.Appointments, fixture.Capacities, fixture.Audit));
 
         var result = await canceller.HandleAsync(
             new CancelBookingByAttendeeCommand(
@@ -63,11 +64,12 @@ public sealed class CancelBookingHandlerTests
         fixture.Eligibility.EligibleInOrder = [fixture.EventId, Guid.NewGuid()];
         var canceller = new CancelBookingByAttendeeHandler(
             fixture.Bookings, fixture.Attendees, fixture.Invites, fixture.Events,
-            fixture.Capacities, fixture.Locations, fixture.Tokens,
-            fixture.UnitOfWork, fixture.Audit, fixture.Clock, BookingTestZones.Instance,
+            fixture.Locations, fixture.Tokens,
+            fixture.UnitOfWork, fixture.Clock, BookingTestZones.Instance,
             fixture.Eligibility, fixture.Settings,
             new InviteIssuer(fixture.Invites, fixture.Settings, fixture.Emails,
-                fixture.Audit, fixture.Clock, fixture.Eligibility));
+                fixture.Audit, fixture.Clock, fixture.Eligibility),
+            new BookingCanceller(fixture.Appointments, fixture.Capacities, fixture.Audit));
 
         var result = await canceller.HandleAsync(
             new CancelBookingByAttendeeCommand(
@@ -91,11 +93,12 @@ public sealed class CancelBookingHandlerTests
         fixture.Eligibility.EligibleInOrder = [];
         var canceller = new CancelBookingByAttendeeHandler(
             fixture.Bookings, fixture.Attendees, fixture.Invites, fixture.Events,
-            fixture.Capacities, fixture.Locations, fixture.Tokens,
-            fixture.UnitOfWork, fixture.Audit, fixture.Clock, BookingTestZones.Instance,
+            fixture.Locations, fixture.Tokens,
+            fixture.UnitOfWork, fixture.Clock, BookingTestZones.Instance,
             fixture.Eligibility, fixture.Settings,
             new InviteIssuer(fixture.Invites, fixture.Settings, fixture.Emails,
-                fixture.Audit, fixture.Clock, fixture.Eligibility));
+                fixture.Audit, fixture.Clock, fixture.Eligibility),
+            new BookingCanceller(fixture.Appointments, fixture.Capacities, fixture.Audit));
 
         var result = await canceller.HandleAsync(
             new CancelBookingByAttendeeCommand(
@@ -119,11 +122,12 @@ public sealed class CancelBookingHandlerTests
         fixture.Eligibility.EligibleInOrder = [];
         var canceller = new CancelBookingByAttendeeHandler(
             fixture.Bookings, fixture.Attendees, fixture.Invites, fixture.Events,
-            fixture.Capacities, fixture.Locations, fixture.Tokens,
-            fixture.UnitOfWork, fixture.Audit, fixture.Clock, BookingTestZones.Instance,
+            fixture.Locations, fixture.Tokens,
+            fixture.UnitOfWork, fixture.Clock, BookingTestZones.Instance,
             fixture.Eligibility, fixture.Settings,
             new InviteIssuer(fixture.Invites, fixture.Settings, fixture.Emails,
-                fixture.Audit, fixture.Clock, fixture.Eligibility));
+                fixture.Audit, fixture.Clock, fixture.Eligibility),
+            new BookingCanceller(fixture.Appointments, fixture.Capacities, fixture.Audit));
 
         var result = await canceller.HandleAsync(
             new CancelBookingByAttendeeCommand(
@@ -145,8 +149,9 @@ public sealed class CancelBookingHandlerTests
         var booking = fixture.Bookings.Items.Single(b => b.Id == bookingId);
         var handler = new CancelBookingByCoordinatorHandler(
             fixture.Bookings, fixture.Attendees, fixture.Invites, fixture.Events,
-            fixture.Capacities, fixture.Locations, fixture.Profiles, fixture.UnitOfWork,
-            fixture.Audit, fixture.Clock, BookingTestZones.Instance);
+            fixture.Locations, fixture.Profiles, fixture.UnitOfWork,
+            fixture.Clock, BookingTestZones.Instance,
+            new BookingCanceller(fixture.Appointments, fixture.Capacities, fixture.Audit));
 
         var preview = await handler.HandleAsync(new CancelBookingByCoordinatorCommand(
             fixture.Coordinator, booking.AttendeeId, bookingId, false), CancellationToken.None);

@@ -22,13 +22,17 @@ public interface IInviteIssuer
     /// <param name="actor">The actor type.</param>
     /// <param name="actorId">The actor identifier.</param>
     /// <param name="ct">The cancellation token.</param>
+    /// <param name="excludeEventIds">Events that must not be offered, such as one being cancelled in the same unsaved transaction.</param>
+    /// <param name="lockedPending">The attendee's pending invites the caller has already locked, or null to have the issuer lock and supersede the pending invite. A caller past the Invite level of the lock ladder must pass them, because taking an Invite lock there is a violation.</param>
     Task<Result<InviteIssueOutcome>> IssueInitialAsync(
         Attendee attendee,
         IReadOnlyList<Guid> locationIds,
         EmailTemplate template,
         ActorType actor,
         string actorId,
-        CancellationToken ct);
+        CancellationToken ct,
+        IReadOnlyCollection<Guid>? excludeEventIds = null,
+        IReadOnlyCollection<Invite>? lockedPending = null);
 
     /// <summary>Reissues an expired invite with the same locations and retry count plus one.</summary>
     /// <param name="expired">The expired invite being replaced.</param>
@@ -85,24 +89,36 @@ public sealed class InviteIssuer(
     /// <param name="actor">The actor type.</param>
     /// <param name="actorId">The actor identifier.</param>
     /// <param name="ct">The cancellation token.</param>
+    /// <param name="excludeEventIds">Events that must not be offered.</param>
+    /// <param name="lockedPending">Pending invites the caller already holds locks on, if any.</param>
     public async Task<Result<InviteIssueOutcome>> IssueInitialAsync(
         Attendee attendee,
         IReadOnlyList<Guid> locationIds,
         EmailTemplate template,
         ActorType actor,
         string actorId,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyCollection<Guid>? excludeEventIds = null,
+        IReadOnlyCollection<Invite>? lockedPending = null)
     {
         var configuration = await settings.GetAsync(ct);
         var found = await eligibility.FindEligibleEventsAsync(
-            attendee.RequiredAppointmentTypeIds, locationIds, [],
+            attendee.RequiredAppointmentTypeIds, locationIds, excludeEventIds ?? [],
             configuration.InviteOptionCount, clock.UtcNow, ct);
         if (found.Count < configuration.InviteOptionCount)
             return Result<InviteIssueOutcome>.Failure(Error.InsufficientEvents(
                 $"Only {found.Count} eligible events for {configuration.InviteOptionCount} options.",
                 found.Count, configuration.InviteOptionCount));
 
-        (await invites.LockPendingForAttendeeAsync(attendee.Id, ct))?.MarkSuperseded();
+        if (lockedPending is null)
+        {
+            (await invites.LockPendingForAttendeeAsync(attendee.Id, ct))?.MarkSuperseded();
+        }
+        else
+        {
+            foreach (var pending in lockedPending.Where(i => i.Status == InviteStatus.Pending))
+                pending.MarkSuperseded();
+        }
 
         var invite = Invite.CreateInitial(
             Guid.NewGuid(), attendee.Id, clock.UtcNow.AddDays(configuration.InviteExpiryDays),

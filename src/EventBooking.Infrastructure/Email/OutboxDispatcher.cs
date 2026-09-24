@@ -33,23 +33,50 @@ public sealed class OutboxDispatcher(
     /// <param name="ct">The cancellation token.</param>
     public async Task<int> DispatchOnceAsync(CancellationToken ct = default)
     {
-        using var scope = scopes.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
-        var now = clock.UtcNow;
-        var claimed = await ClaimAsync(context, Guid.NewGuid().ToString(), now, ct);
-        var sent = 0;
-        foreach (var row in claimed)
+        var correlationId = Guid.NewGuid().ToString();
+        List<Guid> claimed;
+        using (var claimScope = scopes.CreateScope())
         {
+            var claimContext = claimScope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+            var claimClock = claimScope.ServiceProvider.GetRequiredService<IClock>();
+            claimed = await ClaimAsync(claimContext, correlationId, claimClock.UtcNow, ct);
+        }
+
+        var sent = 0;
+        foreach (var id in claimed)
+        {
+            // A scope per row: one failed save leaves its entities in the change tracker, and
+            // a shared context would replay that failure into every later row of the batch.
+            using var scope = scopes.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+            var now = scope.ServiceProvider.GetRequiredService<IClock>().UtcNow;
             try
             {
-                await SendRowAsync(scope, row, now, ct);
-                sent++;
+                // Renew the lease before the send: a batch of slow sends can outlast it, and
+                // an expired lease lets a second dispatcher claim and re-send this row. If the
+                // row was already reclaimed, it is no longer ours to send.
+                var renewed = await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE email_log SET claimed_at = {now} WHERE id = {id} AND correlation_id = {correlationId} AND status = 3",
+                    ct);
+                if (renewed == 0) continue;
+
+                var row = await context.EmailLogs.SingleAsync(e => e.Id == id, ct);
+                try
+                {
+                    await SendRowAsync(scope, row, now, ct);
+                    sent++;
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    logger.LogError(ex, "Outbox send failed for delivery {DeliveryId}.", id);
+                    await MarkTransientAsync(scope, row, now, ct);
+                }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogError(ex, "Outbox send failed for delivery {DeliveryId}.", row.Id);
-                await MarkTransientAsync(scope, row, now, ct);
+                // The failure bookkeeping itself failed: the row stays claimed and is
+                // reclaimed after the lease. Later rows still run in their own scopes.
+                logger.LogError(ex, "Outbox bookkeeping failed for delivery {DeliveryId}.", id);
             }
         }
 
@@ -79,7 +106,7 @@ public sealed class OutboxDispatcher(
         }
     }
 
-    private static async Task<List<EmailLog>> ClaimAsync(
+    private static async Task<List<Guid>> ClaimAsync(
         EventBookingDbContext context, string correlationId, DateTimeOffset now, CancellationToken ct)
     {
         var ids = await context.Database
@@ -87,7 +114,7 @@ public sealed class OutboxDispatcher(
                 new NpgsqlParameter("@now", now),
                 new NpgsqlParameter("@correlationId", correlationId))
             .ToListAsync(ct);
-        return await context.EmailLogs.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+        return ids.Order().ToList();
     }
 
     private async Task SendRowAsync(IServiceScope scope, EmailLog row, DateTimeOffset now, CancellationToken ct)

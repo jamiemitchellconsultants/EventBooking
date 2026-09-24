@@ -33,6 +33,27 @@ public sealed class RecoveryHandlerTests
     }
 
     [Fact]
+    public async Task Cancelling_a_recovery_invite_through_another_attendee_is_not_found()
+    {
+        var fixture = RecoveryFixture.Create();
+        fixture.Eligibility.EligibleInOrder = [fixture.Events.Items.Single().Id];
+        var started = await Starter(fixture).HandleAsync(
+            new StartRecoveryCommand(fixture.Coordinator, fixture.AttendeeId, []),
+            CancellationToken.None);
+        Assert.True(started.IsSuccess);
+        var canceller = new CancelRecoveryInviteHandler(
+            fixture.Attendees, fixture.Invites, fixture.Profiles, fixture.UnitOfWork, fixture.Audit);
+
+        var result = await canceller.HandleAsync(
+            new CancelRecoveryInviteCommand(fixture.Coordinator, Guid.NewGuid(), started.Value.RecoveryInviteId),
+            CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("not_found", result.Error.Code);
+        Assert.Equal(InviteStatus.Pending, fixture.Invites.Items.Single(i => i.Id == started.Value.RecoveryInviteId).Status);
+    }
+
+    [Fact]
     public async Task Second_recovery_while_active_is_refused()
     {
         var fixture = RecoveryFixture.Create();

@@ -1,5 +1,6 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
+using EventBooking.Application.Invites;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
@@ -97,6 +98,9 @@ public sealed class ConfirmBookingHandler(
         if (invite.Status != InviteStatus.Pending)
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.Conflict($"The invite is {invite.Status} and can no longer be used."));
+        if (!invite.IsUsableAt(clock.UtcNow))
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Conflict("This invite has expired and can no longer be used."));
         if (!invite.Offers(command.EventId))
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.Validation("The chosen event is not one of this invite's options."));
@@ -114,6 +118,36 @@ public sealed class ConfirmBookingHandler(
             if (root.Status != BookingStatus.Active)
                 return Result<ConfirmBookingOutcome>.Failure(
                     Error.Conflict("The original booking is no longer active."));
+
+            // Revalidate the recovery snapshot against locked journey state: a no-show
+            // corrected after issue, or another recovery already active, makes it stale.
+            var activeRecovery = await bookings.LockActiveRecoveryAsync(root.Id, ct);
+            var journey = await bookings.ListJourneyAsync(root.Id, ct);
+            var rows = await appointments.ListForBookingsAsync(
+                journey.Select(b => b.Id).ToList(), ct);
+            var selected = new RecoveryRequirementSelector().Select(
+                attendee.RequiredAppointmentTypeIds,
+                BuildAttempts(journey, rows),
+                []);
+            if (activeRecovery is not null
+                || !selected.SequenceEqual(invite.RequiredAppointmentTypeIds.Order()))
+            {
+                invite.MarkSuperseded();
+                await unitOfWork.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return Result<ConfirmBookingOutcome>.Failure(Error.RecoveryStateChanged(
+                    "The recovery snapshot no longer matches current eligibility."));
+            }
+        }
+        else if (!attendee.RequiredAppointmentTypeIds.Order()
+                     .SequenceEqual(invite.RequiredAppointmentTypeIds.Order()))
+        {
+            // The attendee's requirements changed after issue: this invite is stale.
+            invite.MarkSuperseded();
+            await unitOfWork.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return Result<ConfirmBookingOutcome>.Failure(
+                Error.Conflict("This invite is out of date. Please request a new one."));
         }
 
         var eventItem = await events.LockForUpdateAsync(command.EventId, ct);
@@ -175,5 +209,16 @@ public sealed class ConfirmBookingHandler(
 
         return Result<ConfirmBookingOutcome>.Success(new ConfirmBookingOutcome(
             booking.Id, tokens.Issue(TokenPurpose.Manage, booking.Id, booking.ManageTokenVersion)));
+    }
+
+    private static IReadOnlyList<RecoveryAttempt> BuildAttempts(
+        IReadOnlyList<Booking> journey, IReadOnlyList<BookingAppointment> rows)
+    {
+        var byId = journey.ToDictionary(b => b.Id);
+        return rows
+            .Where(r => byId.TryGetValue(r.BookingId, out var b) && b.Status != BookingStatus.Cancelled)
+            .Select(r => new RecoveryAttempt(
+                r.Id, r.AppointmentTypeId, r.Status, byId[r.BookingId].CreatedAt))
+            .ToList();
     }
 }

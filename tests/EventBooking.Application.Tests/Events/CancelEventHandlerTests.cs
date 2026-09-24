@@ -15,8 +15,7 @@ public sealed class CancelEventHandlerTests
         f.Events, f.Capacities, f.Bookings, f.Attendees, f.Invites, f.Locations,
         f.Emails, f.Profiles, f.UnitOfWork, f.Audit, f.Clock,
         BookingTestZones.Instance,
-        new InviteIssuer(f.Invites, f.Settings, f.Emails, f.Audit, f.Clock, f.Eligibility),
-        f.Eligibility, f.Settings);
+        new InviteIssuer(f.Invites, f.Settings, f.Emails, f.Audit, f.Clock, f.Eligibility));
 
     private static async Task<Guid> ConfirmedBookingAsync(BookingFixture fixture, params string[] codes)
     {

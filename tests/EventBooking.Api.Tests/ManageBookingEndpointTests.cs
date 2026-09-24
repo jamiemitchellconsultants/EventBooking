@@ -78,7 +78,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
 
         var persisted = await ReadCancellationStateAsync(booking);
         Assert.Equal(BookingStatus.Cancelled, persisted.BookingStatus);
-        Assert.Equal(AttendeeStatus.Booked, persisted.AttendeeStatus);
+        Assert.Equal(AttendeeStatus.Invited, persisted.AttendeeStatus);
         Assert.Equal(persisted.TotalHeadcount, persisted.RemainingCapacity);
         var inviteId = Assert.Single(persisted.PendingInviteIds);
         Assert.NotEqual(booking.OriginalInviteId, inviteId);

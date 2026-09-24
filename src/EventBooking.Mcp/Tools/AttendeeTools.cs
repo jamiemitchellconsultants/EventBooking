@@ -361,7 +361,7 @@ public sealed class AttendeeTools
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), inviteId), cancellationToken);
+            new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), attendeeId, inviteId), cancellationToken);
         result.ThrowIfFailure();
         return "Recovery invite cancelled.";
     }

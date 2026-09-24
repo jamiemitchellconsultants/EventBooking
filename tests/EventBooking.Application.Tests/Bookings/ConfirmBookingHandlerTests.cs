@@ -48,6 +48,23 @@ public sealed class ConfirmBookingHandlerTests
     }
 
     [Fact]
+    public async Task Confirm_refuses_an_invite_that_expired_but_was_not_yet_swept()
+    {
+        var fixture = BookingFixture.Create();
+        var (_, inviteId) = fixture.InviteAttendee("IND");
+        var invite = fixture.Invites.Items.Single(i => i.Id == inviteId);
+        fixture.Clock.UtcNow = invite.ExpiresAt.AddMinutes(1);
+
+        var result = await Handler(fixture).HandleAsync(
+            new ConfirmBookingCommand(fixture.BookTokenFor(inviteId, invite.TokenVersion), fixture.EventId),
+            CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(fixture.Bookings.Items);
+        Assert.Equal(Domain.Invites.InviteStatus.Pending, invite.Status);
+    }
+
+    [Fact]
     public async Task Replay_returns_conflict_naming_existing_booking_with_no_second_row()
     {
         var fixture = BookingFixture.Create();

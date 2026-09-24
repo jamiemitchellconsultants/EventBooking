@@ -74,7 +74,10 @@ public sealed class AdjustEventCapacityHandler(
         await using var transaction =
             await unitOfWork.BeginTransactionAsync(ct);
 
-        var eventItem = await events.GetAsync(command.EventId, ct);
+        // Locked, not just read: every writer of a capacity row (confirmation, cancellation)
+        // holds this event lock first, so the capacity counters loaded with the event cannot go
+        // stale between here and the capacity-row lock below.
+        var eventItem = await events.LockForUpdateAsync(command.EventId, ct);
         if (eventItem is null)
         {
             return Result<AdjustEventCapacityOutcome>.Failure(
