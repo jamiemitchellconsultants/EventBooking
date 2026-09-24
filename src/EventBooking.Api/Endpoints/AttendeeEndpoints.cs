@@ -14,7 +14,6 @@ namespace EventBooking.Api.Endpoints;
 public static class AttendeeEndpoints
 {
     private const int MaxImportBytes = 1_048_576;
-    private const int MaxImportDataRows = 1000;
 
     /// <summary>Attendee fields accepted by create and update operations.</summary>
     public sealed record SaveAttendeeRequest(string? Name, string? Email, Guid? AttendeeGroupId);
@@ -174,12 +173,6 @@ public static class AttendeeEndpoints
             await using var stream = file.OpenReadStream();
             using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
             var csv = await reader.ReadToEndAsync(cancellationToken);
-            if (CountDataRows(csv) > MaxImportDataRows)
-            {
-                return ResultResponses.ValidationFailed(
-                    "file", "file-too-many-rows", "The file must hold 1000 data rows or fewer.");
-            }
-
             var result = await handler.HandleAsync(
                 new ImportAttendeesCommand(caller.RequireStaffUserId(), csv), cancellationToken);
             if (result.IsFailure)
@@ -403,20 +396,4 @@ public static class AttendeeEndpoints
         _ => code.ToString(),
     };
 
-    private static int CountDataRows(string csv)
-    {
-        using var reader = new StringReader(csv);
-        _ = reader.ReadLine();
-
-        var count = 0;
-        while (reader.ReadLine() is { } line)
-        {
-            if (!string.IsNullOrWhiteSpace(line) && ++count > MaxImportDataRows)
-            {
-                return count;
-            }
-        }
-
-        return count;
-    }
 }

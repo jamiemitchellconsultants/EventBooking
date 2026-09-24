@@ -231,7 +231,7 @@ public static class AgentOperationCatalog
                 nameof(StaffCapability.ManageAttendees), "delete_attendee", Delete()),
             Staff("importAttendees", HttpMethods.Post, "/api/attendees/import", "Attendees",
                 "Import attendees from CSV.",
-                "Imports a multipart CSV file, all or nothing (FR-4.3). At most 1000 rows and 1 MB.",
+                "Imports attendees from CSV content, all or nothing (FR-4.3). At most 1000 rows and 1 MB.",
                 nameof(StaffCapability.ManageAttendees), "import_attendees", Create()),
             Staff("countEligibleEvents", HttpMethods.Get,
                 "/api/attendees/{id}/eligible-event-count", "Attendees",

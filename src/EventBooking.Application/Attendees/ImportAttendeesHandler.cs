@@ -37,6 +37,9 @@ public sealed class ImportAttendeesHandler(
     IClock clock,
     IUnitOfWork unitOfWork)
 {
+    /// <summary>The most data rows one file may hold, on either surface.</summary>
+    internal const int MaxDataRows = 1000;
+
     /// <summary>Validates every row before persisting any Attendee.</summary>
     /// <param name="command">The command.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -55,6 +58,15 @@ public sealed class ImportAttendeesHandler(
         }
 
         var parsed = AttendeeCsvParser.Parse(command.CsvContent);
+
+        // The row bound lives here, not on either transport, so the REST route and the
+        // import tool refuse one oversized file with one application error.
+        if (parsed.Rows.Count > MaxDataRows)
+        {
+            return Result<AttendeeImportOutcome>.Failure(
+                Error.Validation("The file must hold 1000 data rows or fewer."));
+        }
+
         var errors = parsed.Errors.ToList();
 
         // Build every attendee first, collecting failures. Nothing is added to the repository

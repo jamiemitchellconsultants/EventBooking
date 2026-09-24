@@ -1,202 +1,169 @@
 using System.ComponentModel;
-using CancelEventHandler = EventBooking.Application.Events.CancelEventHandler;
 using EventBooking.Api.Auth;
-using EventBooking.Application.Dashboards;
 using EventBooking.Application.Events;
 using EventBooking.Application.Negotiation;
 using ModelContextProtocol.Server;
 
+using ApplicationCancelEventHandler = EventBooking.Application.Events.CancelEventHandler;
+
 namespace EventBooking.Mcp.Tools;
 
-/// <summary>Event negotiation and event operations for the calling manager.</summary>
+/// <summary>The confirmed-event tools.</summary>
 [McpServerToolType]
 public sealed class EventTools
 {
-    /// <summary>Proposes a new attendee-facing event window at a location.</summary>
+    /// <summary>Lists events.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The event proposal handler.</param>
-    /// <param name="locationId">The location that would host the event.</param>
-    /// <param name="date">The location calendar date, yyyy-MM-dd.</param>
-    /// <param name="startTime">The window start, HH:mm.</param>
-    /// <param name="durationMinutes">The window length in minutes.</param>
-    /// <param name="listedAppointmentTypeIds">The appointment types the event would offer.</param>
-    /// <param name="proposerHeadcount">The proposer's own headcount.</param>
+    /// <param name="handler">The list handler.</param>
+    /// <param name="limit">The page size.</param>
+    /// <param name="locationId">The location filter, or null for every site.</param>
+    /// <param name="from">The earliest start day, yyyy-MM-dd, or null.</param>
+    /// <param name="to">The latest start day, yyyy-MM-dd, or null.</param>
+    /// <param name="appointmentTypeId">The type filter, or null for every type.</param>
+    /// <param name="cursor">The page cursor, or null for the first page.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The proposal outcome, including the event when it confirms immediately.</returns>
-    [McpServerTool(Name = "propose_event", Title = "Propose event", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Propose a new event window at a location. Caller must be a manager.")]
-    public async Task<ProposeEventOutcome> ProposeEventAsync(
-        ICallerAccessor caller,
-        ProposeEventHandler handler,
-        [Description("The location that would host the event.")] Guid locationId,
-        [Description("Event calendar date, yyyy-MM-dd.")] string date,
-        [Description("Window start time, HH:mm.")] string startTime,
-        [Description("Window length in minutes.")] int durationMinutes,
-        [Description("The appointment types the event would offer.")] Guid[] listedAppointmentTypeIds,
-        [Description("The proposer's own headcount.")] int proposerHeadcount,
-        CancellationToken cancellationToken)
-    {
-        if (!DateOnly.TryParse(date, out var parsedDate) ||
-            !TimeOnly.TryParse(startTime, out var parsedStart))
-        {
-            throw new ModelContextProtocol.McpException(
-                "A yyyy-MM-dd date and HH:mm startTime are required.");
-        }
-
-        var result = await handler.HandleAsync(
-            new ProposeEventCommand(
-                caller.RequireStaffUserId(), locationId, parsedDate, parsedStart,
-                durationMinutes, listedAppointmentTypeIds, proposerHeadcount),
-            cancellationToken);
-        return result.ValueOrThrow();
-    }
-
-    /// <summary>Records or revises the calling manager's acceptance of a proposal.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The acceptance handler.</param>
-    /// <param name="proposalId">The proposal identifier.</param>
-    /// <param name="headcount">The manager's headcount for their appointment type.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The acceptance outcome, including the event once every listed type accepts.</returns>
-    [McpServerTool(Name = "accept_proposal", Title = "Accept proposal", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Accept a event proposal with your headcount, or revise your headcount while it stays open. Caller must be a manager; may confirm the event once every required type accepts.")]
-    public async Task<RecordAcceptanceOutcome> AcceptProposalAsync(
-        ICallerAccessor caller,
-        RecordAcceptanceHandler handler,
-        [Description("The proposal identifier.")] Guid proposalId,
-        [Description("Headcount for your appointment type.")] int headcount,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new RecordAcceptanceCommand(caller.RequireStaffUserId(), proposalId, headcount),
-            cancellationToken);
-        return result.ValueOrThrow();
-    }
-
-    /// <summary>Withdraws the calling manager's acceptance while the proposal is still open.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The withdrawal handler.</param>
-    /// <param name="proposalId">The proposal identifier.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A confirmation message.</returns>
-    [McpServerTool(Name = "withdraw_acceptance", Title = "Withdraw acceptance", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Withdraw your acceptance of an open event proposal. Caller must be a manager; removes only your acceptance.")]
-    public async Task<string> WithdrawAcceptanceAsync(
-        ICallerAccessor caller,
-        WithdrawAcceptanceHandler handler,
-        [Description("The proposal identifier.")] Guid proposalId,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new WithdrawAcceptanceCommand(caller.RequireStaffUserId(), proposalId),
-            cancellationToken);
-        result.ThrowIfFailure();
-        return "Acceptance withdrawn.";
-    }
-
-    /// <summary>Withdraws a proposal created by the calling manager.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The withdrawal handler.</param>
-    /// <param name="proposalId">The proposal identifier.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A confirmation message.</returns>
-    [McpServerTool(Name = "withdraw_proposal", Title = "Withdraw proposal", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Withdraw one of your own open event proposals. Caller must be the proposing manager.")]
-    public async Task<string> WithdrawProposalAsync(
-        ICallerAccessor caller,
-        WithdrawProposalHandler handler,
-        [Description("The proposal identifier.")] Guid proposalId,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new WithdrawProposalCommand(caller.RequireStaffUserId(), proposalId),
-            cancellationToken);
-        result.ThrowIfFailure();
-        return "Proposal withdrawn.";
-    }
-
-    /// <summary>Lists open proposals and events for the calling manager's scope.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The event board handler.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The manager event board.</returns>
-    [McpServerTool(Name = "event_board", Title = "Event board", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List open event proposals and your events with remaining capacity. Caller must be a manager; scoped to your appointment type.")]
-    public async Task<NegotiationBoard> GetEventBoardAsync(
-        ICallerAccessor caller,
-        NegotiationBoardHandler handler,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new GetNegotiationBoardQuery(caller.RequireStaffUserId()), cancellationToken);
-        return result.ValueOrThrow();
-    }
-
-    /// <summary>Returns the attendee-free event operations view.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The event operations handler.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>Every event visible to Admin or Coordinator, without attendee data.</returns>
+    /// <returns>One page of events.</returns>
     [McpServerTool(
-        Name = "get_event_operations",
-        Title = "Get event operations",
-        ReadOnly = true,
-        Destructive = false,
-        Idempotent = true,
-        OpenWorld = false)]
-    [Description("List event dates, windows, capacities, status, and aggregate booking counts without attendee data. Caller must have ViewEventOperations capability (Admin or Coordinator).")]
-    public async Task<EventOperationsView> GetEventOperationsAsync(
+        Name = "list_events", Title = "List events",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Reads events filtered by location, date range and appointment type. A Manager sees their own type's capacity; an Admin or Coordinator sees every type.")]
+    public async Task<EventListView> ListEventsAsync(
         ICallerAccessor caller,
-        GetEventOperationsHandler handler,
-        CancellationToken cancellationToken)
+        ListEventsHandler handler,
+        [Description("Page size, 1 to 200.")] int limit = 50,
+        [Description("Narrow to one location.")] Guid? locationId = null,
+        [Description("Earliest start day, yyyy-MM-dd.")] string? from = null,
+        [Description("Latest start day, yyyy-MM-dd.")] string? to = null,
+        [Description("Narrow to one appointment type.")] Guid? appointmentTypeId = null,
+        [Description("The nextCursor from the previous page.")] string? cursor = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new GetEventOperationsQuery(caller.RequireStaffUserId()), cancellationToken);
+            new ListEventsQuery(
+                caller.RequireStaffUserId(), locationId, ParseDate(from), ParseDate(to),
+                appointmentTypeId, cursor, limit),
+            cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Replaces the total headcount for the calling manager's type on a eventItem.</summary>
+    /// <summary>Reads one event.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The capacity handler.</param>
-    /// <param name="eventId">The event identifier.</param>
-    /// <param name="totalHeadcount">The new positive total covering every active booking.</param>
+    /// <param name="handler">The read handler.</param>
+    /// <param name="eventId">The event.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The updated capacity.</returns>
-    [McpServerTool(Name = "adjust_event_capacity", Title = "Adjust event capacity", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Replace the total headcount for your appointment type on an active eventItem. Caller must be a manager; must cover every active booking.")]
+    /// <returns>The event.</returns>
+    [McpServerTool(
+        Name = "get_event", Title = "Get event",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Reads one event with its capacities, filtered the same way the list is. An event outside the caller's scope reads as not found.")]
+    public async Task<EventView> GetEventAsync(
+        ICallerAccessor caller,
+        GetEventHandler handler,
+        [Description("The event identifier.")] Guid eventId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await handler.HandleAsync(
+            new GetEventQuery(caller.RequireStaffUserId(), eventId), cancellationToken);
+        return result.ValueOrThrow();
+    }
+
+    /// <summary>Replaces one type's total headcount on an event.</summary>
+    /// <param name="caller">The signed-in staff identity.</param>
+    /// <param name="handler">The adjust handler.</param>
+    /// <param name="eventId">The event.</param>
+    /// <param name="appointmentTypeId">The caller's own type.</param>
+    /// <param name="totalHeadcount">The replacement total.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The adjusted capacity.</returns>
+    [McpServerTool(
+        Name = "adjust_event_capacity", Title = "Adjust event capacity",
+        ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Replaces the total headcount for one appointment type on an active event. The type must be the caller's own, and the total must still cover every active booking.")]
     public async Task<AdjustEventCapacityOutcome> AdjustEventCapacityAsync(
         ICallerAccessor caller,
         AdjustEventCapacityHandler handler,
         [Description("The event identifier.")] Guid eventId,
-        [Description("New positive total headcount.")] int totalHeadcount,
-        CancellationToken cancellationToken)
+        [Description("Your own appointment type.")] Guid appointmentTypeId,
+        [Description("The replacement total.")] int totalHeadcount,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
             new AdjustEventCapacityCommand(
-                caller.RequireStaffUserId(), eventId, totalHeadcount),
+                caller.RequireStaffUserId(), eventId, totalHeadcount, appointmentTypeId),
             cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Cancels a eventItem, optionally cascading to its active bookings.</summary>
+    /// <summary>Cancels an event, re-inviting the affected attendees.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The cancellation handler.</param>
-    /// <param name="eventId">The event identifier.</param>
-    /// <param name="confirm">Whether cancellation of active bookings is authorized.</param>
+    /// <param name="handler">The cancel handler.</param>
+    /// <param name="eventId">The event.</param>
+    /// <param name="confirm">Pass true once the consequence has been shown.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The cancellation outcome.</returns>
-    [McpServerTool(Name = "cancel_event", Title = "Cancel event", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Cancel a eventItem. Caller must be a manager; set confirm to true to also void its active bookings.")]
+    /// <returns>The consequence, or the cancellation once confirmed.</returns>
+    [McpServerTool(
+        Name = "cancel_event", Title = "Cancel event",
+        ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Cancels an event, voiding its bookings and re-inviting the affected attendees. Two-step: without confirm=true the call reports its consequence and changes nothing.")]
     public async Task<CancelEventOutcome> CancelEventAsync(
         ICallerAccessor caller,
-        CancelEventHandler handler,
+        ApplicationCancelEventHandler handler,
         [Description("The event identifier.")] Guid eventId,
-        [Description("Whether active bookings may be voided.")] bool confirm,
-        CancellationToken cancellationToken)
+        [Description("Pass true once you have shown the consequence.")] bool confirm = false,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
             new CancelEventCommand(caller.RequireStaffUserId(), eventId, confirm),
             cancellationToken);
         return result.ValueOrThrow();
+    }
+
+    /// <summary>Lists the active future events a cancellation can still reach.</summary>
+    /// <param name="caller">The signed-in staff identity.</param>
+    /// <param name="handler">The list handler.</param>
+    /// <param name="limit">The page size.</param>
+    /// <param name="locationId">The location filter, or null for every site.</param>
+    /// <param name="from">The earliest start day, yyyy-MM-dd, or null.</param>
+    /// <param name="to">The latest start day, yyyy-MM-dd, or null.</param>
+    /// <param name="cursor">The page cursor, or null for the first page.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>One page of cancellable events.</returns>
+    [McpServerTool(
+        Name = "list_cancellable_events", Title = "List cancellable events",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Reads the active events whose window has not started, which are the ones a cancellation can still reach (FR-7.2).")]
+    public async Task<EventListView> ListCancellableEventsAsync(
+        ICallerAccessor caller,
+        ListCancellableEventsHandler handler,
+        [Description("Page size, 1 to 200.")] int limit = 50,
+        [Description("Narrow to one location.")] Guid? locationId = null,
+        [Description("Earliest start day, yyyy-MM-dd.")] string? from = null,
+        [Description("Latest start day, yyyy-MM-dd.")] string? to = null,
+        [Description("The nextCursor from the previous page.")] string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await handler.HandleAsync(
+            new ListCancellableEventsQuery(
+                caller.RequireStaffUserId(), locationId, ParseDate(from), ParseDate(to),
+                cursor, limit),
+            cancellationToken);
+        return result.ValueOrThrow();
+    }
+
+    /// <summary>Parses an optional calendar day or throws a plain refusal.</summary>
+    private static DateOnly? ParseDate(string? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (!DateOnly.TryParse(value, out var parsed))
+        {
+            throw new ModelContextProtocol.McpException(
+                "A yyyy-MM-dd date is required.");
+        }
+
+        return parsed;
     }
 }

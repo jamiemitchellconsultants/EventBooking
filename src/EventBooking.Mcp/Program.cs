@@ -23,10 +23,15 @@ builder.Services.AddSingleton<ICorrelationContext, AsyncLocalCorrelationContext>
 builder.Services
     .AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
+    .WithTools<IdentityTools>()
+    .WithTools<ReferenceDataTools>()
+    .WithTools<AdministrationTools>()
+    .WithTools<NegotiationTools>()
     .WithTools<EventTools>()
     .WithTools<AttendeeTools>()
-    .WithTools<AdminTools>()
-    .WithTools<OperationsTools>();
+    .WithTools<DashboardTools>()
+    .WithTools<AuditTools>()
+    .WithTools<WorkspaceTools>();
 
 var app = builder.Build();
 
