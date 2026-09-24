@@ -25,11 +25,12 @@ internal static class DemoEventFactory
             window.StartInstant(zones, location.TimeZoneId).AddDays(-1),
             types.Select(x => new ProposableAppointmentType(
                 x.Id, x.Code, x.IsActive, x.ManagerUsername is not null)).ToList(),
-            proposer.Id, manager.UserId, 12);
+            proposer.Id, DemoSeedSpec.ProviderUserId(manager.Username), 12);
         foreach (var code in spec.AcceptedTypeCodes.Skip(1))
         {
             var type = data.AppointmentTypes.Single(x => x.Code == code);
-            proposal.Accept(type.Id, staff[type.ManagerUsername!].UserId, 12);
+            proposal.Accept(type.Id,
+                DemoSeedSpec.ProviderUserId(staff[type.ManagerUsername!].Username), 12);
         }
         database.EventProposals.Add(proposal);
         return proposal;

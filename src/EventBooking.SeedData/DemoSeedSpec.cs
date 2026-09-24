@@ -48,9 +48,25 @@ public sealed record DemoDataset(
 public static class DemoSeedSpec
 {
     private static DateOnly? _anchor;
+    private static IReadOnlyDictionary<string, Guid>? _providerIds;
     public static DateOnly AnchorDate() => _anchor ?? new DateOnly(2026, 9, 22);
     public static bool AnchorOverridden => _anchor.HasValue;
     public static void OverrideAnchor(DateOnly? anchor) => _anchor = anchor;
+
+    /// <summary>Adopts Keycloak-assigned provider identifiers, which the provider generates
+    /// server-side. Until overridden, the stable specification identifiers apply.</summary>
+    public static void OverrideProviderIds(IReadOnlyDictionary<string, Guid>? providerIds) =>
+        _providerIds = providerIds;
+
+    /// <summary>The effective user identifier: the adopted provider id, or the specification
+    /// identifier when Keycloak has not converged in this process.</summary>
+    public static Guid ProviderUserId(string username)
+    {
+        var staff = Staff().Single(x => x.Username == username);
+        return _providerIds is not null && _providerIds.TryGetValue(username, out var providerId)
+            ? providerId
+            : staff.UserId;
+    }
 
     public static DemoDataset Build()
     {
@@ -125,11 +141,12 @@ public static class DemoSeedSpec
     }
 
     public static IReadOnlyList<StaffProfileSpec> Staff() => Build().Staff;
-    public static Guid AdminUserId() => Staff().Single(x => x.Roles.SequenceEqual([Role.Admin])).UserId;
-    public static Guid CoordinatorUserId() => Staff().Single(x => x.Username == "coordinator").UserId;
+    public static Guid AdminUserId() => ProviderUserId(
+        Staff().Single(x => x.Roles.SequenceEqual([Role.Admin])).Username);
+    public static Guid CoordinatorUserId() => ProviderUserId("coordinator");
     public static IReadOnlyDictionary<Guid, Guid> ManagerForType() => Staff()
         .Where(x => x.Roles.Contains(Role.Manager))
-        .ToDictionary(x => x.AppointmentTypeId!.Value, x => x.UserId);
+        .ToDictionary(x => x.AppointmentTypeId!.Value, x => ProviderUserId(x.Username));
 
     private static StaffProfileSpec Staff(
         string username, int number, string given, string family, IReadOnlyList<Role> roles, Guid? type) =>

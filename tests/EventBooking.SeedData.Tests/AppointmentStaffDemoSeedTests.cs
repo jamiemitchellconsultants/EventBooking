@@ -8,9 +8,6 @@ namespace EventBooking.SeedData.Tests;
 [Collection("seed-anchor")]
 public sealed class AppointmentStaffDemoSeedTests
 {
-    private static readonly Guid AppointmentStaffId =
-        Guid.Parse("dc5f9a90-7f54-46d1-8603-d4c317f47226");
-
     /// <summary>Verifies the scoped profile carries MED and the unscoped one carries no scope.</summary>
     [Fact]
     public void SeedContainsScopedAndUnscopedAppointmentStaffProfiles()
@@ -27,33 +24,30 @@ public sealed class AppointmentStaffDemoSeedTests
         Assert.Null(unscoped.AppointmentTypeId);
     }
 
-    /// <summary>Verifies Keycloak supplies the fixed identity and AppointmentStaff role.</summary>
+    /// <summary>Verifies the local realm declares no demo users; the seed converges those.</summary>
     [Fact]
-    public void LocalRealmContainsTheIdentityWithAppointmentStaffRole()
+    public void LocalRealmContainsNoDemoUsers()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(
             RepoFile("deploy/keycloak/realm-export.json")));
-        var user = Assert.Single(
-            document.RootElement.GetProperty("users").EnumerateArray(),
-            value => value.GetProperty("username").GetString() == "appointment.staff");
 
-        Assert.Equal(AppointmentStaffId.ToString(), user.GetProperty("id").GetString());
-        Assert.Equal(
-            [Role.AppointmentStaff.ToString()],
-            user.GetProperty("realmRoles").EnumerateArray()
-                .Select(value => value.GetString()!).ToArray());
+        Assert.False(document.RootElement.TryGetProperty("users", out _));
+        Assert.Contains(
+            Role.AppointmentStaff.ToString(),
+            document.RootElement.GetProperty("roles").GetProperty("realm").EnumerateArray()
+                .Select(value => value.GetProperty("name").GetString()!));
     }
 
-    /// <summary>Verifies all local identities still have unique ids and usernames.</summary>
+    /// <summary>Verifies all seed identities still have unique ids, usernames and staff numbers.</summary>
     [Fact]
     public void LocalRealmIdentityKeysRemainUnique()
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(
-            RepoFile("deploy/keycloak/realm-export.json")));
-        var users = document.RootElement.GetProperty("users").EnumerateArray().ToList();
+        var staff = DemoSeedSpec.Staff();
 
-        Assert.Equal(users.Count, users.Select(user => user.GetProperty("id").GetString()).Distinct().Count());
-        Assert.Equal(users.Count, users.Select(user => user.GetProperty("username").GetString()).Distinct().Count());
+        Assert.Equal(8, staff.Count);
+        Assert.Equal(8, staff.Select(person => person.UserId).Distinct().Count());
+        Assert.Equal(8, staff.Select(person => person.Username).Distinct().Count());
+        Assert.Equal(8, staff.Select(person => person.StaffId).Distinct().Count());
     }
 
     private static string RepoFile(string relativePath)

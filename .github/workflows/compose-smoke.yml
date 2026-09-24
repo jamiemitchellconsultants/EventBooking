@@ -1,0 +1,59 @@
+# .github/workflows/compose-smoke.yml (complete)
+name: Compose smoke
+
+on:
+  pull_request:
+    paths:
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - "deploy/**"
+      - "src/**/Dockerfile*"
+      - ".github/workflows/compose-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Validate shell and Compose files
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+          shellcheck deploy/postgres/init-roles.sh
+          docker compose config --quiet
+
+      - name: Start dependencies
+        run: docker compose up --detach --build --wait postgres keycloak mailpit
+
+      - name: Apply migrations and demo seed
+        run: docker compose --profile seed run --rm seed --demo --reanchor
+
+      - name: Start application services
+        run: docker compose up --detach --build --wait api mcp web
+
+      - name: Probe readiness, discovery and invitations
+        run: |
+          curl --fail --retry 20 --retry-all-errors --retry-delay 3 http://localhost:5001/health/ready
+          curl --fail --retry 10 --retry-all-errors --retry-delay 2 http://localhost:5001/api
+          curl --fail --retry 10 --retry-all-errors --retry-delay 2 http://localhost:5003/health/ready
+          curl --fail --retry 10 --retry-all-errors --retry-delay 2 http://localhost:5002/
+          message_count="$(curl --fail --silent http://localhost:8025/api/v1/messages | jq '.messages | length')"
+          test "$message_count" -ge 1
+
+      - name: Capture logs
+        if: always()
+        run: docker compose logs --no-color | tee compose-smoke.log
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

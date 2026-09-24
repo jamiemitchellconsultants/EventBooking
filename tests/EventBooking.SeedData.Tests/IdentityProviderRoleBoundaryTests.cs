@@ -74,9 +74,9 @@ public sealed class IdentityProviderRoleBoundaryTests
 
     /// <summary>Verifies realm user profiles still require a validated staff number.</summary>
     [Theory]
-    [InlineData("deploy/keycloak/realm-export.json")]
-    [InlineData("deploy/home-lab/keycloak/eventbooking-realm.json")]
-    public void RealmExportsRequireAValidatedStaffIdProfileAttribute(string relativePath)
+    [InlineData("deploy/keycloak/realm-export.json", "^[A-Z0-9]{1,32}$")]
+    [InlineData("deploy/home-lab/keycloak/eventbooking-realm.json", "^[A-Za-z0-9]{1,32}$")]
+    public void RealmExportsRequireAValidatedStaffIdProfileAttribute(string relativePath, string expectedPattern)
     {
         using var document = JsonDocument.Parse(File.ReadAllText(RepoFile(relativePath)));
         var provider = document.RootElement.GetProperty("components")
@@ -84,7 +84,12 @@ public sealed class IdentityProviderRoleBoundaryTests
             .EnumerateArray()
             .Single(value => value.GetProperty("providerId").GetString()
                 == "declarative-user-profile");
-        var encoded = provider.GetProperty("config").GetProperty("config-piece-0")[0].GetString();
+        var config = provider.GetProperty("config");
+        // Keycloak 26 stores the profile under kc.user.profile.config; the home-lab import
+        // still uses the legacy chunked key until Task 30 rewrites that realm.
+        var encoded = (config.TryGetProperty("kc.user.profile.config", out var current)
+            ? current[0]
+            : config.GetProperty("config-piece-0")[0]).GetString();
         using var profile = JsonDocument.Parse(encoded!);
         var staffId = profile.RootElement.GetProperty("attributes").EnumerateArray()
             .Single(value => value.GetProperty("name").GetString() == "staffId");
@@ -95,7 +100,7 @@ public sealed class IdentityProviderRoleBoundaryTests
             .EnumerateArray().Select(value => value.GetString()));
         var pattern = staffId.GetProperty("validations").GetProperty("pattern")
             .GetProperty("pattern").GetString();
-        Assert.Equal("^[A-Za-z0-9]{1,32}$", pattern);
+        Assert.Equal(expectedPattern, pattern);
 
         var expression = new Regex(
             pattern!, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
@@ -145,20 +150,22 @@ public sealed class IdentityProviderRoleBoundaryTests
         Assert.Equal("true", config.GetProperty("userinfo.token.claim").GetString());
     }
 
-    /// <summary>Verifies every demo user composes a name, so the mapper has something to emit.</summary>
+    /// <summary>Verifies every seed identity composes a name, so the mapper has something to emit.</summary>
     [Fact]
     public void DemoUsersAllCarryFirstAndLastName()
     {
         using var realm = JsonDocument.Parse(File.ReadAllText(
             RepoFile("deploy/keycloak/realm-export.json")));
+        Assert.False(realm.RootElement.TryGetProperty("users", out _));
 
-        var users = realm.RootElement.GetProperty("users").EnumerateArray().ToList();
+        var staff = DemoSeedSpec.Staff();
 
-        Assert.NotEmpty(users);
-        Assert.All(users, user =>
+        Assert.Equal(8, staff.Count);
+        Assert.All(staff, person =>
         {
-            Assert.False(string.IsNullOrWhiteSpace(user.GetProperty("firstName").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(user.GetProperty("lastName").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(person.GivenName));
+            Assert.False(string.IsNullOrWhiteSpace(person.FamilyName));
+            Assert.False(string.IsNullOrWhiteSpace(person.Email));
         });
     }
 }

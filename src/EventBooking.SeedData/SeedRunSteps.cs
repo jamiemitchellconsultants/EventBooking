@@ -76,7 +76,10 @@ public sealed class SeedRunSteps : ISeedRunSteps
     public async Task<KeycloakSeedSummary?> ConvergeKeycloakAsync(bool recreateRealm, CancellationToken ct)
     {
         var step = new KeycloakSeedStep(_environment, static () => new HttpClient());
-        return await step.RunAsync(false, recreateRealm, DemoSeedSpec.Staff(), ct);
+        var summary = await step.RunAsync(false, recreateRealm, DemoSeedSpec.Staff(), ct);
+        if (summary is not null)
+            DemoSeedSpec.OverrideProviderIds(summary.ProviderIds);
+        return summary;
     }
 
     public async Task<SeedSummary> SeedDemoAsync(bool wipeFirst, CancellationToken ct)

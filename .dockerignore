@@ -1,7 +1,15 @@
+# .dockerignore (complete)
 **/bin
 **/obj
+**/TestResults
+**/node_modules
 .git
+.github
+.idea
+.vscode
 .codex
 **/.env
 **/.env.*
-**/node_modules
+!**/.env.example
+*.user
+*.suo

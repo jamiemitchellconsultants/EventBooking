@@ -297,14 +297,15 @@ public sealed class DemoSeeder(
         var skipped = 0;
         foreach (var spec in Staff())
         {
-            if (await profiles.GetAsync(spec.UserId, cancellationToken) is not null)
+            var userId = DemoSeedSpec.ProviderUserId(spec.Username);
+            if (await profiles.GetAsync(userId, cancellationToken) is not null)
             {
                 skipped++;
                 continue;
             }
 
             profiles.Add(StaffAccessProfile.Create(
-                spec.UserId, spec.Roles, spec.AppointmentTypeId));
+                userId, spec.Roles, spec.AppointmentTypeId));
             added++;
         }
 
@@ -321,15 +322,16 @@ public sealed class DemoSeeder(
         var added = 0;
         foreach (var spec in Staff())
         {
-            if (existing.Contains(spec.UserId))
+            var userId = DemoSeedSpec.ProviderUserId(spec.Username);
+            if (existing.Contains(userId))
             {
                 continue;
             }
 
             await identities.UpsertAsync(
-                spec.UserId, spec.StaffId, null, clock.UtcNow, cancellationToken);
+                userId, spec.StaffId, null, clock.UtcNow, cancellationToken);
             added++;
-            Report($"Identity ensured: {spec.UserId}.");
+            Report($"Identity ensured: {userId}.");
         }
 
         Report($"Staff identities: {added} ensured, {existing.Count} already present.");
