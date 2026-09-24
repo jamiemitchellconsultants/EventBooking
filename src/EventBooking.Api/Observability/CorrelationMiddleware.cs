@@ -38,14 +38,27 @@ public sealed class CorrelationMiddleware(
             ["route"] = route,
         });
 
-        await next(context);
-
-        // One line per request, from a category this application owns. With the framework's
-        // own request logging silenced and scopes unprinted, this is where an operator finds
-        // the correlation identifier — and every member of it is metadata, never request data.
-        logger.LogInformation(
-            "Handled {Method} {Route} as {Status} under {CorrelationId}.",
-            context.Request.Method, route, context.Response.StatusCode, correlationId);
+        var threw = false;
+        try
+        {
+            await next(context);
+        }
+        catch
+        {
+            threw = true;
+            throw;
+        }
+        finally
+        {
+            // One line per request, from a category this application owns — including one
+            // that threw, which is the request an operator most needs the identifier for.
+            // With the framework's own request logging silenced and scopes unprinted, this is
+            // where the correlation identifier is found, and every member is metadata.
+            logger.LogInformation(
+                "Handled {Method} {Route} as {Status} under {CorrelationId}.",
+                context.Request.Method, route, RequestMetricsMiddleware.StatusOf(context, threw),
+                correlationId);
+        }
     }
 
     /// <summary>
