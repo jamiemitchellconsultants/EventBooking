@@ -39,6 +39,20 @@ public sealed class InviteAttendeeHandlerTests
     }
 
     [Fact]
+    public async Task Invite_without_locations_defaults_to_every_active_location()
+    {
+        var fixture = InviteFixture.Create(optionCount: 3).WithEligibleEvents(3);
+
+        var result = await Handler(fixture).HandleAsync(
+            new InviteAttendeeCommand(fixture.Coordinator, fixture.AttendeeId, []),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, $"result failed: {result.Error?.Code} {result.Error?.Message}");
+        var invite = fixture.Invites.Items.Single(i => i.Id == result.Value.InviteId);
+        Assert.Equal(fixture.LocationIds.Order().ToList(), invite.LocationIds.Order().ToList());
+    }
+
+    [Fact]
     public async Task Invite_short_of_options_parks_attendee_with_no_side_effects()
     {
         var fixture = InviteFixture.Create(optionCount: 3).WithEligibleEvents(2);

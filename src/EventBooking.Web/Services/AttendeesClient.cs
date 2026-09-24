@@ -5,6 +5,8 @@ namespace EventBooking.Web.Services;
 
 public sealed record AppointmentTypeSummaryDto(string Code, string Name);
 
+public sealed record InviteLocationDto(Guid LocationId, string Code, string Name);
+
 public sealed record AttendeeGroupOptionDto(
     Guid AttendeeGroupId,
     string Code,
@@ -179,10 +181,25 @@ public sealed class AttendeesClient(HttpClient http)
         return await ApiCall.ReadAsync<ImportOutcomeDto>(response, cancellationToken);
     }
 
-    public async Task<ApiOutcome<bool>> TriggerInviteAsync(Guid id, CancellationToken cancellationToken)
+    /// <summary>Invites the attendee at every active location.</summary>
+    public Task<ApiOutcome<bool>> TriggerInviteAsync(Guid id, CancellationToken cancellationToken) =>
+        TriggerInviteAsync(id, [], cancellationToken);
+
+    /// <summary>Invites the attendee at the chosen locations; an empty list means every active one.</summary>
+    public async Task<ApiOutcome<bool>> TriggerInviteAsync(
+        Guid id, IReadOnlyList<Guid> locationIds, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsync($"/api/attendees/{id}/invite", null, cancellationToken);
+        using var response = await http.PostAsJsonAsync(
+            $"/api/attendees/{id}/invite", new { locationIds }, cancellationToken);
         return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+    }
+
+    /// <summary>Lists the active locations an invite can be restricted to.</summary>
+    public async Task<ApiOutcome<List<InviteLocationDto>>> ListInviteLocationsAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await http.GetAsync("/api/attendees/invite-locations", cancellationToken);
+        return await ApiCall.ReadAsync<List<InviteLocationDto>>(response, cancellationToken);
     }
 
     /// <summary>Retries the latest failed or pending delivery using its server-side template.</summary>

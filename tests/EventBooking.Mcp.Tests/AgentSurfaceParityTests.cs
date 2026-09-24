@@ -32,7 +32,7 @@ public sealed class AgentSurfaceParityTests(McpFactory factory)
             .ToDictionary(x => x.GetProperty("name").GetString()!);
         var expected = AgentOperationCatalog.All.Values.Where(x => x.McpTool is not null)
             .ToDictionary(x => x.McpTool!);
-        Assert.Equal(35, actual.Count);
+        Assert.Equal(36, actual.Count);
         Assert.Equal(expected.Keys.Order(), actual.Keys.Order());
         foreach (var pair in expected)
         {

@@ -81,6 +81,7 @@ public static class ApplicationServiceCollectionExtensions
 
         // Invites and bookings.
         services.AddScoped<InviteAttendeeHandler>();
+        services.AddScoped<ListInviteLocationsHandler>();
         services.AddScoped<ExpireInviteHandler>();
         services.AddScoped<TopUpInviteOptionsHandler>();
         services.AddScoped<CountEligibleEventsHandler>();

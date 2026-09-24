@@ -21,7 +21,8 @@ public static class AttendeeEndpoints
     /// <summary>Attendee fields accepted by create and update operations.</summary>
     public sealed record SaveAttendeeRequest(string? Name, string? Email, Guid? AttendeeGroupId);
 
-    public sealed record InviteAttendeeRequest(IReadOnlyList<Guid> LocationIds);
+    /// <summary>Invite options; a missing body or empty list means every active location.</summary>
+    public sealed record InviteAttendeeRequest(IReadOnlyList<Guid>? LocationIds);
 
     /// <summary>Registers attendee CRUD, invite, and template-aware retry routes.</summary>
     public static IEndpointRouteBuilder MapAttendeeEndpoints(this IEndpointRouteBuilder app)
@@ -155,9 +156,20 @@ public static class AttendeeEndpoints
             .Produces(413)
             .Produces(415);
 
+        group.MapGet("/invite-locations", async (
+            ICallerAccessor caller,
+            ListInviteLocationsHandler handler,
+            CancellationToken cancellationToken) =>
+            (await handler.HandleAsync(
+                new ListInviteLocationsQuery(caller.RequireStaffUserId()), cancellationToken))
+                .ToResponse())
+            .WithAgentMetadata("listInviteLocations")
+            .Produces(200)
+            .ProducesProblem(403);
+
         group.MapPost("/{id:guid}/invite", async (
             Guid id,
-            InviteAttendeeRequest request,
+            InviteAttendeeRequest? request,
             ICallerAccessor caller,
             InviteAttendeeHandler handler,
             CancellationToken cancellationToken) =>

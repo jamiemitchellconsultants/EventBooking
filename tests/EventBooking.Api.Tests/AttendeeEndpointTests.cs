@@ -371,6 +371,33 @@ public class AttendeeEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, confirmedDeletion.StatusCode);
     }
 
+    [Fact]
+    public async Task ACoordinatorInviteWithNoBodyDefaultsToEveryActiveLocation()
+    {
+        factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
+        var client = factory.CreateClient();
+        await GivenEligibleEventsAsync();
+        var created = await client.PostAsJsonAsync(
+            "/api/attendees",
+            new
+            {
+                Name = "Bo Lind",
+                Email = $"{Guid.NewGuid():N}@mail.com",
+                AttendeeGroupId = AttendeeGroupIds.Pilots,
+            });
+        var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
+
+        var locations = await client.GetAsync("/api/attendees/invite-locations");
+        var invited = await client.PostAsync($"/api/attendees/{attendeeId}/invite", null);
+
+        Assert.Equal(HttpStatusCode.OK, locations.StatusCode);
+        Assert.Contains(
+            EventBooking.Domain.Locations.TransitionalLocation.Id.ToString(),
+            await locations.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+    }
+
     /// <summary>Staff retry stages a fresh delivery; the dispatcher sends the same link.</summary>
     [Fact]
     public async Task ACoordinatorCanRetryAFailedInviteWithAFreshHashedToken()

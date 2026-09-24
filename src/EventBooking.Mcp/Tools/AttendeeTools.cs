@@ -160,6 +160,23 @@ public sealed class AttendeeTools
         return result.ValueOrThrow();
     }
 
+    /// <summary>Lists the active locations an invite can be restricted to.</summary>
+    /// <param name="caller">The signed-in staff identity.</param>
+    /// <param name="handler">The list handler.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The active locations.</returns>
+    [McpServerTool(Name = "list_invite_locations", Title = "List invite locations", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
+    [Description("List the active locations an invite can offer events at. Caller must have ManageAttendees.")]
+    public async Task<IReadOnlyList<InviteLocationItem>> ListInviteLocationsAsync(
+        ICallerAccessor caller,
+        ListInviteLocationsHandler handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.HandleAsync(
+            new ListInviteLocationsQuery(caller.RequireStaffUserId()), cancellationToken);
+        return result.ValueOrThrow();
+    }
+
     /// <summary>Creates one attendee in an Attendee Group.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The save handler.</param>
@@ -281,20 +298,20 @@ public sealed class AttendeeTools
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The invite handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="locationIds">The locations the Coordinator opened for this invite.</param>
+    /// <param name="locationIds">The locations to open for this invite; omit for every active location.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The invite issue outcome.</returns>
     [McpServerTool(Name = "trigger_invite", Title = "Trigger invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Issue a fresh invite to a attendee at explicit locations. Caller must be a coordinator or admin; stages an invite email for sending.")]
+    [Description("Issue a fresh invite to a attendee at the given locations, or every active location when none are given. Caller must be a coordinator or admin; stages an invite email for sending.")]
     public async Task<InviteAttendeeOutcome> TriggerInviteAsync(
         ICallerAccessor caller,
         InviteAttendeeHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("The locations the Coordinator opened for this invite.")] Guid[] locationIds,
-        CancellationToken cancellationToken)
+        [Description("The locations to open for this invite; omit for every active location.")] Guid[]? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new InviteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, locationIds),
+            new InviteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, locationIds ?? []),
             cancellationToken);
         return result.ValueOrThrow();
     }

@@ -194,6 +194,24 @@
                                                     title="Saves the edited details. Existing invitations are not resent.">Save</button>
                                             <button class="button button-quiet button-small" @onclick="CancelEdit" disabled="@_busy">Cancel</button>
                                         </div>
+                                        @if (_choosingInviteFor == attendee.AttendeeId)
+                                        {
+                                            <fieldset class="invite-locations">
+                                                <legend>Offer events at</legend>
+                                                @foreach (var location in _inviteLocations)
+                                                {
+                                                    <label>
+                                                        <input type="checkbox"
+                                                               checked="@_inviteLocationSelection.Contains(location.LocationId)"
+                                                               @onchange="e => SetInviteLocation(location.LocationId, e.Value is true)" />
+                                                        @location.Name
+                                                    </label>
+                                                }
+                                                <button class="button button-primary button-small"
+                                                        @onclick="() => InviteAtSelectedLocationsAsync(attendee)"
+                                                        disabled="@(_busy || _inviteLocationSelection.Count == 0)">Send invite</button>
+                                            </fieldset>
+                                        }
                                     </td>
                                 }
                                 else
@@ -353,7 +371,9 @@
                                             <button class="button button-small button-icon-edit" @onclick="() => StartEdit(attendee)" disabled="@(_busy || _editingId.HasValue)"
                                                     title="Change the name, email address or attendee group.">Edit</button>
                                             <button class="button button-primary button-small" @onclick="() => InviteAsync(attendee)" disabled="@(_busy || _editingId.HasValue)"
-                                                    title="Emails a single-use booking link showing only the windows this attendee can take.">Invite now</button>
+                                                    title="Emails a single-use booking link offering events at every active location.">Invite now</button>
+                                            <button class="button button-quiet button-small" @onclick="() => ToggleInviteLocationsAsync(attendee.AttendeeId)" disabled="@(_busy || _editingId.HasValue)"
+                                                    title="Choose which locations the invite offers events at, for example just one.">Choose locations</button>
                                             <button class="button button-danger button-small button-icon-delete" @onclick="() => DeleteAsync(attendee.AttendeeId)" disabled="@(_busy || _editingId.HasValue)"
                                                     title="Removes the attendee. Press a second time to confirm.">
                                                 @(awaitingDeleteConfirmation ? "Confirm delete" : "Delete")
@@ -384,6 +404,9 @@
 
     private List<AttendeeDto>? _attendees;
     private List<AttendeeGroupOptionDto> _groups = [];
+    private List<InviteLocationDto> _inviteLocations = [];
+    private readonly HashSet<Guid> _inviteLocationSelection = [];
+    private Guid? _choosingInviteFor;
     private List<ImportErrorDto> _importErrors = [];
     private string? _error;
     private bool _busy;
@@ -629,7 +652,63 @@
 
     private Task InviteAsync(AttendeeDto attendee)
     {
+        _choosingInviteFor = null;
         return RunAsync(() => AttendeesApi.TriggerInviteAsync(attendee.AttendeeId, CancellationToken.None));
+    }
+
+    private async Task ToggleInviteLocationsAsync(Guid attendeeId)
+    {
+        if (_choosingInviteFor == attendeeId)
+        {
+            _choosingInviteFor = null;
+            return;
+        }
+
+        try
+        {
+            if (_inviteLocations.Count == 0)
+            {
+                var outcome = await AttendeesApi.ListInviteLocationsAsync(CancellationToken.None);
+                if (!outcome.IsSuccess)
+                {
+                    _error = outcome.ErrorMessage ?? UnexpectedError;
+                    return;
+                }
+
+                _inviteLocations = outcome.Value ?? [];
+            }
+
+            // Start from every active location: narrowing is the exception, so the coordinator
+            // unticks rather than ticks.
+            _inviteLocationSelection.Clear();
+            _inviteLocationSelection.UnionWith(_inviteLocations.Select(l => l.LocationId));
+            _choosingInviteFor = attendeeId;
+            _error = null;
+        }
+        catch (Exception)
+        {
+            _error = UnexpectedError;
+        }
+    }
+
+    private void SetInviteLocation(Guid locationId, bool selected)
+    {
+        if (selected)
+        {
+            _inviteLocationSelection.Add(locationId);
+        }
+        else
+        {
+            _inviteLocationSelection.Remove(locationId);
+        }
+    }
+
+    private Task InviteAtSelectedLocationsAsync(AttendeeDto attendee)
+    {
+        var chosen = _inviteLocationSelection.ToList();
+        _choosingInviteFor = null;
+        return RunAsync(() => AttendeesApi.TriggerInviteAsync(
+            attendee.AttendeeId, chosen, CancellationToken.None));
     }
 
 
