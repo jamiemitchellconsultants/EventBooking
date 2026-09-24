@@ -4,7 +4,8 @@ namespace EventBooking.Application.Common;
 /// <param name="Code">The code.</param>
 /// <param name="Message">The message.</param>
 /// <param name="Data">Machine-readable refusal detail, keyed by field.</param>
-public sealed record Error(string Code, string Message, IReadOnlyDictionary<string, long>? Data = null)
+/// <param name="RelatedId">An entity the refusal is about, when one identifies the way out.</param>
+public sealed record Error(string Code, string Message, IReadOnlyDictionary<string, long>? Data = null, string? RelatedId = null)
 {
     /// <summary>Identifies a stale booking-appointment version conflict.</summary>
     public const string AppointmentVersionConflictCode = "appointment_version_conflict";
@@ -142,11 +143,11 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
     /// <summary>Identifies a confirmation replayed against an already-used invite.</summary>
     public const string AlreadyConfirmedCode = "already-confirmed";
 
-    /// <summary>Creates a replay refusal naming the existing booking in the message.</summary>
+    /// <summary>Creates a replay refusal carrying the confirmed booking.</summary>
     /// <param name="message">The message.</param>
     /// <param name="existingBookingId">The booking the invite already confirmed.</param>
     public static Error AlreadyConfirmed(string message, Guid existingBookingId) =>
-        new(AlreadyConfirmedCode, message, new Dictionary<string, long>());
+        new(AlreadyConfirmedCode, message, new Dictionary<string, long>(), existingBookingId.ToString());
 
     /// <summary>Identifies a booking refused because a required type has nothing left.</summary>
     public const string CapacityExhaustedCode = "capacity-exhausted";
@@ -175,4 +176,39 @@ public sealed record Error(string Code, string Message, IReadOnlyDictionary<stri
     /// <summary>Creates a window-started refusal judged in the event's location zone.</summary>
     /// <param name="message">The message.</param>
     public static Error WindowStarted(string message) => new(WindowStartedCode, message);
+
+    /// <summary>Identifies an acceptance or withdrawal on a proposal that is no longer open.</summary>
+    public const string ProposalNotOpenCode = "proposal-not-open";
+
+    /// <summary>Creates a typed refusal carrying the proposal's status in its message.</summary>
+    /// <param name="message">The message.</param>
+    public static Error ProposalNotOpen(string message) => new(ProposalNotOpenCode, message);
+
+    /// <summary>Identifies an operation that would leave no administrator.</summary>
+    public const string LastAdminCode = "last-admin";
+
+    /// <summary>Creates a last-administrator refusal for an interactive caller.</summary>
+    /// <param name="message">The message.</param>
+    public static Error LastAdmin(string message) => new(LastAdminCode, message);
+
+    /// <summary>Identifies an unknown, superseded or tampered attendee token.</summary>
+    public const string TokenInvalidCode = "token-invalid";
+
+    /// <summary>Creates the one answer for every token failure except a lapsed expiry.</summary>
+    /// <param name="message">The message.</param>
+    public static Error TokenInvalid(string message) => new(TokenInvalidCode, message);
+
+    /// <summary>Identifies a book token whose invite has expired.</summary>
+    public const string TokenExpiredCode = "token-expired";
+
+    /// <summary>Creates the one disclosure: a real link that has lapsed.</summary>
+    /// <param name="message">The message.</param>
+    public static Error TokenExpired(string message) => new(TokenExpiredCode, message);
+
+    /// <summary>Identifies materialized requirements disagreeing with authoritative state.</summary>
+    public const string RequirementMismatchCode = "requirement-mismatch";
+
+    /// <summary>Creates a requirement-mismatch refusal for a stale invite or booking.</summary>
+    /// <param name="message">The message.</param>
+    public static Error RequirementMismatch(string message) => new(RequirementMismatchCode, message);
 }

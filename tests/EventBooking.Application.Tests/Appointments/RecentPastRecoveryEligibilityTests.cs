@@ -45,7 +45,8 @@ public sealed class RecentPastRecoveryEligibilityTests
                         scenario.Booking.Id,
                         scenario.Booking.Status,
                         outcome.Value.OutcomeAt!.Value),
-                ]));
+                ],
+                Map(AppointmentTypeIds.DrugAndAlcoholTesting)));
 
         Assert.Equal(AttendeeReadinessCode.AppointmentsOutstanding, readiness.Code);
         var outstanding = Assert.Single(readiness.OutstandingAppointmentTypes);
@@ -53,6 +54,12 @@ public sealed class RecentPastRecoveryEligibilityTests
     }
 
     /// <summary>Builds a DAT-only group; the scenario needs a mapping, not an identity.</summary>
+    private static IReadOnlyDictionary<Guid, AttendeeReadinessType> Map(params Guid[] ids) =>
+        ids.ToDictionary(
+            id => id,
+            id => new AttendeeReadinessType(
+                id, AppointmentTypeIds.CodeOf(id), AppointmentTypeIds.NameOf(id)));
+
     private static AttendeeGroup DatOnly() =>
         AttendeeGroup.Define(
             Guid.NewGuid(), "DAT_ONLY", "DAT only", true,

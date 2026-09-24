@@ -64,7 +64,7 @@ public sealed class ConfirmBookingHandler(
             || reference.Purpose != TokenPurpose.Book
             || reference.Version < Invite.InitialTokenVersion)
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.Validation("This link cannot be used to confirm a booking."));
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
 
@@ -83,10 +83,10 @@ public sealed class ConfirmBookingHandler(
             return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such invite."));
         if (invite.AttendeeId != attendee.Id)
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.Conflict("This link does not belong to this attendee."));
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         if (invite.TokenVersion != reference.Version)
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.Conflict("This link has been replaced."));
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         if (invite.Status == InviteStatus.Used)
         {
             var existing = await bookings.GetByInviteIdAsync(invite.Id, ct);
@@ -97,10 +97,10 @@ public sealed class ConfirmBookingHandler(
 
         if (invite.Status != InviteStatus.Pending)
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.Conflict($"The invite is {invite.Status} and can no longer be used."));
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         if (!invite.IsUsableAt(clock.UtcNow))
             return Result<ConfirmBookingOutcome>.Failure(
-                Error.Conflict("This invite has expired and can no longer be used."));
+                Error.TokenExpired(ViewInviteHandler.ExpiredLinkMessage));
         if (!invite.Offers(command.EventId))
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.Validation("The chosen event is not one of this invite's options."));

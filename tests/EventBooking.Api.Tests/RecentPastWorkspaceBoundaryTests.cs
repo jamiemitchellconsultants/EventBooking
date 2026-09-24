@@ -40,19 +40,40 @@ public sealed class RecentPastWorkspaceBoundaryTests(ApiFactory factory)
         Assert.Contains(data.EventId.ToString(), body, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Verifies a recently past event outside trusted scope is indistinguishable from missing.</summary>
+    /// <summary>
+    /// Verifies a recently past event that does not list the caller's type is refused
+    /// outright, while a listed type with nothing booked reads an empty roster — the same
+    /// distinction as the current-day boundary, so the list and the detail agree.
+    /// </summary>
     [Fact]
-    public async Task CrossTypeRecentlyPastEventIsNotFound()
+    public async Task CrossTypeRecentlyPastEventOutsideScopeIsForbidden()
     {
         var data = await GivenWorkspaceAsync(
-            AppointmentTypeIds.DrugAndAlcoholTesting, daysBeforeToday: 1);
+            AppointmentTypeIds.DrugAndAlcoholTesting, daysBeforeToday: 1,
+            listedTypes: [AppointmentTypeIds.DrugAndAlcoholTesting]);
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.Manager], AppointmentTypeIds.UniformFitting);
 
         using var response = await factory.CreateClient().GetAsync(
             $"/api/appointment-workspace/events/{data.EventId}");
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListedTypeWithoutAppointmentsReadsAnEmptyRecentlyPastRoster()
+    {
+        var data = await GivenWorkspaceAsync(
+            AppointmentTypeIds.DrugAndAlcoholTesting, daysBeforeToday: 1);
+        factory.SignedInAs = await factory.GivenStaffAsync(
+            [Role.Manager], AppointmentTypeIds.UniformFitting);
+        var client = factory.CreateClient();
+
+        using var document = JsonDocument.Parse(await client.GetStringAsync(
+            $"/api/appointment-workspace/events/{data.EventId}"));
+
+        AssertKeys(document.RootElement, "items", "nextCursor");
+        Assert.Empty(document.RootElement.GetProperty("items").EnumerateArray());
     }
 
     /// <summary>Verifies unscoped callers are denied recently past events without data.</summary>
@@ -81,25 +102,26 @@ public sealed class RecentPastWorkspaceBoundaryTests(ApiFactory factory)
 
         using var detail = JsonDocument.Parse(await client.GetStringAsync(
             $"/api/appointment-workspace/events/{data.EventId}"));
-        AssertKeys(detail.RootElement,
-            "appointmentTypeName", "eventId", "date", "startTime", "endTime", "appointments", "_links");
-        var row = Assert.Single(detail.RootElement.GetProperty("appointments").EnumerateArray());
-        AssertKeys(row, "bookingAppointmentId", "attendeeName", "attendeeEmail",
-            "status", "checkedInAt", "outcomeAt", "version", "_links");
+        AssertKeys(detail.RootElement, "items", "nextCursor");
+        var row = Assert.Single(detail.RootElement.GetProperty("items").EnumerateArray());
+        AssertKeys(row, "name", "email", "scopeTypeCode", "appointmentStatus",
+            "checkedInAt", "version");
         Assert.DoesNotContain("attendeeId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("bookingId", detail.RootElement.GetRawText());
     }
 
     private async Task<(Guid EventId, Guid AppointmentId)> GivenWorkspaceAsync(
         Guid appointmentTypeId,
-        int daysBeforeToday)
+        int daysBeforeToday,
+        IEnumerable<Guid>? listedTypes = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var listed = (listedTypes ?? AppointmentTypeIds.All).ToList();
         var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today.AddDays(-daysBeforeToday), new TimeOnly(9, 0), 240),
-            AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
+            listed.ToDictionary(id => id, _ => 20), listed);
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp
             ? AttendeeGroupIds.GroundOperationsAgent
             : AttendeeGroupIds.Pilots;

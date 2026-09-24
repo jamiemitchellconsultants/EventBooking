@@ -61,8 +61,8 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(
-            "recovery_not_available",
-            problem.RootElement.GetProperty("title").GetString());
+            "requirement-mismatch",
+            problem.RootElement.GetProperty("type").GetString());
     }
 
     /// <summary>Only Coordinators may start or cancel a recovery invite.</summary>
@@ -218,7 +218,7 @@ public sealed class RecoveryInviteEndpointTests(ApiFactory factory)
             [Role.AppointmentStaff], AppointmentTypeIds.MedicalCheckUp);
         using var marked = await factory.CreateClient().PutAsJsonAsync(
             $"/api/appointment-workspace/appointments/{appointment.Id}/status",
-            new { status = "NoShow", expectedVersion = 1 });
+            new { targetStatus = "NoShow", expectedVersion = 1 });
         Assert.Equal(HttpStatusCode.OK, marked.StatusCode);
         return attendee.Id;
     }

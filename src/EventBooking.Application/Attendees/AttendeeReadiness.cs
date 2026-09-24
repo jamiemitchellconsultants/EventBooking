@@ -36,12 +36,20 @@ public sealed record AttendeeReadinessAttempt(
 /// <param name="CurrentRequirementTypeIds">The group's current requirement set.</param>
 /// <param name="ActiveOriginalBookingId">The active journey root, or null when absent.</param>
 /// <param name="Attempts">Every booked attempt in the original and recovery journey.</param>
+/// <param name="AppointmentTypes">The appointment types by identifier, for codes and names.</param>
 public sealed record AttendeeReadinessSnapshot(
     Guid AttendeeId,
     Guid AttendeeGroupId,
     IReadOnlyList<Guid> CurrentRequirementTypeIds,
     Guid? ActiveOriginalBookingId,
-    IReadOnlyList<AttendeeReadinessAttempt> Attempts);
+    IReadOnlyList<AttendeeReadinessAttempt> Attempts,
+    IReadOnlyDictionary<Guid, AttendeeReadinessType> AppointmentTypes);
+
+/// <summary>Minimum canonical detail for one appointment type in the snapshot.</summary>
+/// <param name="Id">The identifier.</param>
+/// <param name="Code">The canonical appointment-type code.</param>
+/// <param name="Name">The canonical appointment-type name.</param>
+public sealed record AttendeeReadinessType(Guid Id, string Code, string Name);
 
 /// <summary>Minimum canonical detail for one incomplete current Appointment Type.</summary>
 /// <param name="Code">The canonical appointment-type code.</param>

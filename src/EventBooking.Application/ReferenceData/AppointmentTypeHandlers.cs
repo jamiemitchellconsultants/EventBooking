@@ -53,11 +53,13 @@ public sealed class CreateAppointmentTypeHandler(
 /// <param name="access">The access.</param>
 /// <param name="unitOfWork">The unitOfWork.</param>
 /// <param name="audit">The audit.</param>
+/// <param name="blocking">The blocking.</param>
 public sealed class UpdateAppointmentTypeHandler(
     IAppointmentTypeRepository types,
     IStaffAccessAuthorizer access,
     IUnitOfWork unitOfWork,
-    IAuditLogger audit)
+    IAuditLogger audit,
+    IReferenceDataBlockingQueries blocking)
 {
     /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
@@ -72,19 +74,31 @@ public sealed class UpdateAppointmentTypeHandler(
         if (type.Version != command.ExpectedVersion)
             return Result<AppointmentTypeResult>.Failure(Error.VersionConflict("The appointment type changed under you.", type.Version));
 
-        if (command.Name is null) return Result<AppointmentTypeResult>.Success(ToResult(type));
-
+        var changes = new List<string>();
         try
         {
-            type.Rename(command.Name);
+            if (command.Name is not null) { type.Rename(command.Name); changes.Add("name"); }
+            if (command.IsActive != type.IsActive)
+            {
+                if (command.IsActive) type.Reactivate();
+                else type.Deactivate(await blocking.AppointmentTypeUsageAsync(type.Id, ct));
+                changes.Add($"isActive -> {type.IsActive}");
+            }
+        }
+        catch (ReferenceDataInUseException ex)
+        {
+            return Result<AppointmentTypeResult>.Failure(Error.ReferenceDataInUse(ex.Message, ex.Blocking));
         }
         catch (DomainException ex)
         {
             return Result<AppointmentTypeResult>.Failure(Error.Validation(ex.Message));
         }
 
+        if (changes.Count == 0)
+            return Result<AppointmentTypeResult>.Success(ToResult(type));
+
         audit.Record(AuditEntityTypes.AppointmentType, type.Id, AuditAction.AppointmentTypeUpdated,
-            ActorType.Staff, command.StaffUserId.ToString(), "name");
+            ActorType.Staff, command.StaffUserId.ToString(), string.Join("; ", changes));
         await unitOfWork.SaveChangesAsync(ct);
         return Result<AppointmentTypeResult>.Success(ToResult(type));
     }
@@ -93,58 +107,10 @@ public sealed class UpdateAppointmentTypeHandler(
         type.Id, type.Code, type.Name, type.IsActive, type.Version, null);
 }
 
-/// <summary>Activates or deactivates an appointment type.</summary>
-/// <param name="types">The types.</param>
-/// <param name="access">The access.</param>
-/// <param name="unitOfWork">The unitOfWork.</param>
-/// <param name="audit">The audit.</param>
-/// <param name="blocking">The blocking.</param>
-public sealed class SetAppointmentTypeActiveHandler(
-    IAppointmentTypeRepository types,
-    IStaffAccessAuthorizer access,
-    IUnitOfWork unitOfWork,
-    IAuditLogger audit,
-    IReferenceDataBlockingQueries blocking)
-{
-    /// <summary>Handles the command.</summary>
-    /// <param name="command">The command.</param>
-    /// <param name="ct">The cancellation token.</param>
-    public async Task<Result<AppointmentTypeResult>> HandleAsync(SetAppointmentTypeActiveCommand command, CancellationToken ct)
-    {
-        var authorized = await access.AuthorizeAsync(command.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
-        if (authorized.IsFailure) return Result<AppointmentTypeResult>.Failure(authorized.Error);
-
-        var type = await types.GetAsync(command.AppointmentTypeId, ct);
-        if (type is null) return Result<AppointmentTypeResult>.Failure(Error.NotFound("No such appointment type."));
-        if (type.Version != command.ExpectedVersion)
-            return Result<AppointmentTypeResult>.Failure(Error.VersionConflict("The appointment type changed under you.", type.Version));
-
-        var beforeVersion = type.Version;
-        try
-        {
-            if (command.IsActive) type.Reactivate();
-            else type.Deactivate(await blocking.AppointmentTypeUsageAsync(type.Id, ct));
-        }
-        catch (ReferenceDataInUseException ex)
-        {
-            return Result<AppointmentTypeResult>.Failure(Error.ReferenceDataInUse(ex.Message, ex.Blocking));
-        }
-
-        if (type.Version == beforeVersion)
-            return Result<AppointmentTypeResult>.Success(new AppointmentTypeResult(
-                type.Id, type.Code, type.Name, type.IsActive, type.Version, null));
-
-        audit.Record(AuditEntityTypes.AppointmentType, type.Id, AuditAction.AppointmentTypeUpdated,
-            ActorType.Staff, command.StaffUserId.ToString(), $"isActive -> {type.IsActive}");
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result<AppointmentTypeResult>.Success(new AppointmentTypeResult(
-            type.Id, type.Code, type.Name, type.IsActive, type.Version, null));
-    }
-}
-
 // ManagerDisplayName falls back to StaffId when the identity carries no display
 // name — the same projection the settings handler already uses.
-/// <summary>Lists every appointment type with its manager.</summary>
+/// <summary>Lists appointment types in code order, hiding inactive rows unless asked. Open
+/// to any staff member: design 05 names no capability, so the endpoint's staff policy is the gate.</summary>
 /// <param name="types">The types.</param>
 /// <param name="profiles">The profiles.</param>
 /// <param name="identities">The identities.</param>
@@ -153,9 +119,11 @@ public sealed class ListAppointmentTypesHandler(
     IStaffAccessProfileRepository profiles,
     IStaffIdentityRepository identities)
 {
-    /// <summary>Handles the command.</summary>
+    /// <summary>Handles the query.</summary>
+    /// <param name="query">Whether to include inactive rows.</param>
     /// <param name="ct">The cancellation token.</param>
-    public async Task<Result<IReadOnlyList<AppointmentTypeListItem>>> HandleAsync(CancellationToken ct)
+    public async Task<Result<IReadOnlyList<AppointmentTypeListItem>>> HandleAsync(
+        ListAppointmentTypesQuery query, CancellationToken ct)
     {
         var rows = await types.ListAsync(ct);
         var managerByType = (await profiles.ListAsync(ct))
@@ -164,7 +132,8 @@ public sealed class ListAppointmentTypesHandler(
         var identityByUserId = (await identities.ListAsync(ct)).ToDictionary(i => i.StaffUserId);
 
         return Result<IReadOnlyList<AppointmentTypeListItem>>.Success(
-            rows.OrderBy(t => t.Code, StringComparer.Ordinal)
+            rows.Where(t => query.IncludeInactive || t.IsActive)
+                .OrderBy(t => t.Code, StringComparer.Ordinal)
                 .Select(t =>
                 {
                     var managerUserId = managerByType.TryGetValue(t.Id, out var found) ? found : (Guid?)null;

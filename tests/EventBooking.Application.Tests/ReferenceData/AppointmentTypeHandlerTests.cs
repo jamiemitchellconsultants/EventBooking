@@ -23,7 +23,6 @@ public sealed class AppointmentTypeHandlerTests
     }
 
     private CreateAppointmentTypeHandler Creator => new(_types, _profiles, _unitOfWork, _audit);
-    private SetAppointmentTypeActiveHandler Activer => new(_types, _profiles, _unitOfWork, _audit, new MemoryBlocking());
 
     [Fact]
     public async Task Create_type_writes_AppointmentTypeCreated()
@@ -46,10 +45,10 @@ public sealed class AppointmentTypeHandlerTests
             new CreateAppointmentTypeCommand(Admin, "MED", "Medical"),
             CancellationToken.None);
         var blocking = new MemoryBlocking { TypeUsageValue = new AppointmentTypeUsage(0, 0, 2) };
-        var activer = new SetAppointmentTypeActiveHandler(_types, _profiles, _unitOfWork, _audit, blocking);
+        var updater = new UpdateAppointmentTypeHandler(_types, _profiles, _unitOfWork, _audit, blocking);
 
-        var result = await activer.HandleAsync(
-            new SetAppointmentTypeActiveCommand(Admin, created.Value.Id, false, 1),
+        var result = await updater.HandleAsync(
+            new UpdateAppointmentTypeCommand(Admin, created.Value.Id, null, false, 1),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -69,7 +68,8 @@ public sealed class AppointmentTypeHandlerTests
         await identities.UpsertAsync(manager, new StaffId("M100"), null, DateTimeOffset.UtcNow, CancellationToken.None);
         var lister = new ListAppointmentTypesHandler(_types, _profiles, identities);
 
-        var result = await lister.HandleAsync(CancellationToken.None);
+        var result = await lister.HandleAsync(
+            new ListAppointmentTypesQuery(IncludeInactive: false), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         var item = Assert.Single(result.Value);

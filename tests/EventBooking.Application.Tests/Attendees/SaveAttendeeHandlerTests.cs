@@ -34,7 +34,8 @@ public class SaveAttendeeHandlerTests
         new StaffAccessAuthorizer(_roles),
         new RecordingAuditLogger(),
         new FakeClock(),
-        _unitOfWork);
+        _unitOfWork,
+        new InMemoryAppointmentTypeRepository());
 
     public SaveAttendeeHandlerTests()
     {

@@ -69,10 +69,12 @@ public class DeleteAttendeeHandlerTests
             new DeleteAttendeeCommand(Coordinator, _attendee.Id, false), CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal("confirmation-required", result.Error.Code);
         Assert.Equal(
             "Deleting this attendee will cancel 1 booking and 1 pending invite, and free the capacity they hold. Confirm to proceed.",
             result.Error.Message);
+        Assert.Equal(1L, result.Error.Data!["bookings"]);
+        Assert.Equal(1L, result.Error.Data["invites"]);
         Assert.Single(_attendees.Items);
     }
 

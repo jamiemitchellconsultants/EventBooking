@@ -31,12 +31,16 @@ public static class ProposalFixture
     /// <param name="window">The proposed window.</param>
     /// <param name="createdByManagerUserId">The proposing Manager.</param>
     /// <param name="proposerAppointmentTypeId">The proposing type; drug and alcohol testing by default.</param>
+    /// <param name="listedTypeIds">The listed types; all three by default.</param>
     public static EventProposal Create(
         Guid id,
         EventWindow window,
         Guid createdByManagerUserId,
-        Guid? proposerAppointmentTypeId = null) =>
-        EventProposal.Propose(
+        Guid? proposerAppointmentTypeId = null,
+        IEnumerable<Guid>? listedTypeIds = null)
+    {
+        var listed = (listedTypeIds ?? AppointmentTypeIds.All).ToList();
+        return EventProposal.Propose(
             id,
             LocationId,
             locationIsActive: true,
@@ -44,14 +48,18 @@ public static class ProposalFixture
             window,
             Zones,
             Now,
-            [
-                new(AppointmentTypeIds.DrugAndAlcoholTesting, "DAT", true, true),
-                new(AppointmentTypeIds.MedicalCheckUp, "MED", true, true),
-                new(AppointmentTypeIds.UniformFitting, "UNI", true, true),
-            ],
+            [.. listed.Select(typeId => new ProposableAppointmentType(
+                typeId, CodeOf(typeId), IsActive: true, HasCurrentManager: true))],
             proposerAppointmentTypeId ?? ProposerType,
             createdByManagerUserId,
             headcount: 1);
+    }
+
+    private static string CodeOf(Guid typeId) =>
+        typeId == AppointmentTypeIds.DrugAndAlcoholTesting ? "DAT"
+        : typeId == AppointmentTypeIds.MedicalCheckUp ? "MED"
+        : typeId == AppointmentTypeIds.UniformFitting ? "UNI"
+        : throw new ArgumentOutOfRangeException(nameof(typeId), "Unknown fixture appointment type.");
 
     private sealed class UniqueZones : IEventWindowZones
     {

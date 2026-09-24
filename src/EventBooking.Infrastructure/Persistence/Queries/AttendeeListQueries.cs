@@ -55,6 +55,7 @@ public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttend
                LIMIT 1) AS latest ON TRUE
          WHERE (@status IS NULL OR c.status = @status)
            AND (@groupId IS NULL OR c.attendee_group_id = @groupId)
+           AND (@readinessBooked IS NULL OR (c.status = @booked) = @readinessBooked)
            AND (@prefix IS NULL
                 OR lower(c.name) LIKE @prefix || '%'
                 OR lower(c.email) LIKE @prefix || '%')
@@ -94,6 +95,29 @@ public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttend
             statusValue = (int)parsed;
         }
 
+        // Readiness is a derived label, but the list's two labels split exactly on the
+        // booked status — see AttendeeReadiness.Of — so the filter is a status predicate
+        // in SQL rather than a post-limit pass. A post-limit pass would return an empty
+        // page with a cursor whenever the first page-sized run of rows all mismatched,
+        // instead of the matching row past them. An unknown label matches nothing.
+        bool? readinessBooked = null;
+        if (readiness is not null)
+        {
+            if (string.Equals(readiness, nameof(AttendeeStatus.Booked), StringComparison.OrdinalIgnoreCase))
+            {
+                readinessBooked = true;
+            }
+            else if (string.Equals(
+                readiness, nameof(AttendeeReadinessCode.NoActiveBooking), StringComparison.OrdinalIgnoreCase))
+            {
+                readinessBooked = false;
+            }
+            else
+            {
+                return new AttendeeListView([], null);
+            }
+        }
+
         string? cursorName = null;
         Guid? cursorId = null;
         if (AttendeeCursor.TryDecode(cursor, out var sortKey, out var decodedId))
@@ -117,6 +141,8 @@ public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttend
             Add(command, "cursorId", NpgsqlDbType.Uuid, cursorId);
             Add(command, "notYetInvited", NpgsqlDbType.Integer, (int)AttendeeStatus.NotYetInvited);
             Add(command, "awaiting", NpgsqlDbType.Integer, (int)AttendeeStatus.AwaitingAvailability);
+            Add(command, "booked", NpgsqlDbType.Integer, (int)AttendeeStatus.Booked);
+            Add(command, "readinessBooked", NpgsqlDbType.Boolean, readinessBooked);
             command.Parameters.Add(new NpgsqlParameter("limit", limit + 1));
 
             var read = new List<AttendeeListItem>(limit + 1);
@@ -143,28 +169,15 @@ public sealed class AttendeeListQueries(EventBookingDbContext context) : IAttend
                     await reader.IsDBNullAsync(7, ct) ? null : reader.GetGuid(7)));
             }
 
-            // Readiness is a derived label, not a column, so it cannot be filtered in
-            // SQL without materialising it there too. Filtering the page after the fact
-            // would silently shorten pages, so it is applied here and the keyset still
-            // advances by the last row actually read.
-            var matched = readiness is null
-                ? read
-                : read.Where(r => string.Equals(
-                    r.Readiness, readiness, StringComparison.OrdinalIgnoreCase)).ToList();
-
+            // Every filter is in the statement, so the rows read are the page: the
+            // limit-plus-one row only decides whether a cursor is owed.
             if (read.Count <= limit)
             {
-                return new AttendeeListView(matched, null);
+                return new AttendeeListView(read, null);
             }
 
-            if (matched.Count > limit)
-            {
-                var page = matched.Take(limit).ToList();
-                return new AttendeeListView(page, page[^1].Cursor);
-            }
-
-            return new AttendeeListView(
-                matched, (matched.Count == 0 ? read[^1] : matched[^1]).Cursor);
+            var page = read.Take(limit).ToList();
+            return new AttendeeListView(page, page[^1].Cursor);
         }
         finally
         {

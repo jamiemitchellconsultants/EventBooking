@@ -65,7 +65,7 @@ public sealed class CancelBookingByAttendeeHandler(
             || reference.Purpose != TokenPurpose.Manage
             || reference.Version < Booking.InitialManageTokenVersion)
             return Result<AttendeeCancelOutcome>.Failure(
-                Error.Validation("This link cannot be used to manage a booking."));
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         var portId = await bookings.GetAttendeeIdAsync(reference.EntityId, ct);
@@ -91,7 +91,7 @@ public sealed class CancelBookingByAttendeeHandler(
             return Result<AttendeeCancelOutcome>.Failure(Error.NotFound("No such booking."));
         if (booking.ManageTokenVersion != reference.Version)
             return Result<AttendeeCancelOutcome>.Failure(
-                Error.Conflict("This link has been replaced."));
+                Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
         if (booking.Status != BookingStatus.Active)
             return Result<AttendeeCancelOutcome>.Failure(
                 Error.Conflict($"The booking is {booking.Status} and cannot be cancelled."));

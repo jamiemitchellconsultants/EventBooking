@@ -8,21 +8,19 @@ namespace EventBooking.Application.ReferenceData;
 /// <param name="TimeZoneId">The time zone id.</param>
 public sealed record CreateLocationCommand(Guid StaffUserId, string? Code, string? Name, string? Address, string? TimeZoneId);
 
-/// <summary>Updates a location.</summary>
+/// <summary>Updates a location, including its activation.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
 /// <param name="LocationId">The location id.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Address">The address.</param>
 /// <param name="TimeZoneId">The time zone id.</param>
-/// <param name="ExpectedVersion">The expected version.</param>
-public sealed record UpdateLocationCommand(Guid StaffUserId, Guid LocationId, string? Name, string? Address, string? TimeZoneId, long ExpectedVersion);
-
-/// <summary>Activates or deactivates a location.</summary>
-/// <param name="StaffUserId">The staff user id.</param>
-/// <param name="LocationId">The location id.</param>
 /// <param name="IsActive">Whether the location is active.</param>
 /// <param name="ExpectedVersion">The expected version.</param>
-public sealed record SetLocationActiveCommand(Guid StaffUserId, Guid LocationId, bool IsActive, long ExpectedVersion);
+public sealed record UpdateLocationCommand(Guid StaffUserId, Guid LocationId, string? Name, string? Address, string? TimeZoneId, bool IsActive, long ExpectedVersion);
+
+/// <summary>Lists locations. Open to any staff member; the endpoint's staff policy is the gate.</summary>
+/// <param name="IncludeInactive">Whether to include inactive rows.</param>
+public sealed record ListLocationsQuery(bool IncludeInactive);
 
 /// <summary>A location with its version.</summary>
 /// <param name="Id">The id.</param>
@@ -47,19 +45,17 @@ public sealed record LocationListItem(Guid Id, string Code, string Name, bool Is
 /// <param name="Name">The name.</param>
 public sealed record CreateAppointmentTypeCommand(Guid StaffUserId, string? Code, string? Name);
 
-/// <summary>Renames an appointment type.</summary>
+/// <summary>Renames an appointment type, including its activation.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
 /// <param name="AppointmentTypeId">The appointment type id.</param>
 /// <param name="Name">The name.</param>
-/// <param name="ExpectedVersion">The expected version.</param>
-public sealed record UpdateAppointmentTypeCommand(Guid StaffUserId, Guid AppointmentTypeId, string? Name, long ExpectedVersion);
-
-/// <summary>Activates or deactivates an appointment type.</summary>
-/// <param name="StaffUserId">The staff user id.</param>
-/// <param name="AppointmentTypeId">The appointment type id.</param>
 /// <param name="IsActive">Whether the type is active.</param>
 /// <param name="ExpectedVersion">The expected version.</param>
-public sealed record SetAppointmentTypeActiveCommand(Guid StaffUserId, Guid AppointmentTypeId, bool IsActive, long ExpectedVersion);
+public sealed record UpdateAppointmentTypeCommand(Guid StaffUserId, Guid AppointmentTypeId, string? Name, bool IsActive, long ExpectedVersion);
+
+/// <summary>Lists appointment types. Open to any staff member; the endpoint's staff policy is the gate.</summary>
+/// <param name="IncludeInactive">Whether to include inactive rows.</param>
+public sealed record ListAppointmentTypesQuery(bool IncludeInactive);
 
 /// <summary>An appointment type with its version and manager.</summary>
 /// <param name="Id">The id.</param>
@@ -85,20 +81,18 @@ public sealed record AppointmentTypeListItem(Guid Id, string Code, string Name, 
 /// <param name="AppointmentTypeIds">The appointment type ids.</param>
 public sealed record CreateAttendeeGroupCommand(Guid StaffUserId, string? Code, string? Name, IReadOnlyList<Guid> AppointmentTypeIds);
 
-/// <summary>Renames an attendee group or replaces its requirement set.</summary>
+/// <summary>Renames an attendee group, replaces its requirement set, or changes activation.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
 /// <param name="AttendeeGroupId">The attendee group id.</param>
 /// <param name="Name">The name.</param>
 /// <param name="AppointmentTypeIds">The appointment type ids.</param>
-/// <param name="ExpectedVersion">The expected version.</param>
-public sealed record UpdateAttendeeGroupCommand(Guid StaffUserId, Guid AttendeeGroupId, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds, long ExpectedVersion);
-
-/// <summary>Activates or deactivates an attendee group.</summary>
-/// <param name="StaffUserId">The staff user id.</param>
-/// <param name="AttendeeGroupId">The attendee group id.</param>
 /// <param name="IsActive">Whether the group is active.</param>
 /// <param name="ExpectedVersion">The expected version.</param>
-public sealed record SetAttendeeGroupActiveCommand(Guid StaffUserId, Guid AttendeeGroupId, bool IsActive, long ExpectedVersion);
+public sealed record UpdateAttendeeGroupCommand(Guid StaffUserId, Guid AttendeeGroupId, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds, bool IsActive, long ExpectedVersion);
+
+/// <summary>Lists attendee groups. Open to any staff member; the endpoint's staff policy is the gate.</summary>
+/// <param name="IncludeInactive">Whether to include inactive rows.</param>
+public sealed record ListAttendeeGroupsQuery(bool IncludeInactive);
 
 /// <summary>An attendee group with its requirements, version and member count.</summary>
 /// <param name="Id">The id.</param>

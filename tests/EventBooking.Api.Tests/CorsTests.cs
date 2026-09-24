@@ -5,7 +5,7 @@ namespace EventBooking.Api.Tests;
 [Collection("api")]
 public sealed class CorsTests(ApiFactory factory)
 {
-    private const string WebOrigin = "https://localhost:5002";
+    private const string WebOrigin = "https://web.example.test";
 
     [Fact]
     public async Task AllowedWebOriginIsReturnedOnAnAnonymousResponse()
@@ -66,7 +66,7 @@ public sealed class CorsTests(ApiFactory factory)
     public async Task UnlistedOriginReceivesNoCorsPermission()
     {
         var client = factory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/health");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
         request.Headers.Add("Origin", "https://unlisted.example");
 
         using var response = await client.SendAsync(request);

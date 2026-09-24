@@ -25,7 +25,7 @@ public sealed class ReplaceAttendeeGroupRequirementsTests(PostgresFixture fixtur
             Profiles, Queries, UnitOfWork, Audit, Clock);
 
         var result = await handler.HandleAsync(new UpdateAttendeeGroupCommand(
-            admin, group.Id, null, [MedId, added.Id], 1), CancellationToken.None);
+            admin, group.Id, null, [MedId, added.Id], true, 1), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         var members = await MembersOfAsync(group.Id);
@@ -52,7 +52,7 @@ public sealed class ReplaceAttendeeGroupRequirementsTests(PostgresFixture fixtur
             Profiles, Queries, UnitOfWork, Audit, Clock);
 
         var result = await handler.HandleAsync(new UpdateAttendeeGroupCommand(
-            admin, group.Id, null, [MedId, added.Id], 1), CancellationToken.None);
+            admin, group.Id, null, [MedId, added.Id], true, 1), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("requirements-locked", result.Error.Code);

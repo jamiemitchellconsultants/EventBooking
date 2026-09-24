@@ -1,3 +1,4 @@
+using System.Text;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Common;
@@ -37,6 +38,12 @@ public sealed class ImportAttendeesHandler(
     IClock clock,
     IUnitOfWork unitOfWork)
 {
+    /// <summary>The most data rows one file may hold, on either surface.</summary>
+    internal const int MaxDataRows = 1000;
+
+    /// <summary>The largest file, in UTF-8 bytes, one import may carry, on either surface.</summary>
+    internal const int MaxBytes = 1_048_576;
+
     /// <summary>Validates every row before persisting any Attendee.</summary>
     /// <param name="command">The command.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
@@ -54,7 +61,27 @@ public sealed class ImportAttendeesHandler(
             return Result<AttendeeImportOutcome>.Failure(authorized.Error);
         }
 
+        // Both bounds live here, not on either transport, so the REST route and the import
+        // tool refuse one oversized file with one application error. The import tool takes
+        // the CSV as a string, so no file-part check guards it before this point.
+        if (command.CsvContent is { } content && Encoding.UTF8.GetByteCount(content) > MaxBytes)
+        {
+            return Result<AttendeeImportOutcome>.Failure(
+                Error.Validation("The file must be 1 MB or smaller."));
+        }
+
         var parsed = AttendeeCsvParser.Parse(command.CsvContent);
+
+        // Every data line becomes exactly one row or one line-numbered error, so their sum is
+        // the file's data-line count. Counting rows alone would let a file of malformed lines
+        // past the bound and answer it with an error per line.
+        var dataLines = parsed.Rows.Count + parsed.Errors.Count(e => e.LineNumber > 1);
+        if (dataLines > MaxDataRows)
+        {
+            return Result<AttendeeImportOutcome>.Failure(
+                Error.Validation("The file must hold 1000 data rows or fewer."));
+        }
+
         var errors = parsed.Errors.ToList();
 
         // Build every attendee first, collecting failures. Nothing is added to the repository

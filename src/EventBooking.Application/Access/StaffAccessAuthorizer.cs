@@ -70,7 +70,7 @@ public sealed class StaffAccessAuthorizer(IStaffAccessProfileRepository profiles
             profile.AppointmentTypeId));
     }
 
-    private static bool IsAllowed(StaffAccessProfile profile, StaffCapability capability)
+    internal static bool IsAllowed(StaffAccessProfile profile, StaffCapability capability)
     {
         // Explicit attendee-data deny for Admin is retained even though valid profiles make Admin
         // exclusive. It fails closed if invalid data reaches this method in a future refactor,

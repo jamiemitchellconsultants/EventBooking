@@ -1,4 +1,6 @@
 using EventBooking.Application.Abstractions;
+using EventBooking.Application.Events;
+using EventBooking.Application.Negotiation;
 using EventBooking.Application.ReferenceData;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Audit;
@@ -52,6 +54,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAttendeeListQueries, AttendeeListQueries>();
         services.AddScoped<IAuditQueries, AuditQueries>();
         services.AddScoped<IAuditSearchQueries, AuditSearchQueries>();
+        services.AddScoped<IEventReadQueries, Persistence.Queries.EventReadQueries>();
+        services.AddScoped<IEventProposalListQueries, Persistence.Queries.EventProposalListQueries>();
         services.AddScoped<IAppointmentWorkspaceQueries, AppointmentWorkspaceQueries>();
         services.AddScoped<IAttendeeReadinessQueries, AttendeeReadinessQueries>();
         services.AddScoped<IAttendeeBookingQueries, AttendeeBookingQueries>();

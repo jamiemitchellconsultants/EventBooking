@@ -315,6 +315,17 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
             .Select(e => e.Status).SingleAsync();
     }
 
+    /// <summary>Stamps a staged request correlation onto a pending row.</summary>
+    /// <param name="rowId">The row.</param>
+    /// <param name="correlationId">The staged identifier.</param>
+    protected async Task StampCorrelationAsync(Guid rowId, string correlationId)
+    {
+        await using var context = fixture.NewContext();
+        var row = await context.EmailLogs.SingleAsync(e => e.Id == rowId);
+        row.StampCorrelation(correlationId);
+        await context.SaveChangesAsync();
+    }
+
     /// <summary>Concatenates every column's text for the personal-data scan.</summary>
     /// <param name="rowId">The row.</param>
     protected async Task<string> AllColumnsAsync(Guid rowId)

@@ -53,7 +53,7 @@ public sealed class InviteAttendeeHandlerTests
     }
 
     [Fact]
-    public async Task Invite_short_of_options_parks_attendee_with_no_side_effects()
+    public async Task Invite_short_of_options_parks_attendee_and_reports_the_parked_state()
     {
         var fixture = InviteFixture.Create(optionCount: 3).WithEligibleEvents(2);
 
@@ -61,8 +61,11 @@ public sealed class InviteAttendeeHandlerTests
             new InviteAttendeeCommand(fixture.Coordinator, fixture.AttendeeId, fixture.LocationIds),
             CancellationToken.None);
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("insufficient-events", result.Error.Code);
+        // FR-5.4: no invite is created, the attendee is parked, and the parked state is
+        // reported — a success carrying it, not a failure.
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value.InviteId);
+        Assert.Equal("AwaitingAvailability", result.Value.Status);
         Assert.Equal("AwaitingAvailability", fixture.Attendees.Items.Single().Status.ToString());
         Assert.Empty(fixture.Invites.Items);
         Assert.Empty(fixture.Emails.Items);

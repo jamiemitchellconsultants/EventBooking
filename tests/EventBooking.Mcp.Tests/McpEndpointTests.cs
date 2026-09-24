@@ -3,29 +3,19 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using EventBooking.Domain.Access;
+using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Mcp.Tests;
 
-/// <summary>Covers the MCP transport: authorization, tool discovery, and stateless calls.</summary>
+/// <summary>Covers the MCP transport: authorization, identity, and stateless calls.</summary>
+/// <remarks>
+/// The tools/list surface itself is pinned by <see cref="ParityTests"/>, which compares the
+/// advertised set, descriptions and hints against the operation catalogue both ways.
+/// </remarks>
 [Collection("mcp")]
 public sealed class McpEndpointTests(McpFactory factory)
 {
-    private static readonly string[] ExpectedTools =
-    [
-        "propose_event", "accept_proposal", "withdraw_acceptance", "withdraw_proposal",
-        "event_board", "adjust_event_capacity", "cancel_event",
-        "list_attendees", "list_invite_locations", "create_attendee", "update_attendee", "delete_attendee",
-        "list_attendee_groups",
-        "import_attendees", "trigger_invite", "retry_attendee_email",
-        "start_recovery_invite", "cancel_recovery_invite", "list_attendee_bookings",
-        "cancel_attendee_booking", "get_attendee_readiness",
-        "get_settings", "update_settings", "list_staff_access", "replace_staff_access_scope",
-        "clear_staff_access_scope", "get_my_access",
-        "get_dashboards", "event_audit_history", "attendee_audit_history", "search_audit",
-        "appointment_events", "appointment_event_detail", "export_appointment_roster", "update_appointment_status",
-        "get_event_operations",
-    ];
-
     /// <summary>Anonymous MCP requests are refused before any tool runs.</summary>
     [Fact]
     public async Task AnonymousMcpRequest_IsUnauthorized()
@@ -59,41 +49,6 @@ public sealed class McpEndpointTests(McpFactory factory)
         {
             factory.SignedInAs = originalStaffUserId;
             factory.StaffIdClaim = originalStaffIdClaim;
-        }
-    }
-
-    /// <summary>An authenticated caller discovers the full staff tool surface.</summary>
-    [Fact]
-    public async Task ToolsList_ExposesFullStaffSurface()
-    {
-        factory.SignedInAs = await factory.GivenStaffAsync([Role.Admin], null);
-
-        var payload = await PostRpcJsonAsync(new { jsonrpc = "2.0", id = "1", method = "tools/list" });
-        var names = payload
-            .GetProperty("result").GetProperty("tools").EnumerateArray()
-            .Select(tool => tool.GetProperty("name").GetString())
-            .ToHashSet();
-
-        Assert.Equal(ExpectedTools.Order(), names.Order());
-        Assert.Equal(36, names.Count);
-    }
-
-    /// <summary>Every tool carries explicit safety hints with a closed world.</summary>
-    [Fact]
-    public async Task ToolsList_ExposesExplicitSafetyHints()
-    {
-        factory.SignedInAs = await factory.GivenStaffAsync([Role.Admin], null);
-
-        var payload = await PostRpcJsonAsync(new { jsonrpc = "2.0", id = "1", method = "tools/list" });
-        foreach (var tool in payload.GetProperty("result").GetProperty("tools").EnumerateArray())
-        {
-            Assert.True(tool.TryGetProperty("annotations", out var annotations), $"Tool {tool.GetProperty("name")} is missing annotations.");
-            Assert.True(annotations.TryGetProperty("readOnlyHint", out _), $"Tool {tool.GetProperty("name")} is missing readOnlyHint.");
-            Assert.True(annotations.TryGetProperty("destructiveHint", out _), $"Tool {tool.GetProperty("name")} is missing destructiveHint.");
-            Assert.True(annotations.TryGetProperty("idempotentHint", out _), $"Tool {tool.GetProperty("name")} is missing idempotentHint.");
-            Assert.True(
-                annotations.TryGetProperty("openWorldHint", out var openWorld) && openWorld.ValueKind == JsonValueKind.False,
-                $"Tool {tool.GetProperty("name")} must have openWorldHint false.");
         }
     }
 
@@ -149,7 +104,16 @@ public sealed class McpEndpointTests(McpFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync([Role.Coordinator], null);
 
         var payload = await CallToolAsync(
-            "propose_event", new { date = "2026-10-01", startTime = "09:00" });
+            "propose_event",
+            new
+            {
+                locationId = TransitionalLocation.Id,
+                date = "2026-10-01",
+                startTime = "09:00",
+                durationMinutes = 240,
+                appointmentTypeIds = new[] { AppointmentTypeIds.DrugAndAlcoholTesting },
+                headcount = 10,
+            });
 
         Assert.True(IsToolError(payload));
     }

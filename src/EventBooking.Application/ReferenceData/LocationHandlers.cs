@@ -82,6 +82,20 @@ public sealed class UpdateLocationHandler(
         var changes = new List<string>();
         try
         {
+            // Activation runs first so that a refusal throws before the name, address or
+            // zone is touched. The refusal covers the whole command: nothing is saved
+            // when it throws, because the save is after the whole block, and the entity
+            // is untouched for callers that hold the same reference. Activation is only
+            // asked about when it changes: a rename of a site with live scheduling is
+            // always allowed, and asking the blocking query on every update would turn
+            // one into a refusal.
+            if (command.IsActive != location.IsActive)
+            {
+                if (command.IsActive) location.Reactivate();
+                else location.Deactivate(await blocking.LocationUsageAsync(location.Id, ct));
+                changes.Add($"isActive -> {location.IsActive}");
+            }
+
             if (command.Name is not null) { location.Rename(command.Name); changes.Add("name"); }
             if (command.Address is not null) { location.ChangeAddress(command.Address); changes.Add("address"); }
             if (command.TimeZoneId is not null && command.TimeZoneId != location.TimeZoneId)
@@ -114,66 +128,21 @@ public sealed class UpdateLocationHandler(
         location.Id, location.Code, location.Name, location.Address, location.TimeZoneId, location.IsActive, location.Version);
 }
 
-/// <summary>Activates or deactivates a location.</summary>
-/// <param name="locations">The locations.</param>
-/// <param name="access">The access.</param>
-/// <param name="unitOfWork">The unitOfWork.</param>
-/// <param name="audit">The audit.</param>
-/// <param name="blocking">The blocking.</param>
-public sealed class SetLocationActiveHandler(
-    ILocationRepository locations,
-    IStaffAccessAuthorizer access,
-    IUnitOfWork unitOfWork,
-    IAuditLogger audit,
-    IReferenceDataBlockingQueries blocking)
-{
-    /// <summary>Handles the command.</summary>
-    /// <param name="command">The command.</param>
-    /// <param name="ct">The cancellation token.</param>
-    public async Task<Result<LocationResult>> HandleAsync(SetLocationActiveCommand command, CancellationToken ct)
-    {
-        var authorized = await access.AuthorizeAsync(command.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
-        if (authorized.IsFailure) return Result<LocationResult>.Failure(authorized.Error);
-
-        var location = await locations.GetAsync(command.LocationId, ct);
-        if (location is null) return Result<LocationResult>.Failure(Error.NotFound("No such location."));
-        if (location.Version != command.ExpectedVersion)
-            return Result<LocationResult>.Failure(Error.VersionConflict("The location changed under you.", location.Version));
-
-        var beforeVersion = location.Version;
-        try
-        {
-            if (command.IsActive) location.Reactivate();
-            else location.Deactivate(await blocking.LocationUsageAsync(location.Id, ct));
-        }
-        catch (ReferenceDataInUseException ex)
-        {
-            return Result<LocationResult>.Failure(Error.ReferenceDataInUse(ex.Message, ex.Blocking));
-        }
-
-        if (location.Version == beforeVersion)
-            return Result<LocationResult>.Success(new LocationResult(
-                location.Id, location.Code, location.Name, location.Address, location.TimeZoneId, location.IsActive, location.Version));
-
-        audit.Record(AuditEntityTypes.Location, location.Id, AuditAction.LocationUpdated,
-            ActorType.Staff, command.StaffUserId.ToString(), $"isActive -> {location.IsActive}");
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result<LocationResult>.Success(new LocationResult(
-            location.Id, location.Code, location.Name, location.Address, location.TimeZoneId, location.IsActive, location.Version));
-    }
-}
-
-/// <summary>Lists every location.</summary>
+/// <summary>Lists locations in code order, hiding inactive rows unless asked. Open to any
+/// staff member: design 05 names no capability, so the endpoint's staff policy is the gate.</summary>
 /// <param name="locations">The locations.</param>
 public sealed class ListLocationsHandler(ILocationRepository locations)
 {
-    /// <summary>Handles the command.</summary>
+    /// <summary>Handles the query.</summary>
+    /// <param name="query">Whether to include inactive rows.</param>
     /// <param name="ct">The cancellation token.</param>
-    public async Task<Result<IReadOnlyList<LocationListItem>>> HandleAsync(CancellationToken ct)
+    public async Task<Result<IReadOnlyList<LocationListItem>>> HandleAsync(
+        ListLocationsQuery query, CancellationToken ct)
     {
         var rows = await locations.ListAsync(ct);
         return Result<IReadOnlyList<LocationListItem>>.Success(
-            rows.OrderBy(l => l.Code, StringComparer.Ordinal)
+            rows.Where(l => query.IncludeInactive || l.IsActive)
+                .OrderBy(l => l.Code, StringComparer.Ordinal)
                 .Select(l => new LocationListItem(l.Id, l.Code, l.Name, l.IsActive))
                 .ToList());
     }

@@ -12,10 +12,12 @@ namespace EventBooking.Application.Negotiation;
 /// <param name="StaffUserId">The adjusting manager.</param>
 /// <param name="EventId">The event identifier.</param>
 /// <param name="TotalHeadcount">The new positive total covering every active booking.</param>
+/// <param name="AppointmentTypeId">The route's appointment type, or empty for the caller's own.</param>
 public sealed record AdjustEventCapacityCommand(
     Guid StaffUserId,
     Guid EventId,
-    int TotalHeadcount);
+    int TotalHeadcount,
+    Guid AppointmentTypeId = default);
 
 /// <summary>The capacity row after adjusting.</summary>
 /// <param name="EventId">The event identifier.</param>
@@ -63,6 +65,12 @@ public sealed class AdjustEventCapacityHandler(
         {
             return Result<AdjustEventCapacityOutcome>.Failure(
                 Error.Forbidden("Adjusting capacity needs an assigned appointment type."));
+        }
+
+        if (command.AppointmentTypeId != Guid.Empty && command.AppointmentTypeId != appointmentTypeId)
+        {
+            return Result<AdjustEventCapacityOutcome>.Failure(Error.Forbidden(
+                "A Manager may only adjust their own appointment type's capacity."));
         }
 
         if (command.TotalHeadcount <= 0)

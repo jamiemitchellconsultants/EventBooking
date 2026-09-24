@@ -23,18 +23,18 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var view = await client.GetFromJsonAsync<BookingResponse>(
-            $"/api/booking/manage/{booking.ManageToken}");
+            $"/api/manage/{booking.ManageToken}");
 
         Assert.NotNull(view);
         Assert.Equal("Amara Novak", view!.AttendeeName);
         Assert.Contains("-", view.Display);
 
         using var document = System.Text.Json.JsonDocument.Parse(
-            await client.GetStringAsync($"/api/booking/manage/{booking.ManageToken}"));
+            await client.GetStringAsync($"/api/manage/{booking.ManageToken}"));
         var links = document.RootElement.GetProperty("_links");
         var cancel = links.GetProperty("cancel");
         Assert.Equal(
-            $"/api/booking/manage/{Uri.EscapeDataString(booking.ManageToken)}/cancel",
+            $"/api/manage/{Uri.EscapeDataString(booking.ManageToken)}/cancel",
             cancel.GetProperty("href").GetString());
         Assert.Equal("POST", cancel.GetProperty("method").GetString());
         Assert.Equal("cancelManagedBooking", cancel.GetProperty("operationId").GetString());
@@ -47,13 +47,13 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync(
-            $"/api/booking/manage/{booking.ManageToken}/cancel", new { RequestNewTime = false });
+            $"/api/manage/{booking.ManageToken}/cancel", new { RequestNewTime = false });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var outcome = await response.Content.ReadFromJsonAsync<CancelResponse>();
         Assert.Equal("cancelled", outcome!.Outcome);
 
-        var afterwards = await client.GetAsync($"/api/booking/manage/{booking.ManageToken}");
+        var afterwards = await client.GetAsync($"/api/manage/{booking.ManageToken}");
         Assert.Equal(HttpStatusCode.NotFound, afterwards.StatusCode);
 
         var persisted = await ReadCancellationStateAsync(booking);
@@ -70,7 +70,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync(
-            $"/api/booking/manage/{booking.ManageToken}/cancel", new { RequestNewTime = true });
+            $"/api/manage/{booking.ManageToken}/cancel", new { RequestNewTime = true });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var outcome = await response.Content.ReadFromJsonAsync<CancelResponse>();
@@ -90,7 +90,7 @@ public class ManageBookingEndpointTests(ApiFactory factory)
     {
         var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/booking/manage/nonsense");
+        var response = await client.GetAsync("/api/manage/nonsense");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

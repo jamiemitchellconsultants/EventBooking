@@ -62,6 +62,7 @@ public sealed record StaffAccessMutationView(
 /// <param name="access">The access.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="audit">The audit.</param>
+/// <param name="types">Resolves scope names for the profile views.</param>
 /// <param name="staffIdPolicy">The configured staff-number validation expression.</param>
 public sealed class StaffAccessHandler(
     IStaffAccessProfileRepository profiles,
@@ -69,6 +70,7 @@ public sealed class StaffAccessHandler(
     IStaffAccessAuthorizer access,
     IUnitOfWork unitOfWork,
     IAuditLogger audit,
+    IAppointmentTypeRepository types,
     StaffIdPolicy? staffIdPolicy = null)
 {
     /// <summary>Defines list async for the current use case.</summary>
@@ -89,11 +91,20 @@ public sealed class StaffAccessHandler(
         // One listing serves both the staff number and the name; no extra query.
         var identityByUserId = (await identities.ListAsync(cancellationToken))
             .ToDictionary(identity => identity.StaffUserId);
+        // One read of the types serves every scoped row, rather than a lookup per profile.
+        var typeNameById = (await types.ListAsync(cancellationToken))
+            .ToDictionary(type => type.Id, type => type.Name);
         return Result<IReadOnlyList<StaffAccessProfileView>>.Success(
             current.Select(profile =>
             {
                 var identity = identityByUserId.GetValueOrDefault(profile.StaffUserId);
-                return ToView(profile, identity?.StaffId, identity?.DisplayName);
+                return ToView(
+                    profile,
+                    identity?.StaffId,
+                    profile.AppointmentTypeId is { } typeId
+                        ? typeNameById.GetValueOrDefault(typeId)
+                        : null,
+                    identity?.DisplayName);
             }).ToList());
     }
 
@@ -213,7 +224,8 @@ public sealed class StaffAccessHandler(
         await transaction.CommitAsync(cancellationToken);
 
         return Result<StaffAccessMutationView>.Success(
-            new StaffAccessMutationView(ToView(current, null), formerManagerId));
+            new StaffAccessMutationView(
+                await ToViewAsync(current, null, cancellationToken), formerManagerId));
     }
 
     /// <summary>Clears scope without deleting or changing identity-provider roles.</summary>
@@ -278,19 +290,36 @@ public sealed class StaffAccessHandler(
     private static Result<T> Conflict<T>(string message) =>
         Result<T>.Failure(Error.Conflict(message));
 
+    private async Task<StaffAccessProfileView> ToViewAsync(
+        StaffAccessProfile profile,
+        StaffId? staffId,
+        CancellationToken cancellationToken,
+        string? displayName = null) =>
+        ToView(
+            profile, staffId,
+            await TypeNameAsync(profile.AppointmentTypeId, cancellationToken),
+            displayName);
+
     private static StaffAccessProfileView ToView(
         StaffAccessProfile profile,
         StaffId? staffId,
-        string? displayName = null) => new(
+        string? typeName,
+        string? displayName) => new(
         profile.StaffUserId,
         staffId,
         profile.Roles.OrderBy(role => role).ToList(),
         profile.AppointmentTypeId,
-        profile.AppointmentTypeId is null
-            ? null
-            : AppointmentTypeIds.NameOf(profile.AppointmentTypeId.Value),
+        typeName,
         profile.Version,
         displayName);
+
+    // Resolved from the stored row, not the canonical constants: an Admin can create
+    // appointment types at any time, and a Manager can be scoped to any of them.
+    private async Task<string?> TypeNameAsync(
+        Guid? appointmentTypeId, CancellationToken cancellationToken) =>
+        appointmentTypeId is null
+            ? null
+            : (await types.GetAsync(appointmentTypeId.Value, cancellationToken))?.Name;
 
     private void Record(
         Guid actorStaffUserId,

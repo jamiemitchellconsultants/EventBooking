@@ -69,7 +69,7 @@ public sealed class RecordAcceptanceHandlerTests
         var result = await fixture.AcceptAsync("FIT", proposed.ProposalId, headcount: 4);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal("proposal-not-open", result.Error.Code);
         Assert.Contains("Withdrawn", result.Error.Message);
         Assert.Equal(before, fixture.Audit.Entries.Count);
     }

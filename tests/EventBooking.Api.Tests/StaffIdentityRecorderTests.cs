@@ -17,7 +17,7 @@ public sealed class StaffIdentityRecorderTests(ApiFactory factory)
         factory.SignedInAs = staffUserId;
         factory.StaffIdClaim = "u123456";
 
-        var response = await factory.CreateClient().GetAsync("/api/admin/staff-access");
+        var response = await factory.CreateClient().GetAsync("/api/staff-access");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         using var scope = factory.Services.CreateScope();
@@ -38,7 +38,7 @@ public sealed class StaffIdentityRecorderTests(ApiFactory factory)
         factory.StaffIdClaim = claim;
 
         var me = await factory.CreateClient().GetAsync("/api/me");
-        var staff = await factory.CreateClient().GetAsync("/api/admin/staff-access");
+        var staff = await factory.CreateClient().GetAsync("/api/staff-access");
 
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, staff.StatusCode);

@@ -282,7 +282,7 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal("recovery-active", result.Error.Code);
         Assert.Contains("Cancel the recovery first", result.Error.Message);
         Assert.Equal(BookingAppointmentStatus.NoShow, appointment.Status);
         Assert.Equal(BookingStatus.Active, recovery.Status);
@@ -303,7 +303,7 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal("recovery-active", result.Error.Code);
         Assert.Contains("Cancel the recovery first", result.Error.Message);
         Assert.Equal(BookingAppointmentStatus.NoShow, scenario.Appointment.Status);
     }

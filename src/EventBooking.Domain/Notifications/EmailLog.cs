@@ -123,6 +123,16 @@ public sealed class EmailLog
         ClaimedAt = null;
     }
 
+    /// <summary>Stamps the correlation identifier if the row does not already carry one.</summary>
+    /// <param name="correlationId">The identifier of the work staging the row.</param>
+    public void StampCorrelation(string? correlationId)
+    {
+        if (string.IsNullOrWhiteSpace(CorrelationId) && !string.IsNullOrWhiteSpace(correlationId))
+        {
+            CorrelationId = correlationId;
+        }
+    }
+
     /// <summary>Marks the claimed delivery as successfully sent.</summary>
     /// <param name="sentAt">The sent at.</param>
     public void MarkSent(DateTimeOffset sentAt)

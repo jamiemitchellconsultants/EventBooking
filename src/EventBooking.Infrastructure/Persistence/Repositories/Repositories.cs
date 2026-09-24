@@ -60,6 +60,16 @@ public sealed class SystemSettingsRepository(EventBookingDbContext context) : IS
 {
     public async Task<SystemSettings> GetAsync(CancellationToken cancellationToken) =>
         await context.SystemSettings.SingleAsync(cancellationToken);
+
+    /// <summary>
+    /// Locks the settings singleton outside the lock ladder: it is one row behind one consumer,
+    /// like the access-profile lock, so there is no ladder order it could violate.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task<SystemSettings> LockAsync(CancellationToken cancellationToken) =>
+        await context.SystemSettings
+            .FromSqlRaw("SELECT * FROM system_settings FOR UPDATE")
+            .SingleAsync(cancellationToken);
 }
 
 /// <summary>Persists proposals and exposes their PostgreSQL lifecycle row lock.</summary>

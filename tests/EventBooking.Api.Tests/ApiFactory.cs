@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using EventBooking.Api.Tests.Fakes;
@@ -5,6 +6,7 @@ using EventBooking.Domain.Access;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -106,10 +108,20 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         await context.SaveChangesAsync();
     }
 
+    private static readonly string TestSigningKey = Convert.ToBase64String(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:EventBooking", _container.GetConnectionString());
-        builder.UseSetting("Tokens:SigningKey", "a-test-signing-key-that-is-long-enough-here");
+        builder.UseSetting("Tokens:SigningKey", TestSigningKey);
+        builder.UseSetting("Auth:Authority", "https://issuer.example.test/");
+        builder.UseSetting("Auth:Audience", "event-booking-tests");
+        builder.UseSetting("Email:Smtp:Host", "smtp.example.test");
+        builder.UseSetting("Email:FromAddress", "events@example.test");
+        builder.UseSetting("Portal:BaseUrl", "https://portal.example.test/");
+        builder.UseSetting("Portal:CoordinatorContact", "events@example.test");
+        builder.UseSetting("Cors:AllowedOrigins:0", "https://web.example.test");
 
         builder.ConfigureTestServices(services =>
         {
@@ -122,6 +134,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             // The real transport constructs an AWS SES client that throws immediately outside an
             // AWS environment (no RegionEndpoint or ServiceURL configured) — exactly where CI runs.
             services.AddSingleton<IEmailTransport>(EmailTransport);
+
+            // The test server sets no client address, so without this every anonymous
+            // attendee-link request in the suite would share the limiter's one "unknown"
+            // partition and the suite would 429 itself once it grew past thirty. Each
+            // request gets its own documentation-range address instead. An explicit
+            // X-Test-Remote-Ip always wins, so the dedicated limit cases on derived
+            // hosts keep the addresses they set.
+            services.AddSingleton<IStartupFilter, TestRemoteAddressFilter>();
 
             // The dispatcher loop would race test assertions on staged rows. Tests drive
             // passes explicitly through the registered OutboxDispatcher singleton, so only
@@ -175,6 +195,31 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             return Task.FromResult(AuthenticateResult.Success(
                 new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
         }
+    }
+
+    /// <summary>
+    /// Gives each request without an explicit test address its own client address, so
+    /// behaviour cases never exhaust each other's address window.
+    /// </summary>
+    private sealed class TestRemoteAddressFilter : IStartupFilter
+    {
+        private static int _next;
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
+            app =>
+            {
+                app.Use(async (context, following) =>
+                {
+                    if (!context.Request.Headers.ContainsKey("X-Test-Remote-Ip"))
+                    {
+                        var host = 1 + (Interlocked.Increment(ref _next) % 254);
+                        context.Connection.RemoteIpAddress = IPAddress.Parse($"192.0.2.{host}");
+                    }
+
+                    await following(context);
+                });
+                next(app);
+            };
     }
 }
 

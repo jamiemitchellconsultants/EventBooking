@@ -1,258 +1,133 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
-using EventBooking.Api.Endpoints;
-using EventBooking.Application.Abstractions;
-using EventBooking.Application.Bookings;
+using EventBooking.Api.Pagination;
 using EventBooking.Application.Attendees;
+using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Recovery;
-using EventBooking.Domain.Attendees;
 using ModelContextProtocol.Server;
 
 namespace EventBooking.Mcp.Tools;
 
-public sealed record AttendeeToolView
-{
-    /// <summary>Gets the attendee identifier for follow-up tool calls.</summary>
-    public required Guid AttendeeId { get; init; }
-    /// <summary>Gets the attendee display name.</summary>
-    public required string Name { get; init; }
-    /// <summary>Gets the attendee email address.</summary>
-    public required string Email { get; init; }
-    /// <summary>Gets the attendee lifecycle status name.</summary>
-    public required string Status { get; init; }
-    /// <summary>Gets the canonical Attendee Group code.</summary>
-    public required string AttendeeGroupCode { get; init; }
-    /// <summary>Gets the required type codes, on awaiting-availability rows only.</summary>
-    public required IReadOnlyList<string> RequiredTypeCodes { get; init; }
-    /// <summary>Gets the latest delivery status, or null when never invited.</summary>
-    public required string? LatestDeliveryStatus { get; init; }
-    /// <summary>Gets the latest delivery's id, which retry_attendee_email needs.</summary>
-    public required Guid? LatestDeliveryId { get; init; }
-    /// <summary>Gets the row's page cursor.</summary>
-    public required string Cursor { get; init; }
-    /// <summary>Gets internal readiness without exposing recovery mutation.</summary>
-    public required AttendeeReadiness? Readiness { get; init; }
-}
-
-/// <summary>One keyset page of attendee tool views.</summary>
-/// <param name="Items">The rows.</param>
-/// <param name="NextCursor">The next page cursor, or null when exhausted.</param>
-public sealed record AttendeeListToolView(
-    IReadOnlyList<AttendeeToolView> Items,
-    string? NextCursor);
-
-/// <summary>Tool-safe readiness including Coordinator display wording.</summary>
-/// <param name="AttendeeId">The attendee the readiness was calculated for.</param>
-/// <param name="Code">The readiness code name.</param>
-/// <param name="Display">The Coordinator-facing display wording for the code.</param>
-/// <param name="OutstandingAppointmentTypes">The appointment types still outstanding.</param>
-public sealed record AttendeeReadinessToolView(
-    Guid AttendeeId,
-    string Code,
-    string Display,
-    IReadOnlyList<OutstandingAppointmentType> OutstandingAppointmentTypes);
-
-/// <summary>Attendee management, invites, and delivery retry for coordinators.</summary>
+/// <summary>The thirteen attendee tools. Every one resolves staff by identity, not by number.</summary>
 [McpServerToolType]
 public sealed class AttendeeTools
 {
-    private const int DefaultPageSize = 50;
-
-    private const int MaxPageSize = 200;
-
-    /// <summary>Lists one keyset page of attendees, optionally filtered.</summary>
+    /// <summary>Lists attendees.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
-    /// <param name="readinessHandler">Resolves internal readiness per listed attendee.</param>
-    /// <param name="groups">Resolves the assigned Attendee Group.</param>
-    /// <param name="status">The attendee status name, or null for all.</param>
-    /// <param name="search">Name-or-email prefix filter, or null.</param>
-    /// <param name="attendeeGroupCode">The canonical Attendee Group code, or null for all.</param>
-    /// <param name="readiness">The readiness label, or null for all.</param>
-    /// <param name="cursor">The opaque page cursor, or null for the first page.</param>
-    /// <param name="pageSize">Results per page, clamped to the tool maximum.</param>
+    /// <param name="cursors">The REST cursor signer.</param>
+    /// <param name="limit">The page size.</param>
+    /// <param name="status">The status filter, or null for every status.</param>
+    /// <param name="groupId">The group filter, or null for every group.</param>
+    /// <param name="readiness">The readiness filter, or null for every readiness.</param>
+    /// <param name="search">The name or email prefix, or null.</param>
+    /// <param name="cursor">The page cursor, or null for the first page.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The bounded page of attendee views.</returns>
-    [McpServerTool(Name = "list_attendees", Title = "List attendees", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List attendees, optionally filtered by status name and search text. Caller must be a coordinator.")]
-    public async Task<AttendeeListToolView> ListAttendeesAsync(
+    /// <returns>One page of attendees.</returns>
+    [McpServerTool(
+        Name = "list_attendees", Title = "List attendees",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Reads attendees filtered by status, group, readiness and a name or email prefix, one keyset page at a time, with each row's latest delivery status.")]
+    public async Task<AttendeeListView> ListAttendeesAsync(
         ICallerAccessor caller,
         ListAttendeesHandler handler,
-        GetAttendeeReadinessHandler readinessHandler,
-        IAttendeeGroupRepository groups,
-        [Description("Attendee status name (e.g. Invited) or null for all.")] string? status = null,
-        [Description("Name-or-email prefix filter or null.")] string? search = null,
-        [Description("Canonical attendee group code (e.g. PILOTS) or null for all.")] string? attendeeGroupCode = null,
-        [Description("Readiness label or null for all.")] string? readiness = null,
-        [Description("Opaque page cursor, or null for the first page.")] string? cursor = null,
-        [Description("Results per page, at most 200.")] int pageSize = DefaultPageSize,
+        PageCursor cursors,
+        [Description("Page size, 1 to 200.")] int limit = 50,
+        [Description("Narrow to one status.")] string? status = null,
+        [Description("Narrow to one attendee group.")] Guid? groupId = null,
+        [Description("Narrow to one readiness.")] string? readiness = null,
+        [Description("A name or email prefix.")] string? search = null,
+        [Description("The nextCursor from the previous page.")] string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        string? parsed = null;
-        if (status is not null)
-        {
-            if (!Enum.TryParse<AttendeeStatus>(status, ignoreCase: false, out var value) ||
-                !Enum.IsDefined(value))
-            {
-                throw new ModelContextProtocol.McpException(
-                    "Status must be a recognised AttendeeStatus name.");
-            }
-
-            parsed = value.ToString();
-        }
-
-        Guid? groupId = null;
-        if (attendeeGroupCode is not null)
-        {
-            groupId = await ResolveGroupIdAsync(groups, attendeeGroupCode, cancellationToken);
-        }
-
-        var staffUserId = caller.RequireStaffUserId();
-        var page = (await handler.HandleAsync(
+        var result = await handler.HandleAsync(
             new ListAttendeesQuery(
-                staffUserId,
-                cursor,
-                Math.Clamp(pageSize, 1, MaxPageSize),
-                parsed,
-                groupId,
-                readiness,
-                search),
-            cancellationToken)).ValueOrThrow();
-
-        var views = new List<AttendeeToolView>();
-        foreach (var item in page.Items)
-        {
-            var readinessResult = await readinessHandler.HandleAsync(
-                new GetAttendeeReadinessQuery(staffUserId, item.AttendeeId),
-                cancellationToken);
-            views.Add(new AttendeeToolView
-            {
-                AttendeeId = item.AttendeeId,
-                Name = item.Name,
-                Email = item.Email,
-                Status = item.Status,
-                AttendeeGroupCode = item.GroupCode,
-                RequiredTypeCodes = item.RequiredTypeCodes,
-                LatestDeliveryStatus = item.LatestDeliveryStatus,
-                LatestDeliveryId = item.LatestDeliveryId,
-                Cursor = item.Cursor,
-                Readiness = readinessResult.IsSuccess ? readinessResult.Value : null,
-            });
-        }
-
-        return new AttendeeListToolView(views, page.NextCursor);
-    }
-
-    /// <summary>Lists the Attendee Groups available for attendee assignment.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The list handler.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The assignable groups with their required appointment types.</returns>
-    [McpServerTool(Name = "list_attendee_groups", Title = "List attendee groups", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List the attendee groups that determine attendee requirements. Caller must be a coordinator or admin.")]
-    public async Task<IReadOnlyList<AttendeeGroupListItem>> ListAttendeeGroupsAsync(
-        ICallerAccessor caller,
-        ListAttendeeGroupsHandler handler,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new ListAttendeeGroupsQuery(caller.RequireStaffUserId()),
+                caller.RequireStaffUserId(), cursors.Unwrap(cursor), limit, status, groupId,
+                readiness, search),
             cancellationToken);
-        return result.ValueOrThrow();
+        var page = result.ValueOrThrow();
+
+        // Each row's own cursor is signed too, as the REST list signs it.
+        return new AttendeeListView(
+            [.. page.Items.Select(x => x with { Cursor = cursors.Protect(x.Cursor) })],
+            cursors.Wrap(page.NextCursor));
     }
 
-    /// <summary>Lists the active locations an invite can be restricted to.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The list handler.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The active locations.</returns>
-    [McpServerTool(Name = "list_invite_locations", Title = "List invite locations", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List the active locations an invite can offer events at. Caller must have ManageAttendees.")]
-    public async Task<IReadOnlyList<InviteLocationItem>> ListInviteLocationsAsync(
-        ICallerAccessor caller,
-        ListInviteLocationsHandler handler,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new ListInviteLocationsQuery(caller.RequireStaffUserId()), cancellationToken);
-        return result.ValueOrThrow();
-    }
-
-    /// <summary>Creates one attendee in an Attendee Group.</summary>
+    /// <summary>Creates an attendee.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The save handler.</param>
-    /// <param name="groups">Resolves the assigned Attendee Group.</param>
-    /// <param name="name">The attendee name.</param>
-    /// <param name="email">The attendee email.</param>
-    /// <param name="attendeeGroupCode">The canonical Attendee Group code.</param>
+    /// <param name="name">The full name.</param>
+    /// <param name="email">The email address.</param>
+    /// <param name="attendeeGroupId">The group, whose requirements are derived.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The new attendee identifier.</returns>
-    [McpServerTool(Name = "create_attendee", Title = "Create attendee", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Create a attendee in one attendee group; requirements derive from the group. Caller must be a coordinator or admin; creates a new attendee record.")]
+    /// <returns>The new attendee's identifier.</returns>
+    [McpServerTool(
+        Name = "create_attendee", Title = "Create attendee",
+        ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Creates an attendee in a group, deriving their requirements from it.")]
     public async Task<Guid> CreateAttendeeAsync(
         ICallerAccessor caller,
         SaveAttendeeHandler handler,
-        IAttendeeGroupRepository groups,
-        [Description("Attendee full name.")] string name,
-        [Description("Attendee email address.")] string email,
-        [Description("Canonical attendee group code (e.g. PILOTS).")] string attendeeGroupCode,
-        CancellationToken cancellationToken)
-    {
-        var groupId = await ResolveGroupIdAsync(groups, attendeeGroupCode, cancellationToken);
-        var result = await handler.CreateAsync(
-            new CreateAttendeeCommand(caller.RequireStaffUserId(), name, email, groupId),
-            cancellationToken);
-        return result.ValueOrThrow();
-    }
+        [Description("Full name.")] string name,
+        [Description("Email address.")] string email,
+        [Description("The attendee group identifier.")] Guid attendeeGroupId,
+        CancellationToken cancellationToken = default) =>
+        await handler.CreateAsync(
+            new CreateAttendeeCommand(
+                caller.RequireStaffUserId(), name, email, attendeeGroupId),
+            cancellationToken).ValueOrThrowAsync();
 
-    /// <summary>Updates a attendee's name, email, or Attendee Group.</summary>
+    /// <summary>Updates an attendee.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The save handler.</param>
-    /// <param name="groups">Resolves the assigned Attendee Group.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="name">The corrected name.</param>
-    /// <param name="email">The corrected email.</param>
-    /// <param name="attendeeGroupCode">The canonical Attendee Group code.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="name">The full name.</param>
+    /// <param name="email">The email address.</param>
+    /// <param name="attendeeGroupId">The group, whose requirements are derived.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A confirmation message.</returns>
-    [McpServerTool(Name = "update_attendee", Title = "Update attendee", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Update a attendee. Caller must be a coordinator or admin; requirements are frozen while an active booking exists.")]
+    [McpServerTool(
+        Name = "update_attendee", Title = "Update attendee",
+        ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Updates an attendee's name, email and group (FR-4.2). A group change that would alter an active booking's requirements is refused.")]
     public async Task<string> UpdateAttendeeAsync(
         ICallerAccessor caller,
         SaveAttendeeHandler handler,
-        IAttendeeGroupRepository groups,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("Corrected full name.")] string name,
-        [Description("Corrected email address.")] string email,
-        [Description("Canonical attendee group code (e.g. PILOTS).")] string attendeeGroupCode,
-        CancellationToken cancellationToken)
+        // Required, like the REST body: the update replaces all three, and the handler
+        // refuses a missing one rather than keeping the stored value.
+        [Description("Full name.")] string name,
+        [Description("Email address.")] string email,
+        [Description("The attendee group identifier.")] Guid attendeeGroupId,
+        CancellationToken cancellationToken = default)
     {
-        var groupId = await ResolveGroupIdAsync(groups, attendeeGroupCode, cancellationToken);
         var result = await handler.UpdateAsync(
             new UpdateAttendeeCommand(
-                caller.RequireStaffUserId(), attendeeId, name, email, groupId),
+                caller.RequireStaffUserId(), attendeeId, name, email, attendeeGroupId),
             cancellationToken);
         result.ThrowIfFailure();
         return "Attendee updated.";
     }
 
-    /// <summary>Deletes a attendee, optionally cascading.</summary>
+    /// <summary>Deletes an attendee and their bookings.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The delete handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="confirm">Whether dependent data may be removed.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="confirm">Pass true once the consequence has been shown.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A confirmation message.</returns>
-    [McpServerTool(Name = "delete_attendee", Title = "Delete attendee", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Delete a attendee. Caller must be a coordinator or admin; set confirm to true to also remove dependent data.")]
+    [McpServerTool(
+        Name = "delete_attendee", Title = "Delete attendee",
+        ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Deletes an attendee and their bookings (FR-4.5). Two-step: without confirm=true the call reports its consequence and changes nothing.")]
     public async Task<string> DeleteAttendeeAsync(
         ICallerAccessor caller,
         DeleteAttendeeHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("Whether dependent data may be removed.")] bool confirm,
-        CancellationToken cancellationToken)
+        [Description("Pass true once you have shown the consequence.")] bool confirm = false,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
             new DeleteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, confirm),
@@ -261,194 +136,219 @@ public sealed class AttendeeTools
         return "Attendee deleted.";
     }
 
-    /// <summary>Imports attendees from CSV content.</summary>
+    /// <summary>Imports attendees from CSV content, all or nothing.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The import handler.</param>
     /// <param name="csv">The CSV content.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The import outcome.</returns>
-    [McpServerTool(Name = "import_attendees", Title = "Import attendees", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Import attendees from CSV content with name, email, and attendee group code. Caller must be a coordinator or admin; creates new attendee records.")]
+    /// <returns>The outcome, carrying row errors when nothing was imported.</returns>
+    [McpServerTool(
+        Name = "import_attendees", Title = "Import attendees",
+        ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Imports attendees from CSV content, all or nothing (FR-4.3). At most 1000 rows and 1 MB.")]
     public async Task<AttendeeImportOutcome> ImportAttendeesAsync(
         ICallerAccessor caller,
         ImportAttendeesHandler handler,
-        [Description("CSV content with one attendee per row.")] string csv,
-        CancellationToken cancellationToken)
-    {
-        var result = await handler.HandleAsync(
-            new ImportAttendeesCommand(caller.RequireStaffUserId(), csv),
-            cancellationToken);
-        return result.ValueOrThrow();
-    }
-
-    /// <summary>Resolves a canonical Attendee Group code to its stable identifier.</summary>
-    private static async Task<Guid> ResolveGroupIdAsync(
-        IAttendeeGroupRepository groups,
-        string attendeeGroupCode,
-        CancellationToken cancellationToken)
-    {
-        var group = await groups.GetByCodeAsync(attendeeGroupCode, cancellationToken);
-        if (group is null)
-        {
-            throw new ModelContextProtocol.McpException(
-                $"Attendee group '{attendeeGroupCode}' is not known. Use list_attendee_groups.");
-        }
-
-        return group.Id;
-    }
-
-    /// <summary>Triggers a fresh invite for a attendee.</summary>
-    /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The invite handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="locationIds">The locations to open for this invite; omit for every active location.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The invite issue outcome.</returns>
-    [McpServerTool(Name = "trigger_invite", Title = "Trigger invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Issue a fresh invite to a attendee at the given locations, or every active location when none are given. Caller must be a coordinator or admin; stages an invite email for sending.")]
-    public async Task<InviteAttendeeOutcome> TriggerInviteAsync(
-        ICallerAccessor caller,
-        InviteAttendeeHandler handler,
-        [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("The locations to open for this invite; omit for every active location.")] Guid[]? locationIds = null,
+        [Description("The CSV content, with a name,email,attendee_group header.")] string csv,
         CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new InviteAttendeeCommand(caller.RequireStaffUserId(), attendeeId, locationIds ?? []),
-            cancellationToken);
+            new ImportAttendeesCommand(caller.RequireStaffUserId(), csv), cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Retries one failed email delivery for a attendee.</summary>
+    /// <summary>Counts the events an attendee could currently be offered.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The retry handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="emailLogId">The failed delivery identifier.</param>
+    /// <param name="handler">The count handler.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="locationIds">The locations to count across.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The retry outcome.</returns>
-    [McpServerTool(Name = "retry_attendee_email", Title = "Retry attendee email", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Retry one failed attendee email delivery. Caller must have ManageAttendees; stages a fresh pending delivery for the dispatcher.")]
-    public async Task<RetryEmailOutcome> RetryAttendeeEmailAsync(
+    /// <returns>The eligible event count.</returns>
+    [McpServerTool(
+        Name = "count_eligible_events", Title = "Count eligible events",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Counts the events this attendee could currently be offered at the given locations.")]
+    public async Task<int> CountEligibleEventsAsync(
         ICallerAccessor caller,
-        RetryEmailHandler handler,
+        CountEligibleEventsHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("The failed delivery identifier.")] Guid emailLogId,
-        CancellationToken cancellationToken)
+        [Description("The locations to count across.")] Guid[]? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new RetryEmailCommand(caller.RequireStaffUserId(), attendeeId, emailLogId),
+            new CountEligibleEventsQuery(
+                caller.RequireStaffUserId(), attendeeId, locationIds ?? []),
             cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Starts a recovery invite for a attendee with a missed appointment.</summary>
+    /// <summary>Issues an invitation restricted to the chosen locations.</summary>
+    /// <param name="caller">The signed-in staff identity.</param>
+    /// <param name="handler">The invite handler.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="locationIds">The locations to open, or omit for every active location.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>Invited, or AwaitingAvailability when too few events are eligible.</returns>
+    [McpServerTool(
+        Name = "invite_attendee", Title = "Invite attendee",
+        ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Issues an invitation restricted to the chosen locations, returning Invited or AwaitingAvailability when too few events are eligible.")]
+    public async Task<InviteAttendeeOutcome> InviteAttendeeAsync(
+        ICallerAccessor caller,
+        InviteAttendeeHandler handler,
+        [Description("The attendee identifier.")] Guid attendeeId,
+        [Description("The locations to open; omit for every active location.")]
+        Guid[]? locationIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await handler.HandleAsync(
+            new InviteAttendeeCommand(
+                caller.RequireStaffUserId(), attendeeId, locationIds ?? []),
+            cancellationToken);
+        return result.ValueOrThrow();
+    }
+
+    /// <summary>Starts missed-appointment recovery for one attendee.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The recovery handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="locationIds">Further locations the coordinator opens up.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="additionalLocationIds">Locations to widen the recovery with.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The recovery invite issue result.</returns>
-    [McpServerTool(Name = "start_recovery_invite", Title = "Start recovery invite", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Start a recovery invite for a attendee with a missed appointment. Caller must have ManageAttendees; stages a recovery invite email.")]
+    /// <returns>The recovery outcome.</returns>
+    [McpServerTool(
+        Name = "start_recovery_invite", Title = "Start recovery invite",
+        ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Starts missed-appointment recovery for the attendee's outstanding no-show types (FR-9.1), optionally widening the locations.")]
     public async Task<StartRecoveryOutcome> StartRecoveryInviteAsync(
         ICallerAccessor caller,
         StartRecoveryHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("Further locations the coordinator opens up.")] Guid[]? locationIds = null,
+        [Description("Further locations to widen the recovery with.")]
+        Guid[]? additionalLocationIds = null,
         CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
             new StartRecoveryCommand(
-                caller.RequireStaffUserId(), attendeeId, locationIds?.ToList() ?? []),
+                caller.RequireStaffUserId(), attendeeId, additionalLocationIds ?? []),
             cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Cancels a pending recovery invite for a attendee.</summary>
+    /// <summary>Cancels one pending recovery invitation.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The recovery cancellation handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="inviteId">The recovery invite identifier.</param>
+    /// <param name="handler">The cancel handler.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="inviteId">The recovery invitation.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A confirmation message.</returns>
-    [McpServerTool(Name = "cancel_recovery_invite", Title = "Cancel recovery invite", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Cancel a pending recovery invite for a attendee. Caller must have ManageAttendees; cancels the pending recovery invite.")]
-    public async Task<string> CancelRecoveryInviteAsync(
+    /// <returns>A task tracking the cancellation.</returns>
+    [McpServerTool(
+        Name = "cancel_recovery_invite", Title = "Cancel recovery invite",
+        ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Cancels one pending recovery invitation.")]
+    public async Task CancelRecoveryInviteAsync(
         ICallerAccessor caller,
         CancelRecoveryInviteHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        [Description("The recovery invite identifier.")] Guid inviteId,
-        CancellationToken cancellationToken)
+        [Description("The recovery invitation identifier.")] Guid inviteId,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), attendeeId, inviteId), cancellationToken);
+            new CancelRecoveryInviteCommand(
+                caller.RequireStaffUserId(), attendeeId, inviteId),
+            cancellationToken);
         result.ThrowIfFailure();
-        return "Recovery invite cancelled.";
     }
 
-    /// <summary>Lists the active bookings a coordinator may cancel for one attendee.</summary>
+    /// <summary>Lists one attendee's bookings.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The bookings handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="attendeeId">The attendee.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The attendee's active booking summaries.</returns>
-    [McpServerTool(Name = "list_attendee_bookings", Title = "List attendee bookings", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List a attendee's active bookings. Caller must have ManageAttendees; returns cancellable bookings without management tokens.")]
+    /// <returns>The bookings.</returns>
+    [McpServerTool(
+        Name = "list_attendee_bookings", Title = "List attendee bookings",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Reads the attendee's bookings with their event and location.")]
     public async Task<IReadOnlyList<AttendeeBookingSummary>> ListAttendeeBookingsAsync(
         ICallerAccessor caller,
         GetAttendeeBookingsHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new GetAttendeeBookingsQuery(caller.RequireStaffUserId(), attendeeId), cancellationToken);
+            new GetAttendeeBookingsQuery(caller.RequireStaffUserId(), attendeeId),
+            cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Cancels one attendee booking in two steps: preview, then confirm.</summary>
+    /// <summary>Cancels one booking on the attendee's behalf.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
-    /// <param name="handler">The cancellation handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
-    /// <param name="bookingId">The booking identifier.</param>
-    /// <param name="confirm">Whether this call carries the confirmation.</param>
+    /// <param name="handler">The cancel handler.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="bookingId">The booking.</param>
+    /// <param name="confirm">Pass true once the consequence has been shown.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The cancellation outcome.</returns>
-    [McpServerTool(Name = "cancel_attendee_booking", Title = "Cancel attendee booking", ReadOnly = false, Idempotent = true, Destructive = true, OpenWorld = false)]
-    [Description("Cancel one attendee booking in two steps. Caller must have ManageAttendees; call first with confirm false to preview the consequence, then with confirm true to cancel.")]
+    /// <returns>The consequence, or the cancellation once confirmed.</returns>
+    [McpServerTool(
+        Name = "cancel_attendee_booking", Title = "Cancel attendee booking",
+        ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [Description("Cancels one booking on the attendee's behalf (FR-7.1). Two-step: without confirm=true the call reports its consequence and changes nothing.")]
     public async Task<CoordinatorCancelOutcome> CancelAttendeeBookingAsync(
         ICallerAccessor caller,
         CancelBookingByCoordinatorHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
         [Description("The booking identifier.")] Guid bookingId,
-        [Description("Whether this call carries the confirmation.")] bool confirm,
-        CancellationToken cancellationToken)
+        [Description("Pass true once you have shown the consequence.")] bool confirm = false,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new CancelBookingByCoordinatorCommand(caller.RequireStaffUserId(), attendeeId, bookingId, confirm), cancellationToken);
+            new CancelBookingByCoordinatorCommand(
+                caller.RequireStaffUserId(), attendeeId, bookingId, confirm),
+            cancellationToken);
         return result.ValueOrThrow();
     }
 
-    /// <summary>Gets tool-safe readiness including Coordinator display wording.</summary>
+    /// <summary>Regenerates and re-queues the newest failed or stale delivery.</summary>
+    /// <param name="caller">The signed-in staff identity.</param>
+    /// <param name="handler">The retry handler.</param>
+    /// <param name="attendeeId">The attendee.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The retry outcome.</returns>
+    [McpServerTool(
+        Name = "retry_attendee_email", Title = "Retry attendee email",
+        ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
+    [Description("Regenerates and re-queues the newest failed or stale delivery (FR-11.3).")]
+    public async Task<RetryEmailOutcome> RetryAttendeeEmailAsync(
+        ICallerAccessor caller,
+        RetryEmailHandler handler,
+        [Description("The attendee identifier.")] Guid attendeeId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await handler.HandleAsync(
+            new RetryNewestEmailCommand(caller.RequireStaffUserId(), attendeeId),
+            cancellationToken);
+        return result.ValueOrThrow();
+    }
+
+    /// <summary>Reads one attendee's calculated readiness.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The readiness handler.</param>
-    /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="attendeeId">The attendee.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The tool-safe readiness view.</returns>
-    [McpServerTool(Name = "get_attendee_readiness", Title = "Get attendee readiness", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Get a attendee's readiness with Coordinator display wording. Caller must have ManageAttendees; returns internal readiness without recovery mutation.")]
-    public async Task<AttendeeReadinessToolView> GetAttendeeReadinessAsync(
+    /// <returns>The readiness.</returns>
+    [McpServerTool(
+        Name = "get_attendee_readiness", Title = "Get attendee readiness",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Reads the calculated readiness and any outstanding appointment types.")]
+    public async Task<AttendeeReadiness> GetAttendeeReadinessAsync(
         ICallerAccessor caller,
         GetAttendeeReadinessHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), attendeeId), cancellationToken);
-        var value = result.ValueOrThrow();
-        return new AttendeeReadinessToolView(
-            value.AttendeeId,
-            value.Code.ToString(),
-            AttendeeEndpoints.DisplayForTool(value.Code),
-            value.OutstandingAppointmentTypes);
+            new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), attendeeId),
+            cancellationToken);
+        return result.ValueOrThrow();
     }
 }

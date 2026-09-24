@@ -11,26 +11,28 @@ public class AuthorizationMatrixTests(ApiFactory factory)
     {
         { Role.Admin, "/api/attendees", HttpStatusCode.Forbidden },
         { Role.Admin, "/api/dashboards", HttpStatusCode.Forbidden },
-        { Role.Admin, $"/api/audit/attendee/{Guid.NewGuid()}", HttpStatusCode.Forbidden },
-        { Role.Admin, "/api/admin/settings", HttpStatusCode.OK },
+        { Role.Admin, $"/api/audit/attendees/{Guid.NewGuid()}", HttpStatusCode.Forbidden },
+        { Role.Admin, "/api/settings", HttpStatusCode.OK },
+        { Role.Admin, "/api/event-proposals", HttpStatusCode.Forbidden },
         { Role.Coordinator, "/api/attendees", HttpStatusCode.OK },
         { Role.Coordinator, "/api/dashboards", HttpStatusCode.OK },
-        { Role.Coordinator, "/api/admin/settings", HttpStatusCode.Forbidden },
-        { Role.Manager, "/api/events/board", HttpStatusCode.OK },
-        { Role.AppointmentStaff, "/api/events/board", HttpStatusCode.Forbidden },
+        { Role.Coordinator, "/api/settings", HttpStatusCode.Forbidden },
+        { Role.Coordinator, "/api/event-proposals", HttpStatusCode.Forbidden },
+        { Role.Manager, "/api/event-proposals", HttpStatusCode.OK },
+        { Role.AppointmentStaff, "/api/event-proposals", HttpStatusCode.Forbidden },
         { Role.AppointmentStaff, "/api/attendees", HttpStatusCode.Forbidden },
     };
 
     public static TheoryData<Role[], string, HttpStatusCode> CombinedMatrix => new()
     {
         { [Role.Coordinator, Role.Manager], "/api/attendees", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.Manager], "/api/events/board", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.Manager], "/api/event-proposals", HttpStatusCode.OK },
         { [Role.Coordinator, Role.AppointmentStaff], "/api/attendees", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.AppointmentStaff], "/api/events/board", HttpStatusCode.Forbidden },
-        { [Role.Manager, Role.AppointmentStaff], "/api/events/board", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.AppointmentStaff], "/api/event-proposals", HttpStatusCode.Forbidden },
+        { [Role.Manager, Role.AppointmentStaff], "/api/event-proposals", HttpStatusCode.OK },
         { [Role.Manager, Role.AppointmentStaff], "/api/attendees", HttpStatusCode.Forbidden },
         { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/attendees", HttpStatusCode.OK },
-        { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/events/board", HttpStatusCode.OK },
+        { [Role.Coordinator, Role.Manager, Role.AppointmentStaff], "/api/event-proposals", HttpStatusCode.OK },
     };
 
     [Theory]

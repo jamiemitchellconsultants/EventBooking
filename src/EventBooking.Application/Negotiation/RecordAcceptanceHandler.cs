@@ -64,8 +64,8 @@ public sealed class RecordAcceptanceHandler(
         }
         catch (ProposalNotOpenException ex)
         {
-            return Result<RecordAcceptanceOutcome>.Failure(
-                Error.Conflict($"The proposal is {ex.CurrentStatus} and can no longer be changed."));
+            return Result<RecordAcceptanceOutcome>.Failure(Error.ProposalNotOpen(
+                $"The proposal is {ex.CurrentStatus} and can no longer be changed."));
         }
         catch (DomainException ex)
         {

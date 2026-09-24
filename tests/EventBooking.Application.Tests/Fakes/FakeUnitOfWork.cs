@@ -108,6 +108,14 @@ public sealed class FakeUnitOfWork(
 
     public int RollbackCount { get; private set; }
 
+    /// <summary>Zeroes the counters, so a case can seed through a handler and still assert counts.</summary>
+    public void Reset()
+    {
+        SaveCount = 0;
+        CommitCount = 0;
+        RollbackCount = 0;
+    }
+
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken)
     {
         SaveCount++;

@@ -11,6 +11,7 @@ using EventBooking.Application.Recovery;
 using EventBooking.Application.Settings;
 using EventBooking.Application.Events;
 using EventBooking.Application.Negotiation;
+using EventBooking.Application.ReferenceData;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Application;
@@ -45,13 +46,17 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<NegotiationBoardHandler>();
         services.AddScoped<CancelEventHandler>();
         services.AddScoped<AdjustEventCapacityHandler>();
+        services.AddScoped<ListEventsHandler>();
+        services.AddScoped<ListCancellableEventsHandler>();
+        services.AddScoped<GetEventHandler>();
+        services.AddScoped<ListEventProposalsHandler>();
 
         // Attendees.
         services.AddScoped<ImportAttendeesHandler>();
         services.AddScoped<SaveAttendeeHandler>();
         services.AddScoped<DeleteAttendeeHandler>();
         services.AddScoped<ListAttendeesHandler>();
-        services.AddScoped<ListAttendeeGroupsHandler>();
+        services.AddScoped<ListAssignableAttendeeGroupsHandler>();
         services.AddScoped<AttendeeReadinessCalculator>();
         services.AddScoped<GetAttendeeReadinessHandler>();
         services.AddScoped<GetAttendeeBookingsHandler>();
@@ -62,6 +67,17 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<SearchAuditHandler>();
         services.AddScoped<AttendeeHistoryHandler>();
         services.AddScoped<EventHistoryHandler>();
+
+        // Reference data.
+        services.AddScoped<CreateLocationHandler>();
+        services.AddScoped<UpdateLocationHandler>();
+        services.AddScoped<ListLocationsHandler>();
+        services.AddScoped<CreateAppointmentTypeHandler>();
+        services.AddScoped<UpdateAppointmentTypeHandler>();
+        services.AddScoped<ListAppointmentTypesHandler>();
+        services.AddScoped<CreateAttendeeGroupHandler>();
+        services.AddScoped<UpdateAttendeeGroupHandler>();
+        services.AddScoped<ListAttendeeGroupsHandler>();
 
         // Administration.
         services.AddScoped<AdminSettingsHandler>();
@@ -76,7 +92,6 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<UpdateBookingAppointmentStatusHandler>();
         services.AddScoped<ListWorkspaceEventsHandler>();
         services.AddScoped<GetWorkspaceRosterHandler>();
-        services.AddScoped<SetAppointmentStatusHandler>();
         services.AddScoped<DownloadRosterHandler>();
 
         // Invites and bookings.

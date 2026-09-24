@@ -17,12 +17,11 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         factory.RolesClaim = ["Admin"];
         var client = factory.CreateClient();
 
-        var list = await client.GetFromJsonAsync<List<ProfileResponse>>(
-            "/api/admin/staff-access");
-        Assert.Contains(list!, profile => profile.StaffUserId == target);
+        var list = await client.GetFromJsonAsync<StaffAccessPage>("/api/staff-access");
+        Assert.Contains(list!.Items, profile => profile.StaffUserId == target);
 
         var set = await client.PutAsJsonAsync(
-            $"/api/admin/staff-access/{target}",
+            $"/api/staff-access/{target}/scope",
             new
             {
                 AppointmentTypeId = AppointmentTypeIds.MedicalCheckUp,
@@ -33,7 +32,7 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         Assert.Equal(AppointmentTypeIds.MedicalCheckUp, setBody!.Profile.AppointmentTypeId);
 
         var stale = await client.PutAsJsonAsync(
-            $"/api/admin/staff-access/{target}",
+            $"/api/staff-access/{target}/scope",
             new
             {
                 AppointmentTypeId = AppointmentTypeIds.UniformFitting,
@@ -50,14 +49,14 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         factory.RolesClaim = ["Admin"];
 
         var response = await factory.CreateClient().PutAsJsonAsync(
-            $"/api/admin/staff-access/{target}",
+            $"/api/staff-access/{target}/scope",
             new { Roles = new[] { "Manager" }, AppointmentTypeId = AppointmentTypeIds.MedicalCheckUp, ExpectedVersion = 1 });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task DeleteClearsScopeButKeepsTheProfileAndItsRoles()
+    public async Task PutNullClearsScopeButKeepsTheProfileAndItsRoles()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
         var target = await factory.GivenStaffAsync(
@@ -65,28 +64,29 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         factory.RolesClaim = ["Admin"];
         var client = factory.CreateClient();
 
-        var response = await client.DeleteAsync(
-            $"/api/admin/staff-access/{target}?expectedVersion=1");
+        var response = await client.PutAsJsonAsync(
+            $"/api/staff-access/{target}/scope",
+            new { AppointmentTypeId = (Guid?)null, ExpectedVersion = 1L });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        var list = await client.GetFromJsonAsync<List<ProfileResponse>>(
-            "/api/admin/staff-access");
-        var profile = list!.Single(item => item.StaffUserId == target);
+        var list = await client.GetFromJsonAsync<StaffAccessPage>("/api/staff-access");
+        var profile = list!.Items.Single(item => item.StaffUserId == target);
         Assert.Null(profile.AppointmentTypeId);
         Assert.Equal(["AppointmentStaff"], profile.Roles);
     }
 
     [Fact]
-    public async Task DeleteOnAnAlreadyNullScopeIsRejected()
+    public async Task PutNullOnAnAlreadyNullScopeIsRejected()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
         var target = await factory.GivenStaffAsync([Role.Manager], null);
         factory.RolesClaim = ["Admin"];
 
-        var response = await factory.CreateClient().DeleteAsync(
-            $"/api/admin/staff-access/{target}?expectedVersion=1");
+        var response = await factory.CreateClient().PutAsJsonAsync(
+            $"/api/staff-access/{target}/scope",
+            new { AppointmentTypeId = (Guid?)null, ExpectedVersion = 1L });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         factory.RolesClaim = ["Coordinator"];
 
-        var response = await factory.CreateClient().GetAsync("/api/admin/staff-access");
+        var response = await factory.CreateClient().GetAsync("/api/staff-access");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -113,17 +113,20 @@ public class StaffAccessEndpointTests(ApiFactory factory)
         await factory.GivenIdentityAsync(unnamed, "U000022");
         var client = factory.CreateClient();
 
-        var list = await client.GetFromJsonAsync<List<ProfileResponse>>("/api/admin/staff-access");
+        var list = await client.GetFromJsonAsync<StaffAccessPage>("/api/staff-access");
 
         Assert.NotNull(list);
-        var first = list!.Single(profile => profile.StaffUserId == named);
-        var second = list.Single(profile => profile.StaffUserId == unnamed);
+        var first = list!.Items.Single(profile => profile.StaffUserId == named);
+        var second = list.Items.Single(profile => profile.StaffUserId == unnamed);
         Assert.Equal("Dana Datson", first.DisplayName);
         Assert.Equal("U000021", first.StaffId);
         Assert.Null(second.DisplayName);
         Assert.Equal("U000022", second.StaffId);
         factory.RolesClaim = [];
     }
+
+    private sealed record StaffAccessPage(
+        IReadOnlyList<ProfileResponse> Items, string? NextCursor);
 
     private sealed record ProfileResponse(
         Guid StaffUserId,
@@ -136,5 +139,5 @@ public class StaffAccessEndpointTests(ApiFactory factory)
 
     private sealed record MutationResponse(
         ProfileResponse Profile,
-        Guid? FormerManagerStaffUserId);
+        Guid? DisplacedManagerStaffUserId);
 }

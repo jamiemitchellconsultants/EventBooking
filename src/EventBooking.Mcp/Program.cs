@@ -1,6 +1,7 @@
 using EventBooking.Api;
 using EventBooking.Api.Auth;
 using EventBooking.Application;
+using EventBooking.Application.Abstractions;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Mcp.Tools;
@@ -8,32 +9,32 @@ using EventBooking.Mcp.Tools;
 var builder = WebApplication.CreateBuilder(args);
 
 
-var (connectionString, transitionalLocation, tokens, email, portal) =
-    EventBookingConfiguration.Read(builder.Configuration);
+var settings = EventBookingConfiguration.Read(builder.Configuration);
 
-builder.Services.AddEventBookingInfrastructure(connectionString, transitionalLocation, tokens);
-
-var smtpHost = builder.Configuration["Email:Smtp:Host"]
-    ?? throw new InvalidOperationException(
-        "Email:Smtp:Host is required when Email:Provider is Smtp.");
-var smtpPort = int.TryParse(builder.Configuration["Email:Smtp:Port"], out var port)
-    ? port
-    : throw new InvalidOperationException(
-        "Email:Smtp:Port must be a valid integer when Email:Provider is Smtp.");
-
-builder.Services.AddLocalEmailTransport(email, new SmtpOptions(smtpHost, smtpPort));
-
-builder.Services.AddEventBookingApplication(portal,
+builder.Services.AddEventBookingInfrastructure(
+    settings.ConnectionString, settings.Clock, settings.Tokens);
+builder.Services.AddLocalEmailTransport(settings.Email, settings.Smtp);
+builder.Services.AddEventBookingApplication(
+    settings.Portal,
     new EventBooking.Application.Access.StaffIdPolicy(builder.Configuration["Identity:StaffIdPattern"]));
 builder.Services.AddEventBookingAuth(builder.Configuration);
+builder.Services.AddSingleton<ICorrelationContext, AsyncLocalCorrelationContext>();
+// The API's cursor signer, from the same key: a cursor from either surface reads on the other.
+builder.Services.AddSingleton(new EventBooking.Api.Pagination.PageCursor(
+    System.Text.Encoding.UTF8.GetBytes(settings.Tokens.SigningKey)));
 
 builder.Services
     .AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
+    .WithTools<IdentityTools>()
+    .WithTools<ReferenceDataTools>()
+    .WithTools<AdministrationTools>()
+    .WithTools<NegotiationTools>()
     .WithTools<EventTools>()
     .WithTools<AttendeeTools>()
-    .WithTools<AdminTools>()
-    .WithTools<OperationsTools>();
+    .WithTools<DashboardTools>()
+    .WithTools<AuditTools>()
+    .WithTools<WorkspaceTools>();
 
 var app = builder.Build();
 

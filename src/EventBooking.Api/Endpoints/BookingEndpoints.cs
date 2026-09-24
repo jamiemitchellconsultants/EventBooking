@@ -1,23 +1,26 @@
+using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Application.Bookings;
 
 namespace EventBooking.Api.Endpoints;
 
+/// <summary>Maps the two book-token routes.</summary>
 public static class BookingEndpoints
 {
-    /// <summary>Named so Task 58's registration and these routes cannot drift apart.</summary>
-    public const string RateLimiterPolicy = "attendee-links";
-
+    /// <summary>The confirmation body design 05 names.</summary>
+    /// <param name="EventId">The offered event to book.</param>
     public sealed record ConfirmBookingRequest(Guid EventId);
 
-    public sealed record CancelBookingRequest(bool RequestNewTime);
-
+    /// <summary>Maps the book-token routes.</summary>
+    /// <param name="app">The endpoint route builder.</param>
+    /// <returns>The endpoint route builder.</returns>
     public static IEndpointRouteBuilder MapBookingEndpoints(this IEndpointRouteBuilder app)
     {
+        ArgumentNullException.ThrowIfNull(app);
         var group = app.MapGroup("/api/booking")
             .AllowAnonymous()
-            .RequireRateLimiting(RateLimiterPolicy);
+            .RequireRateLimiting(TokenPrefixRateLimiterPolicy.PolicyName);
 
         group.MapGet("/{token}", async (
             string token,
@@ -25,17 +28,14 @@ public static class BookingEndpoints
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(new ViewInviteQuery(token), cancellationToken);
-            if (result.IsFailure)
-            {
-                return result.ToResponse();
-            }
-
-            return Results.Ok(InviteResourceResponse.From(result.Value, token));
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Ok(ApiResponses.Invite(result.Value, token));
         })
             .WithAgentMetadata("viewInvite")
-            .Produces(200)
-            .ProducesProblem(400)
+            .Produces<InviteResponse>(200)
             .ProducesProblem(404)
+            .ProducesProblem(410)
             .ProducesProblem(429);
 
         group.MapPost("/{token}/confirm", async (
@@ -43,48 +43,20 @@ public static class BookingEndpoints
             ConfirmBookingRequest request,
             ConfirmBookingHandler handler,
             CancellationToken cancellationToken) =>
-            (await handler.HandleAsync(
-                new ConfirmBookingCommand(token, request.EventId), cancellationToken))
-                .ToResponse())
-            .WithAgentMetadata("confirmBooking")
-            .Produces(200)
-            .ProducesProblem(400)
-            .ProducesProblem(404)
-            .ProducesProblem(409)
-            .ProducesProblem(429);
-
-        group.MapGet("/manage/{token}", async (
-            string token,
-            ViewBookingHandler handler,
-            CancellationToken cancellationToken) =>
         {
-            var result = await handler.HandleAsync(new ViewBookingQuery(token), cancellationToken);
-            if (result.IsFailure)
-            {
-                return result.ToResponse();
-            }
-
-            return Results.Ok(ManagedBookingResourceResponse.From(result.Value, token));
+            var result = await handler.HandleAsync(
+                new ConfirmBookingCommand(token, request.EventId), cancellationToken);
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Created(
+                    $"/api/manage/{result.Value.ManageToken}",
+                    new { bookingId = result.Value.BookingId, manageToken = result.Value.ManageToken });
         })
-            .WithAgentMetadata("viewManagedBooking")
-            .Produces(200)
-            .ProducesProblem(400)
-            .ProducesProblem(404)
-            .ProducesProblem(429);
-
-        group.MapPost("/manage/{token}/cancel", async (
-            string token,
-            CancelBookingRequest request,
-            CancelBookingByAttendeeHandler handler,
-            CancellationToken cancellationToken) =>
-            (await handler.HandleAsync(
-                new CancelBookingByAttendeeCommand(token, request.RequestNewTime), cancellationToken))
-                .ToResponse())
-            .WithAgentMetadata("cancelManagedBooking")
-            .Produces(200)
-            .ProducesProblem(400)
+            .WithAgentMetadata("confirmBooking")
+            .Produces(201)
             .ProducesProblem(404)
             .ProducesProblem(409)
+            .ProducesProblem(410)
             .ProducesProblem(429);
 
         return app;

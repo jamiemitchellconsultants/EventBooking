@@ -158,7 +158,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
         }
         else
         {
-            Assert.Equal("conflict", correctResult.Error.Code);
+            Assert.Equal("recovery-active", correctResult.Error.Code);
             Assert.Contains("Cancel the recovery first", correctResult.Error.Message);
             Assert.True(issueResult.IsSuccess);
             Assert.Equal(BookingAppointmentStatus.NoShow, stored.Status);
@@ -246,7 +246,7 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
             correctContext, now, appointmentStaff, appointmentId);
 
         Assert.True(correctResult.IsFailure);
-        Assert.Equal("conflict", correctResult.Error.Code);
+        Assert.Equal("recovery-active", correctResult.Error.Code);
         Assert.Contains("Cancel the recovery first", correctResult.Error.Message);
 
         await using var read = fixture.NewContext();

@@ -149,7 +149,7 @@ public sealed class AttendeeGroupLifecycleTests
         var unitOfWork = new FakeUnitOfWork();
         var handler = new SaveAttendeeHandler(
             attendees, groups, invites, bookings, new StaffAccessAuthorizer(profiles), audit,
-            new FakeClock(), unitOfWork);
+            new FakeClock(), unitOfWork, new InMemoryAppointmentTypeRepository());
         return new Fixture(handler, attendee, invite, coordinator, operations, audit, unitOfWork);
     }
 

@@ -21,9 +21,10 @@ public sealed record ListWorkspaceEventsQuery(Guid StaffUserId, Guid? LocationId
 /// <param name="StartTime">The window start time.</param>
 /// <param name="EndTime">The window end time.</param>
 /// <param name="ZoneAbbreviation">The location zone abbreviation at the end instant.</param>
+/// <param name="Status">The event's own status name.</param>
 public sealed record WorkspaceEventView(
     Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
-    TimeOnly StartTime, TimeOnly EndTime, string ZoneAbbreviation);
+    TimeOnly StartTime, TimeOnly EndTime, string ZoneAbbreviation, string Status);
 
 /// <summary>
 /// Lists the workspace events inside the recent-past to near-future band, ordered by end
@@ -84,7 +85,8 @@ public sealed class ListWorkspaceEventsHandler(
                 zoneByLocation[e.LocationId].Name,
                 e.Window.Date, e.Window.StartTime, e.Window.EndTime,
                 zones.AbbreviationOf(EventEnd(e, zoneByLocation[e.LocationId].TimeZoneId, zones),
-                    zoneByLocation[e.LocationId].TimeZoneId)))
+                    zoneByLocation[e.LocationId].TimeZoneId),
+                e.Status.ToString()))
             .ToList();
 
         return Result<IReadOnlyList<WorkspaceEventView>>.Success(rows);

@@ -109,6 +109,33 @@ public class AttendeeListQueryTests(PostgresFixture fixture)
         await fixture.ResetAsync();
     }
 
+    /// <summary>
+    /// Readiness is filtered in SQL, not after the limit: the first page-sized run of rows
+    /// all mismatch here, and a post-limit filter would return an empty page with a cursor
+    /// instead of the matching row.
+    /// </summary>
+    [Fact]
+    public async Task A_readiness_filter_reaches_past_a_page_of_mismatches()
+    {
+        await fixture.ResetAsync();
+        await using var context = fixture.NewContext();
+        var group = await AddGroupAsync(context, "PILOTS");
+        await AddAttendeeAsync(context, "Amy", AttendeeStatus.Booked, group);
+        await AddAttendeeAsync(context, "Ben", AttendeeStatus.Booked, group);
+        await AddAttendeeAsync(context, "Cal", AttendeeStatus.Booked, group);
+        await AddAttendeeAsync(context, "Dee", AttendeeStatus.AwaitingAvailability, group);
+
+        var page = await new AttendeeListQueries(context).ListAttendeesAsync(
+            Coordinator, null, 2, null, null, "NoActiveBooking", null,
+            CancellationToken.None);
+
+        var row = Assert.Single(page.Items);
+        Assert.Equal("Dee", row.Name);
+        Assert.Null(page.NextCursor);
+
+        await fixture.ResetAsync();
+    }
+
     [Fact]
     public async Task An_admin_shaped_caller_reads_no_attendees()
     {
@@ -152,8 +179,13 @@ public class AttendeeListQueryTests(PostgresFixture fixture)
         await fixture.ResetAsync();
     }
 
+    /// <summary>
+    /// The filter is in the statement, so mismatches never occupy page slots: both
+    /// matches arrive in one full page and the null cursor ends the walk. A second
+    /// walk one row at a time proves the keyset still advances under the filter.
+    /// </summary>
     [Fact]
-    public async Task A_readiness_filter_shortens_the_page_without_ending_it()
+    public async Task A_readiness_filter_returns_only_matching_rows()
     {
         await fixture.ResetAsync();
         await using var context = fixture.NewContext();
@@ -165,18 +197,23 @@ public class AttendeeListQueryTests(PostgresFixture fixture)
         await AddAttendeeAsync(context, "ra-dog", AttendeeStatus.Booked, group);
 
         var queries = new AttendeeListQueries(context);
-        var first = await queries.ListAttendeesAsync(
+        var page = await queries.ListAttendeesAsync(
             Coordinator, null, 2, null, null, "NoActiveBooking", null, CancellationToken.None);
 
-        // Two of the three rows read match, so the page is short but paging continues.
-        Assert.Equal(["ra-able", "ra-charlie"], first.Items.Select(i => i.Name));
+        Assert.Equal(["ra-able", "ra-charlie"], page.Items.Select(i => i.Name));
+        Assert.Null(page.NextCursor);
+
+        var first = await queries.ListAttendeesAsync(
+            Coordinator, null, 1, null, null, "NoActiveBooking", null, CancellationToken.None);
+
+        Assert.Equal(["ra-able"], first.Items.Select(i => i.Name));
         Assert.NotNull(first.NextCursor);
 
         var second = await queries.ListAttendeesAsync(
-            Coordinator, first.NextCursor, 2, null, null, "NoActiveBooking", null,
+            Coordinator, first.NextCursor, 1, null, null, "NoActiveBooking", null,
             CancellationToken.None);
 
-        Assert.Empty(second.Items);
+        Assert.Equal(["ra-charlie"], second.Items.Select(i => i.Name));
         Assert.Null(second.NextCursor);
 
         await fixture.ResetAsync();

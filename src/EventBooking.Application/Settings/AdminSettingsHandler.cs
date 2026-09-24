@@ -87,7 +87,11 @@ public sealed class SaveSystemSettingsHandler(
             command.StaffUserId, StaffCapability.ManageSettings, null, ct);
         if (authorized.IsFailure) return Result<SystemSettingsResult>.Failure(authorized.Error);
 
-        var current = await settings.GetAsync(ct);
+        // The lock serializes concurrent saves: without it two writers could both pass the
+        // version check and the loser would surface as an unhandled concurrency failure.
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+
+        var current = await settings.LockAsync(ct);
         if (current.Version != command.ExpectedVersion)
             return Result<SystemSettingsResult>.Failure(
                 Error.VersionConflict("The settings changed under you.", current.Version));
@@ -109,6 +113,7 @@ public sealed class SaveSystemSettingsHandler(
             + $"retryCount {before.MaxAutoRetryCount} -> {current.MaxAutoRetryCount}; "
             + $"optionCount {before.InviteOptionCount} -> {current.InviteOptionCount}");
         await unitOfWork.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return Result<SystemSettingsResult>.Success(new SystemSettingsResult(
             current.InviteExpiryDays, current.MaxAutoRetryCount, current.InviteOptionCount, current.Version));
     }

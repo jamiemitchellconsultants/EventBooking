@@ -60,3 +60,70 @@ public static class MeEndpoints
         return app;
     }
 }
+
+/// <summary>The signed-in staff identity plus self and collection entry affordances.</summary>
+public sealed record MeResourceResponse(
+    /// <summary>Gets the caller's enterprise staff number, or null until recorded.</summary>
+    string? StaffId,
+    /// <summary>Gets the caller's current role names.</summary>
+    IReadOnlyList<string> Roles,
+    /// <summary>Gets the caller's scoped appointment-type identifier, or null when unscoped.</summary>
+    Guid? AppointmentTypeId,
+    /// <summary>Gets the caller's scoped appointment-type name, or null when unscoped.</summary>
+    string? AppointmentTypeName,
+    /// <summary>Gets the capability names the caller's profile grants.</summary>
+    IReadOnlyList<string> Capabilities,
+    /// <summary>Gets the no-role explanation, or null for a full view.</summary>
+    string? Problem,
+    /// <summary>Gets the self and role-relevant collection entry affordances. Links are discoverability hints, not authorization.</summary>
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
+{
+    /// <summary>Builds the identity resource with self plus role-relevant entry links.</summary>
+    /// <param name="staffId">The caller's enterprise staff number, or null until recorded.</param>
+    /// <param name="roles">The caller's current role names.</param>
+    /// <param name="appointmentTypeId">The caller's scoped appointment-type identifier, or null.</param>
+    /// <param name="appointmentTypeName">The caller's scoped appointment-type name, or null.</param>
+    /// <param name="capabilities">The capability names the caller's profile grants.</param>
+    /// <param name="problem">The no-role explanation, or null for a full view.</param>
+    /// <returns>The API resource with identity links.</returns>
+    public static MeResourceResponse From(
+        string? staffId,
+        IReadOnlyList<string> roles,
+        Guid? appointmentTypeId,
+        string? appointmentTypeName,
+        IReadOnlyList<string> capabilities,
+        string? problem)
+    {
+        var links = new Dictionary<string, ApiLink>
+        {
+            ["self"] = new("/api/me", "GET", "getMyAccess"),
+        };
+        if (roles.Contains("Coordinator") || roles.Contains("Admin"))
+        {
+            links["attendees"] = new("/api/attendees", "GET", "listAttendees");
+            links["dashboards"] = new("/api/dashboards", "GET", "getDashboards");
+            links["audit"] = new("/api/audit", "GET", "searchAudit");
+        }
+
+        if (roles.Contains("Manager"))
+        {
+            links["eventProposals"] = new("/api/event-proposals", "GET", "listEventProposals");
+            links["events"] = new("/api/events", "GET", "listEvents");
+        }
+
+        if (roles.Contains("AppointmentStaff") || roles.Contains("Manager"))
+        {
+            links["appointmentEvents"] = new(
+                "/api/appointment-workspace/events", "GET", "listWorkspaceEvents");
+        }
+
+        if (roles.Contains("Admin"))
+        {
+            links["settings"] = new("/api/settings", "GET", "getSettings");
+            links["staffAccess"] = new("/api/staff-access", "GET", "listStaffAccess");
+        }
+
+        return new MeResourceResponse(
+            staffId, roles, appointmentTypeId, appointmentTypeName, capabilities, problem, links);
+    }
+}
