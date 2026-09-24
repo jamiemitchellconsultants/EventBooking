@@ -1,3 +1,5 @@
+using EventBooking.Domain.Attendees;
+
 namespace EventBooking.Application.Attendees;
 
 /// <summary>Explains whether EventBooking has completed every current Attendee requirement.</summary>
@@ -57,4 +59,20 @@ public sealed record OutstandingAppointmentType(
 public sealed record AttendeeReadiness(
     Guid AttendeeId,
     AttendeeReadinessCode Code,
-    IReadOnlyList<OutstandingAppointmentType> OutstandingAppointmentTypes);
+    IReadOnlyList<OutstandingAppointmentType> OutstandingAppointmentTypes)
+{
+    /// <summary>
+    /// The attendee list's per-row readiness label from the status and latest delivery
+    /// state alone. The list cannot see booking attempts, so it reports only what the
+    /// status entails: every non-booked status means no active booking exists, while a
+    /// booked attendee may be ready, outstanding, or concluded — the per-attendee
+    /// readiness query decides that. No delivery state changes what the status entails;
+    /// delivery travels in its own column.
+    /// </summary>
+    /// <param name="status">The attendee status.</param>
+    /// <param name="delivery">The latest delivery status name, or null when never invited.</param>
+    public static string Of(AttendeeStatus status, string? delivery) =>
+        status == AttendeeStatus.Booked
+            ? nameof(AttendeeStatus.Booked)
+            : nameof(AttendeeReadinessCode.NoActiveBooking);
+}

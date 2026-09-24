@@ -17,17 +17,19 @@ public sealed class OperationsTools
     /// <summary>Returns the coordinator dashboards for the caller's scope.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The dashboards handler.</param>
+    /// <param name="locationId">The location id narrowing the Events tab, or null for every location.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The dashboards view.</returns>
     [McpServerTool(Name = "get_dashboards", Title = "Get dashboards", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Return the coordinator dashboards visible to the caller. Caller must be a coordinator or admin.")]
+    [Description("Return the coordinator dashboards visible to the caller. Caller must be a coordinator.")]
     public async Task<DashboardsView> GetDashboardsAsync(
         ICallerAccessor caller,
         GetDashboardsHandler handler,
-        CancellationToken cancellationToken)
+        [Description("Location id narrowing the Events tab, or null for every location.")] Guid? locationId = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
-            new GetDashboardsQuery(caller.RequireStaffUserId()), cancellationToken);
+            new GetDashboardsQuery(caller.RequireStaffUserId(), locationId), cancellationToken);
         return result.ValueOrThrow();
     }
 

@@ -30,23 +30,38 @@ public static class AttendeeEndpoints
             .RequireAuthorization(AuthenticationExtensions.StaffPolicy);
 
         group.MapGet("/", async (
-            AttendeeStatus? status,
+            string? cursor,
+            int? limit,
+            string? status,
+            Guid? attendeeGroupId,
+            string? readiness,
             string? search,
+            HttpRequest request,
             ICallerAccessor caller,
             ListAttendeesHandler handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
-                new ListAttendeesQuery(caller.RequireStaffUserId(), status, search), cancellationToken);
+                new ListAttendeesQuery(
+                    caller.RequireStaffUserId(),
+                    cursor,
+                    limit ?? 50,
+                    status,
+                    attendeeGroupId,
+                    readiness,
+                    search),
+                cancellationToken);
             if (result.IsFailure)
             {
                 return result.ToResponse();
             }
 
-            return Results.Ok(result.Value.Select(AttendeeResourceResponse.From).ToList());
+            return Results.Ok(AttendeeListResourceResponse.From(
+                result.Value, request.QueryString.Value ?? string.Empty));
         })
             .WithAgentMetadata("listAttendees")
             .Produces(200)
+            .ProducesProblem(400)
             .ProducesProblem(403);
 
         group.MapPost("/", async (

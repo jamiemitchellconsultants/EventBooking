@@ -10,7 +10,7 @@ namespace EventBooking.Api.Tests;
 public sealed class AttendeeHypermediaTests(ApiFactory factory)
 {
     [Fact]
-    public async Task AttendeeArrayStaysArrayAndItemsCarryActions()
+    public async Task AttendeePageCarriesItemsAndItemsCarryActions()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
@@ -22,8 +22,10 @@ public sealed class AttendeeHypermediaTests(ApiFactory factory)
         });
         var id = await created.Content.ReadFromJsonAsync<Guid>();
         using var document = JsonDocument.Parse(await client.GetStringAsync("/api/attendees/"));
-        Assert.Equal(JsonValueKind.Array, document.RootElement.ValueKind);
-        var attendee = document.RootElement.EnumerateArray()
+        Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        var pageLinks = document.RootElement.GetProperty("_links");
+        AssertLink(pageLinks, "self", "/api/attendees", "GET", "listAttendees");
+        var attendee = document.RootElement.GetProperty("items").EnumerateArray()
             .Single(x => x.GetProperty("attendeeId").GetGuid() == id);
         var links = attendee.GetProperty("_links");
         AssertLink(links, "bookings", $"/api/attendees/{id}/bookings", "GET", "listAttendeeBookings");

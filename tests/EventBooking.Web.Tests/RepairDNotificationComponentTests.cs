@@ -130,27 +130,17 @@ public class RepairDNotificationComponentTests : BunitContext
         });
     }
 
-    /// <summary>A stale failed delivery remains visible but offers no enabled resend action.</summary>
+    /// <summary>The delivery column shows the list row's latest status with no resend action.</summary>
     [Fact]
-    public void AttendeesHideResendWhenServerMarksTheLatestContextStale()
+    public void AttendeesShowDeliveryStatusWithoutResendAction()
     {
         var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AttendeeDto>
-        {
-            new(attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited"),
-        }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Booking confirmation",
-                new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero),
-                "Failed",
-                CanRetry: false)])));
+        handler.Enqueue(_ => Json(new AttendeeListDto(
+            [new AttendeeDto(
+                attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
+                "Not yet invited", "MED", "NoActiveBooking", [], "Failed", "cursor")],
+            null)));
         handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
         Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
         Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
@@ -161,68 +151,8 @@ public class RepairDNotificationComponentTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Contains("Booking confirmation", cut.Markup);
+            Assert.Contains("Failed", cut.Markup);
             Assert.DoesNotContain(">Resend<", cut.Markup);
-        });
-    }
-
-    /// <summary>Actionable failed and pending deliveries use the retry endpoint, not the invite endpoint.</summary>
-    [Theory]
-    [InlineData("Failed")]
-    [InlineData("Pending")]
-    public void AttendeesResendActionUsesTheTemplateAwareRetryEndpoint(string status)
-    {
-        var attendeeId = Guid.NewGuid();
-        var attendee = new AttendeeDto(
-            attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical", [new("DAT", "Drug & Alcohol Testing")], 1, "Not yet invited");
-        var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Booking confirmation",
-                new DateTimeOffset(2026, 9, 7, 10, 0, 0, TimeSpan.Zero),
-                status,
-                CanRetry: true)])));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        handler.Enqueue(_ => Json(new EmailRetryDto("Sent", Guid.NewGuid())));
-        handler.Enqueue(_ => Json(new List<AttendeeDto> { attendee }));
-        handler.Enqueue(_ => Json(new DashboardsDto(
-            AwaitingAvailability: [],
-            NoResponse: [],
-            Events: [],
-            EmailStatuses:
-            [new AttendeeEmailStatusDto(
-                attendeeId,
-                "Booking confirmation",
-                new DateTimeOffset(2026, 9, 7, 10, 1, 0, TimeSpan.Zero),
-                "Sent",
-                CanRetry: false)])));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
-
-        var cut = Render<Attendees>();
-        cut.WaitForAssertion(() => Assert.Contains(">Resend<", cut.Markup));
-
-        cut.FindAll("button").Single(button => button.TextContent == "Resend").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains(
-                handler.Requests,
-                request => request.Method == HttpMethod.Post
-                    && request.Path == $"/api/attendees/{attendeeId}/email-retry");
-            Assert.DoesNotContain(
-                handler.Requests,
-                request => request.Method == HttpMethod.Post
-                    && request.Path == $"/api/attendees/{attendeeId}/invite");
         });
     }
 

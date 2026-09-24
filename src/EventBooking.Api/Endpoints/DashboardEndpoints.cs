@@ -10,12 +10,13 @@ public static class DashboardEndpoints
     public static IEndpointRouteBuilder MapDashboardEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/dashboards", async (
+            Guid? locationId,
             ICallerAccessor caller,
             GetDashboardsHandler handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
-                new GetDashboardsQuery(caller.RequireStaffUserId()), cancellationToken);
+                new GetDashboardsQuery(caller.RequireStaffUserId(), locationId), cancellationToken);
             return result.IsSuccess
                 ? Results.Ok(DashboardResourceResponse.From(result.Value))
                 : result.ToResponse();

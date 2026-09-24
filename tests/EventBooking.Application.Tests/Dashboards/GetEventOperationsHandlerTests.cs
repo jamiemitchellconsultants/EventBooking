@@ -2,7 +2,9 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Common;
 using EventBooking.Application.Dashboards;
+using EventBooking.Application.ReadModels;
 using EventBooking.Domain.Access;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Tests.Dashboards;
 
@@ -44,12 +46,19 @@ public class GetEventOperationsHandlerTests
 
         public Task<IReadOnlyList<AttendeeEmailStatusRow>> LatestEmailStatusAsync(CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<AttendeeEmailStatusRow>>([]);
+
+        public Task<DashboardsView> GetDashboardsAsync(
+            CallerShape shape, Guid? locationId, DateTimeOffset now,
+            IEventWindowZones zones, CancellationToken ct) =>
+            throw new NotSupportedException("The operations handler reads through EventsOverviewAsync.");
     }
 
     private static CountingQueries QueriesWithOneEvent() => new(
     [
         new EventOverviewRow(
             Guid.NewGuid(),
+            Guid.NewGuid(),
+            "London",
             new DateOnly(2026, 9, 10),
             new TimeOnly(9, 0),
             new TimeOnly(13, 0),
@@ -112,10 +121,13 @@ public class GetEventOperationsHandlerTests
     [Fact]
     public void EventOperationsViewCarriesNoAttendeeShapedProperty()
     {
+        // LocationName is the event's site, not attendee PII: it is carved out before
+        // the guard runs so a future attendee Name or Email still fails loudly.
         var names = string.Join(
             ",",
             typeof(EventOperationsView).GetProperties().Select(p => p.Name)
-                .Concat(typeof(EventOverviewRow).GetProperties().Select(p => p.Name)));
+                .Concat(typeof(EventOverviewRow).GetProperties().Select(p => p.Name))
+                .Where(name => name is not "LocationName"));
 
         Assert.DoesNotContain("AttendeeId", names);
         Assert.DoesNotContain("Name", names);

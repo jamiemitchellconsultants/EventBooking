@@ -22,15 +22,24 @@ public sealed record AttendeeToolView
     public required string Email { get; init; }
     /// <summary>Gets the attendee lifecycle status name.</summary>
     public required string Status { get; init; }
-    /// <summary>Gets the assigned Attendee Group name.</summary>
-    public required string AttendeeGroupName { get; init; }
     /// <summary>Gets the canonical Attendee Group code.</summary>
     public required string AttendeeGroupCode { get; init; }
-    /// <summary>Gets read-only derived Appointment Type summaries.</summary>
-    public required IReadOnlyList<AppointmentTypeSummary> RequiredAppointmentTypes { get; init; }
+    /// <summary>Gets the required type codes, on awaiting-availability rows only.</summary>
+    public required IReadOnlyList<string> RequiredTypeCodes { get; init; }
+    /// <summary>Gets the latest delivery status, or null when never invited.</summary>
+    public required string? LatestDeliveryStatus { get; init; }
+    /// <summary>Gets the row's page cursor.</summary>
+    public required string Cursor { get; init; }
     /// <summary>Gets internal readiness without exposing recovery mutation.</summary>
     public required AttendeeReadiness? Readiness { get; init; }
 }
+
+/// <summary>One keyset page of attendee tool views.</summary>
+/// <param name="Items">The rows.</param>
+/// <param name="NextCursor">The next page cursor, or null when exhausted.</param>
+public sealed record AttendeeListToolView(
+    IReadOnlyList<AttendeeToolView> Items,
+    string? NextCursor);
 
 /// <summary>Tool-safe readiness including Coordinator display wording.</summary>
 /// <param name="AttendeeId">The attendee the readiness was calculated for.</param>
@@ -51,29 +60,35 @@ public sealed class AttendeeTools
 
     private const int MaxPageSize = 200;
 
-    /// <summary>Lists attendees, optionally filtered by status or search text.</summary>
+    /// <summary>Lists one keyset page of attendees, optionally filtered.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
-    /// <param name="readiness">Resolves internal readiness per listed attendee.</param>
+    /// <param name="readinessHandler">Resolves internal readiness per listed attendee.</param>
+    /// <param name="groups">Resolves the assigned Attendee Group.</param>
     /// <param name="status">The attendee status name, or null for all.</param>
-    /// <param name="search">Free-text filter, or null.</param>
-    /// <param name="page">The 1-based page number.</param>
+    /// <param name="search">Name-or-email prefix filter, or null.</param>
+    /// <param name="attendeeGroupCode">The canonical Attendee Group code, or null for all.</param>
+    /// <param name="readiness">The readiness label, or null for all.</param>
+    /// <param name="cursor">The opaque page cursor, or null for the first page.</param>
     /// <param name="pageSize">Results per page, clamped to the tool maximum.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The bounded page of attendee views.</returns>
     [McpServerTool(Name = "list_attendees", Title = "List attendees", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("List attendees, optionally filtered by status name and search text. Caller must be a coordinator or admin.")]
-    public async Task<IReadOnlyList<AttendeeToolView>> ListAttendeesAsync(
+    [Description("List attendees, optionally filtered by status name and search text. Caller must be a coordinator.")]
+    public async Task<AttendeeListToolView> ListAttendeesAsync(
         ICallerAccessor caller,
         ListAttendeesHandler handler,
-        GetAttendeeReadinessHandler readiness,
+        GetAttendeeReadinessHandler readinessHandler,
+        IAttendeeGroupRepository groups,
         [Description("Attendee status name (e.g. Invited) or null for all.")] string? status = null,
-        [Description("Free-text name or email filter or null.")] string? search = null,
-        [Description("1-based page number.")] int page = 1,
+        [Description("Name-or-email prefix filter or null.")] string? search = null,
+        [Description("Canonical attendee group code (e.g. PILOTS) or null for all.")] string? attendeeGroupCode = null,
+        [Description("Readiness label or null for all.")] string? readiness = null,
+        [Description("Opaque page cursor, or null for the first page.")] string? cursor = null,
         [Description("Results per page, at most 200.")] int pageSize = DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        AttendeeStatus? parsed = null;
+        string? parsed = null;
         if (status is not null)
         {
             if (!Enum.TryParse<AttendeeStatus>(status, ignoreCase: false, out var value) ||
@@ -83,20 +98,31 @@ public sealed class AttendeeTools
                     "Status must be a recognised AttendeeStatus name.");
             }
 
-            parsed = value;
+            parsed = value.ToString();
+        }
+
+        Guid? groupId = null;
+        if (attendeeGroupCode is not null)
+        {
+            groupId = await ResolveGroupIdAsync(groups, attendeeGroupCode, cancellationToken);
         }
 
         var staffUserId = caller.RequireStaffUserId();
-        var result = await handler.HandleAsync(
-            new ListAttendeesQuery(staffUserId, parsed, search),
-            cancellationToken);
-        var bounded = Math.Clamp(pageSize, 1, MaxPageSize);
-        var skipped = Math.Max(page - 1, 0) * bounded;
+        var page = (await handler.HandleAsync(
+            new ListAttendeesQuery(
+                staffUserId,
+                cursor,
+                Math.Clamp(pageSize, 1, MaxPageSize),
+                parsed,
+                groupId,
+                readiness,
+                search),
+            cancellationToken)).ValueOrThrow();
 
         var views = new List<AttendeeToolView>();
-        foreach (var item in result.ValueOrThrow().Skip(skipped).Take(bounded))
+        foreach (var item in page.Items)
         {
-            var readinessResult = await readiness.HandleAsync(
+            var readinessResult = await readinessHandler.HandleAsync(
                 new GetAttendeeReadinessQuery(staffUserId, item.AttendeeId),
                 cancellationToken);
             views.Add(new AttendeeToolView
@@ -104,15 +130,16 @@ public sealed class AttendeeTools
                 AttendeeId = item.AttendeeId,
                 Name = item.Name,
                 Email = item.Email,
-                Status = item.Status.ToString(),
-                AttendeeGroupName = item.AttendeeGroupName,
-                AttendeeGroupCode = item.AttendeeGroupCode,
-                RequiredAppointmentTypes = item.RequiredAppointmentTypes,
+                Status = item.Status,
+                AttendeeGroupCode = item.GroupCode,
+                RequiredTypeCodes = item.RequiredTypeCodes,
+                LatestDeliveryStatus = item.LatestDeliveryStatus,
+                Cursor = item.Cursor,
                 Readiness = readinessResult.IsSuccess ? readinessResult.Value : null,
             });
         }
 
-        return views;
+        return new AttendeeListToolView(views, page.NextCursor);
     }
 
     /// <summary>Lists the Attendee Groups available for attendee assignment.</summary>

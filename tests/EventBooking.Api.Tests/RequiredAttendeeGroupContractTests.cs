@@ -10,7 +10,9 @@ public sealed class RequiredAttendeeGroupContractTests
         Assert.DoesNotContain("AttendeeGroupUnassigned", Enum.GetNames<AttendeeReadinessCode>());
         Assert.DoesNotContain(typeof(AttendeeListItem).GetProperties(),
             p => p.Name == "RequiresAttendeeGroupReconciliation");
-        Assert.Equal(typeof(Guid), typeof(AttendeeListItem).GetProperty("AttendeeGroupId")!.PropertyType);
+        // List rows carry the group code, never another aggregate's identifier; the
+        // readiness snapshot keeps the id it resolves journeys by.
+        Assert.Equal(typeof(string), typeof(AttendeeListItem).GetProperty("GroupCode")!.PropertyType);
         Assert.Equal(typeof(Guid), typeof(AttendeeReadinessSnapshot).GetProperty("AttendeeGroupId")!.PropertyType);
     }
 }

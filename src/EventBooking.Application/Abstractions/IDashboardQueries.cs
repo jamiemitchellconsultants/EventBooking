@@ -1,4 +1,7 @@
+using EventBooking.Application.Dashboards;
+using EventBooking.Application.ReadModels;
 using EventBooking.Domain.Notifications;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Abstractions;
 
@@ -51,18 +54,17 @@ public sealed record EventCapacityRow(string Code, int TotalHeadcount, int Remai
 
 /// <summary>Defines event overview row for the current use case.</summary>
 /// <param name="EventId">The event id.</param>
+/// <param name="LocationId">The location id.</param>
+/// <param name="LocationName">The location name.</param>
 /// <param name="Date">The date.</param>
 /// <param name="StartTime">The start time.</param>
 /// <param name="EndTime">The end time.</param>
 /// <param name="Capacities">The capacities.</param>
 /// <param name="ActiveBookings">The active bookings.</param>
 public sealed record EventOverviewRow(
-    Guid EventId,
-    DateOnly Date,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    IReadOnlyList<EventCapacityRow> Capacities,
-    int ActiveBookings);
+    Guid EventId, Guid LocationId, string LocationName, DateOnly Date,
+    TimeOnly StartTime, TimeOnly EndTime,
+    IReadOnlyList<EventCapacityRow> Capacities, int ActiveBookings);
 
 /// <summary>
 /// The dashboard read side. Implementations query and project directly, returning no entities and
@@ -86,4 +88,17 @@ public interface IDashboardQueries
     /// <summary>The latest EmailLog row per attendee that has ever had one written.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<IReadOnlyList<AttendeeEmailStatusRow>> LatestEmailStatusAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// FR-13.1's three tabs, each with its row count, plus FR-13.2's email counts. Takes
+    /// the caller shape and refuses Admin-shaped callers itself.
+    /// </summary>
+    /// <param name="shape">The caller shape.</param>
+    /// <param name="locationId">The location id, or null for every location.</param>
+    /// <param name="now">The current instant.</param>
+    /// <param name="zones">The zone abstraction.</param>
+    /// <param name="ct">The cancellation token.</param>
+    Task<DashboardsView> GetDashboardsAsync(
+        CallerShape shape, Guid? locationId, DateTimeOffset now,
+        IEventWindowZones zones, CancellationToken ct);
 }

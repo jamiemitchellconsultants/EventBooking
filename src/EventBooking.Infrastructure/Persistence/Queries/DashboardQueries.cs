@@ -1,10 +1,13 @@
 using EventBooking.Application.Abstractions;
+using EventBooking.Application.Dashboards;
+using EventBooking.Application.ReadModels;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence.Queries;
@@ -61,6 +64,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             .Select(eventItem => new
             {
                 eventItem.Id,
+                eventItem.LocationId,
                 eventItem.Window.Date,
                 eventItem.Window.StartTime,
                 eventItem.Window.DurationMinutes,
@@ -75,9 +79,17 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             })
             .ToListAsync(cancellationToken);
 
+        var locations = await context.Locations
+            .AsNoTracking()
+            .Select(location => new { location.Id, location.Name })
+            .ToDictionaryAsync(location => location.Id, cancellationToken);
+
         return rows
+            .Where(row => locations.ContainsKey(row.LocationId))
             .Select(row => new EventOverviewRow(
                 row.Id,
+                row.LocationId,
+                locations[row.LocationId].Name,
                 row.Date,
                 row.StartTime,
                 row.StartTime.Add(TimeSpan.FromMinutes(row.DurationMinutes)),
@@ -172,6 +184,166 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                         _ => false,
                     })))
             .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<DashboardsView> GetDashboardsAsync(
+        CallerShape shape, Guid? locationId, DateTimeOffset now,
+        IEventWindowZones zones, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(shape);
+        ArgumentNullException.ThrowIfNull(zones);
+
+        // The read model refuses the Admin shape itself (FR-13: Coordinator, never Admin).
+        // The handler checks for a Coordinator profile, but an Admin who also holds one must
+        // still not read attendee rows, and that rule belongs where the rows are.
+        if (shape.IsAdmin)
+        {
+            return new DashboardsView(
+                new AwaitingAvailabilityTab(0, []), new NoResponseTab(0, []),
+                new EventsTab(0, []), 0, 0);
+        }
+
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+
+        // The two attendee tabs are one status each (FR-13.1). They carry no location:
+        // an attendee awaiting availability has no event yet, so a location filter cannot
+        // narrow them without inventing a relationship the model does not have. The filter
+        // applies to the Events tab, which is the tab that has one.
+        var awaiting = await AttendeeTabRowsAsync(
+            AttendeeStatus.AwaitingAvailability, today, ct);
+        var noResponseRows = await AttendeeTabRowsAsync(
+            AttendeeStatus.NoResponseNeedsFollowUp, today, ct);
+        var noResponse = noResponseRows
+            .Select(row => new NoResponseRow(
+                row.AttendeeId, row.Name, row.Email, row.RequiredCodes, row.WaitingSince))
+            .ToList();
+
+        // Events ending between 7 days ago and 60 days ahead. There is no stored end
+        // instant — PostgreSQL cannot evaluate IANA rules deterministically (design 04) —
+        // so SQL pre-filters start_utc to the widened window and the exact end bound is
+        // applied here over the shortlist, with each event's location zone.
+        var from = now.AddDays(-7);
+        var to = now.AddDays(60);
+        var widenedFrom = from.AddMinutes(-EventWindow.MaximumDurationMinutes);
+
+        var shortlist = await context.Events
+            .AsNoTracking()
+            .Where(e => e.Status == EventStatus.Active)
+            .Where(e => locationId == null || e.LocationId == locationId)
+            .Where(e => EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName) >= widenedFrom
+                && EF.Property<DateTimeOffset>(e, EventStartInstants.PropertyName) <= to)
+            .Select(e => new
+            {
+                e.Id,
+                e.LocationId,
+                e.Window.Date,
+                e.Window.StartTime,
+                e.Window.DurationMinutes,
+                Capacities = e.Capacities
+                    .Select(c => new { c.AppointmentTypeId, c.TotalHeadcount, c.RemainingCapacity })
+                    .ToList(),
+                ActiveBookings = context.Bookings
+                    .Count(b => b.EventId == e.Id && b.Status == BookingStatus.Active),
+            })
+            .ToListAsync(ct);
+
+        var locations = await context.Locations
+            .AsNoTracking()
+            .Select(l => new { l.Id, l.Name, l.TimeZoneId })
+            .ToDictionaryAsync(l => l.Id, ct);
+        var typeCodes = await context.AppointmentTypes
+            .AsNoTracking()
+            .Select(t => new { t.Id, t.Code })
+            .ToDictionaryAsync(t => t.Id, t => t.Code, ct);
+
+        var events = new List<EventOverviewRow>();
+        foreach (var row in shortlist)
+        {
+            if (!locations.TryGetValue(row.LocationId, out var location))
+            {
+                continue;
+            }
+
+            var endTime = row.StartTime.Add(TimeSpan.FromMinutes(row.DurationMinutes));
+            var endInstant = zones.InstantOf(row.Date, endTime, location.TimeZoneId);
+            if (endInstant < from || endInstant > to)
+            {
+                continue;
+            }
+
+            events.Add(new EventOverviewRow(
+                row.Id,
+                row.LocationId,
+                location.Name,
+                row.Date,
+                row.StartTime,
+                endTime,
+                [.. row.Capacities
+                    .Where(c => typeCodes.ContainsKey(c.AppointmentTypeId))
+                    .Select(c => new EventCapacityRow(
+                        typeCodes[c.AppointmentTypeId], c.TotalHeadcount, c.RemainingCapacity))
+                    .OrderBy(c => c.Code)],
+                row.ActiveBookings));
+        }
+
+        events = [.. events.OrderBy(e => e.Date).ThenBy(e => e.StartTime).ThenBy(e => e.EventId)];
+
+        // FR-13.2: failed and pending counts come from the latest email per attendee, not
+        // from every row ever written, or one attendee's long retry history would dominate.
+        // EF Core cannot translate the per-group priority, so the narrow columns are
+        // materialised first and the latest-per-attendee pick happens in memory.
+        var latest = (await context.EmailLogs
+            .AsNoTracking()
+            .Select(e => new { e.AttendeeId, e.SentAt, e.Id, e.Status })
+            .ToListAsync(ct))
+            .GroupBy(e => e.AttendeeId)
+            .Select(g => g
+                .OrderByDescending(e => e.SentAt)
+                .ThenByDescending(e => e.Id)
+                .Select(e => e.Status)
+                .First())
+            .ToList();
+
+        return new DashboardsView(
+            new AwaitingAvailabilityTab(awaiting.Count, awaiting),
+            new NoResponseTab(noResponse.Count, noResponse),
+            new EventsTab(events.Count, events),
+            latest.Count(status => status == EmailStatus.Failed),
+            latest.Count(status => status == EmailStatus.Pending));
+    }
+
+    private async Task<IReadOnlyList<AwaitingAvailabilityRow>> AttendeeTabRowsAsync(
+        AttendeeStatus status, DateOnly today, CancellationToken ct)
+    {
+        var rows = await context.Attendees
+            .AsNoTracking()
+            .Where(c => c.Status == status)
+            .Select(c => new
+            {
+                c.Id,
+                c.Name,
+                c.Email,
+                c.StatusChangedAt,
+                Codes = c.Requirements
+                    .Join(context.AppointmentTypes, r => r.AppointmentTypeId, t => t.Id,
+                        (r, t) => t.Code)
+                    .OrderBy(code => code)
+                    .ToList(),
+            })
+            .OrderBy(c => c.StatusChangedAt)
+            .ThenBy(c => c.Id)
+            .ToListAsync(ct);
+
+        return
+        [
+            .. rows.Select(c =>
+            {
+                var since = DateOnly.FromDateTime(c.StatusChangedAt.UtcDateTime);
+                return new AwaitingAvailabilityRow(
+                    c.Id, c.Name, c.Email, c.Codes, since, today.DayNumber - since.DayNumber);
+            }),
+        ];
     }
 
     private IQueryable<AttendeeRow> AttendeeRows(AttendeeStatus status) =>

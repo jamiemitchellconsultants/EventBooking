@@ -68,8 +68,8 @@
                     Events <span class="tab-count">(@_data.Events.Count)</span>
                 </button>
                 @{
-                    var failedCount = _data.EmailStatuses.Count(e => e.Status == "Failed");
-                    var pendingCount = _data.EmailStatuses.Count(e => e.Status == "Pending");
+                    var failedCount = _data.FailedEmails;
+                    var pendingCount = _data.PendingEmails;
                 }
                 @if (failedCount > 0)
                 {
@@ -100,7 +100,7 @@
                                 <tr><th scope="col">Attendee</th><th scope="col" title="The appointment types this attendee's attendee group requires.">Required types</th><th scope="col" title="When the attendee first became available to invite.">Waiting since</th><th scope="col" title="Every recorded change for this attendee, with who made it.">History</th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in _data.AwaitingAvailability)
+                                @foreach (var row in _data.AwaitingAvailability.Rows)
                                 {
                                     <tr @key="row.AttendeeId">
                                         <td data-label="Attendee"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
@@ -138,7 +138,7 @@
                                 <tr><th scope="col">Attendee</th><th scope="col" title="The appointment types this attendee's attendee group requires.">Required types</th><th scope="col" title="When the invitation stopped being chased.">Gave up on</th><th scope="col" title="Every recorded change for this attendee, with who made it.">History</th><th scope="col" class="actions-column"><span class="visually-hidden">Actions</span></th></tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in _data.NoResponse)
+                                @foreach (var row in _data.NoResponse.Rows)
                                 {
                                     <tr @key="row.AttendeeId">
                                         <td data-label="Attendee"><strong>@row.Name</strong><a href="mailto:@row.Email">@row.Email</a></td>
@@ -177,13 +177,14 @@
                 <div class="table-wrap">
                     <table>
                         <thead>
-                            <tr><th scope="col">Date</th><th scope="col">Window</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Attendees currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this eventItem, with who made it.">History</th></tr>
+                            <tr><th scope="col">Date</th><th scope="col">Location</th><th scope="col">Window</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Attendees currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this eventItem, with who made it.">History</th></tr>
                         </thead>
                         <tbody>
-                            @foreach (var eventItem in _data.Events)
+                            @foreach (var eventItem in _data.Events.Rows)
                             {
                                 <tr @key="eventItem.EventId">
                                     <td data-label="Date">@eventItem.Date.ToString("dd MMM yyyy")</td>
+                                    <td data-label="Location">@eventItem.LocationName</td>
                                     <td data-label="Window">@FormatWindow(eventItem.StartTime, eventItem.EndTime)</td>
                                     <td data-label="Capacity by type">
                                         <div class="chip-row">

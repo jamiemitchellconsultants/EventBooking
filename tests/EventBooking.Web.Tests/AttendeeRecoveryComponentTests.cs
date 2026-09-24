@@ -188,12 +188,13 @@ public class AttendeeRecoveryComponentTests : BunitContext
 
             if (path == "/api/attendees")
             {
-                return Task.FromResult(Json(new[]
-                {
-                    new AttendeeDto(
-                        attendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical",
-                        [], 1, "Not yet invited"),
-                }));
+                return Task.FromResult(Json(new AttendeeListDto(
+                    [
+                        new AttendeeDto(
+                            attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
+                            "Not yet invited", "MED", "NoActiveBooking", [], null, "cursor"),
+                    ],
+                    null)));
             }
 
             if (path == "/api/attendee-groups")
@@ -201,7 +202,12 @@ public class AttendeeRecoveryComponentTests : BunitContext
                 return Task.FromResult(Json(Array.Empty<object>()));
             }
 
-            return Task.FromResult(Json(new DashboardsDto([], [], [], [])));
+            return Task.FromResult(Json(new DashboardsDto(
+                new DashboardTabDto<AwaitingRowDto>(0, []),
+                new DashboardTabDto<NoResponseRowDto>(0, []),
+                new DashboardTabDto<EventRowDto>(0, []),
+                0,
+                0)));
         });
         Services.AddSingleton(
             new AttendeesClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));

@@ -15,12 +15,17 @@ public sealed record AttendeeDto(
     Guid AttendeeId,
     string Name,
     string Email,
-    Guid AttendeeGroupId,
-    string AttendeeGroupCode,
-    string AttendeeGroupName,
-    IReadOnlyList<AppointmentTypeSummaryDto> RequiredAppointmentTypes,
-    int Status,
-    string StatusDisplay);
+    string Status,
+    string StatusDisplay,
+    string GroupCode,
+    string Readiness,
+    IReadOnlyList<string> RequiredTypeCodes,
+    string? LatestDeliveryStatus,
+    string Cursor);
+
+public sealed record AttendeeListDto(
+    IReadOnlyList<AttendeeDto> Items,
+    string? NextCursor);
 
 public sealed record ImportErrorDto(int LineNumber, string Message);
 
@@ -84,13 +89,35 @@ public sealed record AttendeeReadinessDto(
 
 public sealed class AttendeesClient(HttpClient http)
 {
-    public async Task<ApiOutcome<List<AttendeeDto>>> ListAsync(
-        int? status, string? search, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<AttendeeListDto>> ListAsync(
+        string? cursor,
+        int? limit,
+        string? status,
+        Guid? attendeeGroupId,
+        string? readiness,
+        string? search,
+        CancellationToken cancellationToken)
     {
         var parameters = new List<string>();
-        if (status is not null)
+        if (!string.IsNullOrEmpty(cursor))
         {
-            parameters.Add($"status={status.Value}");
+            parameters.Add($"cursor={Uri.EscapeDataString(cursor)}");
+        }
+        if (limit is not null)
+        {
+            parameters.Add($"limit={limit.Value}");
+        }
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            parameters.Add($"status={Uri.EscapeDataString(status)}");
+        }
+        if (attendeeGroupId is not null)
+        {
+            parameters.Add($"attendeeGroupId={attendeeGroupId.Value:D}");
+        }
+        if (!string.IsNullOrWhiteSpace(readiness))
+        {
+            parameters.Add($"readiness={Uri.EscapeDataString(readiness)}");
         }
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -102,7 +129,7 @@ public sealed class AttendeesClient(HttpClient http)
             : $"/api/attendees?{string.Join("&", parameters)}";
 
         using var response = await http.GetAsync(route, cancellationToken);
-        return await ApiCall.ReadAsync<List<AttendeeDto>>(response, cancellationToken);
+        return await ApiCall.ReadAsync<AttendeeListDto>(response, cancellationToken);
     }
 
     public async Task<ApiOutcome<List<AttendeeGroupOptionDto>>> ListGroupsAsync(

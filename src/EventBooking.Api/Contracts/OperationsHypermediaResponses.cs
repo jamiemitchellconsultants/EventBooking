@@ -9,6 +9,10 @@ namespace EventBooking.Api.Contracts;
 public sealed record EventOverviewResourceResponse(
     /// <summary>Gets the stable event identifier.</summary>
     Guid EventId,
+    /// <summary>Gets the location identifier.</summary>
+    Guid LocationId,
+    /// <summary>Gets the location name.</summary>
+    string LocationName,
     /// <summary>Gets the event window calendar date.</summary>
     DateOnly Date,
     /// <summary>Gets the start of the event window.</summary>
@@ -26,7 +30,8 @@ public sealed record EventOverviewResourceResponse(
     /// <param name="row">The application event-overview row to project.</param>
     /// <returns>The API resource with event-overview links.</returns>
     public static EventOverviewResourceResponse From(EventOverviewRow row) =>
-        new(row.EventId, row.Date, row.StartTime, row.EndTime,
+        new(row.EventId, row.LocationId, row.LocationName,
+            row.Date, row.StartTime, row.EndTime,
             row.Capacities, row.ActiveBookings,
             new Dictionary<string, ApiLink>
             {
@@ -54,16 +59,23 @@ public sealed record EventOperationsResourceResponse(
             });
 }
 
+/// <summary>One dashboard tab: the row count beside the rows.</summary>
+/// <param name="Count">The row count.</param>
+/// <param name="Rows">The rows.</param>
+public sealed record DashboardTabResourceResponse<T>(int Count, IReadOnlyList<T> Rows);
+
 /// <summary>Coordinator dashboards plus entry affordances for related collections.</summary>
 public sealed record DashboardResourceResponse(
-    /// <summary>Gets the attendees waiting for availability.</summary>
-    IReadOnlyList<AwaitingAvailabilityRow> AwaitingAvailability,
-    /// <summary>Gets the attendees needing follow-up after no response.</summary>
-    IReadOnlyList<NoResponseRow> NoResponse,
-    /// <summary>Gets the event overview rows with capacity and booking counts.</summary>
-    IReadOnlyList<EventOverviewResourceResponse> Events,
-    /// <summary>Gets the latest email delivery state per attendee.</summary>
-    IReadOnlyList<AttendeeEmailStatusView> EmailStatuses,
+    /// <summary>Gets the awaiting-availability tab.</summary>
+    DashboardTabResourceResponse<AwaitingAvailabilityRow> AwaitingAvailability,
+    /// <summary>Gets the no-response tab.</summary>
+    DashboardTabResourceResponse<NoResponseRow> NoResponse,
+    /// <summary>Gets the events tab.</summary>
+    DashboardTabResourceResponse<EventOverviewResourceResponse> Events,
+    /// <summary>Gets how many attendees' latest delivery failed.</summary>
+    int FailedEmails,
+    /// <summary>Gets how many attendees' latest delivery is pending.</summary>
+    int PendingEmails,
     /// <summary>Gets the dashboard self and collection entry affordances.</summary>
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links)
 {
@@ -71,9 +83,15 @@ public sealed record DashboardResourceResponse(
     /// <param name="view">The application dashboards view to project.</param>
     /// <returns>The API resource with dashboard links.</returns>
     public static DashboardResourceResponse From(DashboardsView view) =>
-        new(view.AwaitingAvailability, view.NoResponse,
-            view.Events.Select(EventOverviewResourceResponse.From).ToList(),
-            view.EmailStatuses,
+        new(new DashboardTabResourceResponse<AwaitingAvailabilityRow>(
+                view.AwaitingAvailability.Count, view.AwaitingAvailability.Rows),
+            new DashboardTabResourceResponse<NoResponseRow>(
+                view.NoResponse.Count, view.NoResponse.Rows),
+            new DashboardTabResourceResponse<EventOverviewResourceResponse>(
+                view.Events.Count,
+                view.Events.Rows.Select(EventOverviewResourceResponse.From).ToList()),
+            view.FailedEmails,
+            view.PendingEmails,
             new Dictionary<string, ApiLink>
             {
                 ["self"] = new("/api/dashboards", "GET", "getDashboards"),

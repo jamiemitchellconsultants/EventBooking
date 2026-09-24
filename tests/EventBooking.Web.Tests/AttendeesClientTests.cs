@@ -89,10 +89,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
 
         Assert.Equal("/api/attendees", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("", handler.Requests[0].RequestUri!.Query);
@@ -104,10 +104,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(null, "a novak@mail.com", CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, "a novak@mail.com", CancellationToken.None);
 
         Assert.Contains("search=a%20novak%40mail.com", handler.Requests[0].RequestUri!.Query);
     }
@@ -118,10 +118,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
 
         Assert.Equal("/api/attendees", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("", handler.Requests[0].RequestUri!.Query);
@@ -133,12 +133,12 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(2, null, CancellationToken.None);
+        await client.ListAsync(null, null, "AwaitingAvailability", null, null, null, CancellationToken.None);
 
-        Assert.Contains("status=2", handler.Requests[0].RequestUri!.Query);
+        Assert.Contains("status=AwaitingAvailability", handler.Requests[0].RequestUri!.Query);
         Assert.DoesNotContain("search=", handler.Requests[0].RequestUri!.Query);
     }
 
@@ -148,13 +148,13 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeDto>()),
+            Content = JsonContent.Create(new AttendeeListDto([], null)),
         };
 
-        await client.ListAsync(5, "a novak@mail.com", CancellationToken.None);
+        await client.ListAsync(null, null, "NoResponseNeedsFollowUp", null, null, "a novak@mail.com", CancellationToken.None);
 
         var query = handler.Requests[0].RequestUri!.Query;
-        Assert.Contains("status=5", query);
+        Assert.Contains("status=NoResponseNeedsFollowUp", query);
         Assert.Contains("search=a%20novak%40mail.com", query);
     }
 
@@ -341,7 +341,7 @@ public class AttendeesClientTests
     public async Task EveryResponseIsDisposedOnlyAfterTheClientHasConsumedItsContent()
     {
         var (client, handler) = Given();
-        var listContent = new TrackingContent(JsonSerializer.Serialize(new List<AttendeeDto>()));
+        var listContent = new TrackingContent(JsonSerializer.Serialize(new AttendeeListDto([], null)));
         var createContent = new TrackingContent(JsonSerializer.Serialize(Guid.NewGuid()));
         var importContent = new TrackingContent(JsonSerializer.Serialize(new ImportOutcomeDto(true, 1, [])));
         var listResponse = new TrackingResponseMessage(HttpStatusCode.OK, listContent);
@@ -366,7 +366,7 @@ public class AttendeesClientTests
         }
 
         var id = Guid.NewGuid();
-        await client.ListAsync(null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
         await client.CreateAsync("Amara Novak", "a.novak@mail.com", null, CancellationToken.None);
         await client.UpdateAsync(id, "Amara Novak", "a.novak@mail.com", null, CancellationToken.None);
         await client.DeleteAsync(id, false, CancellationToken.None);

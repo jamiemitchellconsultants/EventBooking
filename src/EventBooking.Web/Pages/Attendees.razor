@@ -175,16 +175,11 @@
                                     <td data-label="Status"><span class="attendee-status @AttendeePresentation.StatusCssClass(attendee.Status)">@attendee.StatusDisplay</span></td>
                                     <td data-label="Readiness"><span>—</span></td>
                                     <td data-label="Delivery">
-                                        @if (_emailStatus.TryGetValue(attendee.AttendeeId, out var email))
+                                        @if (attendee.LatestDeliveryStatus is not null)
                                         {
-                                            <span class="@(email.Status == "Failed" ? "error" : email.Status == "Pending" ? "warning" : "")">
-                                                @email.TemplateDisplay @TimePresentation.Format(email.SentAt)
+                                            <span class="@(attendee.LatestDeliveryStatus == "Failed" ? "error" : attendee.LatestDeliveryStatus == "Pending" ? "warning" : "")">
+                                                @attendee.LatestDeliveryStatus
                                             </span>
-                                            @if (email.Status is "Failed" or "Pending" && email.CanRetry)
-                                            {
-                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId)" disabled="@_busy"
-                                                        title="Sends the same email again to the same address.">Resend</button>
-                                            }
                                         }
                                         else
                                         {
@@ -207,9 +202,9 @@
                                     <td data-label="Email"><a href="mailto:@attendee.Email">@attendee.Email</a></td>
                                     <td data-label="Required types">
                                         <div class="chip-row">
-                                            @foreach (var requiredType in attendee.RequiredAppointmentTypes)
+                                            @foreach (var requiredType in attendee.RequiredTypeCodes)
                                             {
-                                                <span class="chip">@requiredType.Code</span>
+                                                <span class="chip">@requiredType</span>
                                             }
                                         </div>
                                     </td>
@@ -285,16 +280,11 @@
                                         }
                                     </td>
                                     <td data-label="Delivery">
-                                        @if (_emailStatus.TryGetValue(attendee.AttendeeId, out var email))
+                                        @if (attendee.LatestDeliveryStatus is not null)
                                         {
-                                            <span class="@(email.Status == "Failed" ? "error" : email.Status == "Pending" ? "warning" : "")">
-                                                @email.TemplateDisplay @TimePresentation.Format(email.SentAt)
+                                            <span class="@(attendee.LatestDeliveryStatus == "Failed" ? "error" : attendee.LatestDeliveryStatus == "Pending" ? "warning" : "")">
+                                                @attendee.LatestDeliveryStatus
                                             </span>
-                                            @if (email.Status is "Failed" or "Pending" && email.CanRetry)
-                                            {
-                                                <button class="button button-small" @onclick="() => RetryEmailAsync(attendee.AttendeeId)" disabled="@_busy"
-                                                        title="Sends the same email again to the same address.">Resend</button>
-                                            }
                                         }
                                         else
                                         {
@@ -400,9 +390,7 @@
     private bool _isLoading = true;
 
     private string _search = string.Empty;
-    private int? _statusFilter;
-    private IReadOnlyDictionary<Guid, AttendeeEmailStatusDto> _emailStatus =
-        new Dictionary<Guid, AttendeeEmailStatusDto>();
+    private string? _statusFilter;
     private readonly Dictionary<Guid, AttendeeReadinessDto> _readiness = new();
     private readonly HashSet<Guid> _expandedReadiness = new();
     private readonly HashSet<Guid> _readinessLoading = new();
@@ -418,13 +406,13 @@
     private readonly Dictionary<Guid, string> _bookingErrors = new();
     private Guid? _bookingCancelAwaitingConfirmation;
 
-    private static readonly (int Value, string Label)[] StatusChoices =
+    private static readonly (string Value, string Label)[] StatusChoices =
     [
-        (1, "Not yet invited"),
-        (2, "Awaiting availability"),
-        (3, "Invited (pending response)"),
-        (4, "Booked"),
-        (5, "No response - needs follow-up"),
+        ("NotYetInvited", "Not yet invited"),
+        ("AwaitingAvailability", "Awaiting availability"),
+        ("Invited", "Invited (pending response)"),
+        ("Booked", "Booked"),
+        ("NoResponseNeedsFollowUp", "No response - needs follow-up"),
     ];
     private string _newName = string.Empty;
     private string _newEmail = string.Empty;
@@ -513,26 +501,34 @@
     private async Task ReloadAsync()
     {
         _isLoading = true;
+        _error = null;
 
         try
         {
-            var attendeesTask = AttendeesApi.ListAsync(_statusFilter, _search, CancellationToken.None);
-            var dashboardsTask = Dashboards.GetAsync(CancellationToken.None);
-            var groupsTask = AttendeesApi.ListGroupsAsync(CancellationToken.None);
-            await Task.WhenAll(attendeesTask, dashboardsTask, groupsTask);
-
-            var outcome = attendeesTask.Result;
-            if (outcome.IsSuccess)
+            // The list is keyset-paged; the page walks every page so the coordinator
+            // keeps seeing the whole filtered set.
+            var attendees = new List<AttendeeDto>();
+            string? cursor = null;
+            do
             {
-                _attendees = outcome.Value;
-                _error = null;
-            }
-            else
+                var outcome = await AttendeesApi.ListAsync(
+                    cursor, null, _statusFilter, null, null, _search, CancellationToken.None);
+                if (!outcome.IsSuccess)
+                {
+                    _error = outcome.ErrorMessage ?? UnexpectedError;
+                    break;
+                }
+
+                attendees.AddRange(outcome.Value?.Items ?? []);
+                cursor = outcome.Value?.NextCursor;
+            } while (cursor is not null);
+
+            if (_error is null)
             {
-                _error = outcome.ErrorMessage ?? UnexpectedError;
+                _attendees = attendees;
             }
 
-            var groupsOutcome = groupsTask.Result;
+            var groupsOutcome = await AttendeesApi.ListGroupsAsync(CancellationToken.None);
             if (groupsOutcome.IsSuccess)
             {
                 _groups = groupsOutcome.Value ?? [];
@@ -541,10 +537,6 @@
             {
                 _error = groupsOutcome.ErrorMessage ?? UnexpectedError;
             }
-
-            _emailStatus = dashboardsTask.Result.Value?.EmailStatuses
-                .ToDictionary(e => e.AttendeeId)
-                ?? new Dictionary<Guid, AttendeeEmailStatusDto>();
         }
         catch (Exception)
         {
@@ -584,7 +576,8 @@
         _editingId = attendee.AttendeeId;
         _editName = attendee.Name;
         _editEmail = attendee.Email;
-        _editAttendeeGroupId = attendee.AttendeeGroupId.ToString();
+        _editAttendeeGroupId = _groups
+            .Single(group => group.Code == attendee.GroupCode).AttendeeGroupId.ToString();
     }
 
     private void CancelEdit() => _editingId = null;
@@ -639,8 +632,6 @@
         return RunAsync(() => AttendeesApi.TriggerInviteAsync(attendee.AttendeeId, CancellationToken.None));
     }
 
-    private Task RetryEmailAsync(Guid id) =>
-        RunAsync(() => AttendeesApi.RetryEmailAsync(id, CancellationToken.None));
 
     private static List<string> RecoverableTypeNames(AttendeeReadinessDto readiness) =>
         readiness.OutstandingAppointmentTypes

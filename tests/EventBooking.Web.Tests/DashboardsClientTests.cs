@@ -75,16 +75,16 @@ public class DashboardsClientTests
         Assert.True(outcome.IsSuccess);
         Assert.Equal(HttpMethod.Get, handler.Request!.Method);
         Assert.Equal("/api/dashboards", handler.Request.RequestUri!.AbsolutePath);
-        Assert.Empty(outcome.Value!.AwaitingAvailability);
-        Assert.Empty(outcome.Value.NoResponse);
-        Assert.Empty(outcome.Value.Events);
+        Assert.Empty(outcome.Value!.AwaitingAvailability.Rows);
+        Assert.Empty(outcome.Value.NoResponse.Rows);
+        Assert.Empty(outcome.Value.Events.Rows);
     }
 
     [Fact]
     public async Task TheDashboardResponseIsDisposedAfterItsBodyIsRead()
     {
         var (client, handler) = Given();
-        var content = new TrackingContent("""{"awaitingAvailability":[],"noResponse":[],"events":[]}""");
+        var content = new TrackingContent("""{"awaitingAvailability":{"count":0,"rows":[]},"noResponse":{"count":0,"rows":[]},"events":{"count":0,"rows":[]},"failedEmails":0,"pendingEmails":0}""");
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         var response = new TrackingResponseMessage(HttpStatusCode.OK, content) { Content = content };
         handler.Response = response;
@@ -98,7 +98,7 @@ public class DashboardsClientTests
     private static HttpResponseMessage JsonResponse() => new(HttpStatusCode.OK)
     {
         Content = new StringContent(
-            """{"awaitingAvailability":[],"noResponse":[],"events":[]}""",
+            """{"awaitingAvailability":{"count":0,"rows":[]},"noResponse":{"count":0,"rows":[]},"events":{"count":0,"rows":[]},"failedEmails":0,"pendingEmails":0}""",
             Encoding.UTF8,
             "application/json"),
     };

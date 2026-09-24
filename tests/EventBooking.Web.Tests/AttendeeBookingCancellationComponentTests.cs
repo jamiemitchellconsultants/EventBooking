@@ -68,12 +68,13 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
 
             if (path == "/api/attendees")
             {
-                return Json(new[]
-                {
-                    new AttendeeDto(
-                        AttendeeId, "Amara Novak", "a.novak@mail.com", Guid.NewGuid(), "MED", "Medical",
-                        [], 4, "Booked"),
-                });
+                return Json(new AttendeeListDto(
+                    [
+                        new AttendeeDto(
+                            AttendeeId, "Amara Novak", "a.novak@mail.com", "Booked",
+                            "Booked", "MED", "Booked", [], null, "cursor"),
+                    ],
+                    null));
             }
 
             if (path == "/api/attendee-groups")
@@ -81,7 +82,12 @@ public class AttendeeBookingCancellationComponentTests : BunitContext
                 return Json(Array.Empty<object>());
             }
 
-            return Json(new DashboardsDto([], [], [], []));
+            return Json(new DashboardsDto(
+                new DashboardTabDto<AwaitingRowDto>(0, []),
+                new DashboardTabDto<NoResponseRowDto>(0, []),
+                new DashboardTabDto<EventRowDto>(0, []),
+                0,
+                0));
         });
 
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };

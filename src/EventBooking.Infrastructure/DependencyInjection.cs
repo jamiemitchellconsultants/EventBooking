@@ -49,6 +49,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IStaffAccessProfileRepository, StaffAccessProfileRepository>();
         services.AddScoped<IStaffIdentityRepository, StaffIdentityRepository>();
         services.AddScoped<IDashboardQueries, DashboardQueries>();
+        services.AddScoped<IAttendeeListQueries, AttendeeListQueries>();
         services.AddScoped<IAuditQueries, AuditQueries>();
         services.AddScoped<IAppointmentWorkspaceQueries, AppointmentWorkspaceQueries>();
         services.AddScoped<IAttendeeReadinessQueries, AttendeeReadinessQueries>();

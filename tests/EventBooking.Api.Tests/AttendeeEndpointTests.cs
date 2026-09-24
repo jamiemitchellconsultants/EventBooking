@@ -38,10 +38,10 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
-        var listed = await client.GetFromJsonAsync<List<AttendeeResponse>>($"/api/attendees?search={email}");
+        var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
         Assert.NotNull(listed);
-        Assert.Single(listed!);
-        Assert.Equal("Not yet invited", listed![0].StatusDisplay);
+        Assert.Single(listed!.Items);
+        Assert.Equal("Not yet invited", listed!.Items[0].StatusDisplay);
     }
 
     [Fact]
@@ -157,8 +157,8 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
         Assert.Equal("attendee_group_required", problem!.Title);
 
-        var listed = await client.GetFromJsonAsync<List<AttendeeResponse>>($"/api/attendees?search={email}");
-        Assert.Empty(listed!);
+        var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
+        Assert.Empty(listed!.Items);
     }
 
     [Fact]
@@ -212,9 +212,9 @@ public class AttendeeEndpointTests(ApiFactory factory)
                 AttendeeGroupId = AttendeeGroupIds.Engineering,
             });
 
-        var listed = await client.GetFromJsonAsync<List<AttendeeResponse>>($"/api/attendees?search={email}");
+        var listed = await client.GetFromJsonAsync<AttendeeListResponse>($"/api/attendees?search={email}");
         Assert.Equal(HttpStatusCode.NoContent, updated.StatusCode);
-        var attendee = Assert.Single(listed!);
+        var attendee = Assert.Single(listed!.Items);
         Assert.Equal("Amara Smith", attendee.Name);
     }
 
@@ -426,6 +426,8 @@ public class AttendeeEndpointTests(ApiFactory factory)
     }
 
     private sealed record AttendeeResponse(Guid AttendeeId, string Name, string StatusDisplay);
+
+    private sealed record AttendeeListResponse(IReadOnlyList<AttendeeResponse> Items, string? NextCursor);
 
     private sealed record AttendeeGroupResponse(
         Guid AttendeeGroupId, string Code, string Name);

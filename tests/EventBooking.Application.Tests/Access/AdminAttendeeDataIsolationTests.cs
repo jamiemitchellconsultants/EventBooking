@@ -2,30 +2,31 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
+using EventBooking.Application.ReadModels;
 using EventBooking.Application.Tests.Fakes;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.Audit;
-using EventBooking.Domain.Attendees;
-using EventBooking.Domain.Notifications;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Tests.Access;
 
 public class AdminAttendeeDataIsolationTests
 {
     [Fact]
-    public async Task AdminAttendeeListIsDeniedBeforeRepositoryInvocation()
+    public async Task AdminAttendeeListIsDeniedBeforeQueryInvocation()
     {
         var admin = Guid.NewGuid();
         var profiles = Profiles(StaffAccessProfile.Create(admin, [Role.Admin], null));
-        var attendees = new CountingAttendeeRepository();
-        var handler = new ListAttendeesHandler(attendees, new InMemoryAttendeeGroupRepository(), new StaffAccessAuthorizer(profiles));
+        var queries = new CountingAttendeeListQueries();
+        var handler = new ListAttendeesHandler(queries, profiles);
 
         var result = await handler.HandleAsync(
-            new ListAttendeesQuery(admin, null, null), CancellationToken.None);
+            new ListAttendeesQuery(admin, null, 50, null, null, null, null),
+            CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("forbidden", result.Error.Code);
-        Assert.Equal(0, attendees.Calls);
+        Assert.Equal(0, queries.Calls);
     }
 
     [Fact]
@@ -34,10 +35,11 @@ public class AdminAttendeeDataIsolationTests
         var admin = Guid.NewGuid();
         var profiles = Profiles(StaffAccessProfile.Create(admin, [Role.Admin], null));
         var queries = new CountingDashboardQueries();
-        var handler = new GetDashboardsHandler(queries, new StaffAccessAuthorizer(profiles));
+        var handler = new GetDashboardsHandler(
+            queries, profiles, new FakeClock(), ProposalFixture.Zones);
 
         var result = await handler.HandleAsync(
-            new GetDashboardsQuery(admin), CancellationToken.None);
+            new GetDashboardsQuery(admin, null), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal(0, queries.Calls);
@@ -48,14 +50,15 @@ public class AdminAttendeeDataIsolationTests
     {
         var coordinator = Guid.NewGuid();
         var profiles = Profiles(StaffAccessProfile.Create(coordinator, [Role.Coordinator], null));
-        var attendees = new CountingAttendeeRepository();
-        var handler = new ListAttendeesHandler(attendees, new InMemoryAttendeeGroupRepository(), new StaffAccessAuthorizer(profiles));
+        var queries = new CountingAttendeeListQueries();
+        var handler = new ListAttendeesHandler(queries, profiles);
 
         var result = await handler.HandleAsync(
-            new ListAttendeesQuery(coordinator, null, null), CancellationToken.None);
+            new ListAttendeesQuery(coordinator, null, 50, null, null, null, null),
+            CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(1, attendees.Calls);
+        Assert.Equal(1, queries.Calls);
     }
 
     [Fact]
@@ -89,44 +92,18 @@ public class AdminAttendeeDataIsolationTests
         return profiles;
     }
 
-    private sealed class CountingAttendeeRepository : IAttendeeRepository
+    private sealed class CountingAttendeeListQueries : IAttendeeListQueries
     {
         public int Calls { get; private set; }
 
-        public Task<Attendee?> GetAsync(Guid id, CancellationToken cancellationToken)
+        public Task<AttendeeListView> ListAttendeesAsync(
+            CallerShape shape, string? cursor, int limit, string? status,
+            Guid? attendeeGroupId, string? readiness, string? nameOrEmailPrefix,
+            CancellationToken ct)
         {
             Calls++;
-            return Task.FromResult<Attendee?>(null);
+            return Task.FromResult(new AttendeeListView([], null));
         }
-
-        public Task<Attendee?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken)
-        {
-            Calls++;
-            return Task.FromResult<Attendee?>(null);
-        }
-
-        public Task<Attendee?> GetByEmailAsync(string email, CancellationToken cancellationToken)
-        {
-            Calls++;
-            return Task.FromResult<Attendee?>(null);
-        }
-
-        public Task<IReadOnlyList<Attendee>> LockByGroupForUpdateAsync(Guid groupId, CancellationToken cancellationToken)
-        {
-            Calls++;
-            return Task.FromResult<IReadOnlyList<Attendee>>([]);
-        }
-
-        public Task<IReadOnlyList<Attendee>> ListAsync(
-            AttendeeStatus? status,
-            CancellationToken cancellationToken)
-        {
-            Calls++;
-            return Task.FromResult<IReadOnlyList<Attendee>>([]);
-        }
-
-        public void Add(Attendee attendee) => Calls++;
-        public void Remove(Attendee attendee) => Calls++;
     }
 
     private sealed class CountingDashboardQueries : IDashboardQueries
@@ -144,6 +121,16 @@ public class AdminAttendeeDataIsolationTests
 
         public Task<IReadOnlyList<AttendeeEmailStatusRow>> LatestEmailStatusAsync(
             CancellationToken cancellationToken) => Return<AttendeeEmailStatusRow>();
+
+        public Task<DashboardsView> GetDashboardsAsync(
+            CallerShape shape, Guid? locationId, DateTimeOffset now,
+            IEventWindowZones zones, CancellationToken ct)
+        {
+            Calls++;
+            return Task.FromResult(new DashboardsView(
+                new AwaitingAvailabilityTab(0, []), new NoResponseTab(0, []),
+                new EventsTab(0, []), 0, 0));
+        }
 
         private Task<IReadOnlyList<T>> Return<T>()
         {
