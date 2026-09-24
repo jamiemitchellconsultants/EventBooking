@@ -1,4 +1,3 @@
-using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 
 namespace EventBooking.Application.Attendees;
@@ -20,7 +19,7 @@ public sealed class AttendeeReadinessCalculator
         var current = snapshot.CurrentRequirementTypeIds;
         if (current.Count == 0
             || current.Distinct().Count() != current.Count
-            || current.Any(id => !AppointmentTypeIds.All.Contains(id)))
+            || current.Any(id => !snapshot.AppointmentTypes.ContainsKey(id)))
         {
             return Mismatch(snapshot);
         }
@@ -57,9 +56,10 @@ public sealed class AttendeeReadinessCalculator
             }
 
             var latest = attempts.Count == 0 ? null : attempts[^1];
+            var listed = snapshot.AppointmentTypes[typeId];
             outstanding.Add(new OutstandingAppointmentType(
-                AppointmentTypeIds.CodeOf(typeId),
-                AppointmentTypeIds.NameOf(typeId),
+                listed.Code,
+                listed.Name,
                 latest is not null && latest.Status == BookingAppointmentStatus.NoShow));
         }
 

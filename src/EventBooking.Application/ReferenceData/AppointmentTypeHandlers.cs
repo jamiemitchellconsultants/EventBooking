@@ -109,16 +109,15 @@ public sealed class UpdateAppointmentTypeHandler(
 
 // ManagerDisplayName falls back to StaffId when the identity carries no display
 // name — the same projection the settings handler already uses.
-/// <summary>Lists appointment types in code order, hiding inactive rows unless asked.</summary>
+/// <summary>Lists appointment types in code order, hiding inactive rows unless asked. Open
+/// to any staff member: design 05 names no capability, so the endpoint's staff policy is the gate.</summary>
 /// <param name="types">The types.</param>
 /// <param name="profiles">The profiles.</param>
 /// <param name="identities">The identities.</param>
-/// <param name="access">The access.</param>
 public sealed class ListAppointmentTypesHandler(
     IAppointmentTypeRepository types,
     IStaffAccessProfileRepository profiles,
-    IStaffIdentityRepository identities,
-    IStaffAccessAuthorizer access)
+    IStaffIdentityRepository identities)
 {
     /// <summary>Handles the query.</summary>
     /// <param name="query">Whether to include inactive rows.</param>
@@ -126,11 +125,6 @@ public sealed class ListAppointmentTypesHandler(
     public async Task<Result<IReadOnlyList<AppointmentTypeListItem>>> HandleAsync(
         ListAppointmentTypesQuery query, CancellationToken ct)
     {
-        var authorized = await access.AuthorizeAsync(
-            query.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
-        if (authorized.IsFailure)
-            return Result<IReadOnlyList<AppointmentTypeListItem>>.Failure(authorized.Error);
-
         var rows = await types.ListAsync(ct);
         var managerByType = (await profiles.ListAsync(ct))
             .Where(p => p.IsManager && p.AppointmentTypeId is not null)

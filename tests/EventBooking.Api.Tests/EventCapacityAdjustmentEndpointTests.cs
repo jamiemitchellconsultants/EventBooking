@@ -22,7 +22,7 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PutAsJsonAsync(
-            $"/api/events/{eventId}/capacity",
+            $"/api/events/{eventId}/capacities/{AppointmentTypeIds.DrugAndAlcoholTesting}",
             new { TotalHeadcount = 12 });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -30,12 +30,10 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
         Assert.Equal(12, outcome!.TotalHeadcount);
         Assert.Equal(6, outcome.RemainingCapacity);
 
-        var board = await client.GetFromJsonAsync<BoardResponse>("/api/events/board");
-        var eventItem = Assert.Single(
-            board!.Events,
-            item => item.EventId == eventId);
-        Assert.Equal(12, eventItem.MyHeadcount);
-        Assert.Equal(6, eventItem.MyRemainingCapacity);
+        var read = await client.GetFromJsonAsync<EventReadResponse>($"/api/events/{eventId}");
+        var capacity = Assert.Single(read!.Capacities);
+        Assert.Equal(12, capacity.TotalHeadcount);
+        Assert.Equal(6, capacity.RemainingCapacity);
     }
 
     [Fact]
@@ -48,7 +46,7 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PutAsJsonAsync(
-            $"/api/events/{eventId}/capacity",
+            $"/api/events/{eventId}/capacities/{AppointmentTypeIds.DrugAndAlcoholTesting}",
             new { TotalHeadcount = 5 });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
@@ -74,7 +72,7 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PutAsJsonAsync(
-            $"/api/events/{eventId}/capacity",
+            $"/api/events/{eventId}/capacities/{AppointmentTypeIds.DrugAndAlcoholTesting}",
             new { TotalHeadcount = 12 });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -110,13 +108,9 @@ public class EventCapacityAdjustmentEndpointTests(ApiFactory factory)
         int TotalHeadcount,
         int RemainingCapacity);
 
-    private sealed record BoardResponse(
-        IReadOnlyList<EventResponse> Events);
-
-    private sealed record EventResponse(
-        Guid EventId,
-        int MyHeadcount,
-        int MyRemainingCapacity);
+    private sealed record EventReadResponse(
+        Guid Id,
+        IReadOnlyList<AdjustmentResponse> Capacities);
 
     private sealed record ProblemResponse(string? Detail);
 }

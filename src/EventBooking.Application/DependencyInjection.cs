@@ -11,6 +11,7 @@ using EventBooking.Application.Recovery;
 using EventBooking.Application.Settings;
 using EventBooking.Application.Events;
 using EventBooking.Application.Negotiation;
+using EventBooking.Application.ReferenceData;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Application;
@@ -66,6 +67,17 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<SearchAuditHandler>();
         services.AddScoped<AttendeeHistoryHandler>();
         services.AddScoped<EventHistoryHandler>();
+
+        // Reference data.
+        services.AddScoped<CreateLocationHandler>();
+        services.AddScoped<UpdateLocationHandler>();
+        services.AddScoped<ListLocationsHandler>();
+        services.AddScoped<CreateAppointmentTypeHandler>();
+        services.AddScoped<UpdateAppointmentTypeHandler>();
+        services.AddScoped<ListAppointmentTypesHandler>();
+        services.AddScoped<CreateAttendeeGroupHandler>();
+        services.AddScoped<UpdateAttendeeGroupHandler>();
+        services.AddScoped<ListAttendeeGroupsHandler>();
 
         // Administration.
         services.AddScoped<AdminSettingsHandler>();

@@ -19,6 +19,12 @@ public sealed class GetAttendeeReadinessHandlerTests
     private GetAttendeeReadinessHandler Handler => new(
         new StaffAccessAuthorizer(_roles), _queries, new AttendeeReadinessCalculator());
 
+    private static IReadOnlyDictionary<Guid, AttendeeReadinessType> Map(params Guid[] ids) =>
+        ids.ToDictionary(
+            id => id,
+            id => new AttendeeReadinessType(
+                id, AppointmentTypeIds.CodeOf(id), AppointmentTypeIds.NameOf(id)));
+
     public GetAttendeeReadinessHandlerTests()
     {
         _roles.Add(StaffAccessProfile.Create(Coordinator, Role.Coordinator, null));
@@ -48,7 +54,8 @@ public sealed class GetAttendeeReadinessHandlerTests
             Guid.NewGuid(),
             [AppointmentTypeIds.MedicalCheckUp],
             null,
-            []);
+            [],
+            Map(AppointmentTypeIds.MedicalCheckUp));
 
         var result = await Handler.HandleAsync(
             new GetAttendeeReadinessQuery(Coordinator, attendeeId), CancellationToken.None);

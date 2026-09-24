@@ -2,22 +2,19 @@ using EventBooking.Api.Auth;
 using EventBooking.Api.Contracts;
 using EventBooking.Api.OpenApi;
 using EventBooking.Api.Pagination;
-using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
-using EventBooking.Application.Common;
+using EventBooking.Application.Bookings;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Recovery;
-using EventBooking.Domain.Attendees;
-using System.Text;
 
 namespace EventBooking.Api.Endpoints;
 
-/// <summary>Maps authorized attendee and delivery-management endpoints.</summary>
+/// <summary>Maps the thirteen attendee routes.</summary>
 public static class AttendeeEndpoints
 {
     private const int MaxImportBytes = 1_048_576;
-    private const int MaxImportDataRows = 10_000;
+    private const int MaxImportDataRows = 1000;
 
     /// <summary>Attendee fields accepted by create and update operations.</summary>
     public sealed record SaveAttendeeRequest(string? Name, string? Email, Guid? AttendeeGroupId);
@@ -25,23 +22,28 @@ public static class AttendeeEndpoints
     /// <summary>Invite options; a missing body or empty list means every active location.</summary>
     public sealed record InviteAttendeeRequest(IReadOnlyList<Guid>? LocationIds);
 
-    /// <summary>Registers attendee CRUD, invite, and template-aware retry routes.</summary>
+    /// <summary>Recovery locations added to the original booking's own.</summary>
+    public sealed record AdditionalLocationIdsRequest(IReadOnlyList<Guid>? AdditionalLocationIds);
+
+    /// <summary>Registers the attendee routes.</summary>
     public static IEndpointRouteBuilder MapAttendeeEndpoints(this IEndpointRouteBuilder app)
     {
+        ArgumentNullException.ThrowIfNull(app);
         var group = app.MapGroup("/api/attendees")
-            .RequireAuthorization(AuthenticationExtensions.StaffPolicy);
+            .RequireAuthorization(AuthenticationExtensions.StaffPolicy)
+            .RequireRateLimiting(StaffRateLimiterPolicy.PolicyName);
 
         group.MapGet("/", async (
-            string? cursor,
-            int? limit,
             string? status,
-            Guid? attendeeGroupId,
+            Guid? groupId,
             string? readiness,
             string? search,
-            HttpRequest request,
+            string? cursor,
+            int? limit,
             ICallerAccessor caller,
             ListAttendeesHandler handler,
             PageCursor cursors,
+            CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
             if (!PageRequest.TryBind(cursor, limit, out var page, out var field))
@@ -63,7 +65,7 @@ public static class AttendeeEndpoints
                     inner,
                     page.Limit,
                     status,
-                    attendeeGroupId,
+                    groupId,
                     readiness,
                     search),
                 cancellationToken);
@@ -72,15 +74,19 @@ public static class AttendeeEndpoints
                 return result.ToResponse();
             }
 
-            var signed = new AttendeeListView(
-                result.Value.Items,
-                result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor));
-            return Results.Ok(AttendeeListResourceResponse.From(
-                signed, request.QueryString.Value ?? string.Empty));
+            var held = await capabilities.GetAsync(cancellationToken);
+            return Results.Ok(new Page<AttendeeResponse>(
+                [.. result.Value.Items.Select(x =>
+                {
+                    // Each row's own cursor is signed too: a client that pages from a row it is
+                    // looking at must not be handed an unsigned key it could edit.
+                    var projected = ApiResponses.Attendee(x, held);
+                    return projected with { Cursor = cursors.Protect(projected.Cursor) };
+                })],
+                result.Value.NextCursor is null ? null : cursors.Protect(result.Value.NextCursor)));
         })
             .WithAgentMetadata("listAttendees")
-            .Produces(200)
-            .ProducesProblem(400)
+            .Produces<Page<AttendeeResponse>>(200)
             .ProducesProblem(403)
             .ProducesProblem(422);
 
@@ -96,9 +102,9 @@ public static class AttendeeEndpoints
                 .ToCreated(id => $"/api/attendees/{id}"))
             .WithAgentMetadata("createAttendee")
             .Produces<Guid>(201)
-            .ProducesProblem(400)
             .ProducesProblem(403)
-            .ProducesProblem(409);
+            .ProducesProblem(409)
+            .ProducesProblem(422);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -113,11 +119,13 @@ public static class AttendeeEndpoints
                 .ToResponse())
             .WithAgentMetadata("updateAttendee")
             .Produces(200)
-            .ProducesProblem(400)
             .ProducesProblem(403)
             .ProducesProblem(404)
-            .ProducesProblem(409);
+            .ProducesProblem(409)
+            .ProducesProblem(422);
 
+        // Two-step delete. The handler reports the consequence as a failure carrying its count,
+        // so the endpoint renders Task 21's confirmation body from it and decides nothing.
         group.MapDelete("/{id:guid}", async (
             Guid id,
             bool? confirm,
@@ -130,135 +138,141 @@ public static class AttendeeEndpoints
                 .ToResponse())
             .WithAgentMetadata("deleteAttendee")
             .Produces(204)
-            .ProducesProblem(400)
             .ProducesProblem(403)
             .ProducesProblem(404)
             .ProducesProblem(409);
 
+        // Multipart, per design 05. The handler takes the file's text, so the endpoint's whole
+        // job is to find the part, hold it to the 1 MB and 1000-row bounds before handing it
+        // over, and decode it as UTF-8.
         group.MapPost("/import", async (
-            HttpRequest httpRequest,
+            HttpRequest request,
             ICallerAccessor caller,
             ImportAttendeesHandler handler,
             CancellationToken cancellationToken) =>
         {
-            if (!HasCsvContentType(httpRequest.ContentType))
+            if (!request.HasFormContentType)
             {
-                return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+                return ResultResponses.ValidationFailed(
+                    "file", "multipart-required", "Upload the CSV as a multipart form file.");
             }
 
-            if (httpRequest.ContentLength > MaxImportBytes)
+            var form = await request.ReadFormAsync(cancellationToken);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            if (file is null)
             {
-                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                return ResultResponses.ValidationFailed(
+                    "file", "file-required", "A CSV file is required.");
             }
 
-            var csv = await ReadAtMostAsync(httpRequest.Body, cancellationToken);
-            if (csv is null)
+            if (file.Length > MaxImportBytes)
             {
-                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                return ResultResponses.ValidationFailed(
+                    "file", "file-too-large", "The file must be 1 MB or smaller.");
             }
 
+            await using var stream = file.OpenReadStream();
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+            var csv = await reader.ReadToEndAsync(cancellationToken);
             if (CountDataRows(csv) > MaxImportDataRows)
             {
-                return Result.Failure(Error.Validation(
-                    $"The import contains more than {MaxImportDataRows:N0} data rows.")).ToResponse();
+                return ResultResponses.ValidationFailed(
+                    "file", "file-too-many-rows", "The file must hold 1000 data rows or fewer.");
             }
 
-            return (await handler.HandleAsync(
-                new ImportAttendeesCommand(caller.RequireStaffUserId(), csv), cancellationToken))
-                .ToResponse();
+            var result = await handler.HandleAsync(
+                new ImportAttendeesCommand(caller.RequireStaffUserId(), csv), cancellationToken);
+            if (result.IsFailure)
+            {
+                return result.ToResponse();
+            }
+
+            // A rejected file is a normal outcome to the handler but a 422 to design 05,
+            // whose catalogue covers CSV row errors with their line numbers.
+            if (!result.Value.Accepted)
+            {
+                return ResultResponses.ValidationFailed(
+                    "The import file failed validation.",
+                    [.. result.Value.Errors.Select(e =>
+                        new ProblemError(null, e.LineNumber, "invalid-row", e.Message))]);
+            }
+
+            return Results.Ok(result.Value);
         })
             .WithAgentMetadata("importAttendees")
-            .Accepts<string>("text/csv")
-            .Produces(200)
-            .ProducesProblem(400)
+            .DisableAntiforgery()
+            .Produces<AttendeeImportOutcome>(200)
             .ProducesProblem(403)
-            .Produces(413)
-            .Produces(415);
+            .ProducesProblem(422);
 
-        group.MapGet("/invite-locations", async (
+        group.MapGet("/{id:guid}/eligible-event-count", async (
+            Guid id,
+            Guid[] locationIds,
             ICallerAccessor caller,
-            ListInviteLocationsHandler handler,
+            CountEligibleEventsHandler handler,
             CancellationToken cancellationToken) =>
-            (await handler.HandleAsync(
-                new ListInviteLocationsQuery(caller.RequireStaffUserId()), cancellationToken))
-                .ToResponse())
-            .WithAgentMetadata("listInviteLocations")
+        {
+            var result = await handler.HandleAsync(
+                new CountEligibleEventsQuery(caller.RequireStaffUserId(), id, locationIds),
+                cancellationToken);
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Ok(new { count = result.Value });
+        })
+            .WithAgentMetadata("countEligibleEvents")
             .Produces(200)
-            .ProducesProblem(403);
+            .ProducesProblem(403)
+            .ProducesProblem(404)
+            .ProducesProblem(422);
 
-        group.MapPost("/{id:guid}/invite", async (
+        group.MapPost("/{id:guid}/invites", async (
             Guid id,
             InviteAttendeeRequest? request,
             ICallerAccessor caller,
             InviteAttendeeHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new InviteAttendeeCommand(caller.RequireStaffUserId(), id, request?.LocationIds ?? []),
+                new InviteAttendeeCommand(
+                    caller.RequireStaffUserId(), id, request?.LocationIds ?? []),
                 cancellationToken))
                 .ToResponse())
-            .WithAgentMetadata("triggerAttendeeInvite")
-            .Produces(200)
-            .ProducesProblem(400)
+            .WithAgentMetadata("inviteAttendee")
+            .Produces<InviteAttendeeOutcome>(200)
             .ProducesProblem(403)
             .ProducesProblem(404)
-            .ProducesProblem(409);
+            .ProducesProblem(409)
+            .ProducesProblem(422);
 
-        group.MapPost("/{id:guid}/email-retry", async (
+        group.MapPost("/{id:guid}/recovery-invites", async (
             Guid id,
-            Guid emailLogId,
-            ICallerAccessor caller,
-            RetryEmailHandler handler,
-            CancellationToken cancellationToken) =>
-            (await handler.HandleAsync(
-                new RetryEmailCommand(caller.RequireStaffUserId(), id, emailLogId),
-                cancellationToken))
-                .ToResponse())
-            .WithAgentMetadata("retryAttendeeEmail")
-            .Produces(200)
-            .ProducesProblem(400)
-            .ProducesProblem(403)
-            .ProducesProblem(404)
-            .ProducesProblem(409);
-
-        group.MapPost("/{attendeeId:guid}/recovery-invites", async (
-            Guid attendeeId,
-            Guid[]? locationIds,
+            AdditionalLocationIdsRequest? request,
             ICallerAccessor caller,
             StartRecoveryHandler handler,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
                 new StartRecoveryCommand(
-                    caller.RequireStaffUserId(), attendeeId, locationIds?.ToList() ?? []),
+                    caller.RequireStaffUserId(), id, request?.AdditionalLocationIds ?? []),
                 cancellationToken);
-            if (result.IsFailure)
-            {
-                return result.ToResponse();
-            }
-
-            var outcome = result.Value;
-            return Results.Ok(new StartRecoveryResourceResponse(
-                outcome.RecoveryInviteId,
-                outcome.LocationIds,
-                outcome.RecoverableTypeIds,
-                new Dictionary<string, ApiLink>()));
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Ok(ApiResponses.RecoveryStarted(result.Value));
         })
             .WithAgentMetadata("startRecoveryInvite")
-            .Produces(200)
-            .ProducesProblem(400)
+            .Produces<StartRecoveryResponse>(200)
             .ProducesProblem(403)
             .ProducesProblem(404)
-            .ProducesProblem(409);
+            .ProducesProblem(409)
+            .ProducesProblem(422);
 
-        group.MapDelete("/{attendeeId:guid}/recovery-invites/{inviteId:guid}", async (
-            Guid attendeeId,
+        group.MapDelete("/{id:guid}/recovery-invites/{inviteId:guid}", async (
+            Guid id,
             Guid inviteId,
             ICallerAccessor caller,
             CancelRecoveryInviteHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new CancelRecoveryInviteCommand(
-                     caller.RequireStaffUserId(), attendeeId, inviteId),
+                new CancelRecoveryInviteCommand(caller.RequireStaffUserId(), id, inviteId),
                 cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("cancelRecoveryInvite")
@@ -267,91 +281,108 @@ public static class AttendeeEndpoints
             .ProducesProblem(404)
             .ProducesProblem(409);
 
-        group.MapPost("/{attendeeId:guid}/bookings/{bookingId:guid}/cancel", async (
-            Guid attendeeId,
+        group.MapGet("/{id:guid}/bookings", async (
+            Guid id,
+            ICallerAccessor caller,
+            GetAttendeeBookingsHandler handler,
+            CallerCapabilities capabilities,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await handler.HandleAsync(
+                new GetAttendeeBookingsQuery(caller.RequireStaffUserId(), id),
+                cancellationToken);
+            if (result.IsFailure)
+            {
+                return result.ToResponse();
+            }
+
+            var held = await capabilities.GetAsync(cancellationToken);
+            return Results.Ok(new Page<AttendeeBookingResponse>(
+                [.. result.Value.Select(row => ApiResponses.AttendeeBooking(id, row, held))],
+                null));
+        })
+            .WithAgentMetadata("listAttendeeBookings")
+            .Produces<Page<AttendeeBookingResponse>>(200)
+            .ProducesProblem(403)
+            .ProducesProblem(404);
+
+        // Two-step booking cancellation. Here the handler reports the consequence as a SUCCESS
+        // carrying ConfirmationRequired, so the translation is the endpoint's — a rendering
+        // decision, not a business one, and the only place in this file where a success
+        // becomes a 409.
+        group.MapPost("/{id:guid}/bookings/{bookingId:guid}/cancel", async (
+            Guid id,
             Guid bookingId,
             bool? confirm,
             ICallerAccessor caller,
             CancelBookingByCoordinatorHandler handler,
+            CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
                 new CancelBookingByCoordinatorCommand(
-                    caller.RequireStaffUserId(), attendeeId, bookingId, confirm ?? false),
+                    caller.RequireStaffUserId(), id, bookingId, confirm ?? false),
                 cancellationToken);
             if (result.IsFailure)
             {
                 return result.ToResponse();
             }
 
-            var outcome = result.Value;
-            return Results.Ok(new CancelAttendeeBookingResourceResponse(
-                outcome.ConfirmationRequired,
-                outcome.ActiveBookingCount,
-                outcome.CancelledBookingId,
-                AttendeeLinks.ForAttendee(attendeeId, AttendeeStatus.Booked)));
+            if (result.Value.ConfirmationRequired)
+            {
+                return ResultResponses.ConfirmationRequired(
+                    "Cancelling this booking will release its place.",
+                    new Dictionary<string, long>
+                    {
+                        ["activeBookings"] = result.Value.ActiveBookingCount,
+                    });
+            }
+
+            var held = await capabilities.GetAsync(cancellationToken);
+            return Results.Ok(ApiResponses.BookingCancelled(id, result.Value, held));
         })
             .WithAgentMetadata("cancelAttendeeBooking")
-            .Produces(200)
-            .ProducesProblem(400)
+            .Produces<CancelAttendeeBookingResponse>(200)
             .ProducesProblem(403)
             .ProducesProblem(404)
             .ProducesProblem(409);
 
-        group.MapGet("/{attendeeId:guid}/bookings", async (
-            Guid attendeeId,
+        group.MapPost("/{id:guid}/email-retry", async (
+            Guid id,
             ICallerAccessor caller,
-            GetAttendeeBookingsHandler handler,
+            RetryEmailHandler handler,
             CancellationToken cancellationToken) =>
-        {
-            var result = await handler.HandleAsync(
-                new GetAttendeeBookingsQuery(caller.RequireStaffUserId(), attendeeId),
-                cancellationToken);
-            if (result.IsFailure)
-            {
-                return result.ToResponse();
-            }
-
-            return Results.Ok(result.Value
-                .Select(row => AttendeeBookingResourceResponse.From(attendeeId, row))
-                .ToList());
-        })
-            .WithAgentMetadata("listAttendeeBookings")
-            .Produces(200)
+            (await handler.HandleAsync(
+                new RetryNewestEmailCommand(caller.RequireStaffUserId(), id),
+                cancellationToken))
+                .ToResponse())
+            .WithAgentMetadata("retryAttendeeEmail")
+            .Produces<RetryEmailOutcome>(200)
             .ProducesProblem(403)
-            .ProducesProblem(404);
+            .ProducesProblem(404)
+            .ProducesProblem(409);
 
-        group.MapGet("/{attendeeId:guid}/readiness", async (
-            Guid attendeeId,
+        group.MapGet("/{id:guid}/readiness", async (
+            Guid id,
             ICallerAccessor caller,
             GetAttendeeReadinessHandler handler,
+            CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
         {
             var result = await handler.HandleAsync(
-                new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), attendeeId),
+                new GetAttendeeReadinessQuery(caller.RequireStaffUserId(), id),
                 cancellationToken);
             if (result.IsFailure)
             {
                 return result.ToResponse();
             }
 
-            var readiness = result.Value;
-            return Results.Ok(new AttendeeReadinessResourceResponse(
-                readiness.AttendeeId,
-                readiness.Code.ToString(),
-                DisplayFor(readiness.Code),
-                readiness.OutstandingAppointmentTypes
-                    .Select(type => new OutstandingAppointmentTypeResourceResponse(
-                        type.Code,
-                        type.Name,
-                        type.IsRecoverable))
-                    .ToList(),
-                AttendeeLinks.ForReadiness(
-                    attendeeId,
-                    readiness.OutstandingAppointmentTypes.Any(type => type.IsRecoverable))));
+            var held = await capabilities.GetAsync(cancellationToken);
+            return Results.Ok(ApiResponses.AttendeeReadiness(
+                id, result.Value, DisplayFor(result.Value.Code), held));
         })
             .WithAgentMetadata("getAttendeeReadiness")
-            .Produces(200)
+            .Produces<AttendeeReadinessResponse>(200)
             .ProducesProblem(403)
             .ProducesProblem(404);
 
@@ -371,58 +402,6 @@ public static class AttendeeEndpoints
         AttendeeReadinessCode.AppointmentsOutstanding => "Appointments outstanding",
         _ => code.ToString(),
     };
-
-    /// <summary>Registers the read-only Attendee Group reference route.</summary>
-    public static IEndpointRouteBuilder MapAttendeeGroupEndpoints(this IEndpointRouteBuilder app)
-    {
-        var group = app.MapGroup("/api/attendee-groups")
-            .RequireAuthorization(AuthenticationExtensions.StaffPolicy);
-
-        group.MapGet("/", async (
-            ICallerAccessor caller,
-            ListAssignableAttendeeGroupsHandler handler,
-            CancellationToken cancellationToken) =>
-            (await handler.HandleAsync(
-                new ListAssignableAttendeeGroupsQuery(caller.RequireStaffUserId()), cancellationToken))
-                .ToResponse())
-            .WithAgentMetadata("listAttendeeGroups")
-            .Produces(200)
-            .ProducesProblem(403);
-
-        return app;
-    }
-
-    private static bool HasCsvContentType(string? contentType) =>
-        string.Equals(
-            contentType?.Split(';', 2)[0].Trim(),
-            "text/csv",
-            StringComparison.OrdinalIgnoreCase);
-
-    private static async Task<string?> ReadAtMostAsync(Stream body, CancellationToken cancellationToken)
-    {
-        var chunk = new byte[81_920];
-        await using var buffer = new MemoryStream();
-
-        while (true)
-        {
-            var read = await body.ReadAsync(chunk, cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            if (buffer.Length + read > MaxImportBytes)
-            {
-                return null;
-            }
-
-            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
-        }
-
-        buffer.Position = 0;
-        using var reader = new StreamReader(buffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
-        return await reader.ReadToEndAsync(cancellationToken);
-    }
 
     private static int CountDataRows(string csv)
     {

@@ -1,6 +1,10 @@
 using System.Text.Json;
+using EventBooking.Application.Abstractions;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.Events;
+using EventBooking.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EventBooking.Api.Tests;
 
@@ -11,33 +15,61 @@ public sealed class StaffHypermediaTests(ApiFactory factory)
     public async Task SettingsCarriesSelfAndUpdate()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
-        using var json = JsonDocument.Parse(await factory.CreateClient().GetStringAsync("/api/admin/settings"));
+        using var json = JsonDocument.Parse(await factory.CreateClient().GetStringAsync("/api/settings"));
         var links = json.RootElement.GetProperty("_links");
-        AssertLink(links, "self", "/api/admin/settings", "GET", "getSettings");
-        AssertLink(links, "update", "/api/admin/settings", "PUT", "updateSettings");
+        AssertLink(links, "self", "/api/settings", "GET", "getSettings");
+        AssertLink(links, "update", "/api/settings", "PUT", "updateSettings");
     }
 
+    /// <summary>
+    /// Design 05 puts no links on a page: the envelope is items plus a cursor, and the
+    /// entry links live on the items. An empty page is still a page.
+    /// </summary>
     [Fact]
-    public async Task EventCollectionsCarryEntryLinksEvenWhenEmpty()
+    public async Task WorkspaceItemsCarryRosterEntryLinks()
     {
+        using (var scope = factory.Services.CreateScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+            var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+            context.Events.Add(EventFixture.Create(
+                Guid.NewGuid(), new EventWindow(today.AddDays(3), new TimeOnly(9, 0), 240),
+                AppointmentTypeIds.All.ToDictionary(id => id, _ => 20)));
+            await context.SaveChangesAsync();
+        }
+
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager, AppointmentTypeIds.DrugAndAlcoholTesting);
         var client = factory.CreateClient();
-        using var board = JsonDocument.Parse(await client.GetStringAsync("/api/events/board"));
-        AssertLink(board.RootElement.GetProperty("_links"), "self", "/api/events/board", "GET", "getEventBoard");
-        using var workspace = JsonDocument.Parse(await client.GetStringAsync("/api/appointment-workspace/events"));
-        AssertLink(workspace.RootElement.GetProperty("_links"), "self",
-            "/api/appointment-workspace/events", "GET", "listAppointmentEvents");
+        using var workspace = JsonDocument.Parse(
+            await client.GetStringAsync("/api/appointment-workspace/events"));
+
+        Assert.False(workspace.RootElement.TryGetProperty("_links", out _));
+        var items = workspace.RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.NotEmpty(items);
+        foreach (var item in items)
+        {
+            var eventId = item.GetProperty("eventId").GetGuid();
+            var links = item.GetProperty("_links");
+            AssertLink(links, "roster", $"/api/appointment-workspace/events/{eventId}",
+                "GET", "getWorkspaceRoster");
+            AssertLink(links, "rosterCsv", $"/api/appointment-workspace/events/{eventId}/roster.csv",
+                "GET", "exportWorkspaceRoster");
+        }
     }
 
     [Fact]
-    public async Task AuditSearchCarriesSelfAndOmitsNextWhenExhausted()
+    public async Task AuditSearchReturnsAPageAndOmitsNextCursorWhenExhausted()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
-        using var json = JsonDocument.Parse(await factory.CreateClient().GetStringAsync("/api/audit/search?pageSize=50"));
-        var links = json.RootElement.GetProperty("_links");
-        AssertLink(links, "self", "/api/audit/search?pageSize=50", "GET", "searchAudit");
-        Assert.False(links.TryGetProperty("next", out _));
+        var actorId = $"hypermedia-{Guid.NewGuid():N}";
+        using var json = JsonDocument.Parse(await factory.CreateClient().GetStringAsync(
+            $"/api/audit?actorId={actorId}&limit=50"));
+
+        Assert.False(json.RootElement.TryGetProperty("_links", out _));
+        Assert.Empty(json.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(
+            JsonValueKind.Null, json.RootElement.GetProperty("nextCursor").ValueKind);
     }
 
     [Fact]

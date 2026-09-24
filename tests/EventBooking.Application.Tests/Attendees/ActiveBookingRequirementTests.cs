@@ -102,7 +102,8 @@ public sealed class ActiveBookingRequirementTests
                 new StaffAccessAuthorizer(profiles),
                 new RecordingAuditLogger(),
                 new FakeClock(),
-                new FakeUnitOfWork()),
+                new FakeUnitOfWork(),
+                new InMemoryAppointmentTypeRepository()),
             attendee,
             coordinator);
     }

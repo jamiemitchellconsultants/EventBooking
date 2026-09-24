@@ -27,7 +27,7 @@ public sealed class ReferenceDataActivationTests
     private UpdateLocationHandler Updater =>
         new(_locations, _profiles, _unitOfWork, _audit, TestZones.Instance, _blocking);
 
-    private ListLocationsHandler Lister => new(_locations, _profiles);
+    private ListLocationsHandler Lister => new(_locations);
 
     [Fact]
     public async Task AnUpdateAppliesTheNameAndTheActivationInOneSave()
@@ -107,9 +107,9 @@ public sealed class ReferenceDataActivationTests
             CancellationToken.None);
 
         var hidden = await Lister.HandleAsync(
-            new ListLocationsQuery(Admin, IncludeInactive: false), CancellationToken.None);
+            new ListLocationsQuery(IncludeInactive: false), CancellationToken.None);
         var shown = await Lister.HandleAsync(
-            new ListLocationsQuery(Admin, IncludeInactive: true), CancellationToken.None);
+            new ListLocationsQuery(IncludeInactive: true), CancellationToken.None);
 
         Assert.Equal([active.Id], hidden.Value.Select(x => x.Id));
         Assert.Equal(2, shown.Value.Count);
@@ -123,7 +123,7 @@ public sealed class ReferenceDataActivationTests
         await GivenLocationAsync("ACT_ALPHA", "Alpha");
 
         var shown = await Lister.HandleAsync(
-            new ListLocationsQuery(Admin, IncludeInactive: true), CancellationToken.None);
+            new ListLocationsQuery(IncludeInactive: true), CancellationToken.None);
 
         Assert.Equal(
             shown.Value.Select(x => x.Code).Order(StringComparer.Ordinal),

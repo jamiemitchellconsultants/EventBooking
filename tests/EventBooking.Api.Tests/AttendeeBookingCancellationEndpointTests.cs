@@ -25,6 +25,8 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
     private sealed record BookingRow(
         Guid BookingId, bool IsOriginal, DateOnly EventDate, TimeOnly EventStartTime, TimeOnly EventEndTime);
 
+    private sealed record BookingPage(List<BookingRow> Items, string? NextCursor);
+
     [Fact]
     public async Task CoordinatorCancelPreviewsTheConsequenceThenCancels()
     {
@@ -35,11 +37,12 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         using var preview = await client.PostAsJsonAsync(
             $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm=false", new { });
 
-        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
-        var consequence = await preview.Content.ReadFromJsonAsync<CancelResponse>();
-        Assert.True(consequence!.ConfirmationRequired);
-        Assert.Equal(1, consequence.ActiveBookingCount);
-        Assert.Null(consequence.CancelledBookingId);
+        Assert.Equal(HttpStatusCode.Conflict, preview.StatusCode);
+        using var problem = JsonDocument.Parse(await preview.Content.ReadAsStringAsync());
+        Assert.Equal("confirmation-required", problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(
+            1,
+            problem.RootElement.GetProperty("consequence").GetProperty("activeBookings").GetInt32());
         Assert.Equal(BookingStatus.Active, await StatusOfAsync(bookingId));
 
         using var confirmed = await client.PostAsJsonAsync(
@@ -164,16 +167,16 @@ public sealed class AttendeeBookingCancellationEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
-        var rows = await client.GetFromJsonAsync<List<BookingRow>>(
+        var page = await client.GetFromJsonAsync<BookingPage>(
             $"/api/attendees/{attendeeId}/bookings");
 
-        Assert.NotNull(rows);
-        Assert.Equal(2, rows!.Count);
-        Assert.True(rows[0].IsOriginal);
-        Assert.Equal(originalId, rows[0].BookingId);
-        Assert.False(rows[1].IsOriginal);
-        Assert.Equal(recoveryId, rows[1].BookingId);
-        Assert.Equal(rows[0].EventStartTime.AddHours(4), rows[0].EventEndTime);
+        Assert.NotNull(page);
+        Assert.Equal(2, page!.Items.Count);
+        Assert.True(page.Items[0].IsOriginal);
+        Assert.Equal(originalId, page.Items[0].BookingId);
+        Assert.False(page.Items[1].IsOriginal);
+        Assert.Equal(recoveryId, page.Items[1].BookingId);
+        Assert.Equal(page.Items[0].EventStartTime.AddHours(4), page.Items[0].EventEndTime);
     }
 
     [Fact]

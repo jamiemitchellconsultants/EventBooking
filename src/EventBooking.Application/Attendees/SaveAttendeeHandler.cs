@@ -53,6 +53,7 @@ public sealed class SaveAttendeeHandler
     private readonly IAuditLogger _audit;
     private readonly IClock _clock;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IAppointmentTypeRepository _types;
 
     /// <summary>Creates handler dependencies for group-derived attendee management.</summary>
     /// <param name="attendees">Persists attendee rows.</param>
@@ -63,6 +64,7 @@ public sealed class SaveAttendeeHandler
     /// <param name="audit">Records Attendee Group assignment.</param>
     /// <param name="clock">Stamps the attendee's status changes.</param>
     /// <param name="unitOfWork">Owns the attendee save.</param>
+    /// <param name="types">Resolves requirement codes for the audit detail.</param>
     public SaveAttendeeHandler(
         IAttendeeRepository attendees,
         IAttendeeGroupRepository groups,
@@ -71,7 +73,8 @@ public sealed class SaveAttendeeHandler
         IStaffAccessAuthorizer access,
         IAuditLogger audit,
         IClock clock,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IAppointmentTypeRepository types)
     {
         _attendees = attendees;
         _groups = groups;
@@ -81,6 +84,7 @@ public sealed class SaveAttendeeHandler
         _audit = audit;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _types = types;
     }
 
     /// <summary>Creates one attendee and derives every requirement from its Attendee Group.</summary>
@@ -132,7 +136,12 @@ public sealed class SaveAttendeeHandler
             AuditAction.AttendeeGroupAssigned,
             ActorType.Staff,
             command.StaffUserId.ToString(),
-            SerializeAssignment(null, resolved.Value.Code, [], RequirementCodes(resolved.Value)));
+            SerializeAssignment(
+                null,
+                resolved.Value.Code,
+                [],
+                await RequirementCodesAsync(
+                    resolved.Value.RequiredAppointmentTypeIds, cancellationToken)));
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<Guid>.Success(id);
@@ -218,8 +227,10 @@ public sealed class SaveAttendeeHandler
 
         var oldGroupCode = (await _groups.GetAsync(attendee.AttendeeGroupId, cancellationToken))?.Code;
 
-        var oldRequirementCodes = RequirementCodes(attendee.RequiredAppointmentTypeIds);
-        var newRequirementCodes = RequirementCodes(resolved.Value.RequiredAppointmentTypeIds);
+        var oldRequirementCodes = await RequirementCodesAsync(
+            attendee.RequiredAppointmentTypeIds, cancellationToken);
+        var newRequirementCodes = await RequirementCodesAsync(
+            resolved.Value.RequiredAppointmentTypeIds, cancellationToken);
 
         try
         {
@@ -284,11 +295,17 @@ public sealed class SaveAttendeeHandler
         return Result<AttendeeGroup>.Success(group);
     }
 
-    private static IReadOnlyList<string> RequirementCodes(AttendeeGroup group) =>
-        RequirementCodes(group.RequiredAppointmentTypeIds);
-
-    private static IReadOnlyList<string> RequirementCodes(IEnumerable<Guid> appointmentTypeIds) =>
-        appointmentTypeIds.Select(AppointmentTypeIds.CodeOf).Order(StringComparer.Ordinal).ToList();
+    // Resolved from the stored rows, not the canonical constants: an Admin can create
+    // appointment types at any time, and the audit detail must name those too.
+    private async Task<IReadOnlyList<string>> RequirementCodesAsync(
+        IEnumerable<Guid> appointmentTypeIds, CancellationToken cancellationToken)
+    {
+        var codes = (await _types.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t.Code);
+        return appointmentTypeIds
+            .Select(id => codes.TryGetValue(id, out var code) ? code : id.ToString())
+            .Order(StringComparer.Ordinal)
+            .ToList();
+    }
 
     private static string SerializeAssignment(
         string? oldGroupCode,

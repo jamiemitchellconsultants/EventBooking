@@ -171,14 +171,13 @@ public sealed class UpdateAttendeeGroupHandler(
             group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct));
 }
 
-/// <summary>Lists attendee groups in code order, hiding inactive rows unless asked.</summary>
+/// <summary>Lists attendee groups in code order, hiding inactive rows unless asked. Open
+/// to any staff member: design 05 names no capability, so the endpoint's staff policy is the gate.</summary>
 /// <param name="groups">The groups.</param>
 /// <param name="blocking">The blocking.</param>
-/// <param name="access">The access.</param>
 public sealed class ListAttendeeGroupsHandler(
     IAttendeeGroupRepository groups,
-    IReferenceDataBlockingQueries blocking,
-    IStaffAccessAuthorizer access)
+    IReferenceDataBlockingQueries blocking)
 {
     /// <summary>Handles the query.</summary>
     /// <param name="query">Whether to include inactive rows.</param>
@@ -186,11 +185,6 @@ public sealed class ListAttendeeGroupsHandler(
     public async Task<Result<IReadOnlyList<AttendeeGroupListItem>>> HandleAsync(
         ListAttendeeGroupsQuery query, CancellationToken ct)
     {
-        var authorized = await access.AuthorizeAsync(
-            query.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
-        if (authorized.IsFailure)
-            return Result<IReadOnlyList<AttendeeGroupListItem>>.Failure(authorized.Error);
-
         var rows = await groups.ListAsync(ct);
         var items = new List<AttendeeGroupListItem>();
         foreach (var group in rows

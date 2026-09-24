@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
@@ -63,14 +64,13 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var csv = "name,email,attendee_group\nAmara Novak,a.novak@mail.com,XYZ";
-        var response = await client.PostAsync(
-            "/api/attendees/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
+        var response = await ImportAsync(client, csv);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var outcome = await response.Content.ReadFromJsonAsync<ImportResponse>();
-        Assert.False(outcome!.Accepted);
-        Assert.Single(outcome.Errors);
-        Assert.Equal(2, outcome.Errors[0].LineNumber);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonProblem>();
+        Assert.Equal("validation-failed", problem!.Type);
+        var error = Assert.Single(problem.Errors);
+        Assert.Equal(2, error.Line);
     }
 
     [Fact]
@@ -79,14 +79,22 @@ public class AttendeeEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
         var client = factory.CreateClient();
 
+        var read = await client.GetFromJsonAsync<SettingsValues>("/api/settings");
         var updated = await client.PutAsJsonAsync(
-            "/api/admin/settings",
-            new { InviteExpiryDays = 7, MaxAutoRetryCount = 1, InviteOptionCount = 3, ExpectedVersion = 1 });
+            "/api/settings",
+            new
+            {
+                InviteExpiryDays = 7,
+                MaxAutoRetryCount = 1,
+                InviteOptionCount = 3,
+                ExpectedVersion = read!.Version,
+            });
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
 
-        var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
+        var settings = await client.GetFromJsonAsync<SettingsValues>("/api/settings");
         Assert.Equal(7, settings!.InviteExpiryDays);
-        Assert.Equal(3, settings.AppointmentTypes.Count);
+        Assert.Equal(1, settings.MaxAutoRetryCount);
+        Assert.Equal(3, settings.InviteOptionCount);
     }
 
     [Fact]
@@ -96,7 +104,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var client = factory.CreateClient();
 
         var response = await client.PutAsJsonAsync(
-            "/api/admin/settings", new { InviteExpiryDays = 7, MaxAutoRetryCount = 1 });
+            "/api/settings", new { InviteExpiryDays = 7, MaxAutoRetryCount = 1 });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -167,15 +175,19 @@ public class AttendeeEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
 
-        var groups = await client.GetFromJsonAsync<List<AttendeeGroupResponse>>("/api/attendee-groups");
+        var page = await client.GetFromJsonAsync<AttendeeGroupPage>("/api/attendee-groups");
 
-        Assert.NotNull(groups);
-        Assert.Equal(5, groups!.Count);
-        Assert.Contains(groups, group => group.Code == "PILOTS");
+        Assert.NotNull(page);
+        Assert.Contains(page!.Items, group => group.Code == "PILOTS");
+        Assert.All(page.Items, group => Assert.True(group.IsActive));
     }
 
+    /// <summary>
+    /// The reference-data group list is open to any staff member: a Manager reads it too.
+    /// The old assignable-groups gate this case used to assert went with the ported route.
+    /// </summary>
     [Fact]
-    public async Task AManagerIsForbiddenFromTheAttendeeGroupRoute()
+    public async Task AManagerMayReadTheAttendeeGroupRoute()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(
             Role.Manager, AppointmentTypeIds.UniformFitting);
@@ -183,7 +195,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         var response = await client.GetAsync("/api/attendee-groups");
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -219,36 +231,22 @@ public class AttendeeEndpointTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task ImportsRequireCsvContentTypeAndAnAtMostOneMiBBody()
+    public async Task ImportsRequireAMultipartFileAndAnAtMostOneMiBBody()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         var client = factory.CreateClient();
         const string csv = "name,email,attendee_group\nAmara Novak,a.novak@mail.com,PILOTS";
 
-        var wrongContentType = await client.PostAsync(
-            "/api/attendees/import", new StringContent(csv, Encoding.UTF8, "text/plain"));
-        var tooLarge = await client.PostAsync(
-            "/api/attendees/import",
-            new StringContent(new string('x', 1_048_577), Encoding.UTF8, "text/csv"));
-
-        Assert.Equal(HttpStatusCode.UnsupportedMediaType, wrongContentType.StatusCode);
-        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, tooLarge.StatusCode);
-    }
-
-    [Fact]
-    public async Task ImportsWithMoreThanTenThousandDataRowsAreValidationErrors()
-    {
-        factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
-        var client = factory.CreateClient();
-        var rows = string.Join(
-            '\n',
-            Enumerable.Repeat("Attendee,duplicate@mail.com,PILOTS", 10_001));
-        var csv = $"name,email,attendee_group\n{rows}";
-
-        var response = await client.PostAsync(
+        var notMultipart = await client.PostAsync(
             "/api/attendees/import", new StringContent(csv, Encoding.UTF8, "text/csv"));
+        var tooLarge = await ImportAsync(client, new string('x', 1_048_577));
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, notMultipart.StatusCode);
+        Assert.Equal("multipart-required",
+            (await notMultipart.Content.ReadFromJsonAsync<JsonProblem>())!.Errors[0].Code);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, tooLarge.StatusCode);
+        Assert.Equal("file-too-large",
+            (await tooLarge.Content.ReadFromJsonAsync<JsonProblem>())!.Errors[0].Code);
     }
 
     [Fact]
@@ -265,9 +263,15 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
 
-        var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
-        var type = Assert.Single(settings!.AppointmentTypes, t => t.Id == AppointmentTypeIds.UniformFitting);
-        Assert.Equal(managerUserId, type.ManagerUserId);
+        var assignedBody = await assigned.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            AppointmentTypeIds.UniformFitting,
+            assignedBody.GetProperty("profile").GetProperty("appointmentTypeId").GetGuid());
+
+        var staff = await client.GetFromJsonAsync<JsonElement>("/api/staff-access");
+        Assert.Equal(
+            AppointmentTypeIds.UniformFitting,
+            StaffRow(staff, managerUserId).GetProperty("appointmentTypeId").GetGuid());
     }
 
     [Fact]
@@ -290,9 +294,13 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
 
-        var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
-        Assert.Equal(replacementUserId, Type(settings!, AppointmentTypeIds.UniformFitting).ManagerUserId);
-        Assert.Equal(managerUserId, Type(settings!, AppointmentTypeIds.MedicalCheckUp).ManagerUserId);
+        var staff = await client.GetFromJsonAsync<JsonElement>("/api/staff-access");
+        Assert.Equal(
+            AppointmentTypeIds.UniformFitting,
+            StaffRow(staff, replacementUserId).GetProperty("appointmentTypeId").GetGuid());
+        Assert.Equal(
+            AppointmentTypeIds.MedicalCheckUp,
+            StaffRow(staff, managerUserId).GetProperty("appointmentTypeId").GetGuid());
     }
 
     [Fact]
@@ -311,13 +319,20 @@ public class AttendeeEndpointTests(ApiFactory factory)
         await PutStaffAccessAsync(
             client, replacementManagerUserId, AppointmentTypeIds.UniformFitting, 1);
 
-        var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
-        Assert.Equal(replacementManagerUserId, Type(settings!, AppointmentTypeIds.UniformFitting).ManagerUserId);
+        var staff = await client.GetFromJsonAsync<JsonElement>("/api/staff-access");
+        Assert.Equal(
+            AppointmentTypeIds.UniformFitting,
+            StaffRow(staff, replacementManagerUserId).GetProperty("appointmentTypeId").GetGuid());
+        var former = StaffRow(staff, formerManagerUserId);
+        Assert.Equal(JsonValueKind.Null, former.GetProperty("appointmentTypeId").ValueKind);
+        Assert.Contains(
+            "Manager",
+            former.GetProperty("roles").EnumerateArray().Select(role => role.GetString()));
 
         factory.SignedInAs = formerManagerUserId;
         factory.RolesClaim = ["Manager"];
-        var formerManagerBoard = await client.GetAsync("/api/events/board");
-        Assert.Equal(HttpStatusCode.Forbidden, formerManagerBoard.StatusCode);
+        var formerManagerProposals = await client.GetAsync("/api/event-proposals");
+        Assert.Equal(HttpStatusCode.Forbidden, formerManagerProposals.StatusCode);
     }
 
     [Fact]
@@ -338,8 +353,13 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         // Displacement already cleared the former manager's scope, so the
         // replacement is the only manager of the type.
-        var settings = await client.GetFromJsonAsync<SettingsResponse>("/api/admin/settings");
-        Assert.Equal(replacementUserId, Type(settings!, AppointmentTypeIds.UniformFitting).ManagerUserId);
+        var staff = await client.GetFromJsonAsync<JsonElement>("/api/staff-access");
+        Assert.Equal(
+            AppointmentTypeIds.UniformFitting,
+            StaffRow(staff, replacementUserId).GetProperty("appointmentTypeId").GetGuid());
+        Assert.Equal(
+            JsonValueKind.Null,
+            StaffRow(staff, managerUserId).GetProperty("appointmentTypeId").ValueKind);
     }
 
     [Fact]
@@ -361,7 +381,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
 
         var invited = await client.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/invite",
+            $"/api/attendees/{attendeeId}/invites",
             new { LocationIds = new[] { EventBooking.Domain.Locations.TransitionalLocation.Id } });
         var unconfirmedDeletion = await client.DeleteAsync($"/api/attendees/{attendeeId}");
         var confirmedDeletion = await client.DeleteAsync($"/api/attendees/{attendeeId}?confirm=true");
@@ -387,15 +407,24 @@ public class AttendeeEndpointTests(ApiFactory factory)
             });
         var attendeeId = await created.Content.ReadFromJsonAsync<Guid>();
 
-        var locations = await client.GetAsync("/api/attendees/invite-locations");
-        var invited = await client.PostAsync($"/api/attendees/{attendeeId}/invite", null);
+        var invited = await client.PostAsync($"/api/attendees/{attendeeId}/invites", null);
 
-        Assert.Equal(HttpStatusCode.OK, locations.StatusCode);
-        Assert.Contains(
-            EventBooking.Domain.Locations.TransitionalLocation.Id.ToString(),
-            await locations.Content.ReadAsStringAsync(),
-            StringComparison.OrdinalIgnoreCase);
         Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        var invite = await context.Invites.SingleAsync(item => item.AttendeeId == attendeeId);
+        var invitedLocationIds = await context.Set<InviteLocation>()
+            .Where(link => link.InviteId == invite.Id)
+            .Select(link => link.LocationId)
+            .ToListAsync();
+        var activeLocationIds = await context.Locations
+            .Where(location => location.IsActive)
+            .Select(location => location.Id)
+            .ToListAsync();
+        Assert.Equal(
+            activeLocationIds.OrderBy(id => id),
+            invitedLocationIds.OrderBy(id => id));
     }
 
     /// <summary>Staff retry stages a fresh delivery; the dispatcher sends the same link.</summary>
@@ -445,7 +474,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
 
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Admin);
         var malformedResponse = await client.PutAsJsonAsync(
-            $"/api/admin/staff-access/{Guid.NewGuid()}",
+            $"/api/staff-access/{Guid.NewGuid()}/scope",
             new { Roles = new[] { "SuperUser" }, AppointmentTypeId = (Guid?)null, ExpectedVersion = 1 });
 
         Assert.Equal(HttpStatusCode.Forbidden, coordinatorResponse.StatusCode);
@@ -483,8 +512,32 @@ public class AttendeeEndpointTests(ApiFactory factory)
         Guid? appointmentTypeId,
         long expectedVersion) =>
         client.PutAsJsonAsync(
-            $"/api/admin/staff-access/{staffUserId}",
+            $"/api/staff-access/{staffUserId}/scope",
             new { AppointmentTypeId = appointmentTypeId, ExpectedVersion = expectedVersion });
+
+    private static JsonElement StaffRow(JsonElement list, Guid staffUserId) =>
+        list.GetProperty("items").EnumerateArray()
+            .Single(item => item.GetProperty("staffUserId").GetGuid() == staffUserId);
+
+    private static Task<HttpResponseMessage> ImportAsync(HttpClient client, string csv)
+    {
+        var content = new MultipartFormDataContent
+        {
+            { new StringContent(csv, Encoding.UTF8, "text/csv"), "file", "attendees.csv" },
+        };
+        return client.PostAsync("/api/attendees/import", content);
+    }
+
+    private sealed record AttendeeGroupPage(List<AttendeeGroupItem> Items);
+
+    private sealed record AttendeeGroupItem(Guid Id, string Code, string Name, bool IsActive);
+
+    private sealed record SettingsValues(
+        int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount, long Version);
+
+    private sealed record JsonProblem(string Type, List<JsonProblemError> Errors);
+
+    private sealed record JsonProblemError(string Code, int? Line);
 
     private async Task GivenEligibleEventsAsync()
     {

@@ -18,10 +18,9 @@ public sealed record CreateLocationCommand(Guid StaffUserId, string? Code, strin
 /// <param name="ExpectedVersion">The expected version.</param>
 public sealed record UpdateLocationCommand(Guid StaffUserId, Guid LocationId, string? Name, string? Address, string? TimeZoneId, bool IsActive, long ExpectedVersion);
 
-/// <summary>Lists locations.</summary>
-/// <param name="StaffUserId">The staff user id.</param>
+/// <summary>Lists locations. Open to any staff member; the endpoint's staff policy is the gate.</summary>
 /// <param name="IncludeInactive">Whether to include inactive rows.</param>
-public sealed record ListLocationsQuery(Guid StaffUserId, bool IncludeInactive);
+public sealed record ListLocationsQuery(bool IncludeInactive);
 
 /// <summary>A location with its version.</summary>
 /// <param name="Id">The id.</param>
@@ -54,10 +53,9 @@ public sealed record CreateAppointmentTypeCommand(Guid StaffUserId, string? Code
 /// <param name="ExpectedVersion">The expected version.</param>
 public sealed record UpdateAppointmentTypeCommand(Guid StaffUserId, Guid AppointmentTypeId, string? Name, bool IsActive, long ExpectedVersion);
 
-/// <summary>Lists appointment types.</summary>
-/// <param name="StaffUserId">The staff user id.</param>
+/// <summary>Lists appointment types. Open to any staff member; the endpoint's staff policy is the gate.</summary>
 /// <param name="IncludeInactive">Whether to include inactive rows.</param>
-public sealed record ListAppointmentTypesQuery(Guid StaffUserId, bool IncludeInactive);
+public sealed record ListAppointmentTypesQuery(bool IncludeInactive);
 
 /// <summary>An appointment type with its version and manager.</summary>
 /// <param name="Id">The id.</param>
@@ -92,10 +90,9 @@ public sealed record CreateAttendeeGroupCommand(Guid StaffUserId, string? Code, 
 /// <param name="ExpectedVersion">The expected version.</param>
 public sealed record UpdateAttendeeGroupCommand(Guid StaffUserId, Guid AttendeeGroupId, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds, bool IsActive, long ExpectedVersion);
 
-/// <summary>Lists attendee groups.</summary>
-/// <param name="StaffUserId">The staff user id.</param>
+/// <summary>Lists attendee groups. Open to any staff member; the endpoint's staff policy is the gate.</summary>
 /// <param name="IncludeInactive">Whether to include inactive rows.</param>
-public sealed record ListAttendeeGroupsQuery(Guid StaffUserId, bool IncludeInactive);
+public sealed record ListAttendeeGroupsQuery(bool IncludeInactive);
 
 /// <summary>An attendee group with its requirements, version and member count.</summary>
 /// <param name="Id">The id.</param>

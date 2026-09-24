@@ -92,6 +92,9 @@ public sealed class InviteAttendeeHandler(
             ActorType.Staff, command.StaffUserId.ToString(), ct);
         if (issued.IsFailure)
         {
+            // FR-5.4: too few eligible events parks the attendee and REPORTS the parked
+            // state to the caller — a success with no invite, not a failure. The issuer's
+            // only failure is the short count, so reaching here always means parked.
             if (attendee.Status != AttendeeStatus.AwaitingAvailability)
             {
                 if (Attendee.IsLegalTransition(attendee.Status, AttendeeStatus.AwaitingAvailability))
@@ -102,7 +105,8 @@ public sealed class InviteAttendeeHandler(
 
             await unitOfWork.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            return Result<InviteAttendeeOutcome>.Failure(issued.Error);
+            return Result<InviteAttendeeOutcome>.Success(
+                new InviteAttendeeOutcome(null, attendee.Status.ToString()));
         }
 
         await unitOfWork.SaveChangesAsync(ct);

@@ -25,7 +25,8 @@ public sealed class AttendeeReadinessCalculatorTests
             [
                 Attempt(type, original, BookingStatus.Active, BookingAppointmentStatus.NoShow, 1),
                 Attempt(type, recovery, BookingStatus.Concluded, BookingAppointmentStatus.Completed, 2),
-            ]);
+            ],
+            Map(type));
 
         var actual = _calculator.Calculate(snapshot);
 
@@ -49,7 +50,8 @@ public sealed class AttendeeReadinessCalculatorTests
             [
                 Attempt(type, original, BookingStatus.Active, BookingAppointmentStatus.Completed, 1),
                 Attempt(type, recovery, BookingStatus.Concluded, BookingAppointmentStatus.NoShow, 2),
-            ]);
+            ],
+            Map(type));
 
         var actual = _calculator.Calculate(snapshot);
 
@@ -65,7 +67,8 @@ public sealed class AttendeeReadinessCalculatorTests
         var type = AppointmentTypeIds.MedicalCheckUp;
         var actual = _calculator.Calculate(new AttendeeReadinessSnapshot(
             Guid.NewGuid(), Guid.NewGuid(), [type], original,
-            [Attempt(type, original, BookingStatus.Active, BookingAppointmentStatus.NoShow, 1)]));
+            [Attempt(type, original, BookingStatus.Active, BookingAppointmentStatus.NoShow, 1)],
+            Map(type)));
 
         Assert.Equal(AttendeeReadinessCode.AppointmentsOutstanding, actual.Code);
         var outstanding = Assert.Single(actual.OutstandingAppointmentTypes);
@@ -78,10 +81,17 @@ public sealed class AttendeeReadinessCalculatorTests
     public void AssignedGroupWithoutBookingIsNotReady()
     {
         var actual = _calculator.Calculate(new AttendeeReadinessSnapshot(
-            Guid.NewGuid(), Guid.NewGuid(), [], null, []));
+            Guid.NewGuid(), Guid.NewGuid(), [], null, [],
+            new Dictionary<Guid, AttendeeReadinessType>()));
 
         Assert.Equal(AttendeeReadinessCode.NoActiveBooking, actual.Code);
     }
+
+    private static IReadOnlyDictionary<Guid, AttendeeReadinessType> Map(params Guid[] ids) =>
+        ids.ToDictionary(
+            id => id,
+            id => new AttendeeReadinessType(
+                id, AppointmentTypeIds.CodeOf(id), AppointmentTypeIds.NameOf(id)));
 
     private static AttendeeReadinessAttempt Attempt(
         Guid typeId,

@@ -23,17 +23,17 @@ public sealed class AttendeeHypermediaTests(ApiFactory factory)
         var id = await created.Content.ReadFromJsonAsync<Guid>();
         using var document = JsonDocument.Parse(await client.GetStringAsync("/api/attendees/"));
         Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
-        var pageLinks = document.RootElement.GetProperty("_links");
-        AssertLink(pageLinks, "self", "/api/attendees", "GET", "listAttendees");
+        Assert.False(document.RootElement.TryGetProperty("_links", out _));
         var attendee = document.RootElement.GetProperty("items").EnumerateArray()
             .Single(x => x.GetProperty("attendeeId").GetGuid() == id);
         var links = attendee.GetProperty("_links");
         AssertLink(links, "bookings", $"/api/attendees/{id}/bookings", "GET", "listAttendeeBookings");
         AssertLink(links, "readiness", $"/api/attendees/{id}/readiness", "GET", "getAttendeeReadiness");
-        AssertLink(links, "audit", $"/api/audit/attendee/{id}", "GET", "getAttendeeAuditHistory");
+        AssertLink(links, "audit", $"/api/audit/attendees/{id}", "GET", "getAttendeeAuditHistory");
         AssertLink(links, "update", $"/api/attendees/{id}", "PUT", "updateAttendee");
         AssertLink(links, "delete", $"/api/attendees/{id}", "DELETE", "deleteAttendee");
-        AssertLink(links, "invite", $"/api/attendees/{id}/invite", "POST", "triggerAttendeeInvite");
+        AssertLink(links, "invite", $"/api/attendees/{id}/invites", "POST", "inviteAttendee");
+        AssertLink(links, "emailRetry", $"/api/attendees/{id}/email-retry", "POST", "retryAttendeeEmail");
     }
 
     [Fact]

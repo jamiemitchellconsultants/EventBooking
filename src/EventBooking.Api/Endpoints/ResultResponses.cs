@@ -58,6 +58,17 @@ public static class ResultResponses
         return Results.Problem(body);
     }
 
+    /// <summary>Renders several field or row errors as the catalogue's validation-failed body.</summary>
+    /// <param name="message">The caller-safe summary.</param>
+    /// <param name="errors">The errors, carrying line numbers for CSV rows.</param>
+    /// <returns>The HTTP result.</returns>
+    public static IResult ValidationFailed(string message, IReadOnlyList<ProblemError> errors)
+    {
+        var shape = ProblemCatalogue.For(ProblemCatalogue.ValidationCode);
+        var body = Body(shape, message, errors);
+        return Results.Problem(body);
+    }
+
     /// <summary>Renders the first call of a two-step action, carrying its consequence.</summary>
     /// <param name="detail">The caller-safe explanation.</param>
     /// <param name="consequence">The effects confirming would have.</param>

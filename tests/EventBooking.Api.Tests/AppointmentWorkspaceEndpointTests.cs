@@ -62,7 +62,11 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.Forbidden, unassigned.StatusCode);
     }
 
-    /// <summary>Verifies list/detail JSON contains exactly the approved minimum-data properties.</summary>
+    /// <summary>
+    /// Verifies list/detail JSON contains exactly the approved minimum-data properties. Pages
+    /// carry no links (design 05); the roster rows carry none either, because minimum data
+    /// gives them no identifier to address an affordance with.
+    /// </summary>
     [Fact]
     public async Task ResponsesHaveTheExactApprovedPropertySets()
     {
@@ -73,21 +77,27 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
 
         using var list = JsonDocument.Parse(await client.GetStringAsync(
             "/api/appointment-workspace/events"));
-        AssertKeys(list.RootElement, "appointmentTypeName", "events", "_links");
+        AssertKeys(list.RootElement, "items", "nextCursor");
         var eventItem = Assert.Single(
-            list.RootElement.GetProperty("events").EnumerateArray(),
+            list.RootElement.GetProperty("items").EnumerateArray(),
             item => item.GetProperty("eventId").GetString() == data.EventId.ToString());
-        AssertKeys(eventItem, "eventId", "date", "startTime", "endTime", "counts", "_links");
-        AssertKeys(eventItem.GetProperty("counts"), "expected", "checkedIn", "completed", "noShow");
+        AssertKeys(eventItem, "eventId", "locationId", "locationName", "date", "startTime",
+            "endTime", "zoneAbbreviation", "status", "_links");
+        var entryLinks = eventItem.GetProperty("_links");
+        Assert.Equal(
+            $"/api/appointment-workspace/events/{data.EventId}",
+            entryLinks.GetProperty("roster").GetProperty("href").GetString());
+        Assert.Equal(
+            $"/api/appointment-workspace/events/{data.EventId}/roster.csv",
+            entryLinks.GetProperty("rosterCsv").GetProperty("href").GetString());
 
         using var detail = JsonDocument.Parse(await client.GetStringAsync(
             $"/api/appointment-workspace/events/{data.EventId}"));
-        AssertKeys(detail.RootElement,
-            "appointmentTypeName", "eventId", "date", "startTime", "endTime", "appointments", "_links");
-        var row = Assert.Single(detail.RootElement.GetProperty("appointments").EnumerateArray());
-        AssertKeys(row, "bookingAppointmentId", "attendeeName", "attendeeEmail",
-            "status", "checkedInAt", "outcomeAt", "version", "_links");
-        Assert.Equal("Expected", row.GetProperty("status").GetString());
+        AssertKeys(detail.RootElement, "items", "nextCursor");
+        var row = Assert.Single(detail.RootElement.GetProperty("items").EnumerateArray());
+        AssertKeys(row, "name", "email", "scopeTypeCode", "appointmentStatus",
+            "checkedInAt", "version");
+        Assert.Equal("Expected", row.GetProperty("appointmentStatus").GetString());
         Assert.DoesNotContain("attendeeId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("bookingId", detail.RootElement.GetRawText());
         Assert.DoesNotContain("requirement", detail.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
@@ -103,7 +113,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
 
         using var response = await factory.CreateClient().PutAsJsonAsync(
             $"/api/appointment-workspace/appointments/{data.AppointmentId}/status",
-            new { status = "CheckedIn", expectedVersion = 1 });
+            new { targetStatus = "CheckedIn", expectedVersion = 1 });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -117,14 +127,14 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     [Theory]
     [InlineData("Unknown", 1)]
     [InlineData("CheckedIn", 0)]
-    public async Task MalformedUpdateReturnsUnprocessableEntity(string status, long expectedVersion)
+    public async Task MalformedUpdateReturnsUnprocessableEntity(string targetStatus, long expectedVersion)
     {
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient().PutAsJsonAsync(
             $"/api/appointment-workspace/appointments/{Guid.NewGuid()}/status",
-            new { status, expectedVersion });
+            new { targetStatus, expectedVersion });
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -140,10 +150,10 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
 
         using var crossType = await client.PutAsJsonAsync(
             $"/api/appointment-workspace/appointments/{other.AppointmentId}/status",
-            new { status = "CheckedIn", expectedVersion = 1 });
+            new { targetStatus = "CheckedIn", expectedVersion = 1 });
         using var missing = await client.PutAsJsonAsync(
             $"/api/appointment-workspace/appointments/{Guid.NewGuid()}/status",
-            new { status = "CheckedIn", expectedVersion = 1 });
+            new { targetStatus = "CheckedIn", expectedVersion = 1 });
 
         Assert.Equal(HttpStatusCode.NotFound, crossType.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
@@ -171,7 +181,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         factory.SignedInAs = await factory.GivenStaffAsync(roles, scope);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -185,7 +195,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
 
         response.EnsureSuccessStatusCode();
         Assert.Equal("text/csv", response.Content.Headers.ContentType!.MediaType);
@@ -194,18 +204,15 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         var disposition = response.Content.Headers.ContentDisposition!;
         Assert.Equal("attachment", disposition.DispositionType);
         var fileName = (disposition.FileNameStar ?? disposition.FileName)!.Trim('"');
-        Assert.StartsWith("roster-drug-&-alcohol-testing-", fileName, StringComparison.Ordinal);
-        Assert.EndsWith("-0900.csv", fileName, StringComparison.Ordinal);
+        Assert.Equal($"roster-{data.EventId:D}.csv", fileName);
 
         var body = await response.Content.ReadAsStringAsync();
-        var lines = body.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Equal(
-            "Attendee Name,Attendee Email,Appointment Type,Status,Checked In At,Outcome At",
-            lines[0]);
+        var lines = body.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal("Name,Email,Status,CheckedInAt", lines[0]);
         Assert.Equal(2, lines.Length);
         Assert.StartsWith("Alex Morgan,", lines[1], StringComparison.Ordinal);
-        Assert.Contains(",Drug & Alcohol Testing,Expected,", lines[1], StringComparison.Ordinal);
-        Assert.EndsWith(",,", lines[1], StringComparison.Ordinal);
+        Assert.Contains(",Expected,", lines[1], StringComparison.Ordinal);
+        Assert.Equal(4, lines[1].Split(',').Length);
     }
 
     /// <summary>Verifies the roster never carries the write path's command target or version.</summary>
@@ -217,25 +224,49 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain(data.AppointmentId.ToString(), body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Version", body, StringComparison.Ordinal);
     }
 
-    /// <summary>Verifies a caller scoped to another appointment type cannot learn the event exists.</summary>
+    /// <summary>
+    /// Verifies a caller whose type the event does not list is refused outright. The old
+    /// surface answered 404 here; the roster handlers distinguish "not your type" (403)
+    /// from "none of your type booked" (200, headers only) so an empty roster stays
+    /// consistent with the event list, which shows every event listing the caller's type.
+    /// </summary>
     [Fact]
-    public async Task RosterCrossTypeRequestReturnsNotFound()
+    public async Task RosterForAnEventOutsideTheCallersScopeIsForbidden()
+    {
+        var data = await GivenWorkspaceAsync(
+            AppointmentTypeIds.DrugAndAlcoholTesting,
+            listedTypes: [AppointmentTypeIds.DrugAndAlcoholTesting]);
+        factory.SignedInAs = await factory.GivenStaffAsync(
+            [Role.Manager], AppointmentTypeIds.UniformFitting);
+
+        using var response = await factory.CreateClient()
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>Verifies a listed type with nothing booked downloads headers only.</summary>
+    [Fact]
+    public async Task RosterForAListedTypeWithoutAppointmentsDownloadsHeadersOnly()
     {
         var data = await GivenWorkspaceAsync(AppointmentTypeIds.DrugAndAlcoholTesting);
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.Manager], AppointmentTypeIds.UniformFitting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        response.EnsureSuccessStatusCode();
+        var lines = (await response.Content.ReadAsStringAsync())
+            .Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(["Name,Email,Status,CheckedInAt"], lines);
     }
 
     /// <summary>Verifies an unknown eventItem is refused the same way the JSON detail route refuses it.</summary>
@@ -246,7 +277,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{Guid.NewGuid()}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{Guid.NewGuid()}/roster.csv");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -258,7 +289,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         factory.SignedInAs = null;
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{Guid.NewGuid()}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{Guid.NewGuid()}/roster.csv");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -273,7 +304,7 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
             [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting);
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
 
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync();
@@ -286,19 +317,21 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
     public async Task RosterAppointmentStaffIsScopedToItsOwnAppointmentType()
     {
         var inScope = await GivenWorkspaceAsync(AppointmentTypeIds.DrugAndAlcoholTesting);
-        var outOfScope = await GivenWorkspaceAsync(AppointmentTypeIds.MedicalCheckUp);
+        var outOfScope = await GivenWorkspaceAsync(
+            AppointmentTypeIds.MedicalCheckUp,
+            listedTypes: [AppointmentTypeIds.MedicalCheckUp]);
         factory.SignedInAs = await factory.GivenStaffAsync(
             [Role.AppointmentStaff], AppointmentTypeIds.DrugAndAlcoholTesting);
         var client = factory.CreateClient();
 
         using var allowed = await client
-            .GetAsync($"/api/appointment-workspace/events/{inScope.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{inScope.EventId}/roster.csv");
         using var refused = await client
-            .GetAsync($"/api/appointment-workspace/events/{outOfScope.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{outOfScope.EventId}/roster.csv");
 
         allowed.EnsureSuccessStatusCode();
         Assert.Equal("text/csv", allowed.Content.Headers.ContentType!.MediaType);
-        Assert.Equal(HttpStatusCode.NotFound, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
     }
 
     /// <summary>Verifies a signed-in identity with no access profile downloads nothing.</summary>
@@ -309,21 +342,23 @@ public sealed class AppointmentWorkspaceEndpointTests(ApiFactory factory)
         factory.SignedInAs = Guid.NewGuid();
 
         using var response = await factory.CreateClient()
-            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster");
+            .GetAsync($"/api/appointment-workspace/events/{data.EventId}/roster.csv");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     private async Task<(Guid EventId, Guid AppointmentId)> GivenWorkspaceAsync(
         Guid appointmentTypeId,
-        string attendeeName = "Alex Morgan")
+        string attendeeName = "Alex Morgan",
+        IEnumerable<Guid>? listedTypes = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         var today = scope.ServiceProvider.GetRequiredService<IClock>().TodayAtTransitionalLocation;
+        var listed = listedTypes ?? AppointmentTypeIds.All;
         var eventItem = EventFixture.Create(
             Guid.NewGuid(), new EventWindow(today, new TimeOnly(9, 0), 240),
-            AppointmentTypeIds.All.ToDictionary(id => id, _ => 20));
+            listed.ToDictionary(id => id, _ => 20), listed);
         var groupId = appointmentTypeId == AppointmentTypeIds.MedicalCheckUp
             ? AttendeeGroupIds.GroundOperationsAgent
             : AttendeeGroupIds.Pilots;

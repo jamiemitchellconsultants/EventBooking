@@ -42,6 +42,17 @@ public static class OpenApiConfiguration
                     return Task.CompletedTask;
                 }
 
+                operation.Summary = entry.Summary;
+                operation.Description = entry.Description;
+                operation.Tags = new HashSet<OpenApiTagReference> { new(entry.Tag) };
+
+                if (entry.Capability is not null)
+                {
+                    operation.Extensions ??= new Dictionary<string, IOpenApiExtension>();
+                    operation.Extensions["x-capability"] =
+                        new JsonNodeExtension(JsonValue.Create(entry.Capability)!);
+                }
+
                 if (entry.McpTool is not null)
                 {
                     operation.Extensions ??= new Dictionary<string, IOpenApiExtension>();

@@ -37,7 +37,8 @@ public sealed class AttendeeAttendeeGroupFlowTests
             new StaffAccessAuthorizer(_profiles),
             new RecordingAuditLogger(),
             new FakeClock(),
-            _unitOfWork);
+            _unitOfWork,
+            new InMemoryAppointmentTypeRepository());
 
         var result = await handler.CreateAsync(
             new CreateAttendeeCommand(
@@ -65,7 +66,8 @@ public sealed class AttendeeAttendeeGroupFlowTests
             new StaffAccessAuthorizer(_profiles),
             new RecordingAuditLogger(),
             new FakeClock(),
-            _unitOfWork);
+            _unitOfWork,
+            new InMemoryAppointmentTypeRepository());
 
         var result = await handler.CreateAsync(
             new CreateAttendeeCommand(Coordinator, "Amara", "amara@example.com", groupId),

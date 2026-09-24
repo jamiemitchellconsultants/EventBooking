@@ -128,12 +128,10 @@ public sealed class UpdateLocationHandler(
         location.Id, location.Code, location.Name, location.Address, location.TimeZoneId, location.IsActive, location.Version);
 }
 
-/// <summary>Lists locations in code order, hiding inactive rows unless asked.</summary>
+/// <summary>Lists locations in code order, hiding inactive rows unless asked. Open to any
+/// staff member: design 05 names no capability, so the endpoint's staff policy is the gate.</summary>
 /// <param name="locations">The locations.</param>
-/// <param name="access">The access.</param>
-public sealed class ListLocationsHandler(
-    ILocationRepository locations,
-    IStaffAccessAuthorizer access)
+public sealed class ListLocationsHandler(ILocationRepository locations)
 {
     /// <summary>Handles the query.</summary>
     /// <param name="query">Whether to include inactive rows.</param>
@@ -141,11 +139,6 @@ public sealed class ListLocationsHandler(
     public async Task<Result<IReadOnlyList<LocationListItem>>> HandleAsync(
         ListLocationsQuery query, CancellationToken ct)
     {
-        var authorized = await access.AuthorizeAsync(
-            query.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
-        if (authorized.IsFailure)
-            return Result<IReadOnlyList<LocationListItem>>.Failure(authorized.Error);
-
         var rows = await locations.ListAsync(ct);
         return Result<IReadOnlyList<LocationListItem>>.Success(
             rows.Where(l => query.IncludeInactive || l.IsActive)

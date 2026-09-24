@@ -114,6 +114,6 @@ public sealed class DownloadRosterHandler(GetWorkspaceRosterHandler roster)
         return rows.IsFailure
             ? Result<string>.Failure(rows.Error)
             : Result<string>.Success(RosterCsv.Render(
-                rows.Value, ["Name", "Email", "Status", "CheckedInAt", "Version"]));
+                rows.Value, ["Name", "Email", "Status", "CheckedInAt"]));
     }
 }

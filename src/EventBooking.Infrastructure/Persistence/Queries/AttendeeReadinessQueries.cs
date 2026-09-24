@@ -40,10 +40,16 @@ public sealed class AttendeeReadinessQueries(EventBookingDbContext context) : IA
             .Select(b => (Guid?)b.Id)
             .SingleOrDefaultAsync(cancellationToken);
 
+        var appointmentTypes = await context.AppointmentTypes
+            .AsNoTracking()
+            .Select(t => new AttendeeReadinessType(t.Id, t.Code, t.Name))
+            .ToListAsync(cancellationToken);
+
         if (originalId is null)
         {
             return new AttendeeReadinessSnapshot(
-                attendee.Id, attendee.AttendeeGroupId, attendee.RequirementTypeIds, null, []);
+                attendee.Id, attendee.AttendeeGroupId, attendee.RequirementTypeIds, null, [],
+                appointmentTypes.ToDictionary(t => t.Id));
         }
 
         var bookings = await context.Bookings
@@ -74,6 +80,7 @@ public sealed class AttendeeReadinessQueries(EventBookingDbContext context) : IA
                     a.BookingId,
                     states[a.BookingId].Status,
                     states[a.BookingId].CreatedAt))
-                .ToList());
+                .ToList(),
+            appointmentTypes.ToDictionary(t => t.Id));
     }
 }

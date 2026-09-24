@@ -271,7 +271,8 @@ public class StaffAccessHandlerTests
         _identities,
         new StaffAccessAuthorizer(_profiles),
         _unitOfWork,
-        _audit);
+        _audit,
+        new InMemoryAppointmentTypeRepository());
 
     /// <summary>Verifies an observed name reaches the listing while an unobserved one stays null.</summary>
     [Fact]

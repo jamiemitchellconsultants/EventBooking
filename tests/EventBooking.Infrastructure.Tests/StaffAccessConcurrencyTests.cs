@@ -197,7 +197,8 @@ public class StaffAccessConcurrencyTests(PostgresFixture fixture)
             new StaffIdentityRepository(context),
             new StaffAccessAuthorizer(repository),
             new UnitOfWork(context),
-            new EfAuditLogger(context, new FixedClock()));
+            new EfAuditLogger(context, new FixedClock()),
+            new AppointmentTypeRepository(context));
 
         return await handler.ClearScopeAsync(
             new ClearStaffAccessProfileScopeCommand(actor, target, 1),

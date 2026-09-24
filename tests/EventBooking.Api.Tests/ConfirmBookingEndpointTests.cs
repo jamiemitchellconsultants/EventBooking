@@ -33,7 +33,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         var response = await client.PostAsJsonAsync(
             $"/api/booking/{invite.Token}/confirm", new { EventId = chosen.EventId });
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var outcome = await response.Content.ReadFromJsonAsync<ConfirmResponse>();
         Assert.NotEqual(Guid.Empty, outcome!.BookingId);
         Assert.False(string.IsNullOrWhiteSpace(outcome.ManageToken));
@@ -54,7 +54,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
             new { EventId = view!.Options[0].EventId });
         var outcome = await response.Content.ReadFromJsonAsync<ConfirmResponse>();
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.False(string.IsNullOrWhiteSpace(outcome!.ManageToken));
 
         using var scope = factory.Services.CreateScope();
@@ -81,7 +81,7 @@ public class ConfirmBookingEndpointTests(ApiFactory factory)
         var second = await client.PostAsJsonAsync(
             $"/api/booking/{invite.Token}/confirm", new { EventId = chosen });
 
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         Assert.Contains("already-confirmed", await second.Content.ReadAsStringAsync());
     }

@@ -61,6 +61,7 @@ builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(settings.ConnectionSt
 builder.Services.AddSingleton<IdempotencyKeyLock>();
 builder.Services.AddScoped<IIdempotencyStore,
     EventBooking.Infrastructure.Persistence.Idempotency.IdempotencyStore>();
+builder.Services.AddScoped<EventBooking.Api.Contracts.CallerCapabilities>();
 
 builder.Services.AddCors(options => options.AddPolicy(WebClientCorsPolicy, policy => policy
     .WithOrigins([.. settings.AllowedOrigins])
@@ -185,17 +186,24 @@ app.MapGet("/metrics", (PrometheusText metrics) =>
     .AllowAnonymous().DisableRateLimiting().WithAgentMetadata("getMetrics");
 
 app.MapApiDiscoveryEndpoints();
-
-app.MapEventEndpoints();
-app.MapAttendeeEndpoints();
-app.MapAttendeeGroupEndpoints();
-app.MapAdminEndpoints();
-app.MapStaffAccessEndpoints();
 app.MapMeEndpoints();
-app.MapBookingEndpoints();
+
+app.MapLocationEndpoints();
+app.MapAppointmentTypeEndpoints();
+app.MapAttendeeGroupEndpoints();
+app.MapSettingsEndpoints();
+app.MapStaffAccessEndpoints();
+
+app.MapEventProposalEndpoints();
+app.MapEventEndpoints();
+
+app.MapAttendeeEndpoints();
 app.MapDashboardEndpoints();
 app.MapAuditEndpoints();
 app.MapAppointmentWorkspaceEndpoints();
+
+app.MapBookingEndpoints();
+app.MapManageEndpoints();
 
 app.Run();
 

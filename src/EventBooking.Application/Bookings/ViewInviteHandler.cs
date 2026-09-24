@@ -52,6 +52,7 @@ public sealed record ViewInviteQuery(string? Token);
 /// <param name="clock">The clock.</param>
 /// <param name="locations">The locations.</param>
 /// <param name="zones">The zones.</param>
+/// <param name="types">Resolves requirement names for the invite view.</param>
 public sealed class ViewInviteHandler(
     IInviteRepository invites,
     IAttendeeRepository attendees,
@@ -62,7 +63,8 @@ public sealed class ViewInviteHandler(
     ITokenService tokens,
     IClock clock,
     ILocationRepository locations,
-    IEventWindowZones zones)
+    IEventWindowZones zones,
+    IAppointmentTypeRepository types)
 {
     /// <summary>
     /// One message for every failure except a lapsed expiry. A caller must not be able to tell
@@ -212,10 +214,15 @@ public sealed class ViewInviteHandler(
                         location.TimeZoneId))));
         }
 
+        // Resolved from the stored rows, not the canonical constants: invites snapshot
+        // whatever types exist when they are issued, including Admin-created ones.
+        var names = (await types.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t.Name);
         var view = new InviteView(
             invite.Id,
             attendee.Name,
-            invite.RequiredAppointmentTypeIds.Select(AppointmentTypeIds.NameOf).ToList(),
+            invite.RequiredAppointmentTypeIds
+                .Select(id => names.GetValueOrDefault(id, id.ToString()))
+                .ToList(),
             optionViews,
             invite.RecoveryOfBookingId is not null);
 

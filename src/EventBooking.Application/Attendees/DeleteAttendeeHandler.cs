@@ -75,9 +75,16 @@ public sealed class DeleteAttendeeHandler(
 
         if (!command.ConfirmCascade && bookingCount + inviteCount > 0)
         {
-            return Result.Failure(Error.Conflict(
+            // The catalogue's two-step refusal, with the counts the consequence member names.
+            return Result.Failure(new Error(
+                Error.ConfirmationRequiredCode,
                 $"Deleting this attendee will cancel {bookingCount} booking and {inviteCount} pending invite, "
-                + "and free the capacity they hold. Confirm to proceed."));
+                    + "and free the capacity they hold. Confirm to proceed.",
+                new Dictionary<string, long>
+                {
+                    ["bookings"] = bookingCount,
+                    ["invites"] = inviteCount,
+                }));
         }
 
         var actorId = command.StaffUserId.ToString();

@@ -66,10 +66,10 @@ public sealed class AppointmentTypeHandlerTests
         _profiles.Add(StaffAccessProfile.Create(manager, Role.Manager, type.Id));
         var identities = new InMemoryStaffIdentityRepository();
         await identities.UpsertAsync(manager, new StaffId("M100"), null, DateTimeOffset.UtcNow, CancellationToken.None);
-        var lister = new ListAppointmentTypesHandler(_types, _profiles, identities, _profiles);
+        var lister = new ListAppointmentTypesHandler(_types, _profiles, identities);
 
         var result = await lister.HandleAsync(
-            new ListAppointmentTypesQuery(Admin, IncludeInactive: false), CancellationToken.None);
+            new ListAppointmentTypesQuery(IncludeInactive: false), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         var item = Assert.Single(result.Value);
