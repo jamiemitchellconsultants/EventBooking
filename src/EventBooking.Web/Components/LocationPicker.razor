@@ -1,0 +1,32 @@
+@if (Mode is LocationPickerMode.Multi)
+{
+    <ul class="picker-list">
+        @foreach (var option in Options.Where(x => x.IsActive || SelectedIds.Contains(x.Id)))
+        {
+            <li><label>
+                <input type="checkbox" value="@option.Id" checked="@SelectedIds.Contains(option.Id)"
+                    @onchange="e => Change(option.Id, (bool)e.Value!)" />
+                @option.Name — @option.Address (@option.ZoneAbbreviation)
+            </label></li>
+        }
+    </ul>
+}
+else
+{
+    <select value="@SelectedIds.SingleOrDefault()" @onchange="e => Select(Guid.Parse(e.Value!.ToString()!))">
+        @foreach (var option in Options.Where(x => x.IsActive || SelectedIds.Contains(x.Id)))
+        {
+            <option value="@option.Id">@option.Name — @option.Address (@option.ZoneAbbreviation)</option>
+        }
+    </select>
+}
+
+@code {
+    [Parameter] public LocationPickerMode Mode { get; set; } = LocationPickerMode.Single;
+    [Parameter, EditorRequired] public IReadOnlyList<LocationOption> Options { get; set; } = [];
+    [Parameter] public IReadOnlyList<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<Guid>> SelectedIdsChanged { get; set; }
+    private Task Change(Guid id, bool selected) => SelectedIdsChanged.InvokeAsync(
+        selected ? [.. SelectedIds, id] : [.. SelectedIds.Where(x => x != id)]);
+    private Task Select(Guid id) => SelectedIdsChanged.InvokeAsync([id]);
+}

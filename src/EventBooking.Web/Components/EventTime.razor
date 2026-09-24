@@ -1,0 +1,12 @@
+@using EventBooking.Web.Services
+<time datetime="@Value.StartUtc.ToString("O")">@Value.StartLocal.ToString("ddd d MMM yyyy, HH:mm")–@Value.EndLocal.ToString("HH:mm") @Value.ZoneAbbreviation</time>
+@if (ShowLocation && LocationName is not null)
+{
+    <span class="muted"> at @LocationName</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public EventTimeDto Value { get; set; } = null!;
+    [Parameter] public string? LocationName { get; set; }
+    [Parameter] public bool ShowLocation { get; set; }
+}

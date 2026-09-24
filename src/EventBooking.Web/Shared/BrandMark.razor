@@ -1,5 +1,10 @@
-@* The real British Airways Speedmarque, extracted from the internal
-   "British Airways_External ASSET DECK.pptx" asset deck (Logos slide) — it carries
-   its own fixed red/blue colouring and needs no light/dark variant. *@
+@inject ProductOptions Product
 
-<img class="brand-mark" src="speedmarque.png" alt="British Airways" />
+@if (Product.LogoPath is not null)
+{
+    <img class="brand-mark" src="@Product.LogoPath" alt="@Product.ProductName" />
+}
+else
+{
+    <span class="brand-mark-text" aria-hidden="true">@Product.ProductName</span>
+}

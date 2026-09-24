@@ -1,4 +1,6 @@
 using EventBooking.Web;
+using EventBooking.Web.Services;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
@@ -9,9 +11,24 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"]
     ?? throw new InvalidOperationException("ApiBaseUrl is not configured.");
-var transitionalLocationTimeZoneId = builder.Configuration["TransitionalLocationTimeZoneId"]
-    ?? throw new InvalidOperationException("TransitionalLocationTimeZoneId is not configured.");
 
+var product = new ProductOptions(
+    builder.Configuration["ProductName"] ?? "EventBooking",
+    builder.Configuration["LogoPath"],
+    builder.Configuration["CoordinatorContact"] ?? "events@example.org");
+builder.Services.AddSingleton(product);
+builder.Services.AddScoped<MeClient>();
+builder.Services.AddScoped<IMeClient>(services => services.GetRequiredService<MeClient>());
+
+#if EVENTBOOKING_E2E
+builder.Services.AddAuthorizationCore();
+builder.Services.AddScoped<AuthenticationStateProvider, E2EAuthenticationStateProvider>();
+builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+builder.Services.AddHttpClient("AuthenticatedApi", client =>
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress));
+builder.Services.AddHttpClient("AnonymousApi", client =>
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress));
+#else
 string[] tokenScopes;
 var authority = builder.Configuration["Auth:Local:Authority"]
     ?? throw new InvalidOperationException("Auth:Local:Authority is not configured.");
@@ -43,27 +60,32 @@ builder.Services.AddScoped(sp =>
 
     return new HttpClient(handler) { BaseAddress = new Uri(apiBaseUrl) };
 });
+#endif
 
-builder.Services.AddScoped<EventBooking.Web.Services.EventsClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.AttendeesClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.AdminClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.StaffAccessClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.DashboardsClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.AuditClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.MeClient>();
-builder.Services.AddScoped<EventBooking.Web.Services.AppointmentsClient>();
-builder.Services.AddSingleton(new EventBooking.Web.Services.TransitionalLocationTimePresentation(transitionalLocationTimeZoneId));
-builder.Services.AddSingleton(new EventBooking.Web.Services.TransitionalLocationPageClock(transitionalLocationTimeZoneId));
+builder.Services.AddScoped<EventsClient>();
+builder.Services.AddScoped<AttendeesClient>();
+builder.Services.AddScoped<AdminClient>();
+builder.Services.AddScoped<StaffAccessClient>();
+builder.Services.AddScoped<DashboardsClient>();
+builder.Services.AddScoped<AuditClient>();
+builder.Services.AddScoped<AppointmentsClient>();
+
+// The transitional zone key is gone from configuration; the predecessor pages Task 25-27
+// have not replaced yet still read these services, so they fall back to the transitional
+// site's own zone until the last consumer is rewritten.
+var transitionalZone = builder.Configuration["TransitionalLocationTimeZoneId"] ?? "Europe/London";
+builder.Services.AddSingleton(new TransitionalLocationTimePresentation(transitionalZone));
+builder.Services.AddSingleton(new TransitionalLocationPageClock(transitionalZone));
 
 // Attendees authorise with the single-use token in their URL. This plain named client must never
 // use AuthorizationMessageHandler, which would attach a staff access token and start sign-in.
-builder.Services.AddHttpClient(EventBooking.Web.Services.BookingClient.ClientName, client =>
+builder.Services.AddHttpClient(BookingClient.ClientName, client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
-builder.Services.AddScoped(sp => new EventBooking.Web.Services.BookingClient(
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient(EventBooking.Web.Services.BookingClient.ClientName)));
-builder.Services.AddSingleton(new EventBooking.Web.Services.AttendeePageOptions(
+builder.Services.AddScoped(sp => new BookingClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(BookingClient.ClientName)));
+builder.Services.AddSingleton(new AttendeePageOptions(
     builder.Configuration["CoordinatorContact"] ?? "the recruitment team"));
 
 await builder.Build().RunAsync();

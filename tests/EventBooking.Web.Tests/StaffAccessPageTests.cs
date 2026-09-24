@@ -138,7 +138,7 @@ public class StaffAccessPageTests : BunitContext
         {
             Content = JsonContent.Create(new
             {
-                title = "conflict",
+                type = "conflict", title = "conflict",
                 detail = "The staff profile was changed by another administrator.",
                 status = 409,
             }),

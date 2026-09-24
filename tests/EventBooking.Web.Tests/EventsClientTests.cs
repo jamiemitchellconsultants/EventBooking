@@ -176,7 +176,7 @@ public class EventsClientTests
         handler.ResponseFactory = _ => new HttpResponseMessage(HttpStatusCode.Conflict)
         {
             Content = new StringContent(
-                """{"title":"conflict","detail":"Cancelling this event will cancel 6 confirmed bookings. Affected attendees will be notified and re-invited. Confirm to proceed.","status":409}""",
+                """{"type":"conflict","title":"conflict","detail":"Cancelling this event will cancel 6 confirmed bookings. Affected attendees will be notified and re-invited. Confirm to proceed.","status":409}""",
                 Encoding.UTF8,
                 "application/problem+json"),
         };

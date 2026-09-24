@@ -4,6 +4,13 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
   </PropertyGroup>
 
+  <!-- The E2E compile-time provider exists only in a publish carrying EventBookingE2E.
+       Defining the symbol through a property keeps the framework's own constants intact,
+       which -p:DefineConstants=EVENTBOOKING_E2E would wipe. -->
+  <PropertyGroup Condition="'$(EventBookingE2E)' == 'true'">
+    <DefineConstants>$(DefineConstants);EVENTBOOKING_E2E</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
@@ -27,6 +34,14 @@
          the SPA. -->
     <Content Include="../../docs/user-guides/screenshots/*.png">
       <Link>wwwroot/help-assets/screenshots/%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+
+    <!-- The shared design-system sheet lives beside the components and is served from
+         the same wwwroot path the screenshots use above. -->
+    <Content Include="Components\components.css">
+      <Link>wwwroot\css\components.css</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

@@ -1,13 +1,11 @@
 @inherits LayoutComponentBase
+@inject ProductOptions Product
 
 <div class="app-shell">
     <header class="topbar">
         <div class="brand-lockup">
             <BrandMark />
-            <div>
-                <span class="brand-name">British Airways</span>
-                <a class="brand" href="/" aria-label="EventBooking home">EventBooking</a>
-            </div>
+            <a class="brand" href="/" aria-label="@Product.ProductName home">@Product.ProductName</a>
         </div>
     </header>
 
@@ -16,7 +14,7 @@
     </main>
 
     <footer class="app-footer">
-        <span>British Airways · Recruitment appointments</span>
+        <span>@Product.ProductName</span>
         <span>Your booking link is personal to you — please do not forward it.</span>
         <a href="/help">Need help?</a>
     </footer>

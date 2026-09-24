@@ -117,7 +117,7 @@ public class AdminClientTests
         handler.Response = new HttpResponseMessage(HttpStatusCode.BadRequest)
         {
             Content = new StringContent(
-                """{"title":"validation","detail":"inviteExpiryDays must be greater than zero.","status":400}""",
+                """{"type":"validation-failed","title":"validation","detail":"inviteExpiryDays must be greater than zero.","status":400}""",
                 Encoding.UTF8,
                 "application/problem+json"),
         };

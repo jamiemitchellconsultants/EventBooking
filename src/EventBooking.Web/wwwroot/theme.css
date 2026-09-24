@@ -1,0 +1,29 @@
+/* src/EventBooking.Web/wwwroot/theme.css (complete) */
+:root {
+  --color-primary: #1f4e79;
+  --color-on-primary: #ffffff;
+  --color-accent: #6b4fa3;
+  --color-danger: #b42318;
+  --color-warning: #b54708;
+  --color-success: #067647;
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-500: #64748b;
+  --color-neutral-700: #334155;
+  --color-neutral-900: #0f172a;
+  --color-type-0-bg: #dbeafe; --color-type-0-fg: #173b63;
+  --color-type-1-bg: #ede9fe; --color-type-1-fg: #4c2a85;
+  --color-type-2-bg: #dcfce7; --color-type-2-fg: #14532d;
+  --color-type-3-bg: #ffedd5; --color-type-3-fg: #7c2d12;
+  --color-type-4-bg: #fce7f3; --color-type-4-fg: #831843;
+  --color-type-5-bg: #cffafe; --color-type-5-fg: #164e63;
+  --color-type-6-bg: #fef9c3; --color-type-6-fg: #713f12;
+  --color-type-7-bg: #e0e7ff; --color-type-7-fg: #312e81;
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem;
+  --space-4: 1rem; --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem;
+  --radius-control: 0.25rem; --radius-card: 0.5rem;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-size-body: 0.875rem; --font-size-label: 0.75rem;
+  --focus-ring: 0 0 0 0.2rem color-mix(in srgb, var(--color-primary) 35%, transparent);
+}

@@ -1,0 +1,23 @@
+@using EventBooking.Web.Services
+@if (Accepted)
+{
+    <Banner Variant="BannerVariant.Success" Message="@($"Imported {ImportedCount}.")" />
+}
+else
+{
+    <div role="alert">
+        <p>The file was rejected. Nothing was imported.</p>
+        <ul>
+            @foreach (var error in Errors)
+            {
+                <li>Line @(error.Line ?? 0): @(error.Message ?? error.Code)</li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Accepted { get; set; }
+    [Parameter] public IReadOnlyList<FieldProblem> Errors { get; set; } = [];
+    [Parameter] public int ImportedCount { get; set; }
+}

@@ -1,17 +1,13 @@
-using System.Net.Http.Json;
-
 namespace EventBooking.Web.Services;
 
-public sealed record MeDto(
-    IReadOnlyList<string> Roles,
-    Guid? AppointmentTypeId,
-    string? AppointmentTypeName);
-
-public sealed class MeClient(HttpClient http)
+public sealed class MeClient(HttpClient http) : IMeClient
 {
-    public async Task<ApiOutcome<MeDto>> GetAsync(CancellationToken cancellationToken)
-    {
-        var response = await http.GetAsync("/api/me", cancellationToken);
-        return await ApiCall.ReadAsync<MeDto>(response, cancellationToken);
-    }
+    public async Task<ApiOutcome<MeDto>> GetAsync(CancellationToken ct) =>
+        await ApiCall.ReadAsync<MeDto>(await http.GetAsync("/api/me", ct), ct);
+}
+public interface IMeClient { Task<ApiOutcome<MeDto>> GetAsync(CancellationToken ct); }
+public sealed record IdempotencySubmission(string Key, bool IsRetry)
+{
+    public static IdempotencySubmission Start() => new(Guid.NewGuid().ToString("N"), false);
+    public IdempotencySubmission AsRetry() => this with { IsRetry = true };
 }

@@ -35,9 +35,9 @@
 }
 
 .awaiting-scope-badge {
-    border: 1px dashed var(--warning, #b45309);
+    border: 1px dashed var(--color-warning);
     border-radius: 999px;
-    color: var(--warning, #b45309);
+    color: var(--color-warning);
     display: inline-block;
     font-size: 0.75rem;
     font-weight: 600;

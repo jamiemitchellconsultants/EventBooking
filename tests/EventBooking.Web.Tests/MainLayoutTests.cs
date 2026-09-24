@@ -85,6 +85,7 @@ public class MainLayoutTests : BunitContext
         {
             BaseAddress = new Uri("https://api.example.com"),
         }));
+        Services.AddSingleton(new ProductOptions("EventBooking", null, "events@example.com"));
     }
 
     private IRenderedComponent<CascadingAuthenticationState> RenderTopbar()

@@ -103,7 +103,7 @@ public class BookingClientTests
         handler.Response = new HttpResponseMessage(HttpStatusCode.NotFound)
         {
             Content = new StringContent(
-                """{"title":"not_found","detail":"This booking link is no longer valid.","status":404}""",
+                """{"type":"token-invalid","title":"not_found","detail":"This booking link is no longer valid.","status":404}""",
                 Encoding.UTF8,
                 "application/problem+json"),
         };
@@ -141,7 +141,7 @@ public class BookingClientTests
         handler.Response = new HttpResponseMessage(HttpStatusCode.Conflict)
         {
             Content = new StringContent(
-                """{"title":"conflict","detail":"That time filled up while you were choosing. Please pick from the updated options.","status":409}""",
+                """{"type":"conflict","title":"conflict","detail":"That time filled up while you were choosing. Please pick from the updated options.","status":409}""",
                 Encoding.UTF8,
                 "application/problem+json"),
         };

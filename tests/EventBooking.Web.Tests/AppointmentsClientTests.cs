@@ -84,7 +84,7 @@ public sealed class AppointmentsClientTests
     public async Task ConflictReturnsItsSafeDetail()
     {
         var (client, handler) = Given(new StringContent(
-            """{"title":"appointment_version_conflict","detail":"This appointment changed. Refresh and try again.","status":409}""",
+            """{"type":"appointment_version_conflict","title":"appointment_version_conflict","detail":"This appointment changed. Refresh and try again.","status":409}""",
             System.Text.Encoding.UTF8, "application/problem+json"));
         handler.StatusCode = HttpStatusCode.Conflict;
 
@@ -171,7 +171,7 @@ public sealed class AppointmentsClientTests
     {
         var handler = new StubHandler
         {
-            Content = JsonContent.Create(new { title = "forbidden", status = 403 }),
+            Content = JsonContent.Create(new { type = "forbidden", title = "forbidden", detail = "You do not have permission to do that.", status = 403 }),
             StatusCode = HttpStatusCode.Forbidden,
         };
         var client = new AppointmentsClient(

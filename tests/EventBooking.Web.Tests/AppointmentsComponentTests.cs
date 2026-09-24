@@ -663,7 +663,8 @@ public sealed class AppointmentsComponentTests : BunitContext
         var handler = GivenClient();
         handler.Enqueue(Ok(EventList()));
         handler.Enqueue(Ok(Detail("Expected")));
-        handler.Enqueue(Problem(HttpStatusCode.Forbidden, "Denied.", "forbidden"));
+        handler.Enqueue(Problem(
+            HttpStatusCode.Forbidden, "You do not have permission to do that.", "forbidden"));
         var save = JSInterop.SetupVoid("saveTextFile", _ => true);
         var cut = Render<Appointments>();
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("button[data-testid=download-roster]")));
@@ -715,7 +716,7 @@ public sealed class AppointmentsComponentTests : BunitContext
         string detail,
         string title = "conflict") => new(status)
     {
-        Content = JsonContent.Create(new { title, detail, status = (int)status },
+        Content = JsonContent.Create(new { type = title, title, detail, status = (int)status },
             options: CamelCase),
     };
 

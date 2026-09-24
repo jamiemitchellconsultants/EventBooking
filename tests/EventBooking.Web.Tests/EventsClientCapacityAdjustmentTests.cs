@@ -64,7 +64,7 @@ public class EventsClientCapacityAdjustmentTests
         handler.Response = new HttpResponseMessage(HttpStatusCode.Conflict)
         {
             Content = new StringContent(
-                """{"title":"conflict","detail":"Headcount cannot be lower than the active-booking count of 6.","status":409}""",
+                """{"type":"capacity-below-bookings","title":"conflict","detail":"Headcount cannot be lower than the active-booking count of 6.","status":409}""",
                 System.Text.Encoding.UTF8,
                 "application/problem+json"),
         };

@@ -132,7 +132,7 @@ public class EventsPageTests : BunitContext
     private static HttpResponseMessage Conflict(string detail) =>
         new(HttpStatusCode.Conflict)
         {
-            Content = JsonContent.Create(new { title = "conflict", detail, status = 409 }),
+            Content = JsonContent.Create(new { type = "conflict", title = "conflict", detail, status = 409 }),
         };
 
     /// <summary>Answers per requested path, in the order each path's responses were enqueued.</summary>

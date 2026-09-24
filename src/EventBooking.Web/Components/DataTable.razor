@@ -1,0 +1,79 @@
+@typeparam TItem
+<div class="table-wrap">
+    @if (Items is null)
+    {
+        <div class="loading-skeleton" role="status" aria-label="Loading" />
+    }
+    else if (Items.Count == 0)
+    {
+        <p>@EmptyTitle</p>
+        <p class="muted">@EmptyHint</p>
+        <button type="button" class="button button-primary" @onclick="() => EmptyAction.InvokeAsync()">@EmptyActionLabel</button>
+    }
+    else
+    {
+        <table>
+            <thead><tr>
+                @foreach (var column in Columns)
+                {
+                    <th scope="col">@column.Title</th>
+                }
+                @foreach (var typeCode in TypeCodes(Items))
+                {
+                    <th scope="col" data-type-code="@typeCode">@typeCode</th>
+                }
+                @if (CollapsesTypes(Items))
+                {
+                    <th scope="col">Capacity</th>
+                }
+            </tr></thead>
+            <tbody>
+                @foreach (var item in Items)
+                {
+                    <tr>
+                        @foreach (var column in Columns)
+                        {
+                            <td data-label="@column.Title">@column.Cell(item)</td>
+                        }
+                        @foreach (var capacity in Capacities(item))
+                        {
+                            <td data-label="@capacity.TypeCode">@capacity.TotalHeadcount total, @capacity.RemainingCapacity left</td>
+                        }
+                        @if (CollapsesTypes(Items))
+                        {
+                            <td data-label="Capacity"><ul class="capacity-breakdown">
+                                @foreach (var capacity in Capacities(item))
+                                {
+                                    <li>@capacity.TypeCode: @capacity.TotalHeadcount total, @capacity.RemainingCapacity left</li>
+                                }
+                            </ul></td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (NextCursor is not null)
+        {
+            <button type="button" class="button" @onclick="() => LoadMore.InvokeAsync()">Load more</button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<TItem>? Items { get; set; }
+    [Parameter, EditorRequired] public Func<TItem, object> RowKey { get; set; } = null!;
+    [Parameter, EditorRequired] public IReadOnlyList<TableColumn<TItem>> Columns { get; set; } = [];
+    [Parameter] public Func<TItem, IReadOnlyList<TypeCapacity>> Capacities { get; set; } = _ => [];
+    [Parameter] public string? NextCursor { get; set; }
+    [Parameter] public EventCallback LoadMore { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "Nothing here yet.";
+    [Parameter] public string EmptyHint { get; set; } = "";
+    [Parameter] public string EmptyActionLabel { get; set; } = "";
+    [Parameter] public EventCallback EmptyAction { get; set; }
+    private bool CollapsesTypes(IReadOnlyList<TItem> items) =>
+        items.SelectMany(Capacities).Select(x => x.TypeCode).Distinct().Count() > 5;
+    private IEnumerable<string> TypeCodes(IReadOnlyList<TItem> items) =>
+        CollapsesTypes(items)
+            ? []
+            : items.SelectMany(Capacities).Select(x => x.TypeCode).Distinct();
+}

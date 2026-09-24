@@ -1,0 +1,13 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+<button type="button" class="button button-danger" disabled="@Disabled" @onclick="ActivateAsync" aria-describedby="@(_armed ? _descriptionId : null)">@(_armed ? ConfirmLabel : Label)</button>
+@if (_armed) { <span id="@_descriptionId" role="status" aria-live="polite">@Consequence</span> }
+@code {
+    [Parameter] public string Label { get; set; } = "Delete"; [Parameter] public string ConfirmLabel { get; set; } = "Confirm"; [Parameter, EditorRequired] public string Consequence { get; set; } = string.Empty; [Parameter] public bool Disabled { get; set; } [Parameter] public EventCallback Confirmed { get; set; } [Parameter] public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+    private readonly string _descriptionId = $"confirm-{Guid.NewGuid():N}"; private CancellationTokenSource? _reset; private bool _armed;
+    protected override void OnInitialized() => Navigation.LocationChanged += ResetOnNavigation;
+    private async Task ActivateAsync() { if (!_armed) { _armed = true; _reset?.Cancel(); _reset = new(); _ = ResetAfterDelayAsync(_reset.Token); return; } _armed = false; _reset?.Cancel(); await Confirmed.InvokeAsync(); }
+    private async Task ResetAfterDelayAsync(CancellationToken token) { try { await Task.Delay(TimeSpan.FromSeconds(10), TimeProvider, token); _armed = false; await InvokeAsync(StateHasChanged); } catch (OperationCanceledException) { } }
+    private void ResetOnNavigation(object? sender, LocationChangedEventArgs args) { _armed = false; _reset?.Cancel(); _ = InvokeAsync(StateHasChanged); }
+    public void Dispose() { Navigation.LocationChanged -= ResetOnNavigation; _reset?.Cancel(); _reset?.Dispose(); }
+}
