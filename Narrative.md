@@ -27,6 +27,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [17](#entry-phase-1-generalise-the-domain) | 2026-09-23 | Phase 1: generalise the domain | product | Generalise the domain first and prove it with domain tests, before any persistence or API work. |
 | [18](#entry-phase-2-persistence-tasks-9a-9b-10-11) | 2026-09-23 | Phase 2: persistence (Tasks 9a, 9b, 10, 11) | product | Put D12 and D14 into code. |
 | [19](#entry-phase-3-application-layer-tasks-12-20b) | 2026-09-24 | Phase 3: application layer (Tasks 12–20b) | product | Chose the durable outbox dispatcher with golden templates for notifications; the invite engine enforces the token lifecycle as specified in D14; and audit search resolves the caller's buckets (event, attendee) from its capabilities while… |
+| [20](#entry-phase-4-api-endpoint-catalogue-and-mcp-parity) | 2026-09-24 | Phase 4: API endpoint catalogue and MCP parity | product | The branch implements the design-05 endpoint catalogue and a 45-tool MCP surface with three-way parity (operation catalogue, OpenAPI document, tools/list). |
 
 ---
 
@@ -797,3 +798,35 @@ identifiers only — no personal data on the read side.
 ---
 
 AI-Fingerprint: sha256:520f98a482f0
+
+---
+
+<a id="entry-phase-4-api-endpoint-catalogue-and-mcp-parity"></a>
+
+## Entry 20 — 2026-09-24 — Phase 4: API endpoint catalogue and MCP parity
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 3 landed the domain, application, and persistence layers behind a ported API/MCP surface whose routes, shapes, and tool names predated the design-05 contract. The Phase 4 plans were hand-authored before Phase 3 was executed, so every plan fragment had to be diffed against the merged code and the code followed where they disagreed. The work therefore had two intertwined goals: stand up the design-05 surface faithfully, and reconcile each point where the plan, the design, and the Phase-3 code said different things.
+
+## Decision
+
+The branch implements the design-05 endpoint catalogue and a 45-tool MCP surface with three-way parity (operation catalogue, OpenAPI document, tools/list). Where sources disagreed, the order of authority applied was: functional requirements, then design 05, then the merged Phase-3 code, then the plan documents. Material calls made under that rule:
+
+- The roster handlers' 403-for-unlisted-type / 200-empty-roster semantics were accepted over the ported tests' 404 expectations, because the event list shows every event listing the caller's type and the detail must agree with the list.
+- The import 1000-row bound moved from the REST endpoint into the handler so both surfaces refuse one oversized file with one application error.
+- The roster CSV drops the `version` column (FR-8.7) and gains the RFC-4180 quoting the new renderer lacked.
+- MCP tools call the same handlers as REST with the same translations (timestamp parsing, mutual-exclusion checks, role reconciliation on the identity tool), and refusals carry the application error code so the refusal-parity suite can put each one through the REST problem catalogue.
+- The plan's ToolDescriptions helper was skipped: the plan describes it as the parity oracle but the plan's own parity test compares against the catalogue directly, leaving the helper with no caller.
+
+## Consequences
+
+- REST and MCP are now two transports over one handler layer with mechanically enforced parity: any new staff operation without a tool (or any tool without an operation) fails the gate.
+- The ported API and MCP suites that drove deleted routes and tools are gone; behavior they alone covered (audit search bounds, workspace minimum-data shapes, recovery flows, transport auth) was migrated, not dropped.
+- Deliberately open: MCP request/response schemas are shaped by the SDK from handler views rather than reviewed line by line; the CSV download filename is a stable `roster-{id}` rather than the old descriptive name; and MCP list tools pass `limit` straight to handlers instead of enforcing the 1–200 transport bound.
+
+---
+
+AI-Fingerprint: sha256:837518e5c534
