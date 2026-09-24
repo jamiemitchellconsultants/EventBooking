@@ -43,7 +43,8 @@ public sealed class EventTools
     {
         var result = await handler.HandleAsync(
             new ListEventsQuery(
-                caller.RequireStaffUserId(), locationId, ParseDate(from), ParseDate(to),
+                caller.RequireStaffUserId(), locationId,
+                IsoInput.OptionalDate(from, nameof(from)), IsoInput.OptionalDate(to, nameof(to)),
                 appointmentTypeId, cursors.Unwrap(cursor), limit),
             cancellationToken);
         return Signed(result.ValueOrThrow(), cursors);
@@ -149,7 +150,8 @@ public sealed class EventTools
     {
         var result = await handler.HandleAsync(
             new ListCancellableEventsQuery(
-                caller.RequireStaffUserId(), locationId, ParseDate(from), ParseDate(to),
+                caller.RequireStaffUserId(), locationId,
+                IsoInput.OptionalDate(from, nameof(from)), IsoInput.OptionalDate(to, nameof(to)),
                 cursors.Unwrap(cursor), limit),
             cancellationToken);
         return Signed(result.ValueOrThrow(), cursors);
@@ -159,21 +161,4 @@ public sealed class EventTools
     private static EventListView Signed(EventListView page, PageCursor cursors) => new(
         [.. page.Items.Select(x => x with { Cursor = cursors.Protect(x.Cursor) })],
         cursors.Wrap(page.NextCursor));
-
-    /// <summary>Parses an optional calendar day or throws a plain refusal.</summary>
-    private static DateOnly? ParseDate(string? value)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        if (!DateOnly.TryParse(value, out var parsed))
-        {
-            throw new ModelContextProtocol.McpException(
-                "A yyyy-MM-dd date is required.");
-        }
-
-        return parsed;
-    }
 }

@@ -71,16 +71,10 @@ public sealed class NegotiationTools
         [Description("Your own type's headcount, 1 to 1000.")] int headcount,
         CancellationToken cancellationToken = default)
     {
-        if (!DateOnly.TryParse(date, out var parsedDate) ||
-            !TimeOnly.TryParse(startTime, out var parsedStart))
-        {
-            throw new ModelContextProtocol.McpException(
-                "A yyyy-MM-dd date and an HH:mm startTime are required.");
-        }
-
         var result = await handler.HandleAsync(
             new ProposeEventCommand(
-                caller.RequireStaffUserId(), locationId, parsedDate, parsedStart,
+                caller.RequireStaffUserId(), locationId,
+                IsoInput.Date(date, nameof(date)), IsoInput.Time(startTime, nameof(startTime)),
                 durationMinutes, appointmentTypeIds, headcount),
             cancellationToken);
         return result.ValueOrThrow();
