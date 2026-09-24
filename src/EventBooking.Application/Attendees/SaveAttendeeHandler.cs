@@ -227,10 +227,9 @@ public sealed class SaveAttendeeHandler
 
         var oldGroupCode = (await _groups.GetAsync(attendee.AttendeeGroupId, cancellationToken))?.Code;
 
-        var oldRequirementCodes = await RequirementCodesAsync(
-            attendee.RequiredAppointmentTypeIds, cancellationToken);
-        var newRequirementCodes = await RequirementCodesAsync(
-            resolved.Value.RequiredAppointmentTypeIds, cancellationToken);
+        var codes = await TypeCodesAsync(cancellationToken);
+        var oldRequirementCodes = RequirementCodes(attendee.RequiredAppointmentTypeIds, codes);
+        var newRequirementCodes = RequirementCodes(resolved.Value.RequiredAppointmentTypeIds, codes);
 
         try
         {
@@ -297,15 +296,21 @@ public sealed class SaveAttendeeHandler
 
     // Resolved from the stored rows, not the canonical constants: an Admin can create
     // appointment types at any time, and the audit detail must name those too.
+    // One read serves both requirement sets an update names.
+    private async Task<IReadOnlyDictionary<Guid, string>> TypeCodesAsync(
+        CancellationToken cancellationToken) =>
+        (await _types.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t.Code);
+
     private async Task<IReadOnlyList<string>> RequirementCodesAsync(
-        IEnumerable<Guid> appointmentTypeIds, CancellationToken cancellationToken)
-    {
-        var codes = (await _types.ListAsync(cancellationToken)).ToDictionary(t => t.Id, t => t.Code);
-        return appointmentTypeIds
+        IEnumerable<Guid> appointmentTypeIds, CancellationToken cancellationToken) =>
+        RequirementCodes(appointmentTypeIds, await TypeCodesAsync(cancellationToken));
+
+    private static IReadOnlyList<string> RequirementCodes(
+        IEnumerable<Guid> appointmentTypeIds, IReadOnlyDictionary<Guid, string> codes) =>
+        appointmentTypeIds
             .Select(id => codes.TryGetValue(id, out var code) ? code : id.ToString())
             .Order(StringComparer.Ordinal)
             .ToList();
-    }
 
     private static string SerializeAssignment(
         string? oldGroupCode,
