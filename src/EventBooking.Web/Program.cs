@@ -17,8 +17,7 @@ var product = new ProductOptions(
     builder.Configuration["LogoPath"],
     builder.Configuration["CoordinatorContact"] ?? "events@example.org");
 builder.Services.AddSingleton(product);
-builder.Services.AddScoped<MeClient>();
-builder.Services.AddScoped<IMeClient>(services => services.GetRequiredService<MeClient>());
+builder.Services.AddScoped<IMeClient, MeClient>();
 
 #if EVENTBOOKING_E2E
 builder.Services.AddAuthorizationCore();

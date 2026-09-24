@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
-@inject MeClient Me
+@implements IDisposable
+@inject IMeClient Me
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider Auth
 @inject ProductOptions Product
@@ -66,8 +67,37 @@
 @code {
     private ApiOutcome<MeDto>? _me;
 
-    protected override async Task OnInitializedAsync() =>
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await LoadMeAsync();
+    }
+
+    // Right after the OIDC login redirect completes, the first fetch here can still race
+    // the provider and see an unauthenticated user. Without this subscription that miss is
+    // permanent: OnInitializedAsync runs once, so the staff nav would never appear.
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        var state = await task;
+        if (state.User.Identity?.IsAuthenticated == true && _me is not { IsSuccess: true })
+        {
+            await LoadMeAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadMeAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
         _me = await Me.GetAsync(CancellationToken.None);
+    }
 
     private void SignOut() => Navigation.NavigateToLogout("authentication/logout");
+
+    public void Dispose() => Auth.AuthenticationStateChanged -= OnAuthenticationStateChanged;
 }

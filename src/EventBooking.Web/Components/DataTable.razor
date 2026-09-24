@@ -33,7 +33,7 @@
             <tbody>
                 @foreach (var item in Items)
                 {
-                    <tr>
+                    <tr @key="RowKey(item)">
                         @foreach (var column in Columns)
                         {
                             <td data-label="@column.Title">@column.Cell(item)</td>

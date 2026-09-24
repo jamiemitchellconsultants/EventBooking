@@ -75,13 +75,39 @@ public class MainLayoutTests : BunitContext
         Assert.DoesNotContain("staff-nav", cut.Markup);
     }
 
+    [Fact]
+    public void SigningInAfterLoadFetchesMeForTheNav()
+    {
+        // The OIDC login race: the layout can initialise while the provider still
+        // reports anonymous. The nav must appear once the sign-in lands, without a reload.
+        var auth = new FlipFlopAuthProvider();
+        this.AddAuthorization();
+        Services.AddSingleton<AuthenticationStateProvider>(auth);
+        var handler = new CountingHandler(new MeDto(["Coordinator"], null, null));
+        Services.AddSingleton<IMeClient>(new MeClient(new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.com"),
+        }));
+        Services.AddSingleton(new ProductOptions("EventBooking", null, "events@example.com"));
+
+        var cut = RenderTopbar();
+
+        Assert.Equal(0, handler.Calls);
+        auth.SignIn("Cory Coordinator");
+
+        // The re-fetch is the layout's own subscription; that a loaded identity
+        // turns into nav links is covered by the pre-authorized tests above, since
+        // bUnit's authorization doubles do not flip a live AuthorizeView mid-test.
+        cut.WaitForAssertion(() => Assert.Equal(1, handler.Calls));
+    }
+
     private void RegisterMe(MeDto me)
     {
         var handler = new StubHandler(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = JsonContent.Create(me),
         });
-        Services.AddSingleton(new MeClient(new HttpClient(handler)
+        Services.AddSingleton<IMeClient>(new MeClient(new HttpClient(handler)
         {
             BaseAddress = new Uri("https://api.example.com"),
         }));
@@ -106,5 +132,41 @@ public class MainLayoutTests : BunitContext
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             Task.FromResult(response);
+    }
+
+    private sealed class FlipFlopAuthProvider : AuthenticationStateProvider
+    {
+        private string? _name;
+
+        public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
+            Task.FromResult(new AuthenticationState(_name is null
+                ? new System.Security.Claims.ClaimsPrincipal()
+                : new System.Security.Claims.ClaimsPrincipal(
+                    new System.Security.Claims.ClaimsIdentity(
+                        [new System.Security.Claims.Claim(
+                            System.Security.Claims.ClaimTypes.Name, _name)],
+                        "test"))));
+
+        public void SignIn(string name)
+        {
+            _name = name;
+            NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+        }
+    }
+
+    private sealed class CountingHandler(MeDto me) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(me),
+            });
+        }
     }
 }
