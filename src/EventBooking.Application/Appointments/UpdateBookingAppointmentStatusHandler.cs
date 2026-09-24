@@ -156,7 +156,7 @@ public sealed class UpdateBookingAppointmentStatusHandler(
             && command.Status == BookingAppointmentStatus.Expected
             && laterRecoveryExists)
         {
-            return Result<BookingAppointmentUpdateView>.Failure(Error.Conflict(
+            return Result<BookingAppointmentUpdateView>.Failure(Error.RecoveryActive(
                 "A later recovery covers this appointment type. Cancel the recovery first, then correct the no-show."));
         }
 

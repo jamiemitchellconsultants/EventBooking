@@ -68,7 +68,7 @@ public sealed class AttendeeGroupHandlerTests
         var savesBefore = _unitOfWork.SaveCount;
 
         var result = await Updater.HandleAsync(
-            new UpdateAttendeeGroupCommand(Admin, group.Id, null, [_med, _ind], 1),
+            new UpdateAttendeeGroupCommand(Admin, group.Id, null, [_med, _ind], true, 1),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -100,7 +100,7 @@ public sealed class AttendeeGroupHandlerTests
         _blocking.BlockingMembers = 1;
 
         var result = await Updater.HandleAsync(
-            new UpdateAttendeeGroupCommand(Admin, group.Id, null, [_med, _ind], 1),
+            new UpdateAttendeeGroupCommand(Admin, group.Id, null, [_med, _ind], true, 1),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -118,10 +118,9 @@ public sealed class AttendeeGroupHandlerTests
             new CreateAttendeeGroupCommand(Admin, "NHS", "NHS staff", [_med]),
             CancellationToken.None)).Value;
         _blocking.MemberCount = 3;
-        var activer = new SetAttendeeGroupActiveHandler(_groups, _types, _profiles, _blocking, _unitOfWork, _audit);
 
-        var result = await activer.HandleAsync(
-            new SetAttendeeGroupActiveCommand(Admin, group.Id, false, 1),
+        var result = await Updater.HandleAsync(
+            new UpdateAttendeeGroupCommand(Admin, group.Id, null, null, false, 1),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -136,15 +135,14 @@ public sealed class AttendeeGroupHandlerTests
         var group = (await Creator.HandleAsync(
             new CreateAttendeeGroupCommand(Admin, "NHS", "NHS staff", [_med]),
             CancellationToken.None)).Value;
-        var activer = new SetAttendeeGroupActiveHandler(_groups, _types, _profiles, _blocking, _unitOfWork, _audit);
-        var deactivated = await activer.HandleAsync(
-            new SetAttendeeGroupActiveCommand(Admin, group.Id, false, 1),
+        var deactivated = await Updater.HandleAsync(
+            new UpdateAttendeeGroupCommand(Admin, group.Id, null, null, false, 1),
             CancellationToken.None);
         Assert.True(deactivated.IsSuccess);
         _types.Items.Single(t => t.Id == _med).Deactivate(AppointmentTypeUsage.None);
 
-        var result = await activer.HandleAsync(
-            new SetAttendeeGroupActiveCommand(Admin, group.Id, true, deactivated.Value.Version),
+        var result = await Updater.HandleAsync(
+            new UpdateAttendeeGroupCommand(Admin, group.Id, null, null, true, deactivated.Value.Version),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);

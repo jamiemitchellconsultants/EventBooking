@@ -28,7 +28,7 @@ public sealed class GetAttendeeReadinessHandler(
     {
         var authorized = await access.AuthorizeAsync(
             query.StaffUserId,
-            StaffCapability.ManageAttendees,
+            StaffCapability.ViewAttendeeDashboards,
             null,
             cancellationToken);
         if (authorized.IsFailure)

@@ -8,7 +8,7 @@ namespace EventBooking.Application.Attendees;
 /// <summary>Lists the active Attendee Groups a Coordinator may assign to Attendees.</summary>
 /// <param name="groups">Reads change-controlled Attendee Group reference data.</param>
 /// <param name="access">Authorizes attendee management.</param>
-public sealed class ListAttendeeGroupsHandler(
+public sealed class ListAssignableAttendeeGroupsHandler(
     IAttendeeGroupRepository groups,
     IStaffAccessAuthorizer access)
 {
@@ -16,8 +16,8 @@ public sealed class ListAttendeeGroupsHandler(
     /// <param name="query">The staff list request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The assignable groups with their required appointment types.</returns>
-    public async Task<Result<IReadOnlyList<AttendeeGroupListItem>>> HandleAsync(
-        ListAttendeeGroupsQuery query,
+    public async Task<Result<IReadOnlyList<AssignableAttendeeGroupItem>>> HandleAsync(
+        ListAssignableAttendeeGroupsQuery query,
         CancellationToken cancellationToken)
     {
         var authorized = await access.AuthorizeAsync(
@@ -27,13 +27,13 @@ public sealed class ListAttendeeGroupsHandler(
             cancellationToken);
         if (authorized.IsFailure)
         {
-            return Result<IReadOnlyList<AttendeeGroupListItem>>.Failure(authorized.Error);
+            return Result<IReadOnlyList<AssignableAttendeeGroupItem>>.Failure(authorized.Error);
         }
 
         var active = await groups.ListActiveAsync(cancellationToken);
 
         var items = active
-            .Select(group => new AttendeeGroupListItem(
+            .Select(group => new AssignableAttendeeGroupItem(
                 group.Id,
                 group.Code,
                 group.Name,
@@ -44,6 +44,6 @@ public sealed class ListAttendeeGroupsHandler(
                     .ToList()))
             .ToList();
 
-        return Result<IReadOnlyList<AttendeeGroupListItem>>.Success(items);
+        return Result<IReadOnlyList<AssignableAttendeeGroupItem>>.Success(items);
     }
 }

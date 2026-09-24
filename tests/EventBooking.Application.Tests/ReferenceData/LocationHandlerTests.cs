@@ -25,7 +25,6 @@ public sealed class LocationHandlerTests
 
     private CreateLocationHandler Creator => new(_locations, _profiles, _unitOfWork, _audit, TestZones.Instance);
     private UpdateLocationHandler Updater => new(_locations, _profiles, _unitOfWork, _audit, TestZones.Instance, new MemoryBlocking());
-    private SetLocationActiveHandler Activer => new(_locations, _profiles, _unitOfWork, _audit, new MemoryBlocking());
 
     [Fact]
     public async Task Create_location_writes_LocationCreated_with_no_personal_data()
@@ -87,7 +86,7 @@ public sealed class LocationHandlerTests
         var updater = new UpdateLocationHandler(_locations, _profiles, _unitOfWork, _audit, TestZones.Instance, blocking);
 
         var result = await updater.HandleAsync(
-            new UpdateLocationCommand(Admin, created.Value.Id, null, null, "Asia/Tokyo", 1),
+            new UpdateLocationCommand(Admin, created.Value.Id, null, null, "Asia/Tokyo", true, 1),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -106,7 +105,7 @@ public sealed class LocationHandlerTests
             CancellationToken.None);
 
         var result = await Updater.HandleAsync(
-            new UpdateLocationCommand(Admin, created.Value.Id, "Renamed", null, null, 99),
+            new UpdateLocationCommand(Admin, created.Value.Id, "Renamed", null, null, true, 99),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);

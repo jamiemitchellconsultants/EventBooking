@@ -102,6 +102,24 @@ public sealed class UpdateAttendeeGroupHandler(
                     changes.Add($"requirements; {rederived} members re-derived");
                 }
             }
+
+            // Activation runs after the requirement replacement so that a change refused as
+            // requirements-locked refuses the whole command, and asking a member count on a
+            // group whose membership is about to change reads the settled number.
+            if (command.IsActive != group.IsActive)
+            {
+                if (command.IsActive)
+                {
+                    var activeIds = (await types.ListAsync(ct)).Where(t => t.IsActive).Select(t => t.Id).ToList();
+                    group.Reactivate(activeIds);
+                }
+                else
+                {
+                    group.Deactivate(await blocking.AttendeeGroupMemberCountAsync(group.Id, ct));
+                }
+
+                changes.Add($"isActive -> {group.IsActive}");
+            }
         }
         catch (ReferenceDataInUseException ex) when (ex.Blocking.ContainsKey("blockingMembers"))
         {
@@ -153,82 +171,31 @@ public sealed class UpdateAttendeeGroupHandler(
             group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct));
 }
 
-/// <summary>Activates or deactivates an attendee group.</summary>
+/// <summary>Lists attendee groups in code order, hiding inactive rows unless asked.</summary>
 /// <param name="groups">The groups.</param>
-/// <param name="types">The types.</param>
+/// <param name="blocking">The blocking.</param>
 /// <param name="access">The access.</param>
-/// <param name="blocking">The blocking.</param>
-/// <param name="unitOfWork">The unitOfWork.</param>
-/// <param name="audit">The audit.</param>
-public sealed class SetAttendeeGroupActiveHandler(
-    IAttendeeGroupRepository groups,
-    IAppointmentTypeRepository types,
-    IStaffAccessAuthorizer access,
-    IReferenceDataBlockingQueries blocking,
-    IUnitOfWork unitOfWork,
-    IAuditLogger audit)
-{
-    /// <summary>Handles the command.</summary>
-    /// <param name="command">The command.</param>
-    /// <param name="ct">The cancellation token.</param>
-    public async Task<Result<AttendeeGroupResult>> HandleAsync(SetAttendeeGroupActiveCommand command, CancellationToken ct)
-    {
-        var authorized = await access.AuthorizeAsync(command.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
-        if (authorized.IsFailure) return Result<AttendeeGroupResult>.Failure(authorized.Error);
-
-        var group = await groups.GetAsync(command.AttendeeGroupId, ct);
-        if (group is null) return Result<AttendeeGroupResult>.Failure(Error.NotFound("No such attendee group."));
-        if (group.Version != command.ExpectedVersion)
-            return Result<AttendeeGroupResult>.Failure(Error.VersionConflict("The attendee group changed under you.", group.Version));
-
-        var beforeVersion = group.Version;
-        try
-        {
-            if (command.IsActive)
-            {
-                var activeIds = (await types.ListAsync(ct)).Where(t => t.IsActive).Select(t => t.Id).ToList();
-                group.Reactivate(activeIds);
-            }
-            else group.Deactivate(await blocking.AttendeeGroupMemberCountAsync(group.Id, ct));
-        }
-        catch (ReferenceDataInUseException ex)
-        {
-            return Result<AttendeeGroupResult>.Failure(Error.ReferenceDataInUse(ex.Message, ex.Blocking));
-        }
-        catch (DomainException ex)
-        {
-            return Result<AttendeeGroupResult>.Failure(Error.Validation(ex.Message));
-        }
-
-        var memberCount = await blocking.AttendeeGroupMemberCountAsync(group.Id, ct);
-        if (group.Version == beforeVersion)
-            return Result<AttendeeGroupResult>.Success(new AttendeeGroupResult(
-                group.Id, group.Code, group.Name, group.IsActive, group.Version,
-                group.RequiredAppointmentTypeIds, memberCount));
-
-        audit.Record(AuditEntityTypes.AttendeeGroup, group.Id, AuditAction.AttendeeGroupUpdated,
-            ActorType.Staff, command.StaffUserId.ToString(), $"isActive -> {group.IsActive}");
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result<AttendeeGroupResult>.Success(new AttendeeGroupResult(
-            group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, memberCount));
-    }
-}
-
-/// <summary>Lists every attendee group with member counts.</summary>
-/// <param name="groups">The groups.</param>
-/// <param name="blocking">The blocking.</param>
 public sealed class ListAttendeeGroupsHandler(
     IAttendeeGroupRepository groups,
-    IReferenceDataBlockingQueries blocking)
+    IReferenceDataBlockingQueries blocking,
+    IStaffAccessAuthorizer access)
 {
-    /// <summary>Handles the command.</summary>
+    /// <summary>Handles the query.</summary>
+    /// <param name="query">Whether to include inactive rows.</param>
     /// <param name="ct">The cancellation token.</param>
-    public async Task<Result<IReadOnlyList<AttendeeGroupListItem>>> HandleAsync(CancellationToken ct)
+    public async Task<Result<IReadOnlyList<AttendeeGroupListItem>>> HandleAsync(
+        ListAttendeeGroupsQuery query, CancellationToken ct)
     {
+        var authorized = await access.AuthorizeAsync(
+            query.StaffUserId, StaffCapability.ManageReferenceData, null, ct);
+        if (authorized.IsFailure)
+            return Result<IReadOnlyList<AttendeeGroupListItem>>.Failure(authorized.Error);
+
         var rows = await groups.ListAsync(ct);
         var items = new List<AttendeeGroupListItem>();
-        foreach (var group in rows.OrderBy(g => g.Code, StringComparer.Ordinal))
+        foreach (var group in rows
+                     .Where(g => query.IncludeInactive || g.IsActive)
+                     .OrderBy(g => g.Code, StringComparer.Ordinal))
         {
             items.Add(new AttendeeGroupListItem(group.Id, group.Code, group.Name, group.IsActive,
                 group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct)));

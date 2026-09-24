@@ -45,13 +45,17 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<NegotiationBoardHandler>();
         services.AddScoped<CancelEventHandler>();
         services.AddScoped<AdjustEventCapacityHandler>();
+        services.AddScoped<ListEventsHandler>();
+        services.AddScoped<ListCancellableEventsHandler>();
+        services.AddScoped<GetEventHandler>();
+        services.AddScoped<ListEventProposalsHandler>();
 
         // Attendees.
         services.AddScoped<ImportAttendeesHandler>();
         services.AddScoped<SaveAttendeeHandler>();
         services.AddScoped<DeleteAttendeeHandler>();
         services.AddScoped<ListAttendeesHandler>();
-        services.AddScoped<ListAttendeeGroupsHandler>();
+        services.AddScoped<ListAssignableAttendeeGroupsHandler>();
         services.AddScoped<AttendeeReadinessCalculator>();
         services.AddScoped<GetAttendeeReadinessHandler>();
         services.AddScoped<GetAttendeeBookingsHandler>();
@@ -76,7 +80,6 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<UpdateBookingAppointmentStatusHandler>();
         services.AddScoped<ListWorkspaceEventsHandler>();
         services.AddScoped<GetWorkspaceRosterHandler>();
-        services.AddScoped<SetAppointmentStatusHandler>();
         services.AddScoped<DownloadRosterHandler>();
 
         // Invites and bookings.

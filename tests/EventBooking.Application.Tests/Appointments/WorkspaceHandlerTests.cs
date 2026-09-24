@@ -10,51 +10,18 @@ namespace EventBooking.Application.Tests.Appointments;
 
 public sealed class WorkspaceHandlerTests
 {
-    private static SetAppointmentStatusHandler StatusHandler(RecoveryFixture f) =>
-        new(f.Appointments, f.Bookings, f.Invites, f.Events, f.Locations, f.Profiles,
-            f.UnitOfWork, f.Audit, f.Clock, RecoveryZones.Instance);
-
     private static GetWorkspaceRosterHandler RosterHandler(RecoveryFixture f) =>
         new(f.Appointments, f.Bookings, f.Attendees, f.Events, f.Types, f.Profiles);
 
     [Fact]
-    public async Task Dublin_checkin_before_utc_midnight_is_allowed_on_local_date()
+    public async Task Roster_hides_attendee_and_booking_identifiers()
     {
         var fixture = RecoveryFixture.Create();
-        var appointmentId = fixture.WithDublinBooking();
-        fixture.Clock.UtcNow = new DateTimeOffset(2026, 6, 14, 23, 30, 0, TimeSpan.Zero);
-        var appointment = fixture.Appointments.Items.Single(a => a.Id == appointmentId);
-        var status = StatusHandler(fixture);
-
-        var result = await status.HandleAsync(new SetAppointmentStatusCommand(
-            fixture.MedStaff, appointment.Id, "CheckedIn", appointment.Version),
-            CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(BookingAppointmentStatus.CheckedIn, appointment.Status);
-    }
-
-    [Fact]
-    public async Task Noshow_before_end_is_refused_and_roster_hides_ids()
-    {
-        var fixture = RecoveryFixture.Create();
-        var appointment = RecoveryFixture.Apps(fixture).Single(a => a.AppointmentTypeId == fixture.MedId);
-        // Back to Expected first: the refusal under test is the window rule, and a
-        // same-status request would return without reaching it.
-        appointment.TransitionTo(BookingAppointmentStatus.Expected, fixture.Coordinator,
-            RecoveryFixture.Now, false, false);
-        var status = StatusHandler(fixture);
-
-        var result = await status.HandleAsync(new SetAppointmentStatusCommand(
-            fixture.MedStaff, appointment.Id, "NoShow", appointment.Version),
-            CancellationToken.None);
-
-        Assert.True(result.IsFailure);
-        Assert.Equal("validation", result.Error.Code);
 
         var roster = await RosterHandler(fixture)
             .HandleAsync(new GetWorkspaceRosterQuery(fixture.MedStaff, fixture.Events.Items.Single().Id),
                 CancellationToken.None);
+
         Assert.True(roster.IsSuccess);
         var json = JsonSerializer.Serialize(roster.Value);
         Assert.DoesNotContain(fixture.AttendeeId.ToString(), json);
@@ -77,47 +44,6 @@ public sealed class WorkspaceHandlerTests
             ["Name", "Email", "Status", "CheckedInAt", "Version"]);
         Assert.Contains("'=cmd", csv);
         Assert.Contains("'+x", csv);
-    }
-
-    [Fact]
-    public async Task Stale_appointment_version_returns_current_state()
-    {
-        var fixture = RecoveryFixture.Create();
-        var appointment = RecoveryFixture.Apps(fixture).First();
-        var status = StatusHandler(fixture);
-
-        var result = await status.HandleAsync(new SetAppointmentStatusCommand(
-            fixture.MedStaff, appointment.Id, "CheckedIn", 99), CancellationToken.None);
-
-        Assert.True(result.IsFailure);
-        Assert.Equal("appointment_version_conflict", result.Error.Code);
-        Assert.Equal(appointment.Version, result.Error.Data!["currentVersion"]);
-    }
-
-    [Fact]
-    public async Task Noshow_correction_is_refused_while_recovery_invite_pending()
-    {
-        var fixture = RecoveryFixture.Create();
-        fixture.Eligibility.EligibleInOrder = [fixture.Events.Items.Single().Id];
-        var starter = new Application.Recovery.StartRecoveryHandler(
-            fixture.Attendees, fixture.Bookings, fixture.Appointments, fixture.Invites,
-            fixture.Locations, fixture.Settings, fixture.Profiles,
-            fixture.UnitOfWork, fixture.Clock,
-            fixture.Eligibility, new Application.Invites.InviteIssuer(fixture.Invites,
-                fixture.Settings, fixture.Emails, fixture.Audit, fixture.Clock, fixture.Eligibility));
-        var started = await starter.HandleAsync(
-            new Application.Recovery.StartRecoveryCommand(
-                fixture.Coordinator, fixture.AttendeeId, []),
-            CancellationToken.None);
-        Assert.True(started.IsSuccess);
-
-        var appointment = RecoveryFixture.Apps(fixture).Single(a => a.AppointmentTypeId == fixture.MedId);
-        var result = await StatusHandler(fixture).HandleAsync(new SetAppointmentStatusCommand(
-            fixture.MedStaff, appointment.Id, "Expected", appointment.Version),
-            CancellationToken.None);
-
-        Assert.True(result.IsFailure);
-        Assert.Equal("recovery-active", result.Error.Code);
     }
 
     [Fact]
@@ -144,6 +70,25 @@ public sealed class WorkspaceHandlerTests
         Assert.Equal(new DateOnly(2026, 10, 10), view.Date);
         Assert.Equal("T", view.ZoneAbbreviation);
         Assert.Equal(fixture.LondonId, workspace.ReceivedLocationId);
+    }
+
+    [Fact]
+    public async Task Workspace_rows_carry_the_events_own_status()
+    {
+        var fixture = RecoveryFixture.Create();
+        GivenWorkspaceEvent(fixture, new DateOnly(2026, 10, 10), new TimeOnly(9, 30));
+        var workspace = new StubWorkspaceQueries(fixture.Events.Items.Select(e => e.Id).ToList());
+        var handler = new ListWorkspaceEventsHandler(
+            workspace, fixture.Events, fixture.Locations, fixture.Profiles,
+            fixture.Clock, RecoveryZones.Instance);
+
+        var result = await handler.HandleAsync(
+            new ListWorkspaceEventsQuery(fixture.MedStaff, fixture.LondonId),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.All(result.Value, row => Assert.False(string.IsNullOrWhiteSpace(row.Status)));
+        Assert.Contains(result.Value, row => row.Status == EventStatus.Active.ToString());
     }
 
     [Fact]

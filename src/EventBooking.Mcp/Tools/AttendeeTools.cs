@@ -152,13 +152,13 @@ public sealed class AttendeeTools
     /// <returns>The assignable groups with their required appointment types.</returns>
     [McpServerTool(Name = "list_attendee_groups", Title = "List attendee groups", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
     [Description("List the attendee groups that determine attendee requirements. Caller must be a coordinator or admin.")]
-    public async Task<IReadOnlyList<AttendeeGroupListItem>> ListAttendeeGroupsAsync(
+    public async Task<IReadOnlyList<AssignableAttendeeGroupItem>> ListAttendeeGroupsAsync(
         ICallerAccessor caller,
-        ListAttendeeGroupsHandler handler,
+        ListAssignableAttendeeGroupsHandler handler,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new ListAttendeeGroupsQuery(caller.RequireStaffUserId()),
+            new ListAssignableAttendeeGroupsQuery(caller.RequireStaffUserId()),
             cancellationToken);
         return result.ValueOrThrow();
     }

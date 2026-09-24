@@ -10,7 +10,7 @@ public sealed record AppointmentTypeSummary(string Code, string Name);
 /// <param name="Code">The code.</param>
 /// <param name="Name">The name.</param>
 /// <param name="RequiredAppointmentTypes">The required appointment types.</param>
-public sealed record AttendeeGroupListItem(
+public sealed record AssignableAttendeeGroupItem(
     Guid AttendeeGroupId,
     string Code,
     string Name,
@@ -18,4 +18,4 @@ public sealed record AttendeeGroupListItem(
 
 /// <summary>Requests active Attendee Groups for one authorized Coordinator.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
-public sealed record ListAttendeeGroupsQuery(Guid StaffUserId);
+public sealed record ListAssignableAttendeeGroupsQuery(Guid StaffUserId);

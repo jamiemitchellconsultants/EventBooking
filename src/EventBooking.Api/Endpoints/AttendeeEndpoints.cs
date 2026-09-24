@@ -380,10 +380,10 @@ public static class AttendeeEndpoints
 
         group.MapGet("/", async (
             ICallerAccessor caller,
-            ListAttendeeGroupsHandler handler,
+            ListAssignableAttendeeGroupsHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new ListAttendeeGroupsQuery(caller.RequireStaffUserId()), cancellationToken))
+                new ListAssignableAttendeeGroupsQuery(caller.RequireStaffUserId()), cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("listAttendeeGroups")
             .Produces(200)
