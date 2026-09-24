@@ -26,6 +26,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [16](#entry-phase-0-port-and-strip-tasks-1-2-3a-3d) | 2026-09-23 | Phase 0: port and strip (Tasks 1, 2, 3a-3d) | product | This pull request takes decisions D5, D6, D8, D9 and D11 into effect in code. D5: port the predecessor solution and generalise it here. D6: drop bulk event import, which contradicts negotiation-only event creation. |
 | [17](#entry-phase-1-generalise-the-domain) | 2026-09-23 | Phase 1: generalise the domain | product | Generalise the domain first and prove it with domain tests, before any persistence or API work. |
 | [18](#entry-phase-2-persistence-tasks-9a-9b-10-11) | 2026-09-23 | Phase 2: persistence (Tasks 9a, 9b, 10, 11) | product | Put D12 and D14 into code. |
+| [19](#entry-phase-3-application-layer-tasks-12-20b) | 2026-09-24 | Phase 3: application layer (Tasks 12–20b) | product | Chose the durable outbox dispatcher with golden templates for notifications; the invite engine enforces the token lifecycle as specified in D14; and audit search resolves the caller's buckets (event, attendee) from its capabilities while… |
 
 ---
 
@@ -761,3 +762,38 @@ The schema is regenerable from the model, links are reproducible without storing
 ---
 
 AI-Fingerprint: sha256:16129020c412
+
+---
+
+<a id="entry-phase-3-application-layer-tasks-12-20b"></a>
+
+## Entry 19 — 2026-09-24 — Phase 3: application layer (Tasks 12–20b)
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Phase 3 turns the Phase 1 domain and Phase 2 persistence into the use cases the API and
+web layers will serve. The decisions that needed settling were the notification delivery
+guarantee (at-least-once outbox versus inline send), the token lifecycle the invite engine
+actually enforces, and the audit visibility rule (capability buckets enforced in SQL, not
+just in handlers).
+
+## Decision
+
+Chose the durable outbox dispatcher with golden templates for notifications; the invite
+engine enforces the token lifecycle as specified in D14; and audit search resolves the
+caller's buckets (event, attendee) from its capabilities while the query re-derives the
+bucket from each row's entity type, so a single-bucket caller cannot reach the other
+bucket by naming an entity type. Reference-data and settings rows sit in the event bucket.
+
+## Consequences
+
+Api and Mcp layers keep consuming the pre-existing audit port for now; migrating them to
+the new bucketed port is follow-up work for their owning phases. Histories and search
+paginate newest-first under the shared keyset cursor rules, and audit rows carry fixed
+identifiers only — no personal data on the read side.
+
+---
+
+AI-Fingerprint: sha256:520f98a482f0
