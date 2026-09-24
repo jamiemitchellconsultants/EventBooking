@@ -82,6 +82,7 @@ try
         services.AddEventBookingApplication(email.Portal,
             new EventBooking.Application.Access.StaffIdPolicy(Environment.GetEnvironmentVariable("Identity__StaffIdPattern")));
         services.AddLocalEmailTransport(email.Sender, email.Smtp);
+        services.AddSingleton<OutboxDispatcher>();
         services.AddScoped<DemoSeeder>();
         services.AddScoped<DemoInvitationSeeder>();
     }

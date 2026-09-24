@@ -46,8 +46,10 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
     /// <summary>Sends nothing. Email delivery is not what this task is testing.</summary>
     private sealed class SilentTransport : IEmailTransport
     {
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task<EmailSendOutcome> SendAsync(
+            string recipient, string subject, string textBody, string htmlBody,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(EmailSendOutcome.Sent);
     }
 
     /// <summary>

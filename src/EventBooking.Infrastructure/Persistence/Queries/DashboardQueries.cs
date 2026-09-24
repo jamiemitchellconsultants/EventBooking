@@ -134,7 +134,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             .ToHashSetAsync(cancellationToken);
 
         // Event-cancellation retry needs the staged booking to exist (it is cancelled, not
-        // active), matching RetryEmailHandler's booking lookup.
+        // active), matching the dispatcher's cancellation context lookup.
         var existingBookingIds = await context.Bookings
             .AsNoTracking()
             .Where(booking => bookingIds.Contains(booking.Id))

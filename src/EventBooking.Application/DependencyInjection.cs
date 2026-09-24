@@ -30,7 +30,6 @@ public static class ApplicationServiceCollectionExtensions
 
         // Shared services.
         services.AddScoped<EligibleEventFinder>();
-        services.AddScoped<EmailDeliveryService>();
         services.AddScoped<IInviteIssuer, InviteIssuer>();
         services.AddScoped<BookingCanceller>();
         services.AddScoped<IStaffAccessAuthorizer, StaffAccessAuthorizer>();

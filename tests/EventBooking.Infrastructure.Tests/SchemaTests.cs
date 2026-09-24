@@ -30,12 +30,13 @@ public class SchemaTests(PostgresFixture fixture)
 
             await using var context = NewContext(connectionString);
             // One initial schema, the migration that makes the derived start instant
-            // required once Task 11's repository computes it, and the migration adding the
-            // invite settings snapshots. Committed migrations are never rewritten: the chain
+            // required once Task 11's repository computes it, the migration adding the
+            // invite settings snapshots, and the migration adding the outbox backoff and
+            // correlation columns. Committed migrations are never rewritten: the chain
             // is what keeps the schema regenerable.
             Assert.Equal(
                 ["20260920120000_InitialSchema", "20260920145721_RequireEventStartInstant",
-                    "20260923202304_InviteSettingsSnapshots"],
+                    "20260923202304_InviteSettingsSnapshots", "20260924040652_EmailOutboxColumns"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();

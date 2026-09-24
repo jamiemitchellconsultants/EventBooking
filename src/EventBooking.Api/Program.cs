@@ -62,6 +62,8 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddHostedService<InviteSweepService>();
+builder.Services.AddSingleton<OutboxDispatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OutboxDispatcher>());
 
 var app = builder.Build();
 

@@ -45,6 +45,7 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
             "https://demo.example.test", "help@example.com"));
         services.AddSingleton<IClock>(_clock);
         services.AddSingleton<IEmailTransport>(_mail);
+        services.AddSingleton<OutboxDispatcher>();
         services.AddScoped<DemoSeeder>();
         services.AddScoped<DemoInvitationSeeder>();
         _services = services.BuildServiceProvider();
@@ -68,7 +69,7 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         Assert.Equal(5, await SeedAsync());
         Assert.Equal(5, _mail.Messages.Count);
         Assert.Equal(Enumerable.Range(1, 5).Select(i => $"demo-attendee-{i:000}@example.com"),
-            _mail.Messages.Select(m => m.ToAddress));
+            _mail.Messages.Select(m => m.Recipient));
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         Assert.Equal(100, await db.Attendees.CountAsync());
@@ -91,13 +92,13 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         foreach (var message in _mail.Messages.ToArray())
         {
             var token = Token(message);
-            Assert.Contains($"href=\"https://demo.example.test/book/{token}\"", message.HtmlBody);
+            Assert.Contains($"https://demo.example.test/book/{token}", message.HtmlBody);
             var result = await view.HandleAsync(new ViewInviteQuery(token), default);
             Assert.True(result.IsSuccess);
             Assert.Equal(3, result.Value.Options.Count);
             Assert.All(result.Value.Options, option => Assert.True(option.Date > _clock.TodayAtTransitionalLocation));
             var attendee = await db.Attendees.Include(c => c.Requirements)
-                .SingleAsync(c => c.Id == message.AttendeeId);
+                .SingleAsync(c => c.Email == message.Recipient);
             var invite = await db.Invites.Include(i => i.Requirements)
                 .SingleAsync(i => i.Id == result.Value.InviteId);
             Assert.Equal(attendee.RequiredAppointmentTypeIds.Order(), invite.RequiredAppointmentTypeIds.Order());
@@ -154,23 +155,25 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         await Assert.ThrowsAsync<SeedException>(() => SeedAsync());
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-        var failed = await db.EmailLogs.AsNoTracking().SingleAsync(e => e.Status == EmailStatus.Failed);
-        var versionBefore = await db.Invites.Where(i => i.Id == failed.InviteId)
+        // A thrown provider error parks the row pending behind its backoff rather
+        // than failing it: only the third consecutive transient ends failed.
+        var pending = await db.EmailLogs.AsNoTracking().SingleAsync(e => e.Status == EmailStatus.Pending);
+        var versionBefore = await db.Invites.Where(i => i.Id == pending.InviteId)
             .Select(i => i.TokenVersion).SingleAsync();
         Assert.Equal(2, _mail.Messages.Count);
         _mail.FailOnAttempt = null;
-        _clock.Advance(TimeSpan.FromSeconds(1));
+        // Past the first-transient backoff, so the rerun reclaims the parked row.
+        _clock.Advance(TimeSpan.FromMinutes(3));
         Assert.Equal(3, await SeedAsync());
         Assert.Equal(5, _mail.Messages.Count);
-        Assert.Equal(5, _mail.Messages.Select(m => m.AttendeeId).Distinct().Count());
+        Assert.Equal(5, _mail.Messages.Select(m => m.Recipient).Distinct().Count());
         Assert.Equal(5, await db.Invites.CountAsync(i => i.Status == InviteStatus.Pending));
-        // Six resolved rows, not one: every fresh issue stages a pending delivery that the
-        // send then resolves (five staged plus the failed attempt's), where the retired
-        // immediate-send flow resolved only the retried failure.
-        Assert.Equal(6, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Resolved));
+        // No resolved rows: fresh issues flush directly, and the parked row needed no
+        // retry row either. Only a failed row restages through the retry handler.
+        Assert.Equal(0, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Resolved));
         Assert.Equal(5, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Sent));
         // A resend reuses the current link rather than minting a new one (design 06).
-        Assert.Equal(versionBefore, await db.Invites.Where(i => i.Id == failed.InviteId)
+        Assert.Equal(versionBefore, await db.Invites.Where(i => i.Id == pending.InviteId)
             .Select(i => i.TokenVersion).SingleAsync());
         Assert.Equal(0, await SeedAsync());
     }
@@ -222,9 +225,12 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         using (var scope = _services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-            // The sent delivery: the staged row it superseded sits alongside as resolved.
+            // The sent delivery: restaged rows it superseded sit alongside as resolved.
+            var firstAttendeeId = await db.Attendees
+                .Where(c => c.Email == _mail.Messages[0].Recipient)
+                .Select(c => c.Id).SingleAsync();
             var prior = await db.EmailLogs.SingleAsync(e =>
-                e.AttendeeId == _mail.Messages[0].AttendeeId && e.Status == EmailStatus.Sent);
+                e.AttendeeId == firstAttendeeId && e.Status == EmailStatus.Sent);
             var pending = EmailLog.RecordPending(Guid.NewGuid(), prior.AttendeeId,
                 EmailTemplate.AttendeeInvite, _clock.UtcNow.AddSeconds(1), prior.InviteId);
             Assert.True(pending.TryClaim(_clock.UtcNow, TimeSpan.FromMinutes(5)));
@@ -247,7 +253,10 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         using (var scope = _services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-            await db.EmailLogs.Where(e => e.AttendeeId == _mail.Messages[0].AttendeeId).ExecuteDeleteAsync();
+            var firstAttendeeId = await db.Attendees
+                .Where(c => c.Email == _mail.Messages[0].Recipient)
+                .Select(c => c.Id).SingleAsync();
+            await db.EmailLogs.Where(e => e.AttendeeId == firstAttendeeId).ExecuteDeleteAsync();
         }
         var error = await Assert.ThrowsAsync<SeedException>(() => SeedAsync());
         Assert.Contains("no matching delivery", error.Message);
@@ -272,10 +281,11 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
                     DemoSeedSpec.CoordinatorUserId(), attendee.Id,
                     [EventBooking.Domain.Locations.TransitionalLocation.Id]), default);
             Assert.True(issued.IsSuccess);
-            var dispatched = await scope.ServiceProvider.GetRequiredService<RetryEmailHandler>()
-                .HandleAsync(new RetryEmailCommand(DemoSeedSpec.CoordinatorUserId(), attendee.Id), default);
-            Assert.True(dispatched.IsSuccess, $"retry failed: {dispatched.Error?.Code} {dispatched.Error?.Message}");
-            Assert.Equal(EmailStatus.Sent.ToString(), dispatched.Value.DeliveryStatus);
+            // Flush the replacement delivery directly: a freshly staged pending row
+            // needs no retry row. The parked original stays parked behind backoff.
+            await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>()
+                .DispatchOnceAsync();
+            Assert.Equal(1, await db.EmailLogs.CountAsync(e => e.Status == EmailStatus.Sent));
         }
         var replacementToken = Token(Assert.Single(_mail.Messages));
         Assert.Equal(4, await SeedAsync());
@@ -298,7 +308,7 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         using (var scope = _services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
-            var prior = await db.EmailLogs.SingleAsync(e => e.Status == EmailStatus.Failed);
+            var prior = await db.EmailLogs.SingleAsync(e => e.Status == EmailStatus.Pending);
             inviteId = prior.InviteId!.Value;
             originalVersion = await db.Invites.Where(i => i.Id == inviteId)
                 .Select(i => i.TokenVersion).SingleAsync();
@@ -322,22 +332,26 @@ public sealed class DemoInvitationSeederTests : IAsyncLifetime
         return await scope.ServiceProvider.GetRequiredService<DemoInvitationSeeder>().RunAsync(default);
     }
 
-    private static string Token(EmailMessage message) =>
+    private sealed record CapturedMail(string Recipient, string Subject, string TextBody, string HtmlBody);
+
+    private static string Token(CapturedMail message) =>
         Regex.Match(message.TextBody, @"https://demo\.example\.test/book/([^\s]+)").Groups[1].Value;
 
     private sealed class CapturingTransport : IEmailTransport
     {
         /// <summary>Messages accepted by the external provider boundary.</summary>
-        public List<EmailMessage> Messages { get; } = [];
+        public List<CapturedMail> Messages { get; } = [];
         /// <summary>Optional one-based provider attempt to fail.</summary>
         public int? FailOnAttempt { get; set; }
         private int _attempt;
         /// <inheritdoc/>
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
+        public Task<EmailSendOutcome> SendAsync(
+            string recipient, string subject, string textBody, string htmlBody,
+            CancellationToken cancellationToken)
         {
             if (++_attempt == FailOnAttempt) throw new IOException("Test SMTP failure.");
-            Messages.Add(message);
-            return Task.CompletedTask;
+            Messages.Add(new CapturedMail(recipient, subject, textBody, htmlBody));
+            return Task.FromResult(EmailSendOutcome.Sent);
         }
     }
 

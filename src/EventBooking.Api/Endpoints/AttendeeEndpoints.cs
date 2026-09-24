@@ -159,11 +159,13 @@ public static class AttendeeEndpoints
 
         group.MapPost("/{id:guid}/email-retry", async (
             Guid id,
+            Guid emailLogId,
             ICallerAccessor caller,
             RetryEmailHandler handler,
             CancellationToken cancellationToken) =>
             (await handler.HandleAsync(
-                new RetryEmailCommand(caller.RequireStaffUserId(), id), cancellationToken))
+                new RetryEmailCommand(caller.RequireStaffUserId(), id, emailLogId),
+                cancellationToken))
                 .ToResponse())
             .WithAgentMetadata("retryAttendeeEmail")
             .Produces(200)

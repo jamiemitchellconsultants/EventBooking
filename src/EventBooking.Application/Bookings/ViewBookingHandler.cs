@@ -1,7 +1,7 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
-using EventBooking.Application.Notifications;
 using EventBooking.Domain.Bookings;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Bookings;
 
@@ -27,11 +27,15 @@ public sealed record ViewBookingQuery(string? ManageToken);
 /// <param name="attendees">The attendees.</param>
 /// <param name="events">The events.</param>
 /// <param name="tokens">The tokens.</param>
+/// <param name="locations">The locations.</param>
+/// <param name="zones">The zones.</param>
 public sealed class ViewBookingHandler(
     IBookingRepository bookings,
     IAttendeeRepository attendees,
     IEventRepository events,
-    ITokenService tokens)
+    ITokenService tokens,
+    ILocationRepository locations,
+    IEventWindowZones zones)
 {
     /// <summary>Defines handle async for the current use case.</summary>
     /// <param name="query">The query.</param>
@@ -62,11 +66,20 @@ public sealed class ViewBookingHandler(
             return Result<BookingView>.Failure(Error.NotFound(ViewInviteHandler.InvalidLinkMessage));
         }
 
+        var location = await locations.GetAsync(eventItem.LocationId, cancellationToken)
+            ?? throw new InvalidOperationException($"Location {eventItem.LocationId} is gone.");
+
         return Result<BookingView>.Success(new BookingView(
             eventItem.Window.Date,
             eventItem.Window.StartTime,
             eventItem.Window.EndTime,
-            AttendeeEmailComposer.FormatWindow(eventItem.Window),
+            WindowText.Format(
+                eventItem.Window.Date,
+                eventItem.Window.StartTime,
+                eventItem.Window.EndTime,
+                location.Name,
+                zones.AbbreviationOf(
+                    eventItem.Window.StartInstant(zones, location.TimeZoneId), location.TimeZoneId)),
             attendee.Name));
     }
 }

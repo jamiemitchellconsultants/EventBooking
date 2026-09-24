@@ -10,6 +10,7 @@ using EventBooking.Domain.Invites;
 using Microsoft.AspNetCore.Mvc;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
+using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -370,22 +371,32 @@ public class AttendeeEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.NoContent, confirmedDeletion.StatusCode);
     }
 
-    /// <summary>Staff retry derives the failed invite template and context on the server.</summary>
+    /// <summary>Staff retry stages a fresh delivery; the dispatcher sends the same link.</summary>
     [Fact]
     public async Task ACoordinatorCanRetryAFailedInviteWithAFreshHashedToken()
     {
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
-        var (attendeeId, link) = await GivenFailedInviteAsync();
+        var (attendeeId, link, deliveryId, email) = await GivenFailedInviteAsync();
         var client = factory.CreateClient();
 
-        var response = await client.PostAsync($"/api/attendees/{attendeeId}/email-retry", null);
+        var response = await client.PostAsync(
+            $"/api/attendees/{attendeeId}/email-retry?emailLogId={deliveryId}", null);
         var outcome = await response.Content.ReadFromJsonAsync<RetryResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("Sent", outcome!.DeliveryStatus);
+        Assert.NotEqual(Guid.Empty, outcome!.EmailLogId);
+
+        // The endpoint stages; the dispatcher sends. The test host runs no loop, so the
+        // test drives one pass explicitly.
+        using (var dispatch = factory.Services.CreateScope())
+        {
+            await dispatch.ServiceProvider.GetRequiredService<OutboxDispatcher>()
+                .DispatchOnceAsync();
+        }
+
         var message = Assert.Single(
             factory.EmailTransport.Sent,
-            sent => sent.AttendeeId == attendeeId && sent.Template == EmailTemplate.AttendeeInvite);
+            sent => sent.Recipient == email);
         Assert.Contains("/book/", message.TextBody);
 
         using var scope = factory.Services.CreateScope();
@@ -419,7 +430,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
     private sealed record AttendeeGroupResponse(
         Guid AttendeeGroupId, string Code, string Name);
 
-    private sealed record RetryResponse(string DeliveryStatus, Guid DeliveryId);
+    private sealed record RetryResponse(Guid EmailLogId);
 
     private sealed record ImportError(int LineNumber, string Message);
 
@@ -468,7 +479,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
         await context.SaveChangesAsync();
     }
 
-    private async Task<(Guid AttendeeId, string OldHash)> GivenFailedInviteAsync()
+    private async Task<(Guid AttendeeId, string OldHash, Guid DeliveryId, string Email)> GivenFailedInviteAsync()
     {
         using var scope = factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
@@ -493,10 +504,11 @@ public class AttendeeEndpointTests(ApiFactory factory)
         }
 
         var pilots = context.AttendeeGroups.Include(g => g.Requirements).Single(g => g.Id == AttendeeGroupIds.Pilots);
+        var email = $"{Guid.NewGuid():N}@mail.com";
         var attendee = Attendee.Create(
             Guid.NewGuid(),
             "Retry Attendee",
-            $"{Guid.NewGuid():N}@mail.com",
+            email,
             pilots,
             ProposalFixture.Now);
         attendee.MarkInvited(ProposalFixture.Now);
@@ -524,6 +536,6 @@ public class AttendeeEndpointTests(ApiFactory factory)
         context.EmailLogs.Add(delivery);
         await context.SaveChangesAsync();
 
-        return (attendee.Id, issued);
+        return (attendee.Id, issued, delivery.Id, email);
     }
 }

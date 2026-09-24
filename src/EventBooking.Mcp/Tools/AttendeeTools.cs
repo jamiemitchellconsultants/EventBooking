@@ -272,22 +272,24 @@ public sealed class AttendeeTools
         return result.ValueOrThrow();
     }
 
-    /// <summary>Retries the latest unresolved email for a attendee.</summary>
+    /// <summary>Retries one failed email delivery for a attendee.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The retry handler.</param>
     /// <param name="attendeeId">The attendee identifier.</param>
+    /// <param name="emailLogId">The failed delivery identifier.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The retry outcome.</returns>
     [McpServerTool(Name = "retry_attendee_email", Title = "Retry attendee email", ReadOnly = false, Idempotent = false, Destructive = false, OpenWorld = false)]
-    [Description("Retry the latest unresolved attendee email delivery. Caller must be a coordinator or admin; resends the latest unresolved email.")]
+    [Description("Retry one failed attendee email delivery. Caller must have ManageAttendees; stages a fresh pending delivery for the dispatcher.")]
     public async Task<RetryEmailOutcome> RetryAttendeeEmailAsync(
         ICallerAccessor caller,
         RetryEmailHandler handler,
         [Description("The attendee identifier.")] Guid attendeeId,
+        [Description("The failed delivery identifier.")] Guid emailLogId,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(
-            new RetryEmailCommand(caller.RequireStaffUserId(), attendeeId),
+            new RetryEmailCommand(caller.RequireStaffUserId(), attendeeId, emailLogId),
             cancellationToken);
         return result.ValueOrThrow();
     }

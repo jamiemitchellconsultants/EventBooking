@@ -214,8 +214,10 @@ public sealed class RepairCConcurrencyTests(PostgresFixture fixture)
         private sealed class SilentTransport : IEmailTransport
         {
             /// <inheritdoc />
-            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken) =>
-                Task.CompletedTask;
+            public Task<EmailSendOutcome> SendAsync(
+                string recipient, string subject, string textBody, string htmlBody,
+                CancellationToken cancellationToken) =>
+                Task.FromResult(EmailSendOutcome.Sent);
         }
 
         /// <summary>Creates a reset service provider with the production application wiring.</summary>

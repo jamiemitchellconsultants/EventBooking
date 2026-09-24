@@ -74,8 +74,6 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IEventWindowZones, NodaTimeEventWindowZones>();
         services.AddSingleton<ITokenService, HmacTokenService>();
 
-        services.AddScoped<IEmailSender, LoggingEmailSender>();
-
         services.AddScoped<IAuditLogger, EfAuditLogger>();
 
         return services;

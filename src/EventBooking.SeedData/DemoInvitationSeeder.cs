@@ -8,6 +8,7 @@ using EventBooking.Application.Events;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
+using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,8 +18,9 @@ namespace EventBooking.SeedData;
 /// <param name="database">Reads invitation history without changing it directly.</param>
 /// <param name="attendees">Resolves the demo recipients by their seeded email address.</param>
 /// <param name="events">Finds already-imported windows without restoring their capacity.</param>
-/// <param name="trigger">Issues initial invitations; sending goes through the retry handler.</param>
-/// <param name="retry">Retries outstanding messages under the existing claim and token rules.</param>
+/// <param name="trigger">Issues initial invitations; sending goes through the dispatcher.</param>
+/// <param name="retry">Restages failed messages for the dispatcher.</param>
+/// <param name="flush">Sends staged messages inline so the seed reports real delivery.</param>
 /// <param name="clock">Determines future transitional-location dates and invitation usability.</param>
 public sealed class DemoInvitationSeeder(
     EventBookingDbContext database,
@@ -26,6 +28,7 @@ public sealed class DemoInvitationSeeder(
     IEventRepository events,
     InviteAttendeeHandler trigger,
     RetryEmailHandler retry,
+    OutboxDispatcher flush,
     IClock clock)
 {
     /// <summary>Gets or sets a progress sink; messages omit raw tokens, URLs and email bodies.</summary>
@@ -79,8 +82,8 @@ public sealed class DemoInvitationSeeder(
                     Report($"Invitation already delivered: {spec.Email}.");
                     continue;
                 }
-                // The retry handler selects attendee-wide outstanding work. Do not
-                // accidentally retry another invitation/template from a mutated demo.
+                // Do not accidentally touch another invitation/template from a
+                // mutated demo: the attendee's latest outstanding row must be this one.
                 var retryTarget = await database.EmailLogs.AsNoTracking()
                     .Where(e => e.AttendeeId == attendee.Id
                         && (e.Status == EmailStatus.Failed || e.Status == EmailStatus.Pending))
@@ -88,12 +91,27 @@ public sealed class DemoInvitationSeeder(
                     .FirstOrDefaultAsync(cancellationToken);
                 if (retryTarget?.Id != previous.Id)
                     throw new SeedException($"Another outstanding delivery needs Coordinator review: {spec.Email}.");
-                var retried = await retry.HandleAsync(
-                    new RetryEmailCommand(DemoSeedSpec.CoordinatorUserId(), attendee.Id), cancellationToken);
-                if (retried.IsFailure)
-                    throw new SeedException($"Demo email retry for {spec.Email} failed: {retried.Error}.");
-                if (retried.Value.DeliveryStatus != EmailStatus.Sent.ToString())
-                    throw DeliveryFailed(spec.Email);
+                if (previous.Status == EmailStatus.Failed)
+                {
+                    var retried = await retry.HandleAsync(
+                        new RetryEmailCommand(
+                            DemoSeedSpec.CoordinatorUserId(), attendee.Id, previous.Id),
+                        cancellationToken);
+                    if (retried.IsFailure)
+                        throw new SeedException($"Demo email retry for {spec.Email} failed: {retried.Error}.");
+                    await RequireSentAsync(retried.Value.EmailLogId, spec.Email, cancellationToken);
+                }
+                else
+                {
+                    // A pending row held under a live claim belongs to a running
+                    // dispatcher; anything older is flushed directly, since a pending
+                    // row is already the delivery and needs no retry row.
+                    if (previous.ClaimedAt is not null
+                        && clock.UtcNow - previous.ClaimedAt.Value < ClaimQuery.ClaimLease)
+                        throw new SeedException(
+                            $"Demo invitation is already being delivered for {spec.Email}. Rerun later.");
+                    await RequireSentAsync(previous.Id, spec.Email, cancellationToken);
+                }
             }
             else
             {
@@ -107,15 +125,17 @@ public sealed class DemoInvitationSeeder(
                     cancellationToken);
                 if (issued.IsFailure)
                     throw new SeedException($"Demo invitation for {spec.Email} failed: {issued.Error}.");
-                // Issuing only stages the email; the retry handler sends the staged delivery,
-                // exactly as it does for a failed or pending delivery above. A fresh attendee
-                // has no other outstanding work, so the retry cannot pick the wrong delivery.
-                var dispatched = await retry.HandleAsync(
-                    new RetryEmailCommand(DemoSeedSpec.CoordinatorUserId(), attendee.Id), cancellationToken);
-                if (dispatched.IsFailure)
-                    throw new SeedException($"Demo invitation for {spec.Email} failed: {dispatched.Error}.");
-                if (dispatched.Value.DeliveryStatus != EmailStatus.Sent.ToString())
-                    throw DeliveryFailed(spec.Email);
+                // Issuing only stages the email; the dispatcher sends the staged
+                // delivery. A fresh attendee has exactly one pending delivery.
+                var staged = await database.EmailLogs.AsNoTracking()
+                    .Where(e => e.AttendeeId == attendee.Id
+                        && e.TemplateName == EmailTemplate.AttendeeInvite
+                        && e.Status == EmailStatus.Pending)
+                    .OrderByDescending(e => e.SentAt).ThenByDescending(e => e.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (staged is null)
+                    throw new SeedException($"Demo invitation staged no delivery: {spec.Email}.");
+                await RequireSentAsync(staged.Id, spec.Email, cancellationToken);
             }
             sent++;
             Report($"Invitation delivered: {spec.Email}.");
@@ -138,6 +158,15 @@ public sealed class DemoInvitationSeeder(
                 AppointmentTypeIds.All.ToDictionary(type => type, _ => 20), clock.UtcNow);
         await database.SaveChangesAsync(cancellationToken);
         Report($"Invitation demo events created: {missing.Count} with accepted proposals.");
+    }
+
+    private async Task RequireSentAsync(Guid deliveryId, string email, CancellationToken ct)
+    {
+        await flush.DispatchOnceAsync(ct);
+        var status = await database.EmailLogs.AsNoTracking()
+            .Where(e => e.Id == deliveryId).Select(e => e.Status).SingleAsync(ct);
+        if (status != EmailStatus.Sent)
+            throw DeliveryFailed(email);
     }
 
     private static SeedException DeliveryFailed(string recipient) => new(

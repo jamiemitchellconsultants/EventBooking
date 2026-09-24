@@ -57,9 +57,9 @@ public class BookingEndpointTests(ApiFactory factory)
             view.Options.Select(option => option.EndTime));
         Assert.Equal(
             [
-                "Monday 14 Jan 2030, 09:00-13:00",
-                "Tuesday 15 Jan 2030, 11:00-15:00",
-                "Wednesday 16 Jan 2030, 13:00-17:00",
+                "Mon 14 Jan 2030, 09:00-13:00 GMT at Transitional location",
+                "Tue 15 Jan 2030, 11:00-15:00 GMT at Transitional location",
+                "Wed 16 Jan 2030, 13:00-17:00 GMT at Transitional location",
             ],
             view.Options.Select(option => option.Display));
 
