@@ -19,6 +19,9 @@ builder.Services.AddEventBookingApplication(
     new EventBooking.Application.Access.StaffIdPolicy(builder.Configuration["Identity:StaffIdPattern"]));
 builder.Services.AddEventBookingAuth(builder.Configuration);
 builder.Services.AddSingleton<ICorrelationContext, AsyncLocalCorrelationContext>();
+// The API's cursor signer, from the same key: a cursor from either surface reads on the other.
+builder.Services.AddSingleton(new EventBooking.Api.Pagination.PageCursor(
+    System.Text.Encoding.UTF8.GetBytes(settings.Tokens.SigningKey)));
 
 builder.Services
     .AddMcpServer()

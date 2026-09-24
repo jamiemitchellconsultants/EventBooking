@@ -53,6 +53,43 @@ public sealed class AttendeeAttendeeGroupFlowTests
             attendee.RequiredAppointmentTypeIds);
     }
 
+    /// <summary>
+    /// The audit detail names the old and new requirements from one read of the types, not a
+    /// read per requirement set.
+    /// </summary>
+    [Fact]
+    public async Task AGroupChangeReadsTheAppointmentTypesOnce()
+    {
+        _groups.Items.Add(AttendeeGroup.Define(
+            AttendeeGroupIds.Engineering, "ENGINEERING", "Engineering", true,
+            [AppointmentTypeIds.MedicalCheckUp]));
+        var types = new InMemoryAppointmentTypeRepository();
+        var handler = new SaveAttendeeHandler(
+            _attendees,
+            _groups,
+            new InMemoryInviteRepository(),
+            new InMemoryBookingRepository(),
+            new StaffAccessAuthorizer(_profiles),
+            new RecordingAuditLogger(),
+            new FakeClock(),
+            _unitOfWork,
+            types);
+        var created = await handler.CreateAsync(
+            new CreateAttendeeCommand(
+                Coordinator, "Amara Novak", "amara@example.com", AttendeeGroupIds.Pilots),
+            CancellationToken.None);
+        var before = types.Reads;
+
+        var updated = await handler.UpdateAsync(
+            new UpdateAttendeeCommand(
+                Coordinator, created.Value, "Amara Novak", "amara@example.com",
+                AttendeeGroupIds.Engineering),
+            CancellationToken.None);
+
+        Assert.True(updated.IsSuccess);
+        Assert.Equal(1, types.Reads - before);
+    }
+
     /// <summary>Unknown and absent groups return stable validation without saving.</summary>
     [Theory]
     [InlineData(null, "attendee_group_required")]

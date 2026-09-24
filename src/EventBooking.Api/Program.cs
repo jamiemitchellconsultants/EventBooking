@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Threading.RateLimiting;
 using EventBooking.Api;
@@ -129,26 +128,7 @@ if (settings.ProxyNetworks.Count > 0)
 }
 app.UseMiddleware<CorrelationMiddleware>();
 
-// Request metrics, inline because the instruments live on one meter and the middleware is
-// three statements. The route pattern is the label, never the request path: a path carries
-// attendee tokens and identifiers, and a metric label outlives the request.
-app.Use(async (context, next) =>
-{
-    var started = Stamp.GetTimestamp();
-    await next(context);
-    var metrics = context.RequestServices.GetRequiredService<EventBookingMetrics>();
-    var route = context.GetEndpoint() is Microsoft.AspNetCore.Routing.RouteEndpoint endpoint
-        ? "/" + endpoint.RoutePattern.RawText?.TrimStart('/')
-        : "unmatched";
-    var tags = new TagList
-    {
-        { "route", route },
-        { "method", context.Request.Method },
-        { "status", context.Response.StatusCode },
-    };
-    metrics.Requests.Add(1, tags);
-    metrics.Duration.Record(Stamp.GetElapsedTime(started).TotalSeconds, tags);
-});
+app.UseMiddleware<RequestMetricsMiddleware>();
 
 app.MapOpenApi("/openapi/{documentName}.json").AllowAnonymous().DisableRateLimiting();
 app.UseSwaggerUI(options =>
@@ -209,11 +189,3 @@ app.Run();
 
 /// <summary>Named so the integration test factory can start this host.</summary>
 public partial class Program;
-
-/// <summary>The monotonic clock the request-duration histogram reads.</summary>
-internal static class Stamp
-{
-    public static long GetTimestamp() => Stopwatch.GetTimestamp();
-
-    public static TimeSpan GetElapsedTime(long from) => Stopwatch.GetElapsedTime(from);
-}

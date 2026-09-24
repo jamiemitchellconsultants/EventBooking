@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EventBooking.Api.Idempotency;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Access;
 using EventBooking.Domain.AttendeeGroups;
@@ -99,6 +100,61 @@ public sealed class IdempotencyTests(ApiFactory factory)
         Assert.Equal(1, await CountByEmailAsync(body.email));
         Assert.Equal(await responses[0].Content.ReadAsStringAsync(),
             await responses[1].Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// The replay is the response the caller missed, headers included: a 201 whose Location
+    /// vanished on retry would leave the caller unable to find what it created.
+    /// </summary>
+    [Fact]
+    public async Task AReplayCarriesTheFirstResponsesLocationAndContentType()
+    {
+        var (client, groupId) = await GivenCoordinatorAndGroupAsync();
+        var key = Guid.NewGuid().ToString();
+        var body = new { name = "Ada", email = "ada-location@example.com", attendeeGroupId = groupId };
+
+        var first = await PostAsync(client, body, key);
+        var second = await PostAsync(client, body, key);
+
+        Assert.NotNull(first.Headers.Location);
+        Assert.Equal(first.Headers.Location, second.Headers.Location);
+        Assert.Equal(
+            first.Content.Headers.ContentType?.MediaType,
+            second.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>
+    /// The key is refused before the handler runs. Checked after, the create would already be
+    /// committed when the retention write failed, and the caller's retry would create twice.
+    /// </summary>
+    [Fact]
+    public async Task AKeyLongerThanTheRetainedColumnIsRefusedBeforeAnythingIsCreated()
+    {
+        var (client, groupId) = await GivenCoordinatorAndGroupAsync();
+        var key = new string('k', IdempotencyMiddleware.MaxKeyLength + 1);
+        var body = new { name = "Ada", email = "ada-long-key@example.com", attendeeGroupId = groupId };
+
+        var response = await PostAsync(client, body, key);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("validation-failed", problem.GetProperty("type").GetString());
+        Assert.Equal(0, await CountByEmailAsync(body.email));
+    }
+
+    [Fact]
+    public async Task AKeyAtTheLimitIsRetainedAndReplayed()
+    {
+        var (client, groupId) = await GivenCoordinatorAndGroupAsync();
+        var key = new string('m', IdempotencyMiddleware.MaxKeyLength - 36) + Guid.NewGuid();
+        var body = new { name = "Ada", email = "ada-max-key@example.com", attendeeGroupId = groupId };
+
+        var first = await PostAsync(client, body, key);
+        var second = await PostAsync(client, body, key);
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+        Assert.Equal(1, await CountByEmailAsync(body.email));
     }
 
     private static async Task<HttpResponseMessage> PostAsync(

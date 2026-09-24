@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using EventBooking.Api.Auth;
+using EventBooking.Api.Pagination;
 using EventBooking.Application.Events;
 using EventBooking.Application.Negotiation;
 using ModelContextProtocol.Server;
@@ -15,6 +16,7 @@ public sealed class EventTools
     /// <summary>Lists events.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
+    /// <param name="cursors">The REST cursor signer.</param>
     /// <param name="limit">The page size.</param>
     /// <param name="locationId">The location filter, or null for every site.</param>
     /// <param name="from">The earliest start day, yyyy-MM-dd, or null.</param>
@@ -30,6 +32,7 @@ public sealed class EventTools
     public async Task<EventListView> ListEventsAsync(
         ICallerAccessor caller,
         ListEventsHandler handler,
+        PageCursor cursors,
         [Description("Page size, 1 to 200.")] int limit = 50,
         [Description("Narrow to one location.")] Guid? locationId = null,
         [Description("Earliest start day, yyyy-MM-dd.")] string? from = null,
@@ -40,10 +43,11 @@ public sealed class EventTools
     {
         var result = await handler.HandleAsync(
             new ListEventsQuery(
-                caller.RequireStaffUserId(), locationId, ParseDate(from), ParseDate(to),
-                appointmentTypeId, cursor, limit),
+                caller.RequireStaffUserId(), locationId,
+                IsoInput.OptionalDate(from, nameof(from)), IsoInput.OptionalDate(to, nameof(to)),
+                appointmentTypeId, cursors.Unwrap(cursor), limit),
             cancellationToken);
-        return result.ValueOrThrow();
+        return Signed(result.ValueOrThrow(), cursors);
     }
 
     /// <summary>Reads one event.</summary>
@@ -121,6 +125,7 @@ public sealed class EventTools
     /// <summary>Lists the active future events a cancellation can still reach.</summary>
     /// <param name="caller">The signed-in staff identity.</param>
     /// <param name="handler">The list handler.</param>
+    /// <param name="cursors">The REST cursor signer.</param>
     /// <param name="limit">The page size.</param>
     /// <param name="locationId">The location filter, or null for every site.</param>
     /// <param name="from">The earliest start day, yyyy-MM-dd, or null.</param>
@@ -135,6 +140,7 @@ public sealed class EventTools
     public async Task<EventListView> ListCancellableEventsAsync(
         ICallerAccessor caller,
         ListCancellableEventsHandler handler,
+        PageCursor cursors,
         [Description("Page size, 1 to 200.")] int limit = 50,
         [Description("Narrow to one location.")] Guid? locationId = null,
         [Description("Earliest start day, yyyy-MM-dd.")] string? from = null,
@@ -144,26 +150,15 @@ public sealed class EventTools
     {
         var result = await handler.HandleAsync(
             new ListCancellableEventsQuery(
-                caller.RequireStaffUserId(), locationId, ParseDate(from), ParseDate(to),
-                cursor, limit),
+                caller.RequireStaffUserId(), locationId,
+                IsoInput.OptionalDate(from, nameof(from)), IsoInput.OptionalDate(to, nameof(to)),
+                cursors.Unwrap(cursor), limit),
             cancellationToken);
-        return result.ValueOrThrow();
+        return Signed(result.ValueOrThrow(), cursors);
     }
 
-    /// <summary>Parses an optional calendar day or throws a plain refusal.</summary>
-    private static DateOnly? ParseDate(string? value)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        if (!DateOnly.TryParse(value, out var parsed))
-        {
-            throw new ModelContextProtocol.McpException(
-                "A yyyy-MM-dd date is required.");
-        }
-
-        return parsed;
-    }
+    /// <summary>Signs a page's next cursor and each row's own, as the REST lists do.</summary>
+    private static EventListView Signed(EventListView page, PageCursor cursors) => new(
+        [.. page.Items.Select(x => x with { Cursor = cursors.Protect(x.Cursor) })],
+        cursors.Wrap(page.NextCursor));
 }

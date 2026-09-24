@@ -478,11 +478,20 @@ public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeReposito
 {
     public List<AppointmentType> Items { get; } = AppointmentType.CreateFixedSet().ToList();
 
-    public Task<IReadOnlyList<AppointmentType>> ListAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<AppointmentType>>(Items.ToList());
+    /// <summary>Gets how many reads (list or single) reached the store, for round-trip tests.</summary>
+    public int Reads { get; private set; }
 
-    public Task<AppointmentType?> GetAsync(Guid id, CancellationToken cancellationToken) =>
-        Task.FromResult(Items.SingleOrDefault(t => t.Id == id));
+    public Task<IReadOnlyList<AppointmentType>> ListAsync(CancellationToken cancellationToken)
+    {
+        Reads++;
+        return Task.FromResult<IReadOnlyList<AppointmentType>>(Items.ToList());
+    }
+
+    public Task<AppointmentType?> GetAsync(Guid id, CancellationToken cancellationToken)
+    {
+        Reads++;
+        return Task.FromResult(Items.SingleOrDefault(t => t.Id == id));
+    }
 
     public Task<AppointmentType?> GetByCodeAsync(string code, CancellationToken cancellationToken)
     {

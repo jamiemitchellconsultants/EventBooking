@@ -33,13 +33,15 @@ public class SchemaTests(PostgresFixture fixture)
             // required once Task 11's repository computes it, the migration adding the
             // invite settings snapshots, the migration adding the outbox backoff and
             // correlation columns, the migration replacing the attendee status
-            // index with the list page's composite, and the migration adding the
-            // Idempotency-Key retention table. Committed migrations are never
+            // index with the list page's composite, the migration adding the
+            // Idempotency-Key retention table, and the migration retaining the replayed
+            // response's Location and content type. Committed migrations are never
             // rewritten: the chain is what keeps the schema regenerable.
             Assert.Equal(
                 ["20260920120000_InitialSchema", "20260920145721_RequireEventStartInstant",
                     "20260923202304_InviteSettingsSnapshots", "20260924040652_EmailOutboxColumns",
-                    "20260924045221_AttendeeListIndex", "20260924095643_IdempotencyRetention"],
+                    "20260924045221_AttendeeListIndex", "20260924095643_IdempotencyRetention",
+                    "20260924123603_IdempotencyReplayHeaders"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();

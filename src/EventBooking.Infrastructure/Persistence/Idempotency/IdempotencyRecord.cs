@@ -28,6 +28,12 @@ public sealed class IdempotencyRecord
     /// <summary>Gets the body the first call returned.</summary>
     public string Body { get; init; } = string.Empty;
 
+    /// <summary>Gets the content type the first call returned, if any.</summary>
+    public string? ContentType { get; init; }
+
+    /// <summary>Gets the Location header the first call returned, if any.</summary>
+    public string? Location { get; init; }
+
     /// <summary>Gets the instant the row was written.</summary>
     public DateTimeOffset CreatedAt { get; init; }
 }
@@ -49,6 +55,8 @@ public sealed class IdempotencyRecordConfiguration
         builder.Property(x => x.RequestHash).HasColumnName("request_hash").HasMaxLength(64);
         builder.Property(x => x.StatusCode).HasColumnName("status_code");
         builder.Property(x => x.Body).HasColumnName("body");
+        builder.Property(x => x.ContentType).HasColumnName("content_type").HasMaxLength(200);
+        builder.Property(x => x.Location).HasColumnName("location");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.HasIndex(x => x.CreatedAt).HasDatabaseName("ix_idempotency_record_created_at");
     }

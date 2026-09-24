@@ -91,15 +91,21 @@ public sealed class StaffAccessHandler(
         // One listing serves both the staff number and the name; no extra query.
         var identityByUserId = (await identities.ListAsync(cancellationToken))
             .ToDictionary(identity => identity.StaffUserId);
-        var views = new List<StaffAccessProfileView>();
-        foreach (var profile in current)
-        {
-            var identity = identityByUserId.GetValueOrDefault(profile.StaffUserId);
-            views.Add(await ToViewAsync(
-                profile, identity?.StaffId, cancellationToken, identity?.DisplayName));
-        }
-
-        return Result<IReadOnlyList<StaffAccessProfileView>>.Success(views);
+        // One read of the types serves every scoped row, rather than a lookup per profile.
+        var typeNameById = (await types.ListAsync(cancellationToken))
+            .ToDictionary(type => type.Id, type => type.Name);
+        return Result<IReadOnlyList<StaffAccessProfileView>>.Success(
+            current.Select(profile =>
+            {
+                var identity = identityByUserId.GetValueOrDefault(profile.StaffUserId);
+                return ToView(
+                    profile,
+                    identity?.StaffId,
+                    profile.AppointmentTypeId is { } typeId
+                        ? typeNameById.GetValueOrDefault(typeId)
+                        : null,
+                    identity?.DisplayName);
+            }).ToList());
     }
 
     /// <summary>Resolves an observed staff number after checking administration capability.</summary>
@@ -288,12 +294,22 @@ public sealed class StaffAccessHandler(
         StaffAccessProfile profile,
         StaffId? staffId,
         CancellationToken cancellationToken,
-        string? displayName = null) => new(
+        string? displayName = null) =>
+        ToView(
+            profile, staffId,
+            await TypeNameAsync(profile.AppointmentTypeId, cancellationToken),
+            displayName);
+
+    private static StaffAccessProfileView ToView(
+        StaffAccessProfile profile,
+        StaffId? staffId,
+        string? typeName,
+        string? displayName) => new(
         profile.StaffUserId,
         staffId,
         profile.Roles.OrderBy(role => role).ToList(),
         profile.AppointmentTypeId,
-        await TypeNameAsync(profile.AppointmentTypeId, cancellationToken),
+        typeName,
         profile.Version,
         displayName);
 

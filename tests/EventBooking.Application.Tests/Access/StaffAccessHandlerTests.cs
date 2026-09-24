@@ -14,6 +14,7 @@ public class StaffAccessHandlerTests
     private readonly InMemoryStaffIdentityRepository _identities = new();
     private readonly RecordingAuditLogger _audit = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly InMemoryAppointmentTypeRepository _types = new();
 
     public StaffAccessHandlerTests()
     {
@@ -272,7 +273,7 @@ public class StaffAccessHandlerTests
         new StaffAccessAuthorizer(_profiles),
         _unitOfWork,
         _audit,
-        new InMemoryAppointmentTypeRepository());
+        _types);
 
     /// <summary>Verifies an observed name reaches the listing while an unobserved one stays null.</summary>
     [Fact]
@@ -303,5 +304,27 @@ public class StaffAccessHandlerTests
         Assert.Equal(new StaffId("U000002"), first.StaffId);
         Assert.Null(second.DisplayName);
         Assert.Equal(new StaffId("U000003"), second.StaffId);
+    }
+
+    /// <summary>
+    /// The scope names come from one read of the types, not one per profile: the listing is
+    /// every staff member, and a lookup per row is a sequential round trip per row.
+    /// </summary>
+    [Fact]
+    public async Task ListAsyncReadsTheAppointmentTypesOnceForEveryScopedProfile()
+    {
+        _profiles.Add(StaffAccessProfile.Create(
+            Guid.NewGuid(), [Role.Manager], AppointmentTypeIds.DrugAndAlcoholTesting));
+        _profiles.Add(StaffAccessProfile.Create(
+            Guid.NewGuid(), [Role.Manager], AppointmentTypeIds.MedicalCheckUp));
+        _profiles.Add(StaffAccessProfile.Create(
+            Guid.NewGuid(), [Role.Manager], AppointmentTypeIds.UniformFitting));
+
+        var result = await Handler().ListAsync(Admin, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, _types.Reads);
+        Assert.Contains(result.Value, p =>
+            p.AppointmentTypeId == AppointmentTypeIds.MedicalCheckUp && p.AppointmentTypeName is not null);
     }
 }

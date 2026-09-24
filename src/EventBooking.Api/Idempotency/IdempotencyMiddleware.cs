@@ -17,6 +17,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
     /// <summary>The header design 05 names.</summary>
     public const string HeaderName = "Idempotency-Key";
 
+    /// <summary>The longest key the retention table holds.</summary>
+    public const int MaxKeyLength = 200;
+
     /// <summary>Applies the retention to one request.</summary>
     /// <param name="context">The request context.</param>
     /// <param name="store">The retention store.</param>
@@ -37,6 +40,21 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         }
 
         var key = header.ToString();
+
+        // Refused before the handler runs: a key the retention table cannot hold would fail
+        // the write only after the create had committed, and the caller's retry would then
+        // find nothing retained and create a second time.
+        if (key.Length > MaxKeyLength)
+        {
+            await ResultResponses
+                .ValidationFailed(
+                    HeaderName,
+                    "idempotency-key-too-long",
+                    $"An Idempotency-Key may be at most {MaxKeyLength} characters.")
+                .ExecuteAsync(context);
+            return;
+        }
+
         var route = context.GetEndpoint()?.DisplayName ?? context.Request.Path.Value ?? "/";
         context.Request.EnableBuffering();
         var requestHash = await HashBodyAsync(context.Request);
@@ -60,7 +78,12 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             }
 
             context.Response.StatusCode = retained.StatusCode;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = retained.ContentType;
+            if (retained.Location is not null)
+            {
+                context.Response.Headers.Location = retained.Location;
+            }
+
             await context.Response.WriteAsync(retained.Body, context.RequestAborted);
             return;
         }
@@ -83,9 +106,14 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         var body = await new StreamReader(buffer).ReadToEndAsync(context.RequestAborted);
         if (context.Response.StatusCode is >= 200 and < 300)
         {
+            var location = context.Response.Headers.Location.ToString();
             await store.SaveAsync(
-                staffUserId, route, key, requestHash, context.Response.StatusCode, body, now,
-                context.RequestAborted);
+                staffUserId, route, key,
+                new IdempotentResponse(
+                    requestHash, context.Response.StatusCode, body,
+                    context.Response.ContentType,
+                    string.IsNullOrEmpty(location) ? null : location),
+                now, context.RequestAborted);
         }
 
         await context.Response.WriteAsync(body, context.RequestAborted);
