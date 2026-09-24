@@ -12,6 +12,12 @@ public sealed class OpenApiClientContractTests
         (typeof(ApiLink), "ApiLink"),
         (typeof(EventTimeDto), "EventTimeResponse"),
         (typeof(MeDto), "CurrentStaffResponse"),
+        (typeof(LocationDto), "LocationResponse"),
+        (typeof(AppointmentTypeDto), "AppointmentTypeResponse"),
+        (typeof(AttendeeGroupDto), "AttendeeGroupResponse"),
+        (typeof(SettingsDto), "SettingsResponse"),
+        (typeof(StaffAccessProfileDto), "StaffAccessResponse"),
+        (typeof(SetStaffScopeOutcome), "SetStaffScopeOutcome"),
     ];
 
     [Fact]

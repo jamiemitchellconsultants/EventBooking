@@ -10,5 +10,15 @@ public static class RouteManifest
         new("home-ready", "/"),
         new("help-ready", "/help"),
         new("not-found", "/route-that-does-not-exist"),
+        new("admin-locations-ready", "/admin/locations"),
+        new("admin-locations-empty", "/admin/locations", "locations-empty"),
+        new("admin-locations-edit", "/admin/locations", "ready", "locations-edit"),
+        new("admin-locations-conflict", "/admin/locations", "locations-conflict", "locations-save"),
+        new("admin-appointment-types-ready", "/admin/appointment-types"),
+        new("admin-attendee-groups-ready", "/admin/attendee-groups"),
+        new("admin-attendee-groups-confirm", "/admin/attendee-groups", "ready", "group-confirm"),
+        new("admin-settings-ready", "/admin/settings"),
+        new("admin-staff-access-ready", "/admin/staff-access"),
+        new("reference-data-read-only", "/admin/locations", "reference-read-only"),
     ];
 }

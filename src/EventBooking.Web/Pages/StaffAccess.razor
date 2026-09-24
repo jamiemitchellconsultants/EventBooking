@@ -1,321 +1,39 @@
-@page "/staff-access"
+@page "/admin/staff-access"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@using EventBooking.Web.Services
-@inject StaffAccessClient StaffAccessApi
-@inject AdminClient Admin
-
+@inject StaffAccessClient Api
+@inject AdminClient Types
 <PageTitle>Staff access</PageTitle>
-
-<section class="page staff-access-page" aria-labelledby="staff-access-heading">
-    <header class="page-header">
-        <div>
-            <span class="eyebrow">Administration</span>
-            <h1 id="staff-access-heading">Staff access</h1>
-            <p>Appointment-type scope for staff whose roles are assigned through the identity provider.</p>
-        </div>
-    </header>
-
-    @if (_error is not null)
-    {
-        <div class="banner error" role="alert">@_error</div>
-    }
-    @if (_success is not null)
-    {
-        <div class="banner saved" role="status">@_success</div>
-    }
-
-    @if (_profiles is null)
-    {
-        <div class="card loading-block" role="status">
-            <span class="loading-line loading-line-short"></span>
-            <span class="loading-line"></span>
-            <span class="visually-hidden">Loading staff access…</span>
-        </div>
-    }
-    else if (_profiles.Count == 0)
-    {
-        <div class="card">
-            <div class="empty-state">
-                <strong>No one has signed in with a EventBooking role yet.</strong>
-                <p>Profiles appear here automatically the first time a staff member with an assigned role signs in.</p>
-            </div>
-        </div>
-    }
-    else
-    {
-        <div class="card">
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th scope="col" title="The staff number this identity signed in with.">Staff number</th>
-                            <th scope="col" title="Assigned through the identity provider. Read-only here.">Roles</th>
-                            <th scope="col" title="Only Manager and Appointment staff use a single appointment-type scope.">Appointment type</th>
-                            <th scope="col">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var profile in _profiles)
-                        {
-                            <tr @key="profile.StaffUserId">
-                                <td data-label="Staff number">@IdentityLabel(profile)</td>
-                                <td data-label="Roles">
-                                    <span class="chip-row">
-                                        @foreach (var role in profile.Roles)
-                                        {
-                                            <span class="role-chip">@DisplayRole(role)</span>
-                                        }
-                                    </span>
-                                </td>
-                                <td data-label="Appointment type">
-                                    @if (profile.AppointmentTypeName is not null)
-                                    {
-                                        @profile.AppointmentTypeName
-                                    }
-                                    else if (NeedsScope(profile))
-                                    {
-                                        <span class="awaiting-scope-badge">Awaiting appointment-type assignment</span>
-                                    }
-                                    else
-                                    {
-                                        <text>—</text>
-                                    }
-                                </td>
-                                <td data-label="Action">
-                                    @if (NeedsScope(profile))
-                                    {
-                                        <button class="button button-small edit-profile"
-                                                @onclick="() => Edit(profile)"
-                                                disabled="@_busy"
-                                                title="Set or change this profile's appointment-type scope.">
-                                            @(profile.AppointmentTypeId is null ? "Assign" : "Edit")
-                                        </button>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    }
-
-    @if (_editorOpen && _editingProfile is not null)
-    {
-        <section class="card editor-card" aria-labelledby="profile-editor-heading">
-            <div class="card-heading">
-                <h2 id="profile-editor-heading">
-                    @(_editingProfile.AppointmentTypeId is null ? "Assign appointment type" : "Edit appointment type")
-                </h2>
-            </div>
-            <div class="card-body editor-body">
-                <div class="field">
-                    <span class="field-label">Staff number</span>
-                    <span>@IdentityLabel(_editingProfile)</span>
-                </div>
-
-                <div class="field">
-                    <span class="field-label">Roles</span>
-                    <span class="chip-row">
-                        @foreach (var role in _editingProfile.Roles)
-                        {
-                            <span class="role-chip">@DisplayRole(role)</span>
-                        }
-                    </span>
-                    <span class="hint">Assigned through the identity provider. Not editable here.</span>
-                </div>
-
-                <div class="field">
-                    <label for="appointment-type">Appointment type</label>
-                    <select id="appointment-type"
-                            value="@_editAppointmentTypeId"
-                            @onchange="OnAppointmentTypeChanged"
-                            disabled="@_busy">
-                        <option value="">Select appointment type</option>
-                        @foreach (var type in _appointmentTypes)
-                        {
-                            <option value="@type.Id">@type.Name</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="editor-actions">
-                    <button class="button" @onclick="CloseEditor" disabled="@_busy">Cancel</button>
-                    @if (_editingProfile.AppointmentTypeId is not null)
-                    {
-                        <button class="button button-danger clear-scope"
-                                @onclick="ClearScopeAsync"
-                                disabled="@_busy"
-                                title="Clears this profile's appointment-type scope. The role stays assigned.">
-                            Clear scope
-                        </button>
-                    }
-                    <button class="button button-primary save-profile"
-                            @onclick="SaveAsync"
-                            disabled="@(_busy || _editAppointmentTypeId is null)">
-                        Save appointment type
-                    </button>
-                </div>
-            </div>
-        </section>
-    }
-</section>
-
-@code {
-    // The staff number stays visible next to the name: it is the identifier an admin acts on.
-    private static string IdentityLabel(StaffAccessProfileDto profile) => profile switch
-    {
-        { DisplayName: not null, StaffId: not null } => $"{profile.DisplayName} ({profile.StaffId})",
-        { StaffId: not null } => profile.StaffId,
-        _ => profile.StaffUserId.ToString(),
-    };
-
-    private const string UnexpectedError = "Something went wrong. Please try again.";
-
-    private IReadOnlyList<StaffAccessProfileDto>? _profiles;
-    private IReadOnlyList<AppointmentTypeDto> _appointmentTypes = [];
-    private StaffAccessProfileDto? _editingProfile;
-    private Guid? _editAppointmentTypeId;
-    private bool _editorOpen;
-    private bool _busy;
-    private string? _error;
-    private string? _success;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await ReloadAsync();
-        var settings = await Admin.GetAsync(CancellationToken.None);
-        if (settings.IsSuccess)
-        {
-            _appointmentTypes = settings.Value!.AppointmentTypes;
-        }
-        else
-        {
-            _error = settings.ErrorMessage;
-        }
-    }
-
-    private static bool NeedsScope(StaffAccessProfileDto profile) =>
-        profile.Roles.Contains("Manager") || profile.Roles.Contains("AppointmentStaff");
-
-    private static string DisplayRole(string role) =>
-        role == "AppointmentStaff" ? "Appointment staff" : role;
-
-    private void Edit(StaffAccessProfileDto profile)
-    {
-        _editorOpen = true;
-        _editingProfile = profile;
-        _editAppointmentTypeId = profile.AppointmentTypeId;
-        _error = null;
-        _success = null;
-    }
-
-    private void OnAppointmentTypeChanged(ChangeEventArgs eventArgs)
-    {
-        _editAppointmentTypeId = Guid.TryParse(eventArgs.Value?.ToString(), out var id)
-            ? id
-            : null;
-    }
-
-    private void CloseEditor() => _editorOpen = false;
-
-    private async Task ReloadAsync()
-    {
-        try
-        {
-            var outcome = await StaffAccessApi.ListAsync(CancellationToken.None);
-            if (outcome.IsSuccess)
-            {
-                _profiles = outcome.Value!;
-                return;
-            }
-
-            _error = outcome.ErrorMessage ?? UnexpectedError;
-        }
-        catch (Exception)
-        {
-            _error = UnexpectedError;
-        }
-    }
-
-    private async Task SaveAsync()
-    {
-        if (_editingProfile is null || _editAppointmentTypeId is null)
-        {
-            return;
-        }
-
-        _error = null;
-        _success = null;
-        _busy = true;
-        try
-        {
-            var outcome = await StaffAccessApi.ReplaceScopeAsync(
-                _editingProfile.StaffUserId,
-                _editAppointmentTypeId,
-                _editingProfile.Version,
-                CancellationToken.None);
-            if (!outcome.IsSuccess)
-            {
-                _error = outcome.ErrorMessage ?? UnexpectedError;
-                if (outcome.StatusCode == 409)
-                {
-                    await ReloadAsync();
-                }
-                return;
-            }
-
-            _success = outcome.Value!.FormerManagerStaffUserId is Guid former
-                ? $"Appointment type saved. Manager scope was cleared for {former}."
-                : "Appointment type saved.";
-            await ReloadAsync();
-            _editorOpen = false;
-        }
-        catch (Exception)
-        {
-            _error = UnexpectedError;
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
-
-    private async Task ClearScopeAsync()
-    {
-        if (_editingProfile is null)
-        {
-            return;
-        }
-
-        _error = null;
-        _success = null;
-        _busy = true;
-        try
-        {
-            var outcome = await StaffAccessApi.ClearScopeAsync(
-                _editingProfile.StaffUserId, _editingProfile.Version, CancellationToken.None);
-            if (!outcome.IsSuccess)
-            {
-                _error = outcome.ErrorMessage ?? UnexpectedError;
-                if (outcome.StatusCode == 409)
-                {
-                    await ReloadAsync();
-                }
-                return;
-            }
-
-            _success = "Appointment-type scope cleared.";
-            await ReloadAsync();
-            _editorOpen = false;
-        }
-        catch (Exception)
-        {
-            _error = UnexpectedError;
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
+<section class="page staff-access-page" aria-labelledby="staff-access-heading" aria-busy="@(_loading || _busy ? "true" : "false")">
+<div class="page-header"><div><span class="eyebrow">Administration</span><h1 id="staff-access-heading">Staff access</h1><p>Appointment-type scope per staff profile. Roles are set elsewhere and shown here read-only.</p></div></div>
+@if (_error is not null) { <Banner Variant="BannerVariant.Error" Message="@_error" Retry="LoadAsync" /> }
+@if (_confirmation is not null) { <Banner Variant="BannerVariant.Success" Message="@_confirmation" /> }
+@if (_loading) { <p role="status">Loading…</p> }
+else if (_rows.Count == 0) { <p>No staff profiles yet.</p> }
+else
+{
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Staff</th><th scope="col">Roles</th><th scope="col">Scope</th><th scope="col">Change scope</th></tr></thead>
+<tbody>
+@foreach (var profile in _rows)
+{
+<tr>
+<td data-label="Staff">@(profile.DisplayName ?? profile.StaffId ?? profile.StaffUserId.ToString())</td>
+<td data-label="Roles"><span class="chip-row">@foreach (var role in profile.Roles) { <span class="role-chip">@role</span> }</span></td>
+<td data-label="Scope">@ScopeName(profile.AppointmentTypeId)</td>
+<td data-label="Change scope">
+@if (profile.Links.Allows("setScope"))
+{
+<select aria-label="@($"Scope for {profile.DisplayName ?? profile.StaffId}")" @bind="_scope[profile.StaffUserId]">
+<option value="">No scope</option>
+@foreach (var option in _options) { <option value="@option.Id">@option.Name</option> }
+</select>
+<button data-action="save-scope" class="button" disabled="@_busy" @onclick="() => SaveAsync(profile)">Save scope</button>
 }
+</td>
+</tr>
+}
+</tbody>
+</table></div>
+}
+</section>
+@code { private readonly List<StaffAccessProfileDto> _rows=[]; private readonly Dictionary<Guid,Guid?> _scope=[]; private IReadOnlyList<AppointmentTypeDto> _options=[]; private bool _loading=true,_busy; private string? _error; private string? _confirmation; protected override Task OnInitializedAsync()=>LoadAsync(); private async Task LoadAsync(){_loading=true;_error=null;try{var profiles=await Api.ListAsync(CancellationToken.None);var types=await Types.ListAppointmentTypesAsync(false,CancellationToken.None);if(profiles.IsSuccess){_rows.Clear();_rows.AddRange(profiles.Value!.Items);_scope.Clear();foreach(var p in _rows)_scope[p.StaffUserId]=p.AppointmentTypeId;}else _error=profiles.ErrorMessage;if(types.IsSuccess)_options=types.Value!.Items.Where(x=>x.IsActive).ToArray();}catch(Exception){_error="Something went wrong. Please try again.";}_loading=false;} private string ScopeName(Guid? id)=>id is null?"No scope":_options.FirstOrDefault(x=>x.Id==id)?.Name??"Unknown type"; private async Task SaveAsync(StaffAccessProfileDto profile){_busy=true;_error=null;_confirmation=null;try{var chosen=_scope.TryGetValue(profile.StaffUserId,out var selected)?selected:profile.AppointmentTypeId;var r=await Api.SetScopeAsync(profile.StaffUserId,chosen,profile.Version,CancellationToken.None);if(r.IsSuccess){var outcome=r.Value!;var index=_rows.IndexOf(profile);if(index>=0)_rows[index]=profile with{AppointmentTypeId=outcome.AppointmentTypeId};_scope[profile.StaffUserId]=outcome.AppointmentTypeId;_confirmation=outcome.DisplacedManagerDisplayName is null?$"Scope saved for {profile.DisplayName??profile.StaffId}.$":$"{outcome.DisplacedManagerDisplayName} is no longer the Manager for {ScopeName(outcome.AppointmentTypeId)}.";}else _error=r.ErrorMessage;}catch(Exception){_error="Something went wrong. Please try again.";}_busy=false;} }

@@ -62,7 +62,7 @@ public class RepairBWebComponentTests : BunitContext
         var cut = RenderAuthenticatedHome(new(["Admin"], null, null));
 
         Assert.Contains("Roles: Admin", cut.Markup);
-        Assert.Contains("href=\"/settings\"", cut.Markup);
+        Assert.Contains("href=\"/admin/settings\"", cut.Markup);
         Assert.DoesNotContain("href=\"/events\"", cut.Markup);
     }
 
@@ -271,7 +271,9 @@ public class RepairBWebComponentTests : BunitContext
     private static SettingsDto SettingsWithManager(Guid appointmentTypeId) => new(
         4,
         2,
-        [new AppointmentTypeDto(appointmentTypeId, "DAT", "Drug & Alcohol Testing", null)]);
+        3,
+        1,
+        new Dictionary<string, ApiLink>());
 
     private sealed class RoutedHandler : HttpMessageHandler
     {
