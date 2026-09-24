@@ -13,8 +13,6 @@ namespace EventBooking.Api.Endpoints;
 /// <summary>Maps the thirteen attendee routes.</summary>
 public static class AttendeeEndpoints
 {
-    private const int MaxImportBytes = 1_048_576;
-
     /// <summary>Attendee fields accepted by create and update operations.</summary>
     public sealed record SaveAttendeeRequest(string? Name, string? Email, Guid? AttendeeGroupId);
 
@@ -164,7 +162,7 @@ public static class AttendeeEndpoints
                     "file", "file-required", "A CSV file is required.");
             }
 
-            if (file.Length > MaxImportBytes)
+            if (file.Length > ImportAttendeesHandler.MaxBytes)
             {
                 return ResultResponses.ValidationFailed(
                     "file", "file-too-large", "The file must be 1 MB or smaller.");

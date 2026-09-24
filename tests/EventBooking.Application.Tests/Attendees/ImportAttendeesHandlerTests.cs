@@ -174,4 +174,51 @@ public class ImportAttendeesHandlerTests
         Assert.Equal(2, result.Value.Errors.Count);
         Assert.Equal([2, 3], result.Value.Errors.Select(e => e.LineNumber));
     }
+
+    /// <summary>
+    /// The row bound counts data lines, not lines that parsed: a file of malformed lines is
+    /// just as oversized, and answering it row by row would return an error per line.
+    /// </summary>
+    [Fact]
+    public async Task MoreThanAThousandDataLinesIsRefusedEvenWhenTheyAreMalformed()
+    {
+        var lines = Enumerable.Range(0, ImportAttendeesHandler.MaxDataRows + 1).Select(_ => "bad");
+
+        var result = await Import(Header + "\n" + string.Join("\n", lines));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation", result.Error.Code);
+        Assert.Contains("1000", result.Error.Message, StringComparison.Ordinal);
+        Assert.Empty(_attendees.Items);
+    }
+
+    [Fact]
+    public async Task AThousandDataLinesIsWithinTheBound()
+    {
+        var lines = Enumerable.Range(0, ImportAttendeesHandler.MaxDataRows)
+            .Select(i => $"Attendee {i},a{i}@mail.com,PILOTS");
+
+        var result = await Import(Header + "\n" + string.Join("\n", lines));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Accepted);
+        Assert.Equal(ImportAttendeesHandler.MaxDataRows, result.Value.ImportedCount);
+    }
+
+    /// <summary>
+    /// The size bound is the handler's too, so the import tool, which receives the CSV as a
+    /// string rather than a file part, refuses what the REST route refuses.
+    /// </summary>
+    [Fact]
+    public async Task ContentOverOneMegabyteIsRefused()
+    {
+        var name = new string('a', ImportAttendeesHandler.MaxBytes);
+
+        var result = await Import($"{Header}\n{name},a.novak@mail.com,PILOTS");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation", result.Error.Code);
+        Assert.Contains("1 MB", result.Error.Message, StringComparison.Ordinal);
+        Assert.Empty(_attendees.Items);
+    }
 }
