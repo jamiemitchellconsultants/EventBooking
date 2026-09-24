@@ -20,5 +20,14 @@ public static class RouteManifest
         new("admin-settings-ready", "/admin/settings"),
         new("admin-staff-access-ready", "/admin/staff-access"),
         new("reference-data-read-only", "/admin/locations", "reference-read-only"),
+        new("negotiation-ready", "/events/negotiate"),
+        new("negotiation-forbidden", "/events/negotiate", "negotiation-forbidden"),
+        new("negotiation-validation", "/events/negotiate", "proposal-validation", "submit-proposal"),
+        new("negotiation-capacity-conflict", "/events/negotiate", "capacity-conflict", "save-capacity"),
+        new("event-operations-ready", "/events/operations"),
+        new("event-operations-confirm", "/events/operations", "cancel-confirmation", "begin-event-cancel"),
+        new("appointments-ready", "/appointments"),
+        new("appointments-empty", "/appointments", "workspace-empty"),
+        new("appointments-conflict", "/appointments", "workspace-conflict", "check-in-conflict"),
     ];
 }

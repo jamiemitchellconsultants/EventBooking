@@ -23,6 +23,7 @@ public static class E2EApiStub
                 : CollectionLinks(),
         }));
         MapTask25(app);
+        MapTask26(app);
     }
 
     private static void MapTask25(WebApplication app)
@@ -82,4 +83,63 @@ public static class E2EApiStub
         ["createAttendee"] = new { href = "/api/attendees", method = "POST", operationId = "createAttendee" },
         ["importAttendees"] = new { href = "/api/attendees/import", method = "POST", operationId = "importAttendees" },
     };
+
+    private static void MapTask26(WebApplication app)
+    {
+        var eventId = Guid.Parse("30000000-0000-0000-0000-000000000003");
+        var appointmentId = Guid.Parse("40000000-0000-0000-0000-000000000004");
+        var time = new { date = "2026-10-14", startTime = "09:30:00", durationMinutes = 90,
+            startLocal = "2026-10-14T09:30:00+01:00", endLocal = "2026-10-14T11:00:00+01:00",
+            startUtc = "2026-10-14T08:30:00Z", endUtc = "2026-10-14T10:00:00Z",
+            timeZoneId = "Europe/London", zoneAbbreviation = "BST" };
+        app.MapGet("/api/event-proposals", (HttpContext context) =>
+            FixtureState(context) == "negotiation-forbidden"
+            ? Results.Problem(statusCode: 403, type: "forbidden")
+            : Results.Json(new { items = new[] { new {
+            id = Guid.NewGuid(), locationId = Guid.NewGuid(), locationCode = "LON", locationName = "London HQ",
+            time, status = "Open", listedTypeCount = 3, acceptedTypeCount = 2, myAcceptedHeadcount = (int?)null,
+            acceptedByMe = false, createdByMe = true, types = new[] { new { code = "MED", name = "Medical check" } },
+            _links = new Dictionary<string, object> { ["accept"] = new { href = "/acceptance", method = "PUT", operationId = "recordAcceptance" } } } }, nextCursor = (string?)null }));
+        // The real validation body carries `errors` as an array of field objects, not the
+        // dictionary Results.ValidationProblem emits, so the stub builds it explicitly.
+        app.MapPost("/api/event-proposals", (HttpContext context) =>
+            FixtureState(context) == "proposal-validation"
+                ? Results.Problem(
+                    detail: "The request could not be accepted.",
+                    statusCode: 422,
+                    title: "The request could not be accepted.",
+                    type: "validation-failed",
+                    extensions: new Dictionary<string, object?>
+                    {
+                        ["errors"] = new[] { new { field = "headcount", line = (int?)null, code = "invalid", message = "Headcount must be at least one." } },
+                    })
+                : Results.Created("/api/event-proposals/1", new { proposalId = Guid.NewGuid(), status = "Open", eventId = (Guid?)null }));
+        app.MapGet("/api/events", () => Results.Json(new { items = new[] { new { id = eventId,
+            proposalId = Guid.NewGuid(), locationId = Guid.NewGuid(), locationCode = "LON", locationName = "London HQ",
+            time, status = "Active", capacities = new[] { new { appointmentTypeId = Guid.NewGuid(), code = "MED", name = "Medical check", totalHeadcount = 6, remainingCapacity = 3,
+                _links = new Dictionary<string, object> { ["adjust"] = new { href = "/capacity", method = "PUT", operationId = "adjustEventCapacity" } } } },
+            activeBookings = 3, _links = new Dictionary<string, object> { ["cancel"] = new { href = "/cancel", method = "POST", operationId = "cancelEvent" } } } }, nextCursor = (string?)null }));
+        app.MapPut("/api/events/{id:guid}/capacities/{typeId:guid}", (HttpContext context) =>
+            FixtureState(context) == "capacity-conflict"
+                ? Results.Problem(statusCode: 409, type: "capacity-below-bookings",
+                    extensions: new Dictionary<string, object?>
+                    {
+                        ["minimum"] = 3,
+                        ["current"] = new { totalHeadcount = 6, remainingCapacity = 3 },
+                    })
+                : Results.Ok(new { eventId, totalHeadcount = 6, remainingCapacity = 3, changed = true }));
+        app.MapGet("/api/appointment-workspace/events", (HttpContext context) => Results.Json(new {
+            items = FixtureState(context) == "workspace-empty" ? Array.Empty<object>() : [new { eventId,
+                locationId = Guid.NewGuid(), locationName = "London HQ", time, status = "Active",
+                _links = new Dictionary<string, object>() }], nextCursor = (string?)null }));
+        app.MapGet("/api/appointment-workspace/events/{id:guid}", (Guid id) => Results.Json(new { items = new[] { new {
+            appointmentId, name = "R. Singh", email = "r@example.org", scopeTypeCode = "MED",
+            appointmentStatus = "Expected", checkedInAt = (string?)null, version = 1,
+            _links = new Dictionary<string, object> { ["checkIn"] = new { href = $"/api/appointment-workspace/appointments/{appointmentId}/status", method = "PUT", operationId = "setAppointmentStatus" } } } }, nextCursor = (string?)null }));
+        // The real endpoint answers 200 with the updated appointment, never 204.
+        app.MapPut("/api/appointment-workspace/appointments/{id:guid}/status", (HttpContext context, Guid id) =>
+            FixtureState(context) == "workspace-conflict"
+                ? Results.Problem(statusCode: 409, type: "version-conflict")
+                : Results.Ok(new { bookingAppointmentId = id, status = "CheckedIn", checkedInAt = "2026-10-14T09:35:00+01:00", outcomeAt = (string?)null, version = 2, _links = new Dictionary<string, object>() }));
+    }
 }

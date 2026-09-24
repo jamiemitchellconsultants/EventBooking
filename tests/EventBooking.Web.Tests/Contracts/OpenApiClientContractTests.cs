@@ -18,6 +18,16 @@ public sealed class OpenApiClientContractTests
         (typeof(SettingsDto), "SettingsResponse"),
         (typeof(StaffAccessProfileDto), "StaffAccessResponse"),
         (typeof(SetStaffScopeOutcome), "SetStaffScopeOutcome"),
+        (typeof(EventProposalDto), "EventProposalResponse"),
+        (typeof(ProposalTypeDto), "ProposalTypeResponse"),
+        (typeof(EventCapacityDto), "EventCapacityResponse"),
+        (typeof(EventDto), "EventResponse"),
+        (typeof(ProposeEventOutcome), "ProposeEventOutcome"),
+        (typeof(RecordAcceptanceOutcome), "RecordAcceptanceOutcome"),
+        (typeof(AdjustEventCapacityOutcome), "AdjustEventCapacityOutcome"),
+        (typeof(CancelEventOutcome), "CancelEventOutcome"),
+        (typeof(WorkspaceEventDto), "WorkspaceEventResponse"),
+        (typeof(WorkspaceRosterRowDto), "WorkspaceRosterRowResponse"),
     ];
 
     [Fact]

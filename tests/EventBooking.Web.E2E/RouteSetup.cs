@@ -19,6 +19,18 @@ public static class RouteSetup
                 await page.Locator("[data-action='edit']").First.ClickAsync();
                 await page.Locator("[data-action='save']").ClickAsync();
             },
+            ["submit-proposal"] = async page =>
+            {
+                await page.Locator("[data-action='propose']").ClickAsync();
+                await page.Locator("[data-action='submit-proposal']").ClickAsync();
+            },
+            ["save-capacity"] = async page =>
+            {
+                await page.Locator("input[name='totalHeadcount']").First.FillAsync("1");
+                await page.Locator("[data-action='save-capacity']").First.ClickAsync();
+            },
+            ["begin-event-cancel"] = page => page.Locator("[data-action='cancel-event']").First.ClickAsync(),
+            ["check-in-conflict"] = page => page.Locator("[data-action='check-in']").First.ClickAsync(),
         };
 
     public static async Task ApplyAsync(IPage page, string? action)

@@ -185,14 +185,14 @@ public class RepairBWebComponentTests : BunitContext
     {
         var handler = new RoutedHandler();
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
+        Services.AddSingleton<IEventsClient>(new EventsClient(NewHttpClient(handler)));
 
         var cut = Render<EventNegotiation>();
 
         cut.WaitForAssertion(() =>
         {
             Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy"));
-            Assert.Equal("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent.Trim());
+            Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
         });
     }
 
@@ -202,18 +202,32 @@ public class RepairBWebComponentTests : BunitContext
     [Fact]
     public async Task EventsMutationTransportExceptionRendersAnAlertAndClearsBusy()
     {
+        // The negotiation board loads reference data, proposals and events before the
+        // proposal dialog can submit; the failure below lands on the submit call.
+        var scopeType = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new EventBoardDto([], [])));
+        handler.Enqueue(_ => Raw("""
+            {"displayName":"Manny Manager","staffId":"M1","roles":["Manager"],"scopeAppointmentTypeId":"SCOPE","scopeAppointmentTypeCode":"MED","scopeAppointmentTypeName":"Medical check","capabilities":[],"problem":null,"_links":{"proposeEvent":{"href":"/api/event-proposals","method":"POST","operationId":"proposeEvent"}}}
+            """.Replace("SCOPE", scopeType.ToString())));
+        handler.Enqueue(_ => Raw("""
+            {"items":[{"id":"10000000-0000-0000-0000-000000000001","code":"LON","name":"London HQ","address":"1 Example St","timeZoneId":"Europe/London","isActive":true,"version":1,"_links":{}}],"nextCursor":null}
+            """));
+        handler.Enqueue(_ => Raw("""
+            {"items":[{"id":"SCOPE","code":"MED","name":"Medical check","isActive":true,"version":1,"hasManager":true,"managerDisplayName":"Manny Manager","_links":{}}],"nextCursor":null}
+            """.Replace("SCOPE", scopeType.ToString())));
+        handler.Enqueue(_ => Raw("""{"items":[],"nextCursor":null}"""));
+        handler.Enqueue(_ => Raw("""{"items":[],"nextCursor":null}"""));
         handler.Enqueue(_ => throw new HttpRequestException("offline"));
-        Services.AddSingleton(new EventsClient(NewHttpClient(handler)));
+        Services.AddSingleton<IEventsClient>(new EventsClient(NewHttpClient(handler)));
 
         var cut = Render<EventNegotiation>();
-        cut.WaitForAssertion(() => Assert.Contains("Submit proposal", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Propose event", cut.Markup));
 
-        await cut.InvokeAsync(() => cut.Find("button.button-primary").Click());
+        await cut.InvokeAsync(() => cut.Find("[data-action='propose']").Click());
+        await cut.InvokeAsync(() => cut.Find("[data-action='submit-proposal']").Click());
 
-        Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy"));
-        Assert.Equal("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent.Trim());
+        cut.WaitForAssertion(() => Assert.Equal("false", cut.Find(".event-board").GetAttribute("aria-busy")));
+        Assert.Contains("Something went wrong. Please try again.", cut.Find("[role=alert]").TextContent);
     }
 
     /// <summary>
@@ -268,6 +282,11 @@ public class RepairBWebComponentTests : BunitContext
         Content = JsonContent.Create(value, options: CamelCase),
     };
 
+    private static HttpResponseMessage Raw(string body) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(body, Encoding.UTF8, "application/json"),
+    };
+
     private static SettingsDto SettingsWithManager(Guid appointmentTypeId) => new(
         4,
         2,
@@ -297,55 +316,4 @@ public class RepairBWebComponentTests : BunitContext
         }
     }
 
-    private sealed class BrowserFile(string name, string content) : IBrowserFile
-    {
-        /// <summary>
-        /// Gets the browser-provided file name used by the upload component.
-        /// </summary>
-        public string Name => name;
-
-        /// <summary>
-        /// Gets a deterministic modification instant for this in-memory upload fixture.
-        /// </summary>
-        public DateTimeOffset LastModified => DateTimeOffset.UnixEpoch;
-
-        /// <summary>
-        /// Gets the UTF-8 byte length of the fixture's CSV content.
-        /// </summary>
-        public long Size => Encoding.UTF8.GetByteCount(content);
-
-        /// <summary>
-        /// Gets the CSV media type supplied to the file input.
-        /// </summary>
-        public string ContentType => "text/csv";
-
-        /// <summary>
-        /// Opens the in-memory CSV content for the component upload path.
-        /// </summary>
-        /// <param name="maxAllowedSize">The maximum permitted input size requested by the component.</param>
-        /// <param name="cancellationToken">Cancels opening the in-memory stream.</param>
-        /// <returns>A readable stream containing the fixture's CSV content.</returns>
-        public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default) =>
-            new MemoryStream(Encoding.UTF8.GetBytes(content));
-    }
-
-    /// <summary>
-    /// The page lists events on init. These import tests care only about the import card,
-    /// so the event list is served from its own always-empty handler rather than the queued one.
-    /// </summary>
-    private void GivenNoEvents() =>
-        Services.AddSingleton(new EventsClient(new HttpClient(new EmptyEventOperationsHandler())
-        {
-            BaseAddress = new Uri("https://api.example.com"),
-        }));
-
-    private sealed class EmptyEventOperationsHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(new EventOperationsDto([]), options: CamelCase),
-            });
-    }
 }

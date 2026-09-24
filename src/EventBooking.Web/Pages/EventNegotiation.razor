@@ -1,393 +1,298 @@
 @page "/events/negotiate"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@using EventBooking.Web.Services
-@inject EventsClient EventsApi
-
-<PageTitle>Event proposals</PageTitle>
-
-<div class="page event-board" aria-busy="@(_loading || _busy ? "true" : "false")">
-    <div class="page-header">
-        <div>
-            <span class="eyebrow">Event negotiation</span>
-            <h1>Event proposals</h1>
-            <p>Propose shared windows, accept with your headcount, and adjust capacity on events.</p>
-        </div>
-    </div>
-
-    @if (_error is not null)
-    {
-        <p class="banner error" role="alert">@_error</p>
-    }
-
-    @if (_board is null)
-    {
-        <div class="card loading-block" aria-label="Loading event board">
-            <span class="loading-line loading-line-medium"></span>
-            <span class="loading-line"></span>
-            <span class="loading-line loading-line-short"></span>
-        </div>
-    }
-    else
-    {
-        <section class="card" aria-labelledby="propose-heading">
-            <div class="card-heading">
-                <h2 id="propose-heading">
-                    Propose a new event
-                    <span class="tip" tabindex="0" role="note"
-                          aria-label="A proposal only becomes a event once every appointment type has accepted it."
-                          data-tip="A proposal only becomes a event once every appointment type has accepted it."></span>
-                </h2>
-            </div>
-            <div class="card-body proposal-form">
-                <div class="field">
-                    <label for="new-event-date">Date</label>
-                    <InputDate id="new-event-date" @bind-Value="_newDate" />
-                    <span class="hint">Must be a future date.</span>
-                </div>
-                <div class="field">
-                    <label for="new-event-start">Start time</label>
-                    <input id="new-event-start" type="time" step="3600" @bind="_newStartTime" />
-                    <span class="hint">Windows are fixed at four hours.</span>
-                </div>
-                <button class="button button-primary" @onclick="ProposeAsync" disabled="@_busy"
-                        title="Sends the window to the other appointment types for acceptance.">
-                    Submit proposal
-                </button>
-            </div>
-        </section>
-
-        <section class="card" aria-labelledby="open-heading">
-            <div class="card-heading">
-                <h2 id="open-heading">
-                    Open proposals
-                    <span class="tip" tabindex="0" role="note"
-                          aria-label="Windows waiting on acceptances. Accept with the number of attendees you can handle; you can revise it until the event confirms."
-                          data-tip="Windows waiting on acceptances. Accept with the number of attendees you can handle; you can revise it until the event confirms."></span>
-                </h2>
-            </div>
-            @if (_board.OpenProposals.Count == 0)
-            {
-                <div class="empty-state">
-                    <strong>No open proposals.</strong>
-                    <p>Propose a event above to start a negotiation.</p>
-                </div>
-            }
-            else
-            {
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th scope="col">Date</th>
-                                <th scope="col">Window</th>
-                                <th scope="col" title="Appointment types that have already accepted this window.">Accepted by</th>
-                                <th scope="col" title="How many attendees your appointment type can see in this window.">My headcount</th>
-                                <th scope="col" class="actions-column"><span class="muted">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var proposal in _board.OpenProposals)
-                            {
-                                <tr>
-                                    <td data-label="Date">@proposal.Date.ToString("yyyy-MM-dd")</td>
-                                    <td data-label="Window">
-                                        @proposal.StartTime.ToString("HH\\:mm")-@proposal.EndTime.ToString("HH\\:mm")
-                                    </td>
-                                    <td data-label="Accepted by">
-                                        <span class="chip-row">
-                                            @foreach (var name in proposal.AcceptedByAppointmentTypeNames ?? [])
-                                            {
-                                                <span class="chip">@name</span>
-                                            }
-                                        </span>
-                                    </td>
-                                    <td data-label="My headcount">
-                                        <input class="number-input"
-                                               type="number"
-                                               min="1"
-                                               @bind="_headcounts[proposal.ProposalId]"
-                                               title="Attendees your appointment type can take in this window."
-                                               aria-label="@($"Headcount for {proposal.Date:yyyy-MM-dd}")" />
-                                    </td>
-                                    <td data-label="Actions">
-                                        <span class="row-actions">
-                                            <button class="button button-primary" @onclick="() => AcceptAsync(proposal.ProposalId)"
-                                                    disabled="@_busy"
-                                                    title="Records your acceptance with the headcount shown.">
-                                                @(proposal.AcceptedByMe ? "Update acceptance" : "Accept")
-                                            </button>
-                                            @if (proposal.AcceptedByMe)
-                                            {
-                                                <button class="button button-quiet" @onclick="() => WithdrawAcceptanceAsync(proposal.ProposalId)"
-                                                        disabled="@_busy"
-                                                        title="Removes your acceptance. The proposal stays open for the others.">Withdraw acceptance</button>
-                                            }
-                                            @if (proposal.CreatedByMe)
-                                            {
-                                                <button class="button button-quiet" @onclick="() => WithdrawProposalAsync(proposal.ProposalId)"
-                                                        disabled="@_busy"
-                                                        title="Takes the whole proposal off the board for everyone.">Withdraw proposal</button>
-                                            }
-                                        </span>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-        </section>
-
-        <section class="card" aria-labelledby="confirmed-heading">
-            <div class="card-heading">
-                <h2 id="confirmed-heading">
-                    Events (this type)
-                    <span class="tip tip-end" tabindex="0" role="note"
-                          aria-label="Confirmed windows attendees can book into. Lowering your headcount below the attendees already booked is refused."
-                          data-tip="Confirmed windows attendees can book into. Lowering your headcount below the attendees already booked is refused."></span>
-                </h2>
-            </div>
-            @if (_board.Events.Count == 0)
-            {
-                <div class="empty-state">
-                    <strong>No events.</strong>
-                    <p>Events appear here once all three managers have accepted them.</p>
-                </div>
-            }
-            else
-            {
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th scope="col">Date</th>
-                                <th scope="col">Window</th>
-                                <th scope="col" title="Total attendees your appointment type will see in this window.">My total</th>
-                                <th scope="col" title="Places left after the attendees already booked in.">Remaining</th>
-                                <th scope="col" class="actions-column"><span class="muted">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var eventItem in _board.Events)
-                            {
-                                <tr class="@(_cancelAwaitingConfirmation == eventItem.EventId ? "awaiting-confirmation" : null)">
-                                    <td data-label="Date">@eventItem.Date.ToString("yyyy-MM-dd")</td>
-                                    <td data-label="Window">@eventItem.StartTime.ToString("HH\\:mm")-@eventItem.EndTime.ToString("HH\\:mm")</td>
-                                    <td data-label="My total">
-                                        <input class="number-input"
-                                               type="number"
-                                               min="1"
-                                               @bind="_confirmedTotals[eventItem.EventId]"
-                                               title="Cannot go below the number of attendees already booked."
-                                               aria-label="@($"Total headcount for {eventItem.Date:yyyy-MM-dd}")" />
-                                    </td>
-                                    <td data-label="Remaining">@eventItem.MyRemainingCapacity</td>
-                                    <td data-label="Actions">
-                                        <span class="row-actions">
-                                            <button class="button" @onclick="() => AdjustCapacityAsync(eventItem.EventId)"
-                                                    disabled="@_busy"
-                                                    title="Saves the total shown against this eventItem.">Adjust headcount</button>
-                                            <button class="button button-danger" @onclick="() => CancelEventAsync(eventItem.EventId)"
-                                                    disabled="@_busy"
-                                                    title="Cancels the window for every appointment type. Booked attendees have to be re-invited.">
-                                                @(_cancelAwaitingConfirmation == eventItem.EventId ? "Confirm cancel" : "Cancel event")
-                                            </button>
-                                        </span>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-        </section>
-    }
+@inject IEventsClient Api
+<PageTitle>Negotiation board</PageTitle>
+<section class="page event-board" aria-labelledby="negotiation-heading" aria-busy="@(_loading || _busy ? "true" : "false")">
+<div class="page-header"><div><span class="eyebrow">Manager</span><h1 id="negotiation-heading">Negotiation@(_scopeTypeName is not null ? $" — {_scopeTypeName} (your type)" : "")</h1></div>
+@if (_reference?.CollectionLinks.Allows("proposeEvent") == true) { <button data-action="propose" class="button button-primary" @onclick="OpenDialog">Propose event</button> }</div>
+@if (_error is not null) { <Banner Variant="BannerVariant.Error" Message="@_error" Retry="LoadAsync" /> }
+@if (_notice is not null) { <Banner Variant="BannerVariant.Info" Message="@_notice" /> }
+<h2>Open proposals</h2>
+@if (_loading) { <p role="status">Loading…</p> }
+else if (_proposals.Count == 0) { <p>No open proposals for your type.</p> }
+else
+{
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Location</th><th scope="col">When</th><th scope="col">Types</th><th scope="col">Accepted</th><th scope="col">You</th><th scope="col">Actions</th></tr></thead>
+<tbody>
+@foreach (var proposal in _proposals)
+{
+<tr>
+<td data-label="Location">@proposal.LocationName</td>
+<td data-label="When"><EventTime Value="@proposal.Time" /></td>
+<td data-label="Types"><span class="chip-row">@foreach (var type in proposal.Types.OrderBy(x => x.Code, StringComparer.Ordinal)) { <TypeChip Code="@type.Code" Name="@type.Name" /> }</span></td>
+<td data-label="Accepted">@proposal.AcceptedTypeCount of @proposal.ListedTypeCount</td>
+<td data-label="You">
+@if (proposal.AcceptedByMe)
+{
+<input type="number" name="acceptHeadcount" value="@proposal.MyAcceptedHeadcount" readonly aria-label="Your accepted headcount" />
+}
+else
+{
+<input type="number" name="acceptHeadcount" min="1" placeholder="—" aria-label="Your headcount" value="@AcceptHeadcountFor(proposal.Id)" @onchange="e => SetAcceptHeadcount(proposal.Id, e.Value?.ToString())" />
+}
+</td>
+<td data-label="Actions"><span class="row-actions">
+@if (proposal.Links.Allows("accept")) { <button data-action="accept" class="button" disabled="@_busy" @onclick="() => AcceptAsync(proposal)">Accept</button> }
+@if (proposal.Links.Allows("withdrawAcceptance")) { <button data-action="withdraw-acceptance" class="button" disabled="@_busy" @onclick="() => WithdrawAcceptanceAsync(proposal)">Withdraw acceptance</button> }
+@if (proposal.Links.Allows("withdraw")) { <button data-action="withdraw-proposal" class="button button-danger" disabled="@_busy" @onclick="() => WithdrawProposalAsync(proposal)">Withdraw proposal</button> }
+</span></td>
+</tr>
+}
+</tbody>
+</table></div>
+@if (_proposalsCursor is not null) { <button class="button" disabled="@_busy" @onclick="LoadMoreProposalsAsync">Load more</button> }
+}
+<h2>Confirmed events</h2>
+@if (_loading) { <p role="status">Loading…</p> }
+else if (_events.Count == 0) { <p>No confirmed events for your type.</p> }
+else
+{
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Location</th><th scope="col">When</th><th scope="col">Capacity</th></tr></thead>
+<tbody>
+@foreach (var evt in _events)
+{
+<tr>
+<td data-label="Location">@evt.LocationName</td>
+<td data-label="When"><EventTime Value="@evt.Time" /></td>
+<td data-label="Capacity">
+@foreach (var capacity in evt.Capacities)
+{
+<div class="capacity-row"><TypeChip Code="@capacity.Code" Name="@capacity.Name" />
+<span>Total <input type="number" name="totalHeadcount" min="0" aria-label="@($"Total headcount for {capacity.Name}")" value="@CapacityInputFor(evt.Id, capacity)" @onchange="e => SetCapacityInput(evt.Id, capacity.AppointmentTypeId, e.Value?.ToString())" /></span>
+<span>Remaining @capacity.RemainingCapacity</span>
+@if (capacity.Links.Allows("adjust")) { <button data-action="save-capacity" class="button" disabled="@_busy" @onclick="() => SaveCapacityAsync(evt, capacity)">Save</button> }
+@if (CapacityErrorFor(evt.Id, capacity.AppointmentTypeId) is { } capacityError) { <p class="hint" role="alert">@capacityError</p> }
 </div>
-
+}
+</td>
+</tr>
+}
+</tbody>
+</table></div>
+@if (_eventsCursor is not null) { <button class="button" disabled="@_busy" @onclick="LoadMoreEventsAsync">Load more</button> }
+}
+@if (_dialog is not null)
+{
+<section class="card" aria-labelledby="propose-heading"><h2 id="propose-heading">Propose event</h2>
+<label class="field">Location<LocationPicker Mode="LocationPickerMode.Single" Options="@LocationOptions" SelectedIds="@([_dialog.LocationId])" SelectedIdsChanged="ids => _dialog.LocationId = ids.FirstOrDefault(_dialog.LocationId)" /></label>
+<p class="hint">@SelectedZoneId</p>
+<label class="field">Date<input name="date" type="date" @bind="_dialog.Date" /></label>
+@FieldError("date")
+<label class="field">Start<input name="start" type="time" @bind="_dialog.Start" @bind:format="HH:mm" /></label>
+@FieldError("startTime")
+<label class="field">Duration (minutes)<input name="duration" type="number" min="15" max="720" step="15" @bind="_dialog.DurationMinutes" /></label>
+@FieldError("durationMinutes")
+<p class="hint">@EndPreview</p>
+<TypePicker Options="@TypeOptions" CallerTypeId="@_reference!.CallerAppointmentTypeId" SelectedIds="@_dialog.TypeIds" SelectedIdsChanged="ids => _dialog.TypeIds = ids" />
+@FieldError("appointmentTypeIds")
+<label class="field">Your headcount<input name="headcount" type="number" min="1" @bind="_dialog.Headcount" /></label>
+@FieldError("headcount")
+<div class="row-actions"><button class="button" @onclick="CloseDialog">Cancel</button><button data-action="submit-proposal" class="button button-primary" disabled="@_busy" @onclick="SubmitProposalAsync">Propose</button></div></section>
+}
+</section>
 @code {
-    private EventBoardDto? _board;
-    private string? _error;
-    private bool _busy;
-    private bool _loading;
-
-    private DateOnly _newDate = DateOnly.FromDateTime(DateTime.Today).AddDays(7);
-    private TimeOnly? _newStartTime = new(9, 0);
-
-    private readonly Dictionary<Guid, int> _headcounts = [];
-    private readonly Dictionary<Guid, int> _confirmedTotals = [];
-
-    // Set when a cancel was refused pending confirmation; the next click on the same event confirms.
-    private Guid? _cancelAwaitingConfirmation;
-
-    protected override Task OnInitializedAsync() => ReloadAsync();
-
-    private async Task ReloadAsync()
+    private NegotiationReferenceData? _reference;
+    private readonly List<EventProposalDto> _proposals = [];
+    private readonly List<EventDto> _events = [];
+    private readonly Dictionary<Guid, string> _acceptHeadcount = new();
+    private readonly Dictionary<(Guid EventId, Guid TypeId), string> _capacityInputs = new();
+    private readonly Dictionary<(Guid EventId, Guid TypeId), string> _capacityErrors = new();
+    private readonly Dictionary<string, string> _fieldErrors = new(StringComparer.OrdinalIgnoreCase);
+    private string? _proposalsCursor; private string? _eventsCursor;
+    private ProposalForm? _dialog; private IdempotencySubmission? _submission;
+    private bool _loading = true; private bool _busy;
+    private string? _error; private string? _notice; private string? _scopeTypeName;
+    private IReadOnlyList<LocationOption> LocationOptions => _reference?.Locations.Select(x => new LocationOption(x.Id, x.Name, x.Address, x.ZoneAbbreviation, x.IsActive)).ToArray() ?? [];
+    private IReadOnlyList<TypeOption> TypeOptions => _reference?.AppointmentTypes.Select(x => new TypeOption(x.Id, x.Code, x.Name, x.IsActive, x.HasManager)).ToArray() ?? [];
+    private string SelectedZoneId => _reference?.Locations.FirstOrDefault(x => x.Id == _dialog?.LocationId)?.TimeZoneId ?? "";
+    private string EndPreview
     {
-        if (_loading || _busy)
+        get
         {
-            return;
-        }
-
-        _loading = true;
-        try
-        {
-            await ReloadBoardAsync();
-        }
-        catch (Exception)
-        {
-            _error = "Something went wrong. Please try again.";
-        }
-        finally
-        {
-            _loading = false;
+            if (_dialog is null || _reference is null) return "";
+            var zone = _reference.Locations.FirstOrDefault(x => x.Id == _dialog.LocationId);
+            if (zone is null) return "";
+            var start = _dialog.Start;
+            if (start.ToTimeSpan() + TimeSpan.FromMinutes(_dialog.DurationMinutes) >= TimeSpan.FromHours(24))
+                return "That window runs past midnight — shorten it.";
+            var end = start.Add(TimeSpan.FromMinutes(_dialog.DurationMinutes));
+            return $"ends {end:HH:mm} {zone.ZoneAbbreviation}";
         }
     }
-
-    private async Task ProposeAsync()
+    private RenderFragment FieldError(string field) => __builder =>
     {
-        if (_newStartTime is not { } startTime)
+        if (_fieldErrors.TryGetValue(field, out var message))
         {
-            _error = "Enter a start time as HH:mm.";
-            return;
+            __builder.OpenElement(0, "p"); __builder.AddAttribute(1, "class", "hint");
+            __builder.AddAttribute(2, "role", "alert"); __builder.AddContent(3, message);
+            __builder.CloseElement();
         }
-
-        await RunAsync(async () =>
-        {
-            var outcome = await EventsApi.ProposeAsync(
-                _newDate, startTime, CancellationToken.None);
-            return AsBool(outcome);
-        });
-    }
-
-    private Task AcceptAsync(Guid proposalId) =>
-        RunAsync(() => EventsApi.AcceptAsync(
-            proposalId,
-            _headcounts[proposalId],
-            CancellationToken.None));
-
-    private Task WithdrawAcceptanceAsync(Guid proposalId) =>
-        RunAsync(() => EventsApi.WithdrawAcceptanceAsync(proposalId, CancellationToken.None));
-
-    private Task WithdrawProposalAsync(Guid proposalId) =>
-        RunAsync(() => EventsApi.WithdrawProposalAsync(proposalId, CancellationToken.None));
-
-    private async Task AdjustCapacityAsync(Guid eventId)
+    };
+    protected override Task OnInitializedAsync() => LoadAsync();
+    private async Task LoadAsync()
     {
-        if (_busy || _loading)
-        {
-            return;
-        }
-
-        _busy = true;
+        _loading = true; _error = null;
         try
         {
-            var outcome = await EventsApi.AdjustCapacityAsync(
-                eventId,
-                _confirmedTotals[eventId],
-                CancellationToken.None);
-            _error = outcome.ErrorMessage;
-            if (outcome.IsSuccess)
+            var reference = await Api.GetReferenceDataAsync(CancellationToken.None);
+            if (!reference.IsSuccess || reference.Value is null) { _error = reference.ErrorMessage; _loading = false; return; }
+            _reference = reference.Value;
+            _scopeTypeName = _reference.AppointmentTypes.FirstOrDefault(x => x.Id == _reference.CallerAppointmentTypeId)?.Name;
+            await LoadProposalsFirstPageAsync();
+            await LoadEventsFirstPageAsync();
+        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _loading = false;
+    }
+    private async Task LoadProposalsFirstPageAsync()
+    {
+        var page = await Api.ListProposalsAsync(null, CancellationToken.None);
+        if (!page.IsSuccess || page.Value is null) { _error = page.ErrorMessage; return; }
+        _proposals.Clear(); _proposals.AddRange(page.Value.Items);
+        _proposalsCursor = page.Value.NextCursor;
+    }
+    private async Task LoadEventsFirstPageAsync()
+    {
+        var page = await Api.ListEventsAsync(null, null, null, null, CancellationToken.None);
+        if (!page.IsSuccess || page.Value is null) { _error = page.ErrorMessage; return; }
+        _events.Clear(); _events.AddRange(page.Value.Items);
+        _eventsCursor = page.Value.NextCursor;
+        _capacityInputs.Clear(); _capacityErrors.Clear();
+        foreach (var evt in _events)
+            foreach (var capacity in evt.Capacities)
+                _capacityInputs[(evt.Id, capacity.AppointmentTypeId)] = capacity.TotalHeadcount.ToString();
+    }
+    private async Task LoadMoreProposalsAsync() { _busy = true; try { var page = await Api.ListProposalsAsync(_proposalsCursor, CancellationToken.None); if (page.IsSuccess && page.Value is not null) { _proposals.AddRange(page.Value.Items); _proposalsCursor = page.Value.NextCursor; } else _error = page.ErrorMessage; } catch (Exception) { _error = "Something went wrong. Please try again."; } _busy = false; }
+    private async Task LoadMoreEventsAsync() { _busy = true; try { var page = await Api.ListEventsAsync(null, null, null, _eventsCursor, CancellationToken.None); if (page.IsSuccess && page.Value is not null) { _events.AddRange(page.Value.Items); _eventsCursor = page.Value.NextCursor; foreach (var evt in page.Value.Items) foreach (var capacity in evt.Capacities) _capacityInputs.TryAdd((evt.Id, capacity.AppointmentTypeId), capacity.TotalHeadcount.ToString()); } else _error = page.ErrorMessage; } catch (Exception) { _error = "Something went wrong. Please try again."; } _busy = false; }
+    private string AcceptHeadcountFor(Guid id) => _acceptHeadcount.TryGetValue(id, out var value) ? value : "";
+    private void SetAcceptHeadcount(Guid id, string? value) { if (value is not null) _acceptHeadcount[id] = value; }
+    private string CapacityInputFor(Guid eventId, EventCapacityDto capacity) => _capacityInputs.TryGetValue((eventId, capacity.AppointmentTypeId), out var value) ? value : capacity.TotalHeadcount.ToString();
+    private void SetCapacityInput(Guid eventId, Guid typeId, string? value) { if (value is not null) _capacityInputs[(eventId, typeId)] = value; }
+    private string? CapacityErrorFor(Guid eventId, Guid typeId) => _capacityErrors.TryGetValue((eventId, typeId), out var value) ? value : null;
+    private void OpenDialog()
+    {
+        if (_reference is null) return;
+        _submission = IdempotencySubmission.Start();
+        _fieldErrors.Clear();
+        _dialog = new ProposalForm
+        {
+            LocationId = _reference.Locations.FirstOrDefault()?.Id ?? Guid.Empty,
+            Date = DateOnly.FromDateTime(DateTime.Today),
+            Start = new TimeOnly(9, 30),
+            DurationMinutes = 90,
+            TypeIds = [_reference.CallerAppointmentTypeId],
+            Headcount = 1,
+        };
+    }
+    private void CloseDialog() { _dialog = null; _submission = null; _fieldErrors.Clear(); }
+    private async Task SubmitProposalAsync()
+    {
+        if (_dialog is null || _reference is null) return;
+        _busy = true; _error = null; _fieldErrors.Clear();
+        try
+        {
+            var result = await Api.ProposeAsync(new ProposeEventRequest(
+                _dialog.LocationId, _dialog.Date, _dialog.Start, _dialog.DurationMinutes,
+                _dialog.TypeIds, _dialog.Headcount), _submission!, CancellationToken.None);
+            if (result.IsSuccess) { _busy = false; CloseDialog(); await LoadProposalsFirstPageAsync(); await LoadEventsFirstPageAsync(); return; }
+            _error = result.ErrorMessage;
+            if (result.Problem is { } problem)
+                foreach (var item in problem.Errors)
+                    if (item.Field is not null) _fieldErrors.TryAdd(item.Field, item.Message ?? item.Code);
+        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _busy = false;
+    }
+    private async Task AcceptAsync(EventProposalDto proposal)
+    {
+        if (!int.TryParse(AcceptHeadcountFor(proposal.Id), out var headcount) || headcount < 1)
+        {
+            _error = "Enter a headcount of at least 1.";
+            return;
+        }
+        _busy = true; _error = null; _notice = null;
+        try
+        {
+            var result = await Api.RecordAcceptanceAsync(proposal.Id, headcount, CancellationToken.None);
+            if (result.IsSuccess) { _busy = false; await LoadProposalsFirstPageAsync(); await LoadEventsFirstPageAsync(); return; }
+            if (result.ErrorCode == "proposal-not-open")
             {
-                await ReloadBoardAsync();
-            }
-        }
-        catch (Exception)
-        {
-            _error = "Something went wrong. Please try again.";
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
-
-    private async Task CancelEventAsync(Guid eventId)
-    {
-        if (_busy || _loading)
-        {
-            return;
-        }
-
-        var confirm = _cancelAwaitingConfirmation == eventId;
-
-        _busy = true;
-        try
-        {
-            var outcome = await EventsApi.CancelEventAsync(
-                eventId, confirm, CancellationToken.None);
-
-            if (!outcome.IsSuccess && outcome.StatusCode == 409 && !confirm)
-            {
-                _cancelAwaitingConfirmation = eventId;
-                _error = outcome.ErrorMessage + " Press Cancel event again to confirm.";
+                _notice = "That proposal is no longer open; the board has been refreshed.";
+                _busy = false;
+                await LoadProposalsFirstPageAsync();
                 return;
             }
-
-            _cancelAwaitingConfirmation = null;
-            _error = outcome.ErrorMessage;
-            await ReloadBoardAsync();
+            _error = result.ErrorMessage;
         }
-        catch (Exception)
-        {
-            _error = "Something went wrong. Please try again.";
-        }
-        finally
-        {
-            _busy = false;
-        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _busy = false;
     }
-
-    private async Task RunAsync(Func<Task<ApiOutcome<bool>>> action)
+    private async Task WithdrawAcceptanceAsync(EventProposalDto proposal)
     {
-        if (_busy || _loading)
-        {
-            return;
-        }
-
-        _busy = true;
+        _busy = true; _error = null; _notice = null;
         try
         {
-            var outcome = await action();
-            _error = outcome.ErrorMessage;
-            await ReloadBoardAsync();
+            var result = await Api.WithdrawAcceptanceAsync(proposal.Id, CancellationToken.None);
+            if (result.IsSuccess) { _busy = false; await LoadProposalsFirstPageAsync(); return; }
+            if (result.ErrorCode == "proposal-not-open")
+            {
+                _notice = "That proposal is no longer open; the board has been refreshed.";
+                _busy = false;
+                await LoadProposalsFirstPageAsync();
+                return;
+            }
+            _error = result.ErrorMessage;
         }
-        catch (Exception)
-        {
-            _error = "Something went wrong. Please try again.";
-        }
-        finally
-        {
-            _busy = false;
-        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _busy = false;
     }
-
-    private async Task ReloadBoardAsync()
+    private async Task WithdrawProposalAsync(EventProposalDto proposal)
     {
-        var outcome = await EventsApi.GetBoardAsync(CancellationToken.None);
-        if (!outcome.IsSuccess || outcome.Value is null)
+        _busy = true; _error = null; _notice = null;
+        try
         {
-            _error = outcome.ErrorMessage;
+            var result = await Api.WithdrawProposalAsync(proposal.Id, CancellationToken.None);
+            if (result.IsSuccess) { _busy = false; await LoadProposalsFirstPageAsync(); return; }
+            _error = result.ErrorMessage;
+        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _busy = false;
+    }
+    private async Task SaveCapacityAsync(EventDto evt, EventCapacityDto capacity)
+    {
+        var key = (evt.Id, capacity.AppointmentTypeId);
+        if (!int.TryParse(CapacityInputFor(evt.Id, capacity), out var total) || total < 0)
+        {
+            _capacityErrors[key] = "Enter a total of 0 or more.";
             return;
         }
-
-        _board = outcome.Value;
-        _error = null;
-        _headcounts.Clear();
-        _confirmedTotals.Clear();
-
-        foreach (var proposal in _board.OpenProposals)
+        _busy = true; _error = null;
+        try
         {
-            _headcounts[proposal.ProposalId] = proposal.MyAcceptedHeadcount ?? 1;
+            var result = await Api.AdjustCapacityAsync(evt.Id, capacity.AppointmentTypeId, total, CancellationToken.None);
+            _capacityErrors.Remove(key);
+            if (result.IsSuccess) { _busy = false; await LoadEventsFirstPageAsync(); return; }
+            if (result.ErrorCode == "capacity-below-bookings" && result.Problem is { } problem)
+            {
+                var server = problem.Current?.GetProperty("totalHeadcount").GetInt32();
+                _capacityErrors[key] = $"The minimum is {problem.Minimum}; the server total is {server}.";
+                _busy = false;
+                return;
+            }
+            _error = result.ErrorMessage;
         }
-
-        foreach (var eventItem in _board.Events)
-        {
-            _confirmedTotals[eventItem.EventId] = eventItem.MyHeadcount;
-        }
+        catch (Exception) { _error = "Something went wrong. Please try again."; }
+        _busy = false;
     }
-
-    private static ApiOutcome<bool> AsBool(ApiOutcome<Guid> outcome) =>
-        outcome.IsSuccess
-            ? ApiOutcome<bool>.Success(true, outcome.StatusCode)
-            : ApiOutcome<bool>.Failure(outcome.ErrorMessage!, outcome.StatusCode);
+    private sealed class ProposalForm
+    {
+        public Guid LocationId { get; set; }
+        public DateOnly Date { get; set; }
+        public TimeOnly Start { get; set; }
+        public int DurationMinutes { get; set; }
+        public IReadOnlyList<Guid> TypeIds { get; set; } = [];
+        public int Headcount { get; set; }
+    }
 }

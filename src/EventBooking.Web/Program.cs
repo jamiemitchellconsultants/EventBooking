@@ -62,13 +62,13 @@ builder.Services.AddScoped(sp =>
 });
 #endif
 
-builder.Services.AddScoped<EventsClient>();
+builder.Services.AddScoped<IEventsClient, EventsClient>();
 builder.Services.AddScoped<AttendeesClient>();
 builder.Services.AddScoped<AdminClient>();
 builder.Services.AddScoped<StaffAccessClient>();
 builder.Services.AddScoped<DashboardsClient>();
 builder.Services.AddScoped<AuditClient>();
-builder.Services.AddScoped<AppointmentsClient>();
+builder.Services.AddScoped<IAppointmentsClient, AppointmentsClient>();
 
 // The transitional zone key is gone from configuration; the predecessor pages Task 25-27
 // have not replaced yet still read these services, so they fall back to the transitional
