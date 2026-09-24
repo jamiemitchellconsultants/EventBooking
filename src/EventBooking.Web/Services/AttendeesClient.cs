@@ -1,276 +1,240 @@
 using System.Net.Http.Json;
-using System.Text;
 
 namespace EventBooking.Web.Services;
 
-public sealed record AppointmentTypeSummaryDto(string Code, string Name);
-
-public sealed record InviteLocationDto(Guid LocationId, string Code, string Name);
-
-public sealed record AttendeeGroupOptionDto(
-    Guid AttendeeGroupId,
-    string Code,
-    string Name,
-    IReadOnlyList<AppointmentTypeSummaryDto> RequiredAppointmentTypes);
-
 public sealed record AttendeeDto(
-    Guid AttendeeId,
-    string Name,
-    string Email,
-    string Status,
-    string StatusDisplay,
-    string GroupCode,
-    string Readiness,
-    IReadOnlyList<string> RequiredTypeCodes,
-    string? LatestDeliveryStatus,
-    string Cursor,
-    Guid? LatestDeliveryId = null);
-
-public sealed record AttendeeListDto(
-    IReadOnlyList<AttendeeDto> Items,
-    string? NextCursor);
-
+    Guid AttendeeId, string Name, string Email, string Status, string StatusDisplay,
+    string GroupCode, string Readiness, IReadOnlyList<string> RequiredTypeCodes,
+    string? LatestDeliveryStatus, string Cursor, Guid? LatestDeliveryId,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
+public sealed record CoordinatorLocationDto(Guid Id, string Name, string ZoneAbbreviation);
+public sealed record CoordinatorGroupDto(
+    Guid Id, string Code, string Name, IReadOnlyList<Guid> RequirementTypeIds);
+public sealed record CoordinatorReferenceData(
+    IReadOnlyList<CoordinatorLocationDto> Locations,
+    IReadOnlyList<CoordinatorGroupDto> Groups,
+    IReadOnlyList<TypeSummaryDto> AppointmentTypes,
+    IReadOnlyDictionary<string, ApiLink> CollectionLinks);
+public sealed record EligibleEventCountDto(int Count, int RequiredOptionCount);
 public sealed record ImportErrorDto(int LineNumber, string Message);
-
-public sealed record ImportOutcomeDto(
-    bool Accepted,
-    int ImportedCount,
-    IReadOnlyList<ImportErrorDto> Errors);
-
-/// <summary>Reports the replacement delivery staged by an email retry.</summary>
-/// <param name="EmailLogId">The new pending delivery identifier.</param>
+public sealed record ImportOutcomeDto(bool Accepted, int ImportedCount, IReadOnlyList<ImportErrorDto> Errors);
+public sealed record InviteOutcomeDto(Guid? InviteId, string Status);
 public sealed record EmailRetryDto(Guid EmailLogId);
-
-/// <summary>Minimum canonical detail for one incomplete appointment type.</summary>
-/// <param name="Code">The canonical appointment-type code.</param>
-/// <param name="Name">The canonical appointment-type name.</param>
-/// <param name="IsRecoverable">Whether recovery can currently be started for this type.</param>
-public sealed record OutstandingAppointmentTypeDto(string Code, string Name, bool IsRecoverable);
-
-/// <summary>Durable delivery outcome for one started recovery invite.</summary>
-/// <param name="RecoveryInviteId">The newly issued recovery invite identifier.</param>
-/// <param name="LocationIds">The locations the recovery invite covers.</param>
-/// <param name="RecoverableTypeIds">The recoverable snapshot the recovery invite offers.</param>
-public sealed record RecoveryInviteOutcomeDto(
-    Guid RecoveryInviteId,
-    IReadOnlyList<Guid> LocationIds,
-    IReadOnlyList<Guid> RecoverableTypeIds);
-
-/// <summary>One active booking a coordinator may cancel; carries no management token.</summary>
-/// <param name="BookingId">The booking identifier used to target a cancellation.</param>
-/// <param name="IsOriginal">True for the original booking; false for an active recovery booking.</param>
-/// <param name="EventDate">The date of the confirmed window the booking holds.</param>
-/// <param name="EventStartTime">The start of the confirmed window the booking holds.</param>
-/// <param name="EventEndTime">The end of the confirmed window the booking holds.</param>
 public sealed record AttendeeBookingDto(
-    Guid BookingId,
-    bool IsOriginal,
-    DateOnly EventDate,
-    TimeOnly EventStartTime,
-    TimeOnly EventEndTime);
-
-/// <summary>Coordinator-facing outcome of cancelling one attendee booking.</summary>
-/// <param name="ConfirmationRequired">Whether this call only previews the consequence.</param>
-/// <param name="ActiveBookingCount">How many active bookings the attendee holds (preview only).</param>
-/// <param name="CancelledBookingId">The cancelled booking identifier (confirmed call only).</param>
+    Guid BookingId, bool IsOriginal, DateOnly EventDate, TimeOnly EventStartTime, TimeOnly EventEndTime,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record CancelAttendeeBookingDto(
-    bool ConfirmationRequired,
-    int ActiveBookingCount,
-    Guid? CancelledBookingId);
-
-/// <summary>Coordinator-facing readiness for one attendee.</summary>
-/// <param name="AttendeeId">The stable attendee identifier.</param>
-/// <param name="Code">The stable machine-readable readiness reason.</param>
-/// <param name="Display">The Coordinator-facing explanation.</param>
-/// <param name="OutstandingAppointmentTypes">Incomplete current appointment types.</param>
+    bool ConfirmationRequired, int ActiveBookingCount, Guid? CancelledBookingId,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record AttendeeReadinessDto(
-    Guid AttendeeId,
-    string Code,
-    string Display,
-    IReadOnlyList<OutstandingAppointmentTypeDto> OutstandingAppointmentTypes);
+    Guid AttendeeId, string Code, string Display,
+    IReadOnlyList<OutstandingAppointmentTypeDto> OutstandingAppointmentTypes,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
+public sealed record OutstandingAppointmentTypeDto(string Code, string Name, bool IsRecoverable);
+public sealed record RecoveryInviteOutcomeDto(
+    Guid RecoveryInviteId, IReadOnlyList<Guid> LocationIds, IReadOnlyList<Guid> RecoverableTypeIds,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
 
-public sealed class AttendeesClient(HttpClient http)
+public interface IAttendeesClient
 {
-    public async Task<ApiOutcome<AttendeeListDto>> ListAsync(
-        string? cursor,
-        int? limit,
-        string? status,
-        Guid? attendeeGroupId,
-        string? readiness,
-        string? search,
-        CancellationToken cancellationToken)
+    Task<ApiOutcome<CoordinatorReferenceData>> GetReferenceDataAsync(CancellationToken ct);
+    Task<ApiOutcome<PageDto<AttendeeDto>>> ListAsync(
+        string? status, Guid? groupId, string? readiness, string? search, string? cursor,
+        CancellationToken ct);
+    Task<ApiOutcome<Guid>> CreateAsync(
+        string name, string email, Guid? groupId, IdempotencySubmission submission,
+        CancellationToken ct);
+    Task<ApiOutcome<bool>> UpdateAsync(
+        Guid id, string name, string email, Guid? groupId, CancellationToken ct);
+    Task<ApiOutcome<bool>> DeleteAsync(Guid id, bool confirm, CancellationToken ct);
+    Task<ApiOutcome<ImportOutcomeDto>> ImportAsync(
+        Stream csv, string fileName, IdempotencySubmission submission, CancellationToken ct);
+    Task<ApiOutcome<EligibleEventCountDto>> CountEligibleAsync(
+        Guid id, IReadOnlyList<Guid> locationIds, CancellationToken ct);
+    Task<ApiOutcome<InviteOutcomeDto>> InviteAsync(
+        Guid id, IReadOnlyList<Guid> locationIds, IdempotencySubmission submission,
+        CancellationToken ct);
+    Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(Guid id, CancellationToken ct);
+    Task<ApiOutcome<PageDto<AttendeeBookingDto>>> GetBookingsAsync(
+        Guid attendeeId, CancellationToken ct);
+    Task<ApiOutcome<CancelAttendeeBookingDto>> CancelBookingAsync(
+        Guid attendeeId, Guid bookingId, bool confirm, CancellationToken ct);
+    Task<ApiOutcome<RecoveryInviteOutcomeDto>> StartRecoveryAsync(
+        Guid attendeeId, CancellationToken ct);
+    Task<ApiOutcome<bool>> CancelRecoveryAsync(
+        Guid attendeeId, Guid inviteId, CancellationToken ct);
+    Task<ApiOutcome<AttendeeReadinessDto>> GetReadinessAsync(
+        Guid attendeeId, CancellationToken ct);
+}
+
+public sealed class AttendeesClient(HttpClient http) : IAttendeesClient
+{
+    public async Task<ApiOutcome<CoordinatorReferenceData>> GetReferenceDataAsync(CancellationToken ct)
     {
-        var parameters = new List<string>();
-        if (!string.IsNullOrEmpty(cursor))
-        {
-            parameters.Add($"cursor={Uri.EscapeDataString(cursor)}");
-        }
-        if (limit is not null)
-        {
-            parameters.Add($"limit={limit.Value}");
-        }
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            parameters.Add($"status={Uri.EscapeDataString(status)}");
-        }
-        if (attendeeGroupId is not null)
-        {
-            parameters.Add($"attendeeGroupId={attendeeGroupId.Value:D}");
-        }
-        if (!string.IsNullOrWhiteSpace(readiness))
-        {
-            parameters.Add($"readiness={Uri.EscapeDataString(readiness)}");
-        }
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            parameters.Add($"search={Uri.EscapeDataString(search)}");
-        }
-
-        var route = parameters.Count == 0
-            ? "/api/attendees"
-            : $"/api/attendees?{string.Join("&", parameters)}";
-
-        using var response = await http.GetAsync(route, cancellationToken);
-        return await ApiCall.ReadAsync<AttendeeListDto>(response, cancellationToken);
+        using var meResponse = await http.GetAsync("/api/me", ct);
+        var me = await ApiCall.ReadAsync<MeDto>(meResponse, ct);
+        if (!me.IsSuccess || me.Value is null)
+            return ApiOutcome<CoordinatorReferenceData>.Failure(me.Problem ?? Unexpected());
+        using var locationsResponse = await http.GetAsync("/api/locations?includeInactive=false", ct);
+        var locations = await ApiCall.ReadAsync<PageDto<LocationDto>>(locationsResponse, ct);
+        if (!locations.IsSuccess || locations.Value is null)
+            return ApiOutcome<CoordinatorReferenceData>.Failure(locations.Problem ?? Unexpected());
+        using var groupsResponse = await http.GetAsync("/api/attendee-groups?includeInactive=false", ct);
+        var groups = await ApiCall.ReadAsync<PageDto<AttendeeGroupDto>>(groupsResponse, ct);
+        if (!groups.IsSuccess || groups.Value is null)
+            return ApiOutcome<CoordinatorReferenceData>.Failure(groups.Problem ?? Unexpected());
+        using var typesResponse = await http.GetAsync("/api/appointment-types?includeInactive=false", ct);
+        var types = await ApiCall.ReadAsync<PageDto<AppointmentTypeDto>>(typesResponse, ct);
+        if (!types.IsSuccess || types.Value is null)
+            return ApiOutcome<CoordinatorReferenceData>.Failure(types.Problem ?? Unexpected());
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return ApiOutcome<CoordinatorReferenceData>.Success(new CoordinatorReferenceData(
+            locations.Value.Items.Select(x => new CoordinatorLocationDto(
+                x.Id, x.Name, EventsClient.ZoneAbbreviation(x.TimeZoneId, today))).ToArray(),
+            groups.Value.Items.Select(x => new CoordinatorGroupDto(
+                x.Id, x.Code, x.Name, x.RequirementTypeIds)).ToArray(),
+            types.Value.Items.Select(x => new TypeSummaryDto(
+                x.Id, x.Code, x.Name, x.IsActive, x.HasManager)).ToArray(),
+            me.Value.Links));
     }
 
-    public async Task<ApiOutcome<List<AttendeeGroupOptionDto>>> ListGroupsAsync(
-        CancellationToken cancellationToken)
+    public Task<ApiOutcome<PageDto<AttendeeDto>>> ListAsync(
+        string? status, Guid? groupId, string? readiness, string? search, string? cursor,
+        CancellationToken ct)
     {
-        using var response = await http.GetAsync("/api/attendee-groups", cancellationToken);
-        return await ApiCall.ReadAsync<List<AttendeeGroupOptionDto>>(response, cancellationToken);
+        var query = new List<string>();
+        if (status is not null) query.Add($"status={Uri.EscapeDataString(status)}");
+        if (groupId is not null) query.Add($"groupId={groupId:D}");
+        if (readiness is not null) query.Add($"readiness={Uri.EscapeDataString(readiness)}");
+        if (search is not null) query.Add($"search={Uri.EscapeDataString(search)}");
+        if (cursor is not null) query.Add($"cursor={Uri.EscapeDataString(cursor)}");
+        var suffix = query.Count == 0 ? "" : "?" + string.Join("&", query);
+        return Get<PageDto<AttendeeDto>>("/api/attendees" + suffix, ct);
     }
 
     public async Task<ApiOutcome<Guid>> CreateAsync(
-        string name, string email, Guid? attendeeGroupId, CancellationToken cancellationToken)
+        string name, string email, Guid? groupId, IdempotencySubmission submission,
+        CancellationToken ct)
     {
-        using var response = await http.PostAsJsonAsync(
-            "/api/attendees",
-            new { Name = name, Email = email, AttendeeGroupId = attendeeGroupId },
-            cancellationToken);
-
-        return await ApiCall.ReadAsync<Guid>(response, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/attendees")
+        {
+            Content = JsonContent.Create(new { name, email, attendeeGroupId = groupId }),
+        };
+        request.Headers.Add("Idempotency-Key", submission.Key);
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<Guid>(response, ct);
     }
 
     public async Task<ApiOutcome<bool>> UpdateAsync(
-        Guid id, string name, string email, Guid? attendeeGroupId, CancellationToken cancellationToken)
+        Guid id, string name, string email, Guid? groupId, CancellationToken ct)
     {
         using var response = await http.PutAsJsonAsync(
-            $"/api/attendees/{id}",
-            new { Name = name, Email = email, AttendeeGroupId = attendeeGroupId },
-            cancellationToken);
-
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+            $"/api/attendees/{id}", new { name, email, attendeeGroupId = groupId }, ct);
+        return await ApiCall.ReadNoContentAsync(response, ct);
     }
 
-    public async Task<ApiOutcome<bool>> DeleteAsync(
-        Guid id, bool confirm, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<bool>> DeleteAsync(Guid id, bool confirm, CancellationToken ct)
     {
         using var response = await http.DeleteAsync(
-            $"/api/attendees/{id}?confirm={(confirm ? "true" : "false")}", cancellationToken);
-
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+            $"/api/attendees/{id}?confirm={confirm.ToString().ToLowerInvariant()}", ct);
+        return await ApiCall.ReadNoContentAsync(response, ct);
     }
 
     public async Task<ApiOutcome<ImportOutcomeDto>> ImportAsync(
-        string csv, CancellationToken cancellationToken)
+        Stream csv, string fileName, IdempotencySubmission submission, CancellationToken ct)
     {
-        using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-        using var response = await http.PostAsync("/api/attendees/import", content, cancellationToken);
-
-        return await ApiCall.ReadAsync<ImportOutcomeDto>(response, cancellationToken);
+        using var content = new MultipartFormDataContent();
+        using var file = new StreamContent(csv);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+        content.Add(file, "file", fileName);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/attendees/import")
+        {
+            Content = content,
+        };
+        request.Headers.Add("Idempotency-Key", submission.Key);
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<ImportOutcomeDto>(response, ct);
     }
 
-    /// <summary>Invites the attendee at every active location.</summary>
-    public Task<ApiOutcome<bool>> TriggerInviteAsync(Guid id, CancellationToken cancellationToken) =>
-        TriggerInviteAsync(id, [], cancellationToken);
+    public Task<ApiOutcome<EligibleEventCountDto>> CountEligibleAsync(
+        Guid id, IReadOnlyList<Guid> locationIds, CancellationToken ct) =>
+        Get<EligibleEventCountDto>(
+            $"/api/attendees/{id}/eligible-event-count" +
+            (locationIds.Count == 0
+                ? ""
+                : "?" + string.Join("&", locationIds.Select(x => $"locationIds={x:D}"))),
+            ct);
 
-    /// <summary>Invites the attendee at the chosen locations; an empty list means every active one.</summary>
-    public async Task<ApiOutcome<bool>> TriggerInviteAsync(
-        Guid id, IReadOnlyList<Guid> locationIds, CancellationToken cancellationToken)
+    public async Task<ApiOutcome<InviteOutcomeDto>> InviteAsync(
+        Guid id, IReadOnlyList<Guid> locationIds, IdempotencySubmission submission,
+        CancellationToken ct)
     {
-        using var response = await http.PostAsJsonAsync(
-            $"/api/attendees/{id}/invite", new { locationIds }, cancellationToken);
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+        // An empty selection means every active location: the request carries null
+        // rather than an empty array, which the handler would read as no locations.
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/attendees/{id}/invites")
+        {
+            Content = JsonContent.Create(new
+            {
+                locationIds = locationIds.Count == 0 ? null : locationIds,
+            }),
+        };
+        request.Headers.Add("Idempotency-Key", submission.Key);
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<InviteOutcomeDto>(response, ct);
     }
 
-    /// <summary>Lists the active locations an invite can be restricted to.</summary>
-    public async Task<ApiOutcome<List<InviteLocationDto>>> ListInviteLocationsAsync(
-        CancellationToken cancellationToken)
+    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(Guid id, CancellationToken ct)
     {
-        using var response = await http.GetAsync("/api/attendees/invite-locations", cancellationToken);
-        return await ApiCall.ReadAsync<List<InviteLocationDto>>(response, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/attendees/{id}/email-retry");
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<EmailRetryDto>(response, ct);
     }
 
-    /// <summary>Retries the latest failed or pending delivery using its server-side template.</summary>
-    public async Task<ApiOutcome<EmailRetryDto>> RetryEmailAsync(
-        Guid id, Guid emailLogId, CancellationToken cancellationToken)
+    public Task<ApiOutcome<PageDto<AttendeeBookingDto>>> GetBookingsAsync(
+        Guid attendeeId, CancellationToken ct) =>
+        Get<PageDto<AttendeeBookingDto>>($"/api/attendees/{attendeeId}/bookings", ct);
+
+    public async Task<ApiOutcome<CancelAttendeeBookingDto>> CancelBookingAsync(
+        Guid attendeeId, Guid bookingId, bool confirm, CancellationToken ct)
     {
-        using var response = await http.PostAsync(
-            $"/api/attendees/{id}/email-retry?emailLogId={emailLogId}", null, cancellationToken);
-        return await ApiCall.ReadAsync<EmailRetryDto>(response, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm={confirm.ToString().ToLowerInvariant()}");
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<CancelAttendeeBookingDto>(response, ct);
     }
 
-    /// <summary>Starts one recovery invite for the attendee's missed appointments.</summary>
     public async Task<ApiOutcome<RecoveryInviteOutcomeDto>> StartRecoveryAsync(
-        Guid attendeeId,
-        CancellationToken cancellationToken)
+        Guid attendeeId, CancellationToken ct)
     {
-        using var response = await http.PostAsync(
-            $"/api/attendees/{attendeeId}/recovery-invites", null, cancellationToken);
-        return await ApiCall.ReadAsync<RecoveryInviteOutcomeDto>(response, cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/attendees/{attendeeId}/recovery-invites");
+        using var response = await http.SendAsync(request, ct);
+        return await ApiCall.ReadAsync<RecoveryInviteOutcomeDto>(response, ct);
     }
 
-    /// <summary>Cancels one pending recovery invite without touching bookings.</summary>
     public async Task<ApiOutcome<bool>> CancelRecoveryAsync(
-        Guid attendeeId,
-        Guid inviteId,
-        CancellationToken cancellationToken)
+        Guid attendeeId, Guid inviteId, CancellationToken ct)
     {
         using var response = await http.DeleteAsync(
-            $"/api/attendees/{attendeeId}/recovery-invites/{inviteId}", cancellationToken);
-        return await ApiCall.ReadNoContentAsync(response, cancellationToken);
+            $"/api/attendees/{attendeeId}/recovery-invites/{inviteId}", ct);
+        return await ApiCall.ReadNoContentAsync(response, ct);
     }
 
-    /// <summary>Lists the attendee's active bookings for the cancellation workflow.</summary>
-    /// <param name="attendeeId">The attendee whose bookings are listed.</param>
-    /// <param name="cancellationToken">Cancels the request.</param>
-    /// <returns>The active bookings, or the failure the API reported.</returns>
-    public async Task<ApiOutcome<List<AttendeeBookingDto>>> GetBookingsAsync(
-        Guid attendeeId,
-        CancellationToken cancellationToken = default)
-    {
-        using var response = await http.GetAsync(
-            $"/api/attendees/{attendeeId}/bookings", cancellationToken);
-        return await ApiCall.ReadAsync<List<AttendeeBookingDto>>(response, cancellationToken);
-    }
+    public Task<ApiOutcome<AttendeeReadinessDto>> GetReadinessAsync(
+        Guid attendeeId, CancellationToken ct) =>
+        Get<AttendeeReadinessDto>($"/api/attendees/{attendeeId}/readiness", ct);
 
-    /// <summary>Cancels one of the attendee's active bookings, previewing before confirming.</summary>
-    /// <param name="attendeeId">The attendee the booking belongs to.</param>
-    /// <param name="bookingId">The booking to cancel.</param>
-    /// <param name="confirm">Whether this call carries the confirmation.</param>
-    /// <param name="cancellationToken">Cancels the request.</param>
-    /// <returns>The cancellation outcome, or the failure the API reported.</returns>
-    public async Task<ApiOutcome<CancelAttendeeBookingDto>> CancelBookingAsync(
-        Guid attendeeId,
-        Guid bookingId,
-        bool confirm,
-        CancellationToken cancellationToken = default)
-    {
-        using var response = await http.PostAsJsonAsync(
-            $"/api/attendees/{attendeeId}/bookings/{bookingId}/cancel?confirm={(confirm ? "true" : "false")}",
-            new { },
-            cancellationToken);
-        return await ApiCall.ReadAsync<CancelAttendeeBookingDto>(response, cancellationToken);
-    }
+    private static ApiProblem Unexpected() =>
+        ApiProblem.FromSlug("unexpected", "Something went wrong. Please try again.");
 
-    /// <summary>Gets internal readiness for a visible Attendee.</summary>
-    public async Task<ApiOutcome<AttendeeReadinessDto>> GetReadinessAsync(
-        Guid attendeeId,
-        CancellationToken cancellationToken = default)
+    private async Task<ApiOutcome<T>> Get<T>(string path, CancellationToken ct)
     {
-        using var response = await http.GetAsync(
-            $"/api/attendees/{attendeeId}/readiness", cancellationToken);
-        return await ApiCall.ReadAsync<AttendeeReadinessDto>(response, cancellationToken);
+        using var response = await http.GetAsync(path, ct);
+        return await ApiCall.ReadAsync<T>(response, ct);
     }
 }

@@ -88,10 +88,11 @@ public class BookingClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new InviteDto(Guid.NewGuid(), "Amara Novak", ["Uniform Fitting"], [])),
+            Content = JsonContent.Create(new InviteDto(Guid.NewGuid(), "Amara Novak", ["Uniform Fitting"], [],
+                false, new Dictionary<string, ApiLink>())),
         };
 
-        await client.GetInviteAsync("abc.def/ghi", CancellationToken.None);
+        await client.ViewInviteAsync("abc.def/ghi", CancellationToken.None);
 
         Assert.Equal("/api/booking/abc.def%2Fghi", handler.Requests[0].RequestUri!.AbsolutePath);
     }
@@ -108,7 +109,7 @@ public class BookingClientTests
                 "application/problem+json"),
         };
 
-        var outcome = await client.GetInviteAsync("anything", CancellationToken.None);
+        var outcome = await client.ViewInviteAsync("anything", CancellationToken.None);
 
         Assert.False(outcome.IsSuccess);
         Assert.Equal(404, outcome.StatusCode);
@@ -122,16 +123,17 @@ public class BookingClientTests
         var eventId = Guid.NewGuid();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new ConfirmedBookingDto(
+            Content = JsonContent.Create(new ConfirmBookingOutcomeDto(
                 Guid.NewGuid(), "manage-token")),
         };
 
-        var outcome = await client.ConfirmAsync("tok", eventId, CancellationToken.None);
+        var outcome = await client.ConfirmAsync("tok", eventId, IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Equal("/api/booking/tok/confirm", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains(eventId.ToString(), handler.Bodies[0]);
         Assert.Equal("manage-token", outcome.Value!.ManageToken);
+        Assert.True(handler.Requests[0].Headers.Contains("Idempotency-Key"));
     }
 
     [Fact]
@@ -146,7 +148,8 @@ public class BookingClientTests
                 "application/problem+json"),
         };
 
-        var outcome = await client.ConfirmAsync("tok", Guid.NewGuid(), CancellationToken.None);
+        var outcome = await client.ConfirmAsync("tok", Guid.NewGuid(),
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.Equal(409, outcome.StatusCode);
         Assert.Contains("filled up", outcome.ErrorMessage);
@@ -158,14 +161,19 @@ public class BookingClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new BookingDto(
-                new DateOnly(2026, 9, 11), new TimeOnly(13, 0), new TimeOnly(17, 0),
-                "Friday 11 Sep 2026, 13:00-17:00", "Amara Novak")),
+            Content = JsonContent.Create(new ManagedBookingDto(
+                "Amara Novak", "London HQ", "1 Example St",
+                TestContractFactory.EventTime("unused"),
+                ["Uniform Fitting"],
+                new Dictionary<string, ApiLink>
+                {
+                    ["cancel"] = new("/api/manage/mtok/cancel", "POST", "cancelManagedBooking"),
+                })),
         };
 
-        var outcome = await client.GetBookingAsync("mtok", CancellationToken.None);
+        var outcome = await client.ViewManagedAsync("mtok", CancellationToken.None);
 
-        Assert.Equal("/api/booking/manage/mtok", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/api/manage/mtok", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("Amara Novak", outcome.Value!.AttendeeName);
     }
 
@@ -175,13 +183,14 @@ public class BookingClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new CancelOutcomeDto("reinvited", Guid.NewGuid())),
+            Content = JsonContent.Create(new CancelBookingOutcomeDto("reinvited", Guid.NewGuid())),
         };
 
-        var outcome = await client.CancelAsync("mtok", true, CancellationToken.None);
+        var outcome = await client.CancelAsync("mtok", true,
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
-        Assert.Equal("/api/booking/manage/mtok/cancel", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("/api/manage/mtok/cancel", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Contains("requestNewTime", handler.Bodies[0], StringComparison.OrdinalIgnoreCase);
         Assert.Equal("reinvited", outcome.Value!.Outcome);
         Assert.NotNull(outcome.Value.InviteId);
@@ -193,10 +202,11 @@ public class BookingClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new CancelOutcomeDto("noEligibleEvents")),
+            Content = JsonContent.Create(new CancelBookingOutcomeDto("noEligibleEvents", null)),
         };
 
-        var outcome = await client.CancelAsync("mtok", true, CancellationToken.None);
+        var outcome = await client.CancelAsync("mtok", true,
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
         Assert.Equal("noEligibleEvents", outcome.Value!.Outcome);
@@ -214,7 +224,7 @@ public class BookingClientTests
             new TrackingContent("""{"bookingId":"00000000-0000-0000-0000-000000000002","manageToken":"manage-token"}"""));
         var bookingResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
-            new TrackingContent("""{"date":"2026-09-11","startTime":"13:00:00","endTime":"17:00:00","display":"Friday 11 Sep 2026","attendeeName":"Amara Novak"}"""));
+            new TrackingContent("""{"attendeeName":"Amara Novak","locationName":"London HQ","address":"1 Example St","time":{"date":"2026-09-11","startTime":"13:00:00","durationMinutes":240,"startLocal":"2026-09-11T13:00:00+01:00","endLocal":"2026-09-11T17:00:00+01:00","startUtc":"2026-09-11T12:00:00Z","endUtc":"2026-09-11T16:00:00Z","timeZoneId":"Europe/London","zoneAbbreviation":"BST"},"appointmentTypeNames":["Uniform Fitting"]}"""));
         var cancelResponse = new TrackingResponseMessage(
             HttpStatusCode.OK,
             new TrackingContent("""{"outcome":"cancelled","inviteId":null}"""));
@@ -225,10 +235,12 @@ public class BookingClientTests
             handler.Responses.Enqueue(response);
         }
 
-        await client.GetInviteAsync("invite", CancellationToken.None);
-        await client.ConfirmAsync("invite", Guid.NewGuid(), CancellationToken.None);
-        await client.GetBookingAsync("manage", CancellationToken.None);
-        await client.CancelAsync("manage", false, CancellationToken.None);
+        await client.ViewInviteAsync("invite", CancellationToken.None);
+        await client.ConfirmAsync("invite", Guid.NewGuid(),
+            IdempotencySubmission.Start(), CancellationToken.None);
+        await client.ViewManagedAsync("manage", CancellationToken.None);
+        await client.CancelAsync("manage", false,
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.All(responses, response => Assert.True(response.WasDisposed));
         Assert.True(inviteResponse.WasDisposedAfterContentWasRead);

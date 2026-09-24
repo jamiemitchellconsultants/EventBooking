@@ -29,5 +29,14 @@ public static class RouteManifest
         new("appointments-ready", "/appointments"),
         new("appointments-empty", "/appointments", "workspace-empty"),
         new("appointments-conflict", "/appointments", "workspace-conflict", "check-in-conflict"),
+        new("attendees-ready", "/attendees"),
+        new("attendees-invite", "/attendees", "ready", "open-invite"),
+        new("attendees-import", "/attendees", "ready", "open-import"),
+        new("dashboards-ready", "/dashboards"),
+        new("audit-ready", "/audit"),
+        new("book-ready", "/book/e2e-token"),
+        new("manage-ready", "/manage/e2e-token"),
+        new("manage-cancelled", "/manage/e2e-token", "ready", "cancel-booking"),
+        new("help-anonymous", "/help?e2eRoles=anonymous"),
     ];
 }

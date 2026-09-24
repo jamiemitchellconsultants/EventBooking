@@ -24,6 +24,7 @@ public static class E2EApiStub
         }));
         MapTask25(app);
         MapTask26(app);
+        MapTask27(app);
     }
 
     private static void MapTask25(WebApplication app)
@@ -141,5 +142,132 @@ public static class E2EApiStub
             FixtureState(context) == "workspace-conflict"
                 ? Results.Problem(statusCode: 409, type: "version-conflict")
                 : Results.Ok(new { bookingAppointmentId = id, status = "CheckedIn", checkedInAt = "2026-10-14T09:35:00+01:00", outcomeAt = (string?)null, version = 2, _links = new Dictionary<string, object>() }));
+    }
+
+    private static void MapTask27(WebApplication app)
+    {
+        var attendeeId = Guid.Parse("50000000-0000-0000-0000-000000000005");
+        var deliveryId = Guid.Parse("60000000-0000-0000-0000-000000000006");
+        var bookingId = Guid.Parse("70000000-0000-0000-0000-000000000007");
+        var eventId = Guid.Parse("30000000-0000-0000-0000-000000000003");
+        var time = new { date = "2026-10-14", startTime = "09:30:00", durationMinutes = 90,
+            startLocal = "2026-10-14T09:30:00+01:00", endLocal = "2026-10-14T11:00:00+01:00",
+            startUtc = "2026-10-14T08:30:00Z", endUtc = "2026-10-14T10:00:00Z",
+            timeZoneId = "Europe/London", zoneAbbreviation = "BST" };
+        app.MapGet("/api/attendees", () => Results.Json(new { items = new object[]
+        {
+            new { attendeeId, name = "T. Okafor", email = "t@example.org",
+                status = "AwaitingAvailability", statusDisplay = "Awaiting availability",
+                groupCode = "FIELD", readiness = "NoActiveBooking",
+                requiredTypeCodes = new[] { "MED" }, latestDeliveryStatus = (string?)"Sent",
+                cursor = "cursor-1", latestDeliveryId = (Guid?)null,
+                _links = new Dictionary<string, object>
+                {
+                    ["update"] = new { href = $"/api/attendees/{attendeeId}", method = "PUT", operationId = "updateAttendee" },
+                    ["invite"] = new { href = $"/api/attendees/{attendeeId}/invites", method = "POST", operationId = "inviteAttendee" },
+                    ["delete"] = new { href = $"/api/attendees/{attendeeId}", method = "DELETE", operationId = "deleteAttendee" },
+                } },
+            new { attendeeId = Guid.Parse("50000000-0000-0000-0000-000000000008"), name = "R. Singh", email = "r@example.org",
+                status = "Invited", statusDisplay = "Invited (pending response)",
+                groupCode = "FIELD", readiness = "NoActiveBooking",
+                requiredTypeCodes = new[] { "MED" }, latestDeliveryStatus = (string?)"Failed",
+                cursor = "cursor-2", latestDeliveryId = (Guid?)deliveryId,
+                _links = new Dictionary<string, object>
+                {
+                    ["emailRetry"] = new { href = $"/api/attendees/{attendeeId}/email-retry", method = "POST", operationId = "retryEmail" },
+                } },
+        }, nextCursor = (string?)null }));
+        app.MapPost("/api/attendees", () => Results.Created("/api/attendees/1", Guid.NewGuid()));
+        app.MapPost("/api/attendees/import", () => Results.Json(new { accepted = true, importedCount = 2, errors = Array.Empty<object>() }));
+        app.MapGet("/api/attendees/{id:guid}/eligible-event-count", (Guid id) =>
+            Results.Json(new { count = 2, requiredOptionCount = 3 }));
+        app.MapPost("/api/attendees/{id:guid}/invites", (Guid id) =>
+            Results.Json(new { inviteId = Guid.NewGuid(), status = "Invited" }));
+        app.MapPost("/api/attendees/{id:guid}/email-retry", (Guid id) =>
+            Results.Json(new { emailLogId = Guid.NewGuid() }));
+        app.MapGet("/api/attendees/{id:guid}/bookings", (Guid id) => Results.Json(new { items = new object[]
+        {
+            new { bookingId, isOriginal = true, eventDate = "2026-10-20",
+                eventStartTime = "09:30:00", eventEndTime = "13:30:00",
+                _links = new Dictionary<string, object>() },
+        }, nextCursor = (string?)null }));
+        app.MapPost("/api/attendees/{id:guid}/bookings/{bookingId:guid}/cancel", (Guid id, Guid bookingId) =>
+            Results.Json(new { confirmationRequired = false, activeBookingCount = 0,
+                cancelledBookingId = bookingId, _links = new Dictionary<string, object>() }));
+        app.MapGet("/api/attendees/{id:guid}/readiness", (Guid id) => Results.Json(new
+        {
+            attendeeId = id, code = "AppointmentsOutstanding", display = "Appointments outstanding",
+            outstandingAppointmentTypes = new[] { new { code = "MED", name = "Medical check", isRecoverable = true } },
+            _links = new Dictionary<string, object>(),
+        }));
+        app.MapPost("/api/attendees/{id:guid}/recovery-invites", (Guid id) =>
+            Results.Json(new { recoveryInviteId = Guid.NewGuid(),
+                locationIds = new[] { Guid.Parse("10000000-0000-0000-0000-000000000001") },
+                recoverableTypeIds = new[] { Guid.NewGuid() },
+                _links = new Dictionary<string, object>() }));
+        app.MapGet("/api/dashboards", () => Results.Json(new
+        {
+            awaitingAvailability = new { count = 1, rows = new[] { new {
+                attendeeId, name = "T. Okafor", email = "t@example.org",
+                requiredCodes = new[] { "MED" }, waitingSince = "2026-10-01", daysWaiting = 13 } } },
+            noResponse = new { count = 0, rows = Array.Empty<object>() },
+            events = new { count = 1, rows = new[] { new {
+                eventId, locationId = Guid.Parse("10000000-0000-0000-0000-000000000001"),
+                locationName = "London HQ", time,
+                capacities = new[] { new { code = "MED", totalHeadcount = 6, remainingCapacity = 3 } },
+                activeBookings = 3,
+                _links = new Dictionary<string, object>
+                {
+                    ["audit"] = new { href = $"/api/audit/events/{eventId}", method = "GET", operationId = "eventAudit" },
+                } } } },
+            failedEmails = 1, pendingEmails = 0,
+            _links = new Dictionary<string, object>(),
+        }));
+        app.MapGet("/api/audit", () => Results.Json(new { items = new object[]
+        {
+            new { id = Guid.NewGuid(), timestamp = "2026-10-13T10:00:00Z", entityType = "Event",
+                entityId = eventId, action = "EventConfirmed",
+                actorType = "Staff", actorId = "staff-1", actorDisplay = "M. Manager",
+                details = "6 headcount", _links = new Dictionary<string, object>() },
+            new { id = Guid.NewGuid(), timestamp = "2026-10-13T09:30:00Z", entityType = "Attendee",
+                entityId = attendeeId, action = "InviteSent",
+                actorType = "Staff", actorId = "staff-2", actorDisplay = "C. Coordinator",
+                details = (string?)"Invite emailed", _links = new Dictionary<string, object>() },
+        }, nextCursor = (string?)null }));
+        app.MapGet("/api/audit/attendees/{id:guid}", (Guid id) =>
+            Results.Json(new { items = Array.Empty<object>(), nextCursor = (string?)null }));
+        app.MapGet("/api/audit/events/{id:guid}", (Guid id) =>
+            Results.Json(new { items = Array.Empty<object>(), nextCursor = (string?)null }));
+        app.MapGet("/api/booking/{token}", (string token) => Results.Json(new
+        {
+            inviteId = Guid.NewGuid(), attendeeName = "Ravi",
+            appointmentTypeNames = new[] { "Medical check" },
+            options = new object[]
+            {
+                new { eventId = Guid.Parse("10000000-0000-0000-0000-000000000001"),
+                    locationName = "London HQ", address = "1 Example St", time },
+                new { eventId = Guid.Parse("20000000-0000-0000-0000-000000000002"),
+                    locationName = "Dublin Centre", address = "2 Sample Rd", time },
+            },
+            isRecovery = false,
+            _links = new Dictionary<string, object>
+            {
+                ["confirm"] = new { href = $"/api/booking/{token}/confirm", method = "POST", operationId = "confirmBooking" },
+            },
+        }));
+        app.MapPost("/api/booking/{token}/confirm", (string token) =>
+            Results.Created($"/api/manage/e2e-manage-token",
+                new { bookingId = Guid.NewGuid(), manageToken = "e2e-manage-token" }));
+        app.MapGet("/api/manage/{token}", (string token) => Results.Json(new
+        {
+            attendeeName = "Ravi", locationName = "London HQ", address = "1 Example St", time,
+            appointmentTypeNames = new[] { "Medical check" },
+            _links = new Dictionary<string, object>
+            {
+                ["cancel"] = new { href = $"/api/manage/{token}/cancel", method = "POST", operationId = "cancelManagedBooking" },
+            },
+        }));
+        app.MapPost("/api/manage/{token}/cancel", (string token) =>
+            Results.Json(new { outcome = "cancelled", inviteId = (Guid?)null }));
     }
 }

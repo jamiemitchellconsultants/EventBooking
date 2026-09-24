@@ -152,7 +152,8 @@ public class AttendeeRecoveryComponentTests : BunitContext
             display,
             types
                 .Select(type => new OutstandingAppointmentTypeDto(type.Code, type.Name, type.IsRecoverable))
-                .ToList());
+                .ToList(),
+            new Dictionary<string, ApiLink>());
 
     private static AngleSharp.Dom.IElement FindButton(IRenderedComponent<Attendees> cut, string text) =>
         cut.FindAll("button").First(button => button.TextContent.Trim() == text);
@@ -186,35 +187,43 @@ public class AttendeeRecoveryComponentTests : BunitContext
                 return Task.FromResult(Json(readiness));
             }
 
-            if (path == "/api/attendees")
+            if (path == "/api/me")
             {
-                return Task.FromResult(Json(new AttendeeListDto(
-                    [
-                        new AttendeeDto(
-                            attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
-                            "Not yet invited", "MED", "NoActiveBooking", [], null, "cursor"),
-                    ],
-                    null)));
+                return Task.FromResult(Json(new MeDto(["Coordinator"], null, null)));
+            }
+
+            if (path is "/api/locations")
+            {
+                return Task.FromResult(Json(new PageDto<LocationDto>([], null)));
             }
 
             if (path == "/api/attendee-groups")
             {
-                return Task.FromResult(Json(Array.Empty<object>()));
+                return Task.FromResult(Json(new PageDto<AttendeeGroupDto>([], null)));
             }
 
-            return Task.FromResult(Json(new DashboardsDto(
-                new DashboardTabDto<AwaitingRowDto>(0, []),
-                new DashboardTabDto<NoResponseRowDto>(0, []),
-                new DashboardTabDto<EventRowDto>(0, []),
-                0,
-                0)));
+            if (path is "/api/appointment-types")
+            {
+                return Task.FromResult(Json(new PageDto<AppointmentTypeDto>([], null)));
+            }
+
+            if (path == "/api/attendees")
+            {
+                return Task.FromResult(Json(new PageDto<AttendeeDto>(
+                    [
+                        new AttendeeDto(
+                            attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
+                            "Not yet invited", "MED", "NoActiveBooking", [], null, "cursor",
+                            null, new Dictionary<string, ApiLink>()),
+                    ],
+                    null)));
+            }
+
+            return Task.FromResult(Json(new PageDto<AuditRowDto>([], null)));
         });
-        Services.AddSingleton(
+        Services.AddSingleton<IAttendeesClient>(
             new AttendeesClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));
-        Services.AddSingleton(
-            new DashboardsClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
-        Services.AddSingleton(
+        Services.AddSingleton<IAuditClient>(
             new AuditClient(new HttpClient(stub) { BaseAddress = new Uri("http://localhost") }));
 
         return Render<Attendees>();
@@ -252,6 +261,6 @@ public class AttendeeRecoveryComponentTests : BunitContext
             cancel: null);
 
         cut.WaitForAssertion(() => Assert.Contains("Amara Novak", cut.Markup));
-        Assert.Single(cut.FindAll("details.audit-history"));
+        Assert.Single(cut.FindAll("section.audit-history"));
     }
 }

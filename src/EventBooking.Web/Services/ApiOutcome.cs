@@ -9,6 +9,8 @@ public sealed record ApiOutcome<T>(bool IsSuccess, T? Value, int StatusCode, Api
     public static ApiOutcome<T> Success(T? value, int status) => new(true, value, status, null);
     public static ApiOutcome<T> Failure(ApiProblem problem) => new(false, default, problem.Status, problem);
 
+    public static ApiOutcome<T> Failure(string message) => Failure(message, 500);
+
     // Compatibility for the predecessor clients Task 25-27 have not replaced yet.
     // They pass a bare message triple rather than a parsed problem body; it maps to
     // the same shape so ErrorCode/ErrorMessage keep their meaning.

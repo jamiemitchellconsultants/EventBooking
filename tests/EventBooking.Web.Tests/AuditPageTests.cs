@@ -30,15 +30,18 @@ public class AuditPageTests : BunitContext
     }
 
     private static AuditRowDto Row(string action, Guid? id = null) => new(
+        Guid.NewGuid(),
         new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero),
         "Event",
         id ?? Guid.NewGuid(),
         action,
         "Staff",
         "staff-1",
-        $"{action} details");
+        null,
+        $"{action} details",
+        new Dictionary<string, ApiLink>());
 
-    private RouteHandler Given(IReadOnlyList<string> roles, Queue<AuditSearchPageDto> pages)
+    private RouteHandler Given(IReadOnlyList<string> roles, Queue<PageDto<AuditRowDto>> pages)
     {
         var handler = new RouteHandler(request =>
             request.RequestUri!.AbsolutePath == "/api/me"
@@ -49,21 +52,20 @@ public class AuditPageTests : BunitContext
                 : new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = JsonContent.Create(
-                        pages.Count > 0 ? pages.Dequeue() : new AuditSearchPageDto([], null),
+                        pages.Count > 0 ? pages.Dequeue() : new PageDto<AuditRowDto>([], null),
                         options: CamelCase),
                 });
 
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
-        Services.AddSingleton(new AuditClient(http));
-        Services.AddSingleton(new MeClient(http));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAuditClient>(new AuditClient(http));
+        Services.AddSingleton<IMeClient>(new MeClient(http));
         return handler;
     }
 
     [Fact]
     public void EntityTypeDropdownAbsentForAdminOnlyCaller()
     {
-        Given(["Admin"], new Queue<AuditSearchPageDto>());
+        Given(["Admin"], new Queue<PageDto<AuditRowDto>>());
 
         var cut = Render<Audit>();
 
@@ -73,7 +75,7 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void EntityTypeDropdownPresentForCoordinator()
     {
-        Given(["Coordinator"], new Queue<AuditSearchPageDto>());
+        Given(["Coordinator"], new Queue<PageDto<AuditRowDto>>());
 
         var cut = Render<Audit>();
 
@@ -83,8 +85,8 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void TheNewestPageIsLoadedOnArrival()
     {
-        var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], null));
+        var pages = new Queue<PageDto<AuditRowDto>>();
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventConfirmed")], null));
         Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
@@ -95,9 +97,9 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void LoadMoreAppendsRatherThanReplaces()
     {
-        var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], "cursor-1"));
-        pages.Enqueue(new AuditSearchPageDto([Row("EventCancelled")], null));
+        var pages = new Queue<PageDto<AuditRowDto>>();
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventConfirmed")], "cursor-1"));
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventCancelled")], null));
         var handler = Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
@@ -116,8 +118,8 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void LoadMoreIsHiddenWhenThePageIsExhausted()
     {
-        var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], null));
+        var pages = new Queue<PageDto<AuditRowDto>>();
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventConfirmed")], null));
         Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
@@ -129,9 +131,9 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void SearchingAgainReplacesThePreviousResults()
     {
-        var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], null));
-        pages.Enqueue(new AuditSearchPageDto([Row("EventCancelled")], null));
+        var pages = new Queue<PageDto<AuditRowDto>>();
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventConfirmed")], null));
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventCancelled")], null));
         Given(["Coordinator"], pages);
 
         var cut = Render<Audit>();
@@ -157,9 +159,8 @@ public class AuditPageTests : BunitContext
                 }
                 : new HttpResponseMessage(HttpStatusCode.Forbidden));
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.com") };
-        Services.AddSingleton(new AuditClient(http));
-        Services.AddSingleton(new MeClient(http));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAuditClient>(new AuditClient(http));
+        Services.AddSingleton<IMeClient>(new MeClient(http));
 
         var cut = Render<Audit>();
 
@@ -168,8 +169,8 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void ActionButtonsUseTheSharedButtonStyles()
     {
-        var pages = new Queue<AuditSearchPageDto>();
-        pages.Enqueue(new AuditSearchPageDto([Row("EventConfirmed")], "cursor-1"));
+        var pages = new Queue<PageDto<AuditRowDto>>();
+        pages.Enqueue(new PageDto<AuditRowDto>([Row("EventConfirmed")], "cursor-1"));
         Given(["Admin"], pages);
 
         var cut = Render<Audit>();
@@ -182,13 +183,13 @@ public class AuditPageTests : BunitContext
     [Fact]
     public void EachFilterCaptionIsSeparateFromItsControl()
     {
-        Given(["Coordinator"], new Queue<AuditSearchPageDto>());
+        Given(["Coordinator"], new Queue<PageDto<AuditRowDto>>());
 
         var cut = Render<Audit>();
 
         cut.WaitForAssertion(() => Assert.Single(cut.FindAll("#audit-entity-type")));
         var fields = cut.FindAll(".audit-filters .field");
-        Assert.Equal(6, fields.Count);
+        Assert.Equal(7, fields.Count);
         Assert.All(fields, field =>
         {
             var label = field.QuerySelector("label.field-label");

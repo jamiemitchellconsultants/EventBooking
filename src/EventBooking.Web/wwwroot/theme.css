@@ -3,6 +3,7 @@
   --color-primary: #1f4e79;
   --color-on-primary: #ffffff;
   --color-accent: #6b4fa3;
+  --accent: var(--color-accent);
   --color-danger: #b42318;
   --color-warning: #b54708;
   --color-success: #067647;

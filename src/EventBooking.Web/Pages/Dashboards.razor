@@ -1,18 +1,29 @@
 @page "/dashboards"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using EventBooking.Web.Services
-@inject DashboardsClient DashboardsApi
-@inject AttendeesClient AttendeesApi
+@using EventBooking.Web.Shared
+@using EventBooking.Web.Components
+@inject IDashboardsClient DashboardsApi
+@inject IAttendeesClient AttendeesApi
 
 <PageTitle>Dashboards</PageTitle>
 
-<section class="page dashboards-page" aria-labelledby="dashboards-heading" aria-busy="@(_isLoading || _busy)">
+<section class="page dashboards-page" aria-labelledby="dashboards-heading" aria-busy="@(_isLoading || _busy ? "true" : "false")">
     <div class="page-header">
         <div>
             <span class="eyebrow">Coordination</span>
             <h1 id="dashboards-heading">Dashboards</h1>
             <p>Read-only views of current availability, follow-ups, and events.</p>
         </div>
+        <label class="field">Location
+            <select name="location" @onchange="OnLocationFilterChanged">
+                <option value="">All locations</option>
+                @foreach (var location in _knownLocations)
+                {
+                    <option value="@location.Id" selected="@(_locationId == location.Id)">@location.Name</option>
+                }
+            </select>
+        </label>
     </div>
 
     @if (_error is not null)
@@ -49,19 +60,19 @@
     {
         <div class="dashboard-tabs-row">
             <div class="dashboard-tabs" role="tablist" aria-label="Dashboard views" @onkeydown="OnTabListKeyDownAsync">
-                <button @ref="_awaitingTabRef" id="awaiting-tab" class="@TabClass(Tab.Awaiting)" role="tab"
+                <button @ref="_awaitingTabRef" id="awaiting-tab" data-tab="awaiting-availability" class="@TabClass(Tab.Awaiting)" role="tab"
                         aria-selected="@AriaSelected(Tab.Awaiting)" aria-controls="dashboard-panel"
                         tabindex="@TabIndexFor(Tab.Awaiting)"
                         @onclick="() => SelectTab(Tab.Awaiting)" disabled="@_busy">
                     Awaiting availability <span class="tab-count">(@_data.AwaitingAvailability.Count)</span>
                 </button>
-                <button @ref="_noResponseTabRef" id="no-response-tab" class="@TabClass(Tab.NoResponse)" role="tab"
+                <button @ref="_noResponseTabRef" id="no-response-tab" data-tab="no-response" class="@TabClass(Tab.NoResponse)" role="tab"
                         aria-selected="@AriaSelected(Tab.NoResponse)" aria-controls="dashboard-panel"
                         tabindex="@TabIndexFor(Tab.NoResponse)"
                         @onclick="() => SelectTab(Tab.NoResponse)" disabled="@_busy">
                     No response <span class="tab-count">(@_data.NoResponse.Count)</span>
                 </button>
-                <button @ref="_eventsTabRef" id="events-tab" class="@TabClass(Tab.Events)" role="tab"
+                <button @ref="_eventsTabRef" id="events-tab" data-tab="events" class="@TabClass(Tab.Events)" role="tab"
                         aria-selected="@AriaSelected(Tab.Events)" aria-controls="dashboard-panel"
                         tabindex="@TabIndexFor(Tab.Events)"
                         @onclick="() => SelectTab(Tab.Events)" disabled="@_busy">
@@ -113,7 +124,7 @@
                                             </div>
                                         </td>
                                         <td data-label="Waiting since">@row.WaitingSince.ToString("dd MMM yyyy") · @row.DaysWaiting day@(row.DaysWaiting == 1 ? string.Empty : "s")</td>
-                                        <td data-label="History"><AuditHistory AttendeeId="@row.AttendeeId" /></td>
+                                        <td data-label="History"><AuditHistory EntityKind="AuditEntityKind.Attendee" EntityId="@row.AttendeeId" /></td>
                                     </tr>
                                 }
                             </tbody>
@@ -151,7 +162,7 @@
                                             </div>
                                         </td>
                                         <td data-label="Gave up on">@row.GaveUpOn.ToString("dd MMM yyyy")</td>
-                                        <td data-label="History"><AuditHistory AttendeeId="@row.AttendeeId" /></td>
+                                        <td data-label="History"><AuditHistory EntityKind="AuditEntityKind.Attendee" EntityId="@row.AttendeeId" /></td>
                                         <td data-label="Actions">
                                             <button class="button button-primary button-small" @onclick="() => ReinviteAsync(row.AttendeeId)" disabled="@_busy"
                                                     title="Sends a fresh single-use booking link and restarts the follow-up window.">
@@ -177,15 +188,14 @@
                 <div class="table-wrap">
                     <table>
                         <thead>
-                            <tr><th scope="col">Date</th><th scope="col">Location</th><th scope="col">Window</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Attendees currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this eventItem, with who made it.">History</th></tr>
+                            <tr><th scope="col">Location</th><th scope="col">When</th><th scope="col" title="Places left over the total headcount each appointment type accepted.">Capacity by type</th><th scope="col" title="Attendees currently booked into this window.">Active bookings</th><th scope="col" title="Every recorded change to this event, with who made it.">History</th></tr>
                         </thead>
                         <tbody>
                             @foreach (var eventItem in _data.Events.Rows)
                             {
                                 <tr @key="eventItem.EventId">
-                                    <td data-label="Date">@eventItem.Date.ToString("dd MMM yyyy")</td>
                                     <td data-label="Location">@eventItem.LocationName</td>
-                                    <td data-label="Window">@FormatWindow(eventItem.StartTime, eventItem.EndTime)</td>
+                                    <td data-label="When"><EventTime Value="@eventItem.Time" /></td>
                                     <td data-label="Capacity by type">
                                         <div class="chip-row">
                                             @foreach (var capacity in eventItem.Capacities)
@@ -195,7 +205,12 @@
                                         </div>
                                     </td>
                                     <td data-label="Active bookings">@eventItem.ActiveBookings</td>
-                                    <td data-label="History"><AuditHistory EventId="@eventItem.EventId" /></td>
+                                    <td data-label="History">
+                                        @if (eventItem.Links.Allows("audit"))
+                                        {
+                                            <AuditHistory EntityKind="AuditEntityKind.Event" EntityId="@eventItem.EventId" />
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -218,6 +233,8 @@
     private string? _error;
     private bool _busy;
     private bool _isLoading = true;
+    private Guid? _locationId;
+    private readonly List<(Guid Id, string Name)> _knownLocations = [];
 
     private ElementReference _awaitingTabRef;
     private ElementReference _noResponseTabRef;
@@ -271,17 +288,27 @@
         await TabRefFor(_tab).FocusAsync();
     }
 
+    private async Task OnLocationFilterChanged(ChangeEventArgs args)
+    {
+        _locationId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+        await ReloadAsync();
+    }
+
     private async Task ReloadAsync()
     {
         _isLoading = true;
 
         try
         {
-            var outcome = await DashboardsApi.GetAsync(CancellationToken.None);
-            if (outcome.IsSuccess)
+            var outcome = await DashboardsApi.GetAsync(_locationId, CancellationToken.None);
+            if (outcome.IsSuccess && outcome.Value is not null)
             {
                 _data = outcome.Value;
                 _error = null;
+                _knownLocations.Clear();
+                _knownLocations.AddRange(_data.Events.Rows
+                    .Select(x => (x.LocationId, x.LocationName)).Distinct()
+                    .OrderBy(x => x.LocationName, StringComparer.Ordinal));
             }
             else
             {
@@ -309,7 +336,8 @@
 
         try
         {
-            var outcome = await AttendeesApi.TriggerInviteAsync(attendeeId, CancellationToken.None);
+            var outcome = await AttendeesApi.InviteAsync(
+                attendeeId, [], IdempotencySubmission.Start(), CancellationToken.None);
             if (!outcome.IsSuccess)
             {
                 _error = outcome.ErrorMessage ?? UnexpectedError;
@@ -335,7 +363,4 @@
     }
 
     private string TabClass(Tab tab) => _tab == tab ? "dashboard-tab selected" : "dashboard-tab";
-
-    private static string FormatWindow(TimeOnly startTime, TimeOnly endTime) =>
-        $"{startTime:HH\\:mm}–{endTime:HH\\:mm}";
 }

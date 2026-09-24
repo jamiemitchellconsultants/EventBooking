@@ -96,23 +96,24 @@ public class RepairBWebComponentTests : BunitContext
     }
 
     /// <summary>
-    /// Verifies audit timestamps render as configured transitional-location local time with their offset and zone identifier.
+    /// Verifies audit timestamps render as UTC so entries from every location compare directly.
     /// </summary>
     [Fact]
-    public void AuditHistoryRendersTransitionalLocationLocalTimestamp()
+    public void AuditHistoryRendersUtcTimestamp()
     {
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new List<AuditRowDto>
-        {
-            new(new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero), "Attendee", Guid.NewGuid(), "Updated", "Staff", "staff-1", null),
-        }));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        handler.Enqueue(_ => Json(new PageDto<AuditRowDto>(
+        [
+            new(Guid.NewGuid(), new DateTimeOffset(2026, 6, 1, 23, 30, 0, TimeSpan.Zero), "Attendee", Guid.NewGuid(), "Updated", "Staff", "staff-1", null, null, new Dictionary<string, ApiLink>()),
+        ], null)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
-        var cut = Render<AuditHistory>(parameters => parameters.Add(p => p.AttendeeId, Guid.NewGuid()));
-        cut.Find("details").TriggerEvent("ontoggle", new EventArgs());
+        var cut = Render<AuditHistory>(parameters => parameters
+            .Add(p => p.EntityKind, AuditEntityKind.Attendee)
+            .Add(p => p.EntityId, Guid.NewGuid()));
+        cut.Find("button").Click();
 
-        cut.WaitForAssertion(() => Assert.Contains("2026-06-02 00:30 +01:00 (Europe/London)", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("2026-06-01 23:30 UTC", cut.Markup));
     }
 
     /// <summary>
@@ -123,16 +124,15 @@ public class RepairBWebComponentTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new AttendeeListDto(
+        EnqueueReferenceData(handler);
+        handler.Enqueue(_ => Json(new PageDto<AttendeeDto>(
             [new AttendeeDto(
                 attendeeId, "C. Attendee", "attendee@example.com", "Invited",
-                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Sent", "cursor")],
+                "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Sent", "cursor",
+                null, new Dictionary<string, ApiLink>())],
             null)));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
         var cut = Render<Attendees>();
 
@@ -147,34 +147,35 @@ public class RepairBWebComponentTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var deliveryId = Guid.NewGuid();
-        var page = new AttendeeListDto(
+        var page = new PageDto<AttendeeDto>(
             [new AttendeeDto(
                 attendeeId, "C. Attendee", "attendee@example.com", "Invited",
                 "Invited (pending response)", "MED", "NoActiveBooking", ["MED"], "Failed", "cursor",
-                deliveryId)],
+                deliveryId, new Dictionary<string, ApiLink>
+                {
+                    ["emailRetry"] = new($"/api/attendees/{attendeeId}/email-retry", "POST", "retryEmail"),
+                })],
             null);
         string? retried = null;
         var handler = new RoutedHandler();
+        EnqueueReferenceData(handler);
         handler.Enqueue(_ => Json(page));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
         handler.Enqueue(request =>
         {
             retried = request.RequestUri!.PathAndQuery;
             return Json(new EmailRetryDto(Guid.NewGuid()));
         });
+        EnqueueReferenceData(handler);
         handler.Enqueue(_ => Json(page));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
         var cut = Render<Attendees>();
         cut.WaitForAssertion(() => Assert.Contains("Failed", cut.Markup));
         cut.FindAll("button").Single(b => b.TextContent.Trim() == "Resend").Click();
 
         cut.WaitForAssertion(() => Assert.Equal(
-            $"/api/attendees/{attendeeId}/email-retry?emailLogId={deliveryId}", retried));
+            $"/api/attendees/{attendeeId}/email-retry", retried));
     }
 
     /// <summary>
@@ -270,6 +271,14 @@ public class RepairBWebComponentTests : BunitContext
         var cut = Render<CascadingAuthenticationState>(parameters => parameters.AddChildContent(page));
         cut.WaitForAssertion(() => Assert.DoesNotContain("Loading…", cut.Markup));
         return cut;
+    }
+
+    private static void EnqueueReferenceData(RoutedHandler handler)
+    {
+        handler.Enqueue(_ => Json(new MeDto(["Coordinator"], null, null)));
+        handler.Enqueue(_ => Json(new PageDto<LocationDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AttendeeGroupDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AppointmentTypeDto>([], null)));
     }
 
     private static HttpClient NewHttpClient(HttpMessageHandler handler) => new(handler)

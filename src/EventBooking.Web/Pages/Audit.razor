@@ -1,9 +1,8 @@
 @page "/audit"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using EventBooking.Web.Services
-@inject AuditClient Audits
-@inject MeClient Me
-@inject TransitionalLocationTimePresentation TimePresentation
+@inject IAuditClient Audits
+@inject IMeClient Me
 
 <PageTitle>Audit trail</PageTitle>
 
@@ -51,9 +50,14 @@
                 </select>
             </div>
             <div class="field">
-                <label class="field-label" for="audit-identifier">Identifier</label>
-                <input id="audit-identifier" @bind="_identifier" placeholder="Entity or actor id"
-                       title="Matches an audited entity identifier or an actor identifier exactly." />
+                <label class="field-label" for="audit-entity-id">Entity id</label>
+                <input id="audit-entity-id" @bind="_entityId" placeholder="Entity id"
+                       title="Matches an audited entity identifier exactly." />
+            </div>
+            <div class="field">
+                <label class="field-label" for="audit-actor-id">Actor id</label>
+                <input id="audit-actor-id" @bind="_actorId" placeholder="Actor id"
+                       title="Matches an actor identifier exactly." />
             </div>
             @if (_showEntityType)
             {
@@ -100,9 +104,9 @@
                     @foreach (var row in _rows)
                     {
                         <tr>
-                            <td data-label="When">@TimePresentation.Format(row.Timestamp)</td>
+                            <td data-label="When">@row.Timestamp.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
                             <td data-label="What">@row.EntityType @row.Action</td>
-                            <td data-label="Who">@row.ActorType @row.ActorId</td>
+                            <td data-label="Who">@(row.ActorDisplay ?? row.ActorId ?? row.ActorType)</td>
                             <td data-label="Details">@row.Details</td>
                         </tr>
                     }
@@ -142,14 +146,13 @@
         "StaffAccessProfile", "BookingAppointment", "Attendee",
     ];
 
-    private const int PageSize = 50;
-
     private readonly List<AuditRowDto> _rows = [];
     private DateTime? _from;
     private DateTime? _to;
     private string? _actorType;
     private string? _action;
-    private string? _identifier;
+    private string? _entityId;
+    private string? _actorId;
     private string? _entityType;
     private string? _nextCursor;
     private string? _error;
@@ -177,20 +180,20 @@
         try
         {
             var outcome = await Audits.SearchAsync(
-                new AuditSearchFilterDto(
+                new AuditFilters(
                     ToOffset(_from),
                     ToOffset(_to),
                     EmptyToNull(_actorType),
                     EmptyToNull(_action),
-                    EmptyToNull(_identifier),
                     EmptyToNull(_entityType),
-                    _nextCursor,
-                    PageSize),
+                    Guid.TryParse(EmptyToNull(_entityId), out var entityId) ? entityId : null,
+                    EmptyToNull(_actorId)),
+                _nextCursor,
                 CancellationToken.None);
 
             if (outcome is { IsSuccess: true, Value: not null })
             {
-                _rows.AddRange(outcome.Value.Rows);
+                _rows.AddRange(outcome.Value.Items);
                 _nextCursor = outcome.Value.NextCursor;
             }
             else

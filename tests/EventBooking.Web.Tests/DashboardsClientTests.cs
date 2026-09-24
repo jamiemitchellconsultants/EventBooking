@@ -70,7 +70,7 @@ public class DashboardsClientTests
         var (client, handler) = Given();
         handler.Response = JsonResponse();
 
-        var outcome = await client.GetAsync(CancellationToken.None);
+        var outcome = await client.GetAsync(null, CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
         Assert.Equal(HttpMethod.Get, handler.Request!.Method);
@@ -89,7 +89,7 @@ public class DashboardsClientTests
         var response = new TrackingResponseMessage(HttpStatusCode.OK, content) { Content = content };
         handler.Response = response;
 
-        await client.GetAsync(CancellationToken.None);
+        await client.GetAsync(null, CancellationToken.None);
 
         Assert.True(response.WasDisposed);
         Assert.True(response.WasDisposedAfterContentWasRead);

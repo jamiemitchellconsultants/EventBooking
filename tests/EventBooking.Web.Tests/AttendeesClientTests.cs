@@ -89,10 +89,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new AttendeeListDto([], null)),
+            Content = JsonContent.Create(new PageDto<AttendeeDto>([], null)),
         };
 
-        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, CancellationToken.None);
 
         Assert.Equal("/api/attendees", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("", handler.Requests[0].RequestUri!.Query);
@@ -104,10 +104,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new AttendeeListDto([], null)),
+            Content = JsonContent.Create(new PageDto<AttendeeDto>([], null)),
         };
 
-        await client.ListAsync(null, null, null, null, null, "a novak@mail.com", CancellationToken.None);
+        await client.ListAsync(null, null, null, "a novak@mail.com", null, CancellationToken.None);
 
         Assert.Contains("search=a%20novak%40mail.com", handler.Requests[0].RequestUri!.Query);
     }
@@ -118,10 +118,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new AttendeeListDto([], null)),
+            Content = JsonContent.Create(new PageDto<AttendeeDto>([], null)),
         };
 
-        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, CancellationToken.None);
 
         Assert.Equal("/api/attendees", handler.Requests[0].RequestUri!.AbsolutePath);
         Assert.Equal("", handler.Requests[0].RequestUri!.Query);
@@ -133,10 +133,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new AttendeeListDto([], null)),
+            Content = JsonContent.Create(new PageDto<AttendeeDto>([], null)),
         };
 
-        await client.ListAsync(null, null, "AwaitingAvailability", null, null, null, CancellationToken.None);
+        await client.ListAsync("AwaitingAvailability", null, null, null, null, CancellationToken.None);
 
         Assert.Contains("status=AwaitingAvailability", handler.Requests[0].RequestUri!.Query);
         Assert.DoesNotContain("search=", handler.Requests[0].RequestUri!.Query);
@@ -148,10 +148,10 @@ public class AttendeesClientTests
         var (client, handler) = Given();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new AttendeeListDto([], null)),
+            Content = JsonContent.Create(new PageDto<AttendeeDto>([], null)),
         };
 
-        await client.ListAsync(null, null, "NoResponseNeedsFollowUp", null, null, "a novak@mail.com", CancellationToken.None);
+        await client.ListAsync("NoResponseNeedsFollowUp", null, null, "a novak@mail.com", null, CancellationToken.None);
 
         var query = handler.Requests[0].RequestUri!.Query;
         Assert.Contains("status=NoResponseNeedsFollowUp", query);
@@ -159,17 +159,52 @@ public class AttendeesClientTests
     }
 
     [Fact]
-    public async Task ListingGroupsAsksForTheReferenceRoute()
+    public async Task ReferenceDataFansOutToMeLocationsGroupsAndTypes()
     {
         var (client, handler) = Given();
-        handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
+        var groupId = Guid.NewGuid();
+        var typeId = Guid.NewGuid();
+        handler.Responses.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new List<AttendeeGroupOptionDto>()),
-        };
+            Content = JsonContent.Create(new MeDto(
+                ["Coordinator"], null, null) with
+            {
+                Links = new Dictionary<string, ApiLink>
+                {
+                    ["createAttendee"] = new("/api/attendees", "POST", "createAttendee"),
+                },
+            }),
+        });
+        handler.Responses.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new PageDto<LocationDto>(
+                [new LocationDto(Guid.NewGuid(), "LON", "London HQ", "1 Example St",
+                    "Europe/London", true, 1, new Dictionary<string, ApiLink>())], null)),
+        });
+        handler.Responses.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new PageDto<AttendeeGroupDto>(
+                [new AttendeeGroupDto(groupId, "FIELD", "Field staff", true, 1,
+                    [typeId], 3, new Dictionary<string, ApiLink>())], null)),
+        });
+        handler.Responses.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new PageDto<AppointmentTypeDto>(
+                [new AppointmentTypeDto(typeId, "MED", "Medical check", true, 1,
+                    true, "M. Manager", new Dictionary<string, ApiLink>())], null)),
+        });
 
-        await client.ListGroupsAsync(CancellationToken.None);
+        var outcome = await client.GetReferenceDataAsync(CancellationToken.None);
 
-        Assert.Equal("/api/attendee-groups", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal(
+            ["/api/me", "/api/locations", "/api/attendee-groups", "/api/appointment-types"],
+            handler.Requests.Select(request => request.RequestUri!.AbsolutePath));
+        Assert.Equal("London HQ", outcome.Value!.Locations[0].Name);
+        Assert.Equal("Field staff", outcome.Value.Groups.Single(group => group.Id == groupId).Name);
+        Assert.Equal([typeId], outcome.Value.Groups[0].RequirementTypeIds);
+        Assert.Equal("MED", outcome.Value.AppointmentTypes.Single(type => type.Id == typeId).Code);
+        Assert.True(outcome.Value.CollectionLinks.ContainsKey("createAttendee"));
     }
 
     [Fact]
@@ -182,12 +217,14 @@ public class AttendeesClientTests
         };
         var groupId = Guid.NewGuid();
 
-        await client.CreateAsync("Amara Novak", "a.novak@mail.com", groupId, CancellationToken.None);
+        await client.CreateAsync("Amara Novak", "a.novak@mail.com", groupId,
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
         Assert.Contains("Amara Novak", handler.Bodies[0]);
         Assert.Contains(groupId.ToString(), handler.Bodies[0]);
         Assert.DoesNotContain("AppointmentTypeIds", handler.Bodies[0]);
+        Assert.True(handler.Requests[0].Headers.Contains("Idempotency-Key"));
     }
 
     [Fact]
@@ -227,12 +264,17 @@ public class AttendeesClientTests
             Content = JsonContent.Create(new ImportOutcomeDto(true, 2, [])),
         };
         var csv = "name,email,attendee_group\nAmara Novak,a.novak@mail.com,PILOTS";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csv));
 
-        var outcome = await client.ImportAsync(csv, CancellationToken.None);
+        var outcome = await client.ImportAsync(stream, "attendees.csv",
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.True(outcome.Value!.Accepted);
         Assert.Equal("/api/attendees/import", handler.Requests[0].RequestUri!.AbsolutePath);
-        Assert.Equal(csv, handler.Bodies[0]);
+        Assert.Contains(csv, handler.Bodies[0]);
+        Assert.Contains("attendees.csv", handler.Bodies[0]);
+        Assert.StartsWith("multipart/form-data",
+            handler.Requests[0].Content!.Headers.ContentType!.MediaType);
     }
 
     [Fact]
@@ -245,7 +287,10 @@ public class AttendeesClientTests
                 false, 0, [new ImportErrorDto(2, "Name is required."), new ImportErrorDto(4, "XYZ is not a known attendee group code.")])),
         };
 
-        var outcome = await client.ImportAsync("anything", CancellationToken.None);
+        using var stream = new MemoryStream("anything"u8.ToArray());
+
+        var outcome = await client.ImportAsync(stream, "bad.csv",
+            IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
         Assert.False(outcome.Value!.Accepted);
@@ -254,18 +299,107 @@ public class AttendeesClientTests
     }
 
     [Fact]
-    public async Task TriggeringAnInvitePostsToTheInviteRoute()
+    public async Task InvitingPostsTheChosenLocationsToTheInvitesRoute()
+    {
+        var (client, handler) = Given();
+        var id = Guid.NewGuid();
+        var inviteId = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new InviteOutcomeDto(inviteId, "Invited")),
+        };
+
+        var outcome = await client.InviteAsync(id, [first, second],
+            IdempotencySubmission.Start(), CancellationToken.None);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal(inviteId, outcome.Value!.InviteId);
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal($"/api/attendees/{id}/invites", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains(first.ToString(), handler.Bodies[0]);
+        Assert.Contains(second.ToString(), handler.Bodies[0]);
+        Assert.True(handler.Requests[0].Headers.Contains("Idempotency-Key"));
+    }
+
+    [Fact]
+    public async Task InvitingWithoutLocationsSendsANullSelection()
     {
         var (client, handler) = Given();
         var id = Guid.NewGuid();
         handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new { Invited = true }),
+            Content = JsonContent.Create(new InviteOutcomeDto(Guid.NewGuid(), "Invited")),
         };
 
-        await client.TriggerInviteAsync(id, CancellationToken.None);
+        await client.InviteAsync(id, [], IdempotencySubmission.Start(), CancellationToken.None);
 
-        Assert.Equal($"/api/attendees/{id}/invite", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains("null", handler.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task CountingEligibleEventsRepeatsOneLocationParameterPerLocation()
+    {
+        var (client, handler) = Given();
+        var id = Guid.NewGuid();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new EligibleEventCountDto(2, 3)),
+        };
+
+        var outcome = await client.CountEligibleAsync(id, [first, second], CancellationToken.None);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal(2, outcome.Value!.Count);
+        Assert.Equal(3, outcome.Value.RequiredOptionCount);
+        Assert.Equal($"/api/attendees/{id}/eligible-event-count",
+            handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Contains($"locationIds={first:D}", handler.Requests[0].RequestUri!.Query);
+        Assert.Contains($"locationIds={second:D}", handler.Requests[0].RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task RetryingEmailPostsWithoutABody()
+    {
+        var (client, handler) = Given();
+        var id = Guid.NewGuid();
+        var emailLogId = Guid.NewGuid();
+        handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new EmailRetryDto(emailLogId)),
+        };
+
+        var outcome = await client.RetryEmailAsync(id, CancellationToken.None);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal(emailLogId, outcome.Value!.EmailLogId);
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        Assert.Equal($"/api/attendees/{id}/email-retry", handler.Requests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("", handler.Requests[0].RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task ReadingReadinessGetsTheReadinessRoute()
+    {
+        var (client, handler) = Given();
+        var attendeeId = Guid.NewGuid();
+        handler.Response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new AttendeeReadinessDto(
+                attendeeId, "AppointmentsOutstanding", "Appointments outstanding",
+                [new OutstandingAppointmentTypeDto("MED", "Medical check", true)],
+                new Dictionary<string, ApiLink>())),
+        };
+
+        var outcome = await client.GetReadinessAsync(attendeeId, CancellationToken.None);
+
+        Assert.True(outcome.IsSuccess);
+        Assert.Equal("AppointmentsOutstanding", outcome.Value!.Code);
+        Assert.Equal($"/api/attendees/{attendeeId}/readiness",
+            handler.Requests[0].RequestUri!.AbsolutePath);
     }
 
     [Fact]
@@ -341,7 +475,7 @@ public class AttendeesClientTests
     public async Task EveryResponseIsDisposedOnlyAfterTheClientHasConsumedItsContent()
     {
         var (client, handler) = Given();
-        var listContent = new TrackingContent(JsonSerializer.Serialize(new AttendeeListDto([], null)));
+        var listContent = new TrackingContent(JsonSerializer.Serialize(new PageDto<AttendeeDto>([], null)));
         var createContent = new TrackingContent(JsonSerializer.Serialize(Guid.NewGuid()));
         var importContent = new TrackingContent(JsonSerializer.Serialize(new ImportOutcomeDto(true, 1, [])));
         var listResponse = new TrackingResponseMessage(HttpStatusCode.OK, listContent);
@@ -366,12 +500,15 @@ public class AttendeesClientTests
         }
 
         var id = Guid.NewGuid();
-        await client.ListAsync(null, null, null, null, null, null, CancellationToken.None);
-        await client.CreateAsync("Amara Novak", "a.novak@mail.com", null, CancellationToken.None);
+        await client.ListAsync(null, null, null, null, null, CancellationToken.None);
+        await client.CreateAsync("Amara Novak", "a.novak@mail.com", null,
+            IdempotencySubmission.Start(), CancellationToken.None);
         await client.UpdateAsync(id, "Amara Novak", "a.novak@mail.com", null, CancellationToken.None);
         await client.DeleteAsync(id, false, CancellationToken.None);
-        await client.ImportAsync("name,email,attendee_group", CancellationToken.None);
-        await client.TriggerInviteAsync(id, CancellationToken.None);
+        using var import = new MemoryStream("name,email,attendee_group"u8.ToArray());
+        await client.ImportAsync(import, "attendees.csv",
+            IdempotencySubmission.Start(), CancellationToken.None);
+        await client.InviteAsync(id, [], IdempotencySubmission.Start(), CancellationToken.None);
 
         Assert.All(responses, response => Assert.True(response.WasDisposed));
         Assert.True(listContent.WasRead);
@@ -387,13 +524,13 @@ public class AttendeesClientTests
     {
         var handler = new StubHandler();
         var attendeeId = Guid.NewGuid();
-        handler.Responses.Enqueue(Json("[]"));
+        handler.Responses.Enqueue(Json("""{"items":[],"nextCursor":null}"""));
         var client = NewAttendeesClient(handler);
 
         var outcome = await client.GetBookingsAsync(attendeeId, CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        Assert.Empty(outcome.Value!);
+        Assert.Empty(outcome.Value!.Items);
         Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
         Assert.Equal($"/api/attendees/{attendeeId}/bookings", handler.Requests[0].RequestUri!.AbsolutePath);
     }
@@ -405,25 +542,25 @@ public class AttendeesClientTests
         var originalId = Guid.NewGuid();
         var recoveryId = Guid.NewGuid();
         handler.Responses.Enqueue(Json($$"""
-            [
+            {"items":[
               {"bookingId":"{{originalId}}","isOriginal":true,"eventDate":"2026-09-10",
                "eventStartTime":"09:00:00","eventEndTime":"13:00:00"},
               {"bookingId":"{{recoveryId}}","isOriginal":false,"eventDate":"2026-09-12",
                "eventStartTime":"13:00:00","eventEndTime":"17:00:00"}
-            ]
+            ],"nextCursor":null}
             """));
         var client = NewAttendeesClient(handler);
 
         var outcome = await client.GetBookingsAsync(Guid.NewGuid(), CancellationToken.None);
 
         Assert.True(outcome.IsSuccess);
-        Assert.Equal(2, outcome.Value!.Count);
-        Assert.Equal(originalId, outcome.Value[0].BookingId);
-        Assert.True(outcome.Value[0].IsOriginal);
-        Assert.Equal(new DateOnly(2026, 9, 10), outcome.Value[0].EventDate);
-        Assert.Equal(new TimeOnly(13, 0), outcome.Value[0].EventEndTime);
-        Assert.False(outcome.Value[1].IsOriginal);
-        Assert.Equal(recoveryId, outcome.Value[1].BookingId);
+        Assert.Equal(2, outcome.Value!.Items.Count);
+        Assert.Equal(originalId, outcome.Value.Items[0].BookingId);
+        Assert.True(outcome.Value.Items[0].IsOriginal);
+        Assert.Equal(new DateOnly(2026, 9, 10), outcome.Value.Items[0].EventDate);
+        Assert.Equal(new TimeOnly(13, 0), outcome.Value.Items[0].EventEndTime);
+        Assert.False(outcome.Value.Items[1].IsOriginal);
+        Assert.Equal(recoveryId, outcome.Value.Items[1].BookingId);
     }
 
     [Fact]

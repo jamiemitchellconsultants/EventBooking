@@ -63,28 +63,27 @@ builder.Services.AddScoped(sp =>
 #endif
 
 builder.Services.AddScoped<IEventsClient, EventsClient>();
-builder.Services.AddScoped<AttendeesClient>();
+builder.Services.AddScoped<IAttendeesClient, AttendeesClient>();
 builder.Services.AddScoped<AdminClient>();
 builder.Services.AddScoped<StaffAccessClient>();
-builder.Services.AddScoped<DashboardsClient>();
-builder.Services.AddScoped<AuditClient>();
+builder.Services.AddScoped<IDashboardsClient, DashboardsClient>();
+builder.Services.AddScoped<IAuditClient, AuditClient>();
 builder.Services.AddScoped<IAppointmentsClient, AppointmentsClient>();
-
-// The transitional zone key is gone from configuration; the predecessor pages Task 25-27
-// have not replaced yet still read these services, so they fall back to the transitional
-// site's own zone until the last consumer is rewritten.
-var transitionalZone = builder.Configuration["TransitionalLocationTimeZoneId"] ?? "Europe/London";
-builder.Services.AddSingleton(new TransitionalLocationTimePresentation(transitionalZone));
-builder.Services.AddSingleton(new TransitionalLocationPageClock(transitionalZone));
+builder.Services.AddScoped<IUserGuideCatalog, UserGuideCatalog>();
 
 // Attendees authorise with the single-use token in their URL. This plain named client must never
 // use AuthorizationMessageHandler, which would attach a staff access token and start sign-in.
+#if EVENTBOOKING_E2E
+builder.Services.AddHttpClient(BookingClient.ClientName, client =>
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress));
+#else
 builder.Services.AddHttpClient(BookingClient.ClientName, client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
 });
-builder.Services.AddScoped(sp => new BookingClient(
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient(BookingClient.ClientName)));
+#endif
+builder.Services.AddScoped<IBookingClient>(services => new BookingClient(
+    services.GetRequiredService<IHttpClientFactory>().CreateClient(BookingClient.ClientName)));
 builder.Services.AddSingleton(new AttendeePageOptions(
     builder.Configuration["CoordinatorContact"] ?? "the recruitment team"));
 

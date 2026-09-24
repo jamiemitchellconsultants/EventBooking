@@ -31,6 +31,9 @@ public static class RouteSetup
             },
             ["begin-event-cancel"] = page => page.Locator("[data-action='cancel-event']").First.ClickAsync(),
             ["check-in-conflict"] = page => page.Locator("[data-action='check-in']").First.ClickAsync(),
+            ["open-invite"] = page => page.Locator("[data-action='invite']").First.ClickAsync(),
+            ["open-import"] = page => page.Locator("[data-action='open-import']").ClickAsync(),
+            ["cancel-booking"] = page => page.Locator("[data-action='cancel-booking']").ClickAsync(),
         };
 
     public static async Task ApplyAsync(IPage page, string? action)

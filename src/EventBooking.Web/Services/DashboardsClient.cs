@@ -1,46 +1,37 @@
 namespace EventBooking.Web.Services;
 
-public sealed record AwaitingRowDto(
-    Guid AttendeeId,
-    string Name,
-    string Email,
-    IReadOnlyList<string> RequiredCodes,
-    DateOnly WaitingSince,
-    int DaysWaiting);
-
-public sealed record NoResponseRowDto(
-    Guid AttendeeId,
-    string Name,
-    string Email,
-    IReadOnlyList<string> RequiredCodes,
+public sealed record AwaitingAvailabilityDto(
+    Guid AttendeeId, string Name, string Email, IReadOnlyList<string> RequiredCodes,
+    DateOnly WaitingSince, int DaysWaiting);
+public sealed record NoResponseDto(
+    Guid AttendeeId, string Name, string Email, IReadOnlyList<string> RequiredCodes,
     DateOnly GaveUpOn);
-
-public sealed record EventCapacityRowDto(string Code, int TotalHeadcount, int RemainingCapacity);
-
-public sealed record EventRowDto(
-    Guid EventId,
-    Guid LocationId,
-    string LocationName,
-    DateOnly Date,
-    TimeOnly StartTime,
-    TimeOnly EndTime,
-    IReadOnlyList<EventCapacityRowDto> Capacities,
-    int ActiveBookings);
-
-public sealed record DashboardTabDto<T>(int Count, IReadOnlyList<T> Rows);
-
+public sealed record DashboardCapacityDto(string Code, int TotalHeadcount, int RemainingCapacity);
+public sealed record EventOverviewDto(
+    Guid EventId, Guid LocationId, string LocationName, EventTimeDto Time,
+    IReadOnlyList<DashboardCapacityDto> Capacities, int ActiveBookings,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
+public sealed record DashboardCountedTab<T>(int Count, IReadOnlyList<T> Rows);
 public sealed record DashboardsDto(
-    DashboardTabDto<AwaitingRowDto> AwaitingAvailability,
-    DashboardTabDto<NoResponseRowDto> NoResponse,
-    DashboardTabDto<EventRowDto> Events,
-    int FailedEmails,
-    int PendingEmails);
+    DashboardCountedTab<AwaitingAvailabilityDto> AwaitingAvailability,
+    DashboardCountedTab<NoResponseDto> NoResponse,
+    DashboardCountedTab<EventOverviewDto> Events,
+    int FailedEmails, int PendingEmails,
+    [property: System.Text.Json.Serialization.JsonPropertyName("_links")]
+    IReadOnlyDictionary<string, ApiLink> Links);
 
-public sealed class DashboardsClient(HttpClient http)
+public interface IDashboardsClient
 {
-    public async Task<ApiOutcome<DashboardsDto>> GetAsync(CancellationToken cancellationToken)
+    Task<ApiOutcome<DashboardsDto>> GetAsync(Guid? locationId, CancellationToken ct);
+}
+
+public sealed class DashboardsClient(HttpClient http) : IDashboardsClient
+{
+    public async Task<ApiOutcome<DashboardsDto>> GetAsync(Guid? locationId, CancellationToken ct)
     {
-        using var response = await http.GetAsync("/api/dashboards", cancellationToken);
-        return await ApiCall.ReadAsync<DashboardsDto>(response, cancellationToken);
+        using var response = await http.GetAsync(
+            "/api/dashboards" + (locationId is null ? "" : $"?locationId={locationId:D}"), ct);
+        return await ApiCall.ReadAsync<DashboardsDto>(response, ct);
     }
 }

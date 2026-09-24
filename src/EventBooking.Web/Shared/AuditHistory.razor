@@ -1,79 +1,128 @@
 @using EventBooking.Web.Services
-@inject AuditClient Audit
-@inject TransitionalLocationTimePresentation TimePresentation
+@inject IAuditClient Audit
 
-<details class="audit-history" @ontoggle="OnToggleAsync">
-    <summary title="Every recorded change, newest first, with who made it. Loaded when you expand it.">History</summary>
-
-    @if (_error is not null)
+<section class="audit-history">
+    <button class="button button-small" @onclick="ToggleAsync" aria-expanded="@(_expanded ? "true" : "false")" disabled="@_busy">
+        @(_expanded ? "Hide history" : "History")
+    </button>
+    @if (_expanded)
     {
-        <p class="error" role="alert">@_error</p>
+        @if (_error is not null)
+        {
+            <p class="error" role="alert">@_error</p>
+            <button class="button button-small" @onclick="ReloadAsync" disabled="@_busy">Try again</button>
+        }
+        else if (!_requested)
+        {
+            <p>Loading…</p>
+        }
+        else if (_rows.Count == 0)
+        {
+            <p>Nothing recorded yet.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th scope="col">When</th><th scope="col">What</th><th scope="col">Who</th><th scope="col">Details</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _rows)
+                        {
+                            <tr>
+                                <td data-label="When">@row.Timestamp.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                                <td data-label="What" data-role="audit-action">@row.Action</td>
+                                <td data-label="Who">@(row.ActorDisplay ?? row.ActorId ?? row.ActorType)</td>
+                                <td data-label="Details">@row.Details</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (_cursor is not null)
+            {
+                <button class="button button-small" @onclick="LoadMoreAsync" disabled="@_busy">Load more</button>
+            }
+        }
     }
-    else if (!_requested)
-    {
-        <p>Loading…</p>
-    }
-    else if (_rows is { Count: 0 })
-    {
-        <p>Nothing recorded yet.</p>
-    }
-    else if (_rows is not null)
-    {
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr><th scope="col">When</th><th scope="col">What</th><th scope="col">Who</th><th scope="col">Details</th></tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in _rows)
-                    {
-                        <tr>
-                            <td data-label="When">@TimePresentation.Format(row.Timestamp)</td>
-                            <td data-label="What">@row.Action</td>
-                            <td data-label="Who">@row.ActorType @row.ActorId</td>
-                            <td data-label="Details">@row.Details</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-</details>
+</section>
 
 @code {
-    /// <summary>Either a event or a attendee. Set exactly one.</summary>
-    [Parameter]
-    public Guid? EventId { get; set; }
+    [Parameter, EditorRequired]
+    public AuditEntityKind EntityKind { get; set; }
 
-    [Parameter]
-    public Guid? AttendeeId { get; set; }
+    [Parameter, EditorRequired]
+    public Guid EntityId { get; set; }
 
-    private List<AuditRowDto>? _rows;
+    private readonly List<AuditRowDto> _rows = [];
+    private string? _cursor;
     private string? _error;
+    private bool _expanded;
     private bool _requested;
+    private bool _busy;
 
-    // Loaded on first expand rather than on render: a table of 20 events should not fire 20 requests.
-    private async Task OnToggleAsync()
+    // Loaded on first expand rather than on render: a table of many rows must not
+    // fire one request per row. The result is cached while collapsed.
+    private async Task ToggleAsync()
     {
-        if (_requested)
-        {
-            return;
-        }
+        _expanded = !_expanded;
+        if (_expanded && !_requested)
+            await LoadFirstPageAsync();
+    }
 
-        _requested = true;
+    private Task ReloadAsync() => LoadFirstPageAsync();
 
+    private async Task LoadFirstPageAsync()
+    {
+        _busy = true; _error = null;
         try
         {
-            var outcome = EventId is not null
-                ? await Audit.ForEventAsync(EventId.Value, CancellationToken.None)
-                : await Audit.ForAttendeeAsync(AttendeeId!.Value, CancellationToken.None);
-
-            _rows = outcome.Value;
-            _error = outcome.ErrorMessage;
+            var outcome = await ReadAsync(null);
+            if (outcome is { IsSuccess: true, Value: not null })
+            {
+                _rows.Clear();
+                _rows.AddRange(outcome.Value.Items);
+                _cursor = outcome.Value.NextCursor;
+                _requested = true;
+            }
+            else
+            {
+                _error = outcome.ErrorMessage ?? "Something went wrong. Please try again.";
+            }
         }
         catch (Exception)
         {
             _error = "Something went wrong. Please try again.";
         }
+        _busy = false;
     }
+
+    private async Task LoadMoreAsync()
+    {
+        _busy = true;
+        try
+        {
+            var outcome = await ReadAsync(_cursor);
+            if (outcome is { IsSuccess: true, Value: not null })
+            {
+                _rows.AddRange(outcome.Value.Items);
+                _cursor = outcome.Value.NextCursor;
+            }
+            else
+            {
+                _error = outcome.ErrorMessage ?? "Something went wrong. Please try again.";
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        _busy = false;
+    }
+
+    private Task<ApiOutcome<PageDto<AuditRowDto>>> ReadAsync(string? cursor) =>
+        EntityKind == AuditEntityKind.Event
+            ? Audit.ForEventAsync(EntityId, cursor, CancellationToken.None)
+            : Audit.ForAttendeeAsync(EntityId, cursor, CancellationToken.None);
 }

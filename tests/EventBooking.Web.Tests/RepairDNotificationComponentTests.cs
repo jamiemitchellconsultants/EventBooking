@@ -27,14 +27,15 @@ public class RepairDNotificationComponentTests : BunitContext
             ["DAT"],
             [new InviteOptionDto(
                 Guid.NewGuid(),
-                new DateOnly(2030, 1, 14),
-                new TimeOnly(9, 0),
-                new TimeOnly(13, 0),
-                "Monday 14 Jan 2030, 09:00-13:00")] )));
-        handler.Enqueue(_ => Json(new ConfirmedBookingDto(
+                "London HQ",
+                "1 Example St",
+                TestContractFactory.EventTimeAt(new DateOnly(2030, 1, 14), new TimeOnly(9, 0)))],
+            false,
+            new Dictionary<string, ApiLink>())));
+        handler.Enqueue(_ => Json(new ConfirmBookingOutcomeDto(
             Guid.NewGuid(),
             "fresh-manage-token")));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
+        Services.AddSingleton<IBookingClient>(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<Book>(parameters => parameters.Add(page => page.Token, "invite-token"));
@@ -56,14 +57,18 @@ public class RepairDNotificationComponentTests : BunitContext
     public void ManagePageReportsARebookAsOnItsWay()
     {
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new BookingDto(
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "Monday 14 Jan 2030, 09:00-13:00",
-            "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto("reinvited", Guid.NewGuid())));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
+        handler.Enqueue(_ => Json(new ManagedBookingDto(
+            "Amara Novak",
+            "London HQ",
+            "1 Example St",
+            TestContractFactory.EventTimeAt(new DateOnly(2030, 1, 14), new TimeOnly(9, 0)),
+            ["Medical check"],
+            new Dictionary<string, ApiLink>
+            {
+                ["cancel"] = new("/api/manage/manage-token/cancel", "POST", "cancelManagedBooking"),
+            })));
+        handler.Enqueue(_ => Json(new CancelBookingOutcomeDto("reinvited", Guid.NewGuid())));
+        Services.AddSingleton<IBookingClient>(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
@@ -82,14 +87,18 @@ public class RepairDNotificationComponentTests : BunitContext
     public void ManagePagePointsAtThePendingInviteWhenOneIsAlreadyOpen()
     {
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new BookingDto(
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "Monday 14 Jan 2030, 09:00-13:00",
-            "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto("reinvitePending", Guid.NewGuid())));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
+        handler.Enqueue(_ => Json(new ManagedBookingDto(
+            "Amara Novak",
+            "London HQ",
+            "1 Example St",
+            TestContractFactory.EventTimeAt(new DateOnly(2030, 1, 14), new TimeOnly(9, 0)),
+            ["Medical check"],
+            new Dictionary<string, ApiLink>
+            {
+                ["cancel"] = new("/api/manage/manage-token/cancel", "POST", "cancelManagedBooking"),
+            })));
+        handler.Enqueue(_ => Json(new CancelBookingOutcomeDto("reinvitePending", Guid.NewGuid())));
+        Services.AddSingleton<IBookingClient>(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
@@ -108,14 +117,18 @@ public class RepairDNotificationComponentTests : BunitContext
     public void ManagePageDistinguishesUnavailableReplacementInvite()
     {
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new BookingDto(
-            new DateOnly(2030, 1, 14),
-            new TimeOnly(9, 0),
-            new TimeOnly(13, 0),
-            "Monday 14 Jan 2030, 09:00-13:00",
-            "Amara Novak")));
-        handler.Enqueue(_ => Json(new CancelOutcomeDto("noEligibleEvents")));
-        Services.AddSingleton(new BookingClient(NewHttpClient(handler)));
+        handler.Enqueue(_ => Json(new ManagedBookingDto(
+            "Amara Novak",
+            "London HQ",
+            "1 Example St",
+            TestContractFactory.EventTimeAt(new DateOnly(2030, 1, 14), new TimeOnly(9, 0)),
+            ["Medical check"],
+            new Dictionary<string, ApiLink>
+            {
+                ["cancel"] = new("/api/manage/manage-token/cancel", "POST", "cancelManagedBooking"),
+            })));
+        handler.Enqueue(_ => Json(new CancelBookingOutcomeDto("noEligibleEvents", null)));
+        Services.AddSingleton<IBookingClient>(new BookingClient(NewHttpClient(handler)));
         Services.AddSingleton(new AttendeePageOptions("recruitment@example.com"));
 
         var cut = Render<ManageBooking>(parameters => parameters.Add(page => page.Token, "manage-token"));
@@ -136,16 +149,18 @@ public class RepairDNotificationComponentTests : BunitContext
     {
         var attendeeId = Guid.NewGuid();
         var handler = new RoutedHandler();
-        handler.Enqueue(_ => Json(new AttendeeListDto(
+        handler.Enqueue(_ => Json(new MeDto(["Coordinator"], null, null)));
+        handler.Enqueue(_ => Json(new PageDto<LocationDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AttendeeGroupDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AppointmentTypeDto>([], null)));
+        handler.Enqueue(_ => Json(new PageDto<AttendeeDto>(
             [new AttendeeDto(
                 attendeeId, "Amara Novak", "a.novak@mail.com", "NotYetInvited",
-                "Not yet invited", "MED", "NoActiveBooking", [], "Failed", "cursor")],
+                "Not yet invited", "MED", "NoActiveBooking", [], "Failed", "cursor",
+                null, new Dictionary<string, ApiLink>())],
             null)));
-        handler.Enqueue(_ => Json(new List<AttendeeGroupOptionDto>()));
-        Services.AddSingleton(new AttendeesClient(NewHttpClient(handler)));
-        Services.AddSingleton(new DashboardsClient(NewHttpClient(handler)));
-        Services.AddSingleton(new AuditClient(NewHttpClient(handler)));
-        Services.AddSingleton(new TransitionalLocationTimePresentation("Europe/London"));
+        Services.AddSingleton<IAttendeesClient>(new AttendeesClient(NewHttpClient(handler)));
+        Services.AddSingleton<IAuditClient>(new AuditClient(NewHttpClient(handler)));
 
         var cut = Render<Attendees>();
 
