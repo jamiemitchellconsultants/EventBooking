@@ -570,6 +570,18 @@ public sealed class BookingRepository(EventBookingDbContext context, RowLocks ro
 
     public void Add(Booking booking) => context.Bookings.Add(booking);
 
+    // Unlocked by design: the sweep re-validates each item under its own lock in its
+    // own transaction, so a row that concludes between the read and the write is
+    // refused there rather than double-concluded.
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<Booking>> ListActiveRecoveriesAsync(
+        CancellationToken cancellationToken) =>
+        await context.Bookings
+            .AsNoTracking()
+            .Where(b => b.Status == BookingStatus.Active && b.RecoveryOfBookingId != null)
+            .OrderBy(b => b.Id)
+            .ToListAsync(cancellationToken);
+
     /// <inheritdoc/>
     public Task<Booking?> GetByInviteIdAsync(Guid inviteId, CancellationToken cancellationToken) =>
         context.Bookings

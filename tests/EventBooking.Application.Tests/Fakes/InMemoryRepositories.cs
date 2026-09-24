@@ -394,6 +394,14 @@ public sealed class InMemoryBookingRepository(TransactionOperationLog? operation
                 .ToList());
     }
 
+    public Task<IReadOnlyList<Booking>> ListActiveRecoveriesAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Booking>>(
+            Items
+                .Where(b => b.Status == BookingStatus.Active && b.RecoveryOfBookingId != null)
+                .OrderBy(b => b.Id)
+                .ToList());
+
     /// <summary>Returns the original and direct recovery rows in creation and ID order.</summary>
     public Task<IReadOnlyList<Booking>> ListJourneyAsync(
         Guid originalBookingId,

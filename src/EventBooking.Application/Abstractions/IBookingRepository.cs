@@ -112,4 +112,12 @@ public interface IBookingRepository
     /// <param name="attendeeId">The attendee id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<int> CountActiveForAttendeeAsync(Guid attendeeId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Active recovery bookings — every non-original row still open. The sweep then asks the
+    /// appointment port which of them have nothing left outstanding; the terminal-appointment
+    /// test is not expressible here without joining a second aggregate.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<IReadOnlyList<Booking>> ListActiveRecoveriesAsync(CancellationToken cancellationToken);
 }

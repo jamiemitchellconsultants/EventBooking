@@ -4,6 +4,7 @@ using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
 using EventBooking.Application.Invites;
+using EventBooking.Application.Jobs;
 using EventBooking.Application.Notifications;
 using EventBooking.Application.Recovery;
 using EventBooking.Application.Settings;
@@ -88,6 +89,10 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ConfirmBookingHandler>();
         services.AddScoped<CancelBookingByAttendeeHandler>();
         services.AddScoped<CancelBookingByCoordinatorHandler>();
+
+        // Background jobs.
+        services.AddScoped<ISweepSteps, SweepSteps>();
+        services.AddScoped<SweepRunner>();
 
         return services;
     }

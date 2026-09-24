@@ -1,44 +1,79 @@
 using EventBooking.Application.Abstractions;
-using EventBooking.Application.Invites;
-using EventBooking.Domain.Attendees;
+using EventBooking.Application.Jobs;
+using EventBooking.Domain.Bookings;
+using EventBooking.Infrastructure.Jobs;
+using EventBooking.Infrastructure.Persistence;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace EventBooking.Api;
 
-/// <summary>How one sweep run resolved its due invites.</summary>
-/// <param name="Expired">How many due invites were processed.</param>
-/// <param name="ReIssued">How many attendees hold a fresh invite afterwards.</param>
-/// <param name="FlaggedForFollowUp">How many attendees need follow-up afterwards.</param>
-public sealed record InviteSweepSummary(int Expired, int ReIssued, int FlaggedForFollowUp);
-
 /// <summary>
-/// Runs the invite expiry sweep hourly. Expiry cannot wait for a attendee to open a link — the
-/// whole point is the attendees who never do. Each due invite is expired on its own row lock;
-/// Task 19 replaces this loop with advisory-locked claiming.
+/// Runs the invite sweep on an interval. Expiry cannot wait for a attendee to open a link — the
+/// whole point is the attendees who never do. Each run executes three steps under an advisory
+/// lock, each item in its own transaction: due-invite expiry, started-proposal withdrawal and
+/// recovery-booking conclusion.
 /// </summary>
+/// <param name="scopes">The scope factory.</param>
+/// <param name="configuration">The configuration.</param>
+/// <param name="logger">The logger.</param>
 public sealed class InviteSweepService(
     IServiceScopeFactory scopes,
+    IConfiguration configuration,
     ILogger<InviteSweepService> logger) : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
+    private static readonly TimeSpan DefaultInterval = TimeSpan.FromMinutes(15);
 
+    /// <summary>Resolves the sweep interval from configuration, defaulting to 15 minutes.</summary>
+    /// <param name="configuration">The configuration.</param>
+    public static TimeSpan ResolveInterval(IConfiguration configuration) =>
+        configuration.GetValue<TimeSpan?>("Jobs:SweepInterval") ?? DefaultInterval;
+
+    /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(Interval);
-
-        while (!stoppingToken.IsCancellationRequested)
+        var interval = ResolveInterval(configuration);
+        using var timer = new PeriodicTimer(interval);
+        do
         {
             try
             {
                 using var scope = scopes.CreateScope();
-                var summary = await SweepOnceAsync(scope.ServiceProvider, stoppingToken);
+                var runner = scope.ServiceProvider.GetRequiredService<SweepRunner>();
+                var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+                var invites = scope.ServiceProvider.GetRequiredService<IInviteRepository>();
+                var proposals = scope.ServiceProvider.GetRequiredService<IEventProposalRepository>();
+                var bookings = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
+                var appointments =
+                    scope.ServiceProvider.GetRequiredService<IBookingAppointmentRepository>();
+                var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 
-                if (summary.Expired > 0)
+                var started = false;
+                try
                 {
-                    logger.LogInformation(
-                        "Invite sweep: {Expired} expired, {ReIssued} re-issued, {Flagged} flagged.",
-                        summary.Expired,
-                        summary.ReIssued,
-                        summary.FlaggedForFollowUp);
+                    (started, var metrics) = await runner.RunOnceAsync(
+                        token => AdvisoryLock.TryAcquireSweepLockAsync(context, token),
+                        async token => (await invites.ListPendingExpiredAsync(clock.UtcNow, token))
+                            .Select(i => i.Id).ToList(),
+                        async token => (await proposals.ListOpenAsync(token))
+                            .Select(p => p.Id).ToList(),
+                        token => ConcludingAsync(bookings, appointments, token),
+                        stoppingToken);
+
+                    if (started)
+                        logger.LogInformation(
+                            "Sweep: {Expired} expired, {Withdrawn} withdrawn, {Concluded} concluded, {Failures} failed.",
+                            metrics.ExpiredInvites, metrics.WithdrawnProposals,
+                            metrics.ConcludedRecoveries, metrics.Failures);
+                }
+                finally
+                {
+                    if (started)
+                    {
+                        await AdvisoryLock.ReleaseSweepLockAsync(context, stoppingToken);
+                    }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -47,50 +82,28 @@ public sealed class InviteSweepService(
             }
             catch (Exception ex)
             {
-                // One bad sweep must not stop every later sweep.
                 logger.LogError(ex, "The invite sweep failed.");
             }
-
-            if (!await timer.WaitForNextTickAsync(stoppingToken))
-            {
-                break;
-            }
         }
+        while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private static async Task<InviteSweepSummary> SweepOnceAsync(
-        IServiceProvider services, CancellationToken ct)
+    // Recovery bookings that are still active with every appointment terminal. Read
+    // without locks here; each item re-validates under its own lock in its transaction.
+    private static async Task<IReadOnlyList<Guid>> ConcludingAsync(
+        IBookingRepository bookings,
+        IBookingAppointmentRepository appointments,
+        CancellationToken ct)
     {
-        var invites = services.GetRequiredService<IInviteRepository>();
-        var attendees = services.GetRequiredService<IAttendeeRepository>();
-        var handler = services.GetRequiredService<ExpireInviteHandler>();
-        var clock = services.GetRequiredService<IClock>();
-
-        var due = await invites.ListPendingExpiredAsync(clock.UtcNow, ct);
-        var expired = 0;
-        var reissued = 0;
-        var flagged = 0;
-
-        foreach (var item in due)
+        var ids = new List<Guid>();
+        foreach (var booking in await bookings.ListActiveRecoveriesAsync(ct))
         {
-            var result = await handler.HandleAsync(new ExpireInviteCommand(item.Id), ct);
-            if (result.IsFailure)
-            {
-                continue;
-            }
-
-            expired++;
-            var attendee = await attendees.GetAsync(item.AttendeeId, ct);
-            if (attendee?.Status == AttendeeStatus.Invited)
-            {
-                reissued++;
-            }
-            else if (attendee?.Status == AttendeeStatus.NoResponseNeedsFollowUp)
-            {
-                flagged++;
-            }
+            var rows = await appointments.ListForBookingAsync(booking.Id, ct);
+            if (rows.Count > 0 && rows.All(a =>
+                    a.Status is BookingAppointmentStatus.Completed or BookingAppointmentStatus.NoShow))
+                ids.Add(booking.Id);
         }
 
-        return new InviteSweepSummary(expired, reissued, flagged);
+        return ids;
     }
 }
