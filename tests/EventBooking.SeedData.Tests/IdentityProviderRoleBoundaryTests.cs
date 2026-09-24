@@ -75,7 +75,7 @@ public sealed class IdentityProviderRoleBoundaryTests
     /// <summary>Verifies realm user profiles still require a validated staff number.</summary>
     [Theory]
     [InlineData("deploy/keycloak/realm-export.json", "^[A-Z0-9]{1,32}$")]
-    [InlineData("deploy/home-lab/keycloak/eventbooking-realm.json", "^[A-Za-z0-9]{1,32}$")]
+    [InlineData("deploy/home-lab/keycloak/eventbooking-realm.json", "^[A-Z0-9]{1,32}$")]
     public void RealmExportsRequireAValidatedStaffIdProfileAttribute(string relativePath, string expectedPattern)
     {
         using var document = JsonDocument.Parse(File.ReadAllText(RepoFile(relativePath)));
@@ -85,11 +85,7 @@ public sealed class IdentityProviderRoleBoundaryTests
             .Single(value => value.GetProperty("providerId").GetString()
                 == "declarative-user-profile");
         var config = provider.GetProperty("config");
-        // Keycloak 26 stores the profile under kc.user.profile.config; the home-lab import
-        // still uses the legacy chunked key until Task 30 rewrites that realm.
-        var encoded = (config.TryGetProperty("kc.user.profile.config", out var current)
-            ? current[0]
-            : config.GetProperty("config-piece-0")[0]).GetString();
+        var encoded = config.GetProperty("kc.user.profile.config")[0].GetString();
         using var profile = JsonDocument.Parse(encoded!);
         var staffId = profile.RootElement.GetProperty("attributes").EnumerateArray()
             .Single(value => value.GetProperty("name").GetString() == "staffId");

@@ -1,0 +1,6 @@
+/* deploy/home-lab/theme.css (complete neutral default; operators may replace this file) */
+:root {
+  --eventbooking-accent: #315f78;
+  --eventbooking-surface: #ffffff;
+  --eventbooking-text: #17212b;
+}

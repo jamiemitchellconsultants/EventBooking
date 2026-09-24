@@ -19,6 +19,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-home-lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install format checkers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gettext-base shellcheck
+      - name: Validate deployment files
+        working-directory: deploy/home-lab
+        run: |
+          shellcheck install.sh ../postgres/init-roles.sh
+          jq --exit-status . keycloak/eventbooking-realm.json >/dev/null
+          docker compose --env-file .env.example config --quiet
+          docker run --rm -v "$PWD/web/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+
   local-compose:
     runs-on: ubuntu-latest
     timeout-minutes: 25

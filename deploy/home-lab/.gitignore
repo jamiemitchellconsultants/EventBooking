@@ -1,0 +1,4 @@
+# deploy/home-lab/.gitignore (complete)
+.env
+.rendered/
+backups/
