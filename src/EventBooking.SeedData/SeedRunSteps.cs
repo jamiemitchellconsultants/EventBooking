@@ -5,6 +5,7 @@ using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Time;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -35,6 +36,7 @@ public sealed class SeedRunSteps : ISeedRunSteps
                 new EventBooking.Application.Access.StaffIdPolicy(environment("Identity__StaffIdPattern")));
             services.AddLocalEmailTransport(email.Sender, email.Smtp);
             services.AddScoped<DemoSeeder>();
+            services.AddScoped<LoadFixtureSeeder>();
             services.AddScoped<DemoInvitationSeeder>();
             services.AddSingleton<OutboxDispatcher>();
         }
@@ -96,6 +98,50 @@ public sealed class SeedRunSteps : ISeedRunSteps
         var seeder = scope.ServiceProvider.GetRequiredService<DemoInvitationSeeder>();
         if (_options.Verbose) seeder.Progress = Console.Out;
         return await seeder.RunAsync(ct);
+    }
+
+    public async Task<int> SeedLoadFixtureAsync(string outputPath, CancellationToken ct)
+    {
+        // The manifest is created before the fixture is committed: an unwritable or existing
+        // path then fails with nothing seeded, instead of seeding tokens nobody can read.
+        var streamOptions = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+#pragma warning disable CA1416 // Unix-only creation mode, guarded by the check above.
+            streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+#pragma warning restore CA1416
+        }
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(outputPath, streamOptions);
+        }
+        catch (IOException) when (File.Exists(outputPath))
+        {
+            throw new SeedException("Load fixture output already exists; use a fresh disposable project.");
+        }
+
+        try
+        {
+            await using (stream)
+            {
+                await using var scope = Scope();
+                var fixture = await scope.ServiceProvider.GetRequiredService<LoadFixtureSeeder>().RunAsync(ct);
+                await JsonSerializer.SerializeAsync(
+                    stream, fixture, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);
+                return fixture.BookTokens.Count;
+            }
+        }
+        catch
+        {
+            // An empty or partial manifest would block the runner's fresh-fixture check.
+            File.Delete(outputPath);
+            throw;
+        }
     }
 
     public ValueTask DisposeAsync() => _provider.DisposeAsync();

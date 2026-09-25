@@ -51,11 +51,14 @@ builder.Services.Configure<RateLimitSettings>(options =>
 });
 builder.Services.AddSingleton<ICorrelationContext, AsyncLocalCorrelationContext>();
 builder.Services.AddSingleton<EventBookingMetrics>();
+builder.Services.AddSingleton<ICapacityLockHoldObserver>(
+    provider => provider.GetRequiredService<EventBookingMetrics>());
 builder.Services.AddSingleton<PrometheusText>();
 builder.Services.AddSingleton(new PageCursor(Encoding.UTF8.GetBytes(settings.Tokens.SigningKey)));
 // The session advisory lock needs a dedicated pooled connection that lives through the handler;
 // registering the data source also lets the container dispose that pool on shutdown.
-builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(settings.ConnectionString));
+builder.Services.AddSingleton(_ =>
+    NpgsqlDataSource.Create(ConnectionPooling.WithDefaultMaxPoolSize(settings.ConnectionString)));
 builder.Services.AddSingleton<IdempotencyKeyLock>();
 builder.Services.AddScoped<IIdempotencyStore,
     EventBooking.Infrastructure.Persistence.Idempotency.IdempotencyStore>();

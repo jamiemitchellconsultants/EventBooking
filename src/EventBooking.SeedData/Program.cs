@@ -11,6 +11,6 @@ catch (Exception exception)
 {
     Console.Error.WriteLine($"Seed failed: {exception.Message}");
     Console.Error.WriteLine(
-        "Usage: EventBooking.SeedData <connection-string> [--demo [--reanchor] [--reseed]] [--verbose]");
+        "Usage: EventBooking.SeedData <connection-string> [--demo [--reanchor] [--reseed] [--load-fixture]] [--verbose]");
     return 2;
 }

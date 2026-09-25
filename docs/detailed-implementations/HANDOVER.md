@@ -38,8 +38,8 @@ names. The master plan says what each task is; this handover says how far it has
 | Phase 3 — master Tasks 12–20 | **Written and reviewed, never executed.** Ten documents, Task 20 split into 20a/20b. Hand-authored, so no build or test has ever run against them. Merged through pull request #20 |
 | Phase 4 — master Tasks 21–23 | **Written, reviewed, never executed.** Four documents; master Task 22 split into 22a/22b (see §8). PR #27 merged on 21 September 2026. Hand-authored, like Phase 3, so no build or test has ever run against them |
 | Phase 5 — master Tasks 24–27 | **Written and reviewed, never executed.** Four task documents plus the overview. Hand-authored by the user's settled choice; Task 24 creates the Playwright/axe safety net and Task 27 is the phase gate |
-| Phase 6 — master Tasks 28–31 | **Executed on `codex/phase-6-seed-and-deployment`, awaiting pull request.** Tasks 28–31 implemented test-first; the Task 31 phase gate is green (see the §8 execution record). Plans merged through PR #34 on 23 September 2026 |
-| Phase 7 — master Tasks 32–33 | **Written, not executed.** The load fixture, capacity-lock metric, 500-way k6 gate, application README and operator runbook are hand-authored. No build, burst or fresh-clone walk has been observed |
+| Phase 6 — master Tasks 28–31 | **Merged.** Executed 24 September 2026 on `codex/phase-6-seed-and-deployment` (Tasks 28–31 implemented test-first, Task 31 phase gate green); merged through pull request #56 with narrative proposal #57 on 25 September 2026 |
+| Phase 7 — master Tasks 32–33 | **Executed.** Task 32 (load fixture, capacity-lock metric, 500-way k6 burst) and Task 33 (application README, demo runbook, operator guide) implemented test-first on `phase-7-verification-and-documentation`; the burst passed with 100 created and 400 capacity-exhausted and the fresh-clone walk passed headlessly (see the §8 execution record). Awaiting pull request |
 
 Phases 0, 1 and 2 are all **merged into `main`**: pull request #15 with its narrative proposal #16
 for Phases 0 and 1, and pull request #17 with its narrative proposal #18 for Phase 2. Nothing is
@@ -626,6 +626,87 @@ contradiction it closes carry one number between them.
   their Manager assignments; design 08 now names the emitted lock-hold metric. The five role
   help guides need no edits because Phase 6 did not change their actions or outcomes.
 
+### Phase 7 execution record (25 September 2026, executor: Muse Code)
+
+- Branch `phase-7-verification-and-documentation`: Task 32 `3fc2d98`, Task 33 (this commit).
+- Baseline re-measured on `main` at `59164e5` before the first edit, 0 failed and 0 skipped:
+  Domain 362, Application 391, Web 221, Mcp 59, Api 388, SeedData 72, Infrastructure 260,
+  Web.E2E 62; 1815 in total. No number is copied forward from the handoff prompt.
+- Test counts measured by the executor, 0 failed and 0 skipped in every project: after
+  Task 32, Domain 362, Application 394, Web 221, Mcp 59, Api 389, SeedData 74,
+  Infrastructure 260, Web.E2E 62; 1821 in total. After Task 33, Api 393 (four runbook
+  contract tests); 1825 in total.
+- Task 32 gate, green on the second burst: exactly 100 created bookings, exactly 400
+  capacity-exhausted responses, zero 5xx, zero unexpected outcomes, zero PostgreSQL deadlocks
+  (the runner exits 0 only after its deadlock grep finds nothing), 500 new lock-hold samples
+  and 500 of them strictly under 50 ms from this run's before-and-after metric delta, against
+  the 475 minimum. The normal local and home-lab stacks keep the 30/min attendee limit: no
+  Compose file outside the load override names the per-IP setting, so the code default of 30
+  applies to both.
+- The first burst failed (100 created, 38 capacity-exhausted, 362 5xx, 138 lock samples) and
+  is kept as evidence, not retried away. Root cause: PostgreSQL logged remaining connection
+  slots reserved for superusers while the API logged one connection error per 5xx. An attendee
+  confirmation holds one connection (the idempotency advisory lock is staff-only), but the API
+  opened Npgsql's default pool of up to 100 against PostgreSQL's default limit of 100, which
+  also serves reserved slots and the MCP role. Design 08's 20-per-replica pool default had never
+  been applied. The fix is in the application, for every stack: the Infrastructure pooling helper applies a
+  maximum pool size of 20 unless the connection string names one, for both the EF pool and the
+  idempotency-lock data source, so a burst queues for a pooled connection. PostgreSQL keeps its
+  default `max_connections` everywhere, including the load project. No threshold, rate limit or
+  fixture shape changed.
+- The lock-hold interval now opens at the event row lock, which carries the capacities it
+  charges and is where the 500 confirmations serialize, rather than at the later capacity-row
+  lock. The histogram's just-under-50 ms bucket is set on that instrument alone through
+  its bucket advice, so the request-duration histogram keeps the default 0.05 bound.
+- Rerun after both changes, with `max_connections` at 100: 100 created, 400
+  capacity-exhausted, 0 5xx, 0 unexpected, no deadlock or connection-slot errors in the
+  PostgreSQL log, 500 new lock-hold samples and 500 of them under 50 ms. Request p95 was
+  1.05 s, the queue behind the event row lock.
+- Task 33 gate: the four runbook contract tests pass; the full build and suite pass with no
+  skipped tests; the ontology check is clean. The fresh-clone walk passed from a scratch clone
+  of `main` at `59164e5` outside this checkout: the three ordered Compose commands, the demo
+  seed reporting 3 locations, 6 appointment types and 9 attendees with 1 invitation and
+  Keycloak converged, readiness and discovery probes, Web 200, one Mailpit invitation to the
+  documented attendee address, all eight staff sign-ins by password grant, the six types and
+  three locations as documented, the mailed link through invite view (3 options), 201 confirm,
+  manage view, 409 replay refusal naming the booking, the attendee now booked, dashboards and
+  audit reflecting the change, seeded proposals at one of two and two of four accepted, a new
+  London proposal becoming an active event after the FIT acceptance, the MED roster with the
+  seeded checked-in example, and the unscoped profile refused. The walk was headless over the
+  API: no browser drove the Web pages, and no new check-in was performed, which the runbook
+  does not claim is immediately possible on future-dated seed events.
+- Host class: macOS arm64, Docker Desktop Linux VM; k6 v2.3.0 installed during the task via
+  Homebrew with the user's approval. Timings observed there: full suite about 3 min, burst
+  about 11 s of k6 time plus stack startup.
+- Deviations from the plan, each keeping the step's intent against the merged code:
+  - The fixture writer sets its owner-only creation mode off Windows behind a scoped
+    suppression, because the plan's verbatim file-stream options fail the platform analyzer
+    under warnings as errors.
+  - The invalid-token lock test asserts the merged token-invalid code, not the validation
+    code the plan's before-text assumed.
+  - The handler timing keeps the merged recovery-booking branch, the attendee-requirement
+    staleness branch, the unique-violation backstop and the token-invalid malformed-token
+    branch, inside an explicit try with disposal before observation instead of the
+    using-declaration the plan assumed.
+  - The metrics service keeps the zero-touch capacity-exhausted declaration the plan's
+    replacement drops.
+  - The exposition keeps its reviewed cumulative buckets and changes one bound (50 ms to
+    just below it) instead of the plan's full replacement, whose bounds drop the 10 s bucket
+    the existing exposition tests assert.
+  - The load override gains the load-only database connection tuning above, which the plan
+    could not have foreseen without running the burst.
+  - The API composition root already imported the abstractions namespace the plan adds.
+  - Design 07's quick-start block, seed enumeration, load-fixture row and rate paragraph, and
+    design 08's lock-hold bullet and verification section, were already present at the merge;
+    the contract test verifies them and no edit was made.
+  - The root README gains a three-sentence discovery paragraph the plan omits, because an
+    existing discovery-documentation test requires the schema, UI, protocol and bearer
+    routes to be named there.
+  - The home-lab rollback line is joined so the safe-recovery phrase the contract test
+    asserts sits on one line; the plan's two operator sections are appended verbatim.
+  - Explicit paths are staged instead of the plan's add-all, so the unrelated untracked
+    handoff file stays out of both commits.
+
 **Found while authoring Task 21; closed in the Task 28 plan, pending execution.** Phase 3's
 transitional-construct table retires the single-zone clock "when handlers carry a `Location`", but
 **no Phase 3 document removes it**:
@@ -775,20 +856,18 @@ fourteen is in this file's history at commit `2b192ca`.
    Coordinator, anonymous and Help flows and runs the full route/state gate. The plan explicitly
    stops on missing OpenAPI fields instead of authorizing or calculating event state in Web. Phase
    5 has no observed counts; the last measured checkpoint remains Task 11 at 1,570.
-5. **Phase 6 (Tasks 28–31) is written and has never been executed.** The overview is
-   `phase-6-seed-and-deployment.md`. Task 28 makes migration-only operation the CLI default,
-   generalises demo data with settlement #21 and retires the single-zone clock. Task 29 provides
-   the local Compose stack and smoke workflow. Task 30 provides the isolated home-lab topology,
-   seven-step installer and fresh-volume recovery rehearsal. Task 31 publishes five GHCR images,
-   creates the release migrations bundle and carries the phase gate. The C# sweep engaged only on
-   Task 28; Tasks 29–31 therefore carry Docker Compose, actionlint, jq, Caddy and shellcheck gates.
-   Phase 6 has no observed counts; the last measured checkpoint remains Task 11 at 1,570.
-6. **Phase 7 (Tasks 32–33) is written and has never been executed.** The overview is
-   `phase-7-verification-and-documentation.md`. Task 32 adds the guarded 500-invitation fixture,
-   capacity-lock histogram and k6 release gate. Task 33 adds the application's README, demo
-   walkthrough, operator additions and design-package reconciliation. The user approved the two
-   Task 32 settlements in section 8. Neither the burst nor a fresh-clone runbook walk has run.
-   Task 33 carries the final pull-request gate; the author must ask the user before opening it.
+5. **Phase 6 (Tasks 28–31) is executed and merged.** The overview is
+   `phase-6-seed-and-deployment.md`. Executed 24 September 2026 on
+   `codex/phase-6-seed-and-deployment` at 1808 tests, Task 31 gate green (see the §8 execution
+   record); merged through pull request #56 with narrative proposal #57 on 25 September 2026.
+6. **Phase 7 (Tasks 32–33) is executed, awaiting pull request.** The overview is
+   `phase-7-verification-and-documentation.md`. Task 32 added the guarded 500-invitation fixture,
+   capacity-lock histogram and k6 release gate; the burst passed with 100 created, 400
+   capacity-exhausted, zero 5xx and 500 lock samples under 50 ms. Task 33 added the
+   application's README, demo walkthrough, operator additions and the runbook contract test;
+   the fresh-clone walk passed headlessly. The user approved the two Task 32 settlements in
+   section 8. Task 33 carries the final pull-request gate; the author must ask the user before
+   opening it. Final measured counts: 1825 tests, 0 failed, 0 skipped.
 7. Several transitional constructs come due across Phase 3 and in Phase 6's seed rework. Read
    section 8's table before starting any of them; Task 15 in particular inherits three separate
    debts — the booking handler adopting the lock helpers, the lock ladder gaining its `Invite` and

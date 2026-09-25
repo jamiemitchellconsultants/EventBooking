@@ -1,0 +1,11 @@
+# tests/load/compose.load.yml (complete)
+services:
+  api:
+    environment:
+      RateLimiting__AttendeePerMinute: "600"
+  seed:
+    environment:
+      EVENTBOOKING_ENABLE_LOAD_FIXTURE: "true"
+      EVENTBOOKING_LOAD_FIXTURE_PATH: /load/fixture.json
+    volumes:
+      - ./tests/load:/load

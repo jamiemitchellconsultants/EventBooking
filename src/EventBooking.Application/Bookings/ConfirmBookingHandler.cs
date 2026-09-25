@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Common;
 using EventBooking.Application.Invites;
@@ -39,6 +40,7 @@ public sealed record ConfirmBookingOutcome(Guid BookingId, string ManageToken);
 /// <param name="audit">The audit.</param>
 /// <param name="clock">The clock.</param>
 /// <param name="zones">The zone abstraction the window's start instant is read in.</param>
+/// <param name="lockObserver">The capacity-lock hold observer, or null when unobserved.</param>
 public sealed class ConfirmBookingHandler(
     IInviteRepository invites,
     IAttendeeRepository attendees,
@@ -52,7 +54,8 @@ public sealed class ConfirmBookingHandler(
     IUnitOfWork unitOfWork,
     IAuditLogger audit,
     IClock clock,
-    IEventWindowZones zones)
+    IEventWindowZones zones,
+    ICapacityLockHoldObserver? lockObserver = null)
 {
     /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
@@ -66,6 +69,9 @@ public sealed class ConfirmBookingHandler(
             return Result<ConfirmBookingOutcome>.Failure(
                 Error.TokenInvalid(ViewInviteHandler.InvalidLinkMessage));
 
+        // Declared before the transaction so it is disposed after it: the interval it records
+        // ends only once the transaction has released every lock.
+        using var lockHold = new LockHoldTimer(lockObserver);
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
 
         // Port read: the attendee id without a lock, so the locks below follow the
@@ -153,6 +159,8 @@ public sealed class ConfirmBookingHandler(
         var eventItem = await events.LockForUpdateAsync(command.EventId, ct);
         if (eventItem is null)
             return Result<ConfirmBookingOutcome>.Failure(Error.NotFound("No such event."));
+        // The event row carries the capacities it charges, so its lock opens the hold.
+        lockHold.Start();
         var location = await locations.GetAsync(eventItem.LocationId, ct);
         if (location is not null && eventItem.Window.HasStarted(zones, location.TimeZoneId, clock.UtcNow))
             return Result<ConfirmBookingOutcome>.Failure(
@@ -220,5 +228,19 @@ public sealed class ConfirmBookingHandler(
             .Select(r => new RecoveryAttempt(
                 r.Id, r.AppointmentTypeId, r.Status, byId[r.BookingId].CreatedAt))
             .ToList();
+    }
+
+    /// <summary>Times one capacity-lock hold from <see cref="Start"/> to disposal.</summary>
+    private sealed class LockHoldTimer(ICapacityLockHoldObserver? observer) : IDisposable
+    {
+        private long? _startedAt;
+
+        public void Start() => _startedAt = Stopwatch.GetTimestamp();
+
+        public void Dispose()
+        {
+            if (_startedAt is { } started)
+                observer?.Record(Stopwatch.GetElapsedTime(started));
+        }
     }
 }

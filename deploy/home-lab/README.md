@@ -33,8 +33,7 @@ For an upgrade, change only `EVENTBOOKING_IMAGE_TAG`, run `docker compose pull`,
 without `--demo` to apply forward migrations, then run `docker compose up -d`. Verify readiness and
 the principal user journeys before removing old images.
 
-For rollback, restore the previous image tag and run `docker compose up -d`. Do not run a down
-migration. Every schema change must remain compatible with the previous image for one release.
+For rollback, restore the previous image tag and run `docker compose up -d`. Do not run a down migration. Every schema change must remain compatible with the previous image for one release.
 
 ## Backup
 
@@ -97,3 +96,29 @@ operator. Absence of that record blocks the Task 30 commit.
   database exactly (1 location, 1 settings row); the original `eventbooking_eventbooking-db`
   volume still exists and is unchanged.
 - Operator: Muse Code.
+
+## Verification before and after a release
+
+Record the previous and target `EVENTBOOKING_IMAGE_TAG` values, the backup filename and the
+operator before changing the tag. Verify that the existing stack passes `/health/ready` and that
+a recent custom-format dump is present outside the host. Run the [local load scenario](../../tests/load/README.md)
+against the local Compose topology for the release candidate; it is not a home-lab traffic
+generator. Complete the manual attendee keyboard and screen-reader pass required by design 08.
+
+After a version upgrade, check `docker compose ps`, the API readiness route through the private
+network, the public Web route, `/api` and `/mcp` through ingress, one authenticated staff read and
+one anonymous invitation view. Check the outbox backlog and recent sweep failures in metrics and
+structured logs. Do not write tokens or attendee addresses into the release record.
+
+If the new image fails, restore the previous `EVENTBOOKING_IMAGE_TAG` and run
+`docker compose up -d`. Do not run a down migration. If the database is damaged, follow the
+fresh-volume restore above and prove readiness and a read-only journey before repointing the
+application. Keep the original volume until the recovery has been accepted.
+
+## Routine operations
+
+Monitor `/health/ready`, sweep failures, pending outbox age and capacity-exhausted counts.
+Investigate an outbox item pending longer than 15 minutes or two consecutive failed sweeps. Check
+the nightly backup container's exit status and verify a restorable dump exists every day; a backup
+file alone is not a successful restore rehearsal. The deployment target is at most 24 hours of
+data loss and two hours to validated readiness after a restore declaration.
