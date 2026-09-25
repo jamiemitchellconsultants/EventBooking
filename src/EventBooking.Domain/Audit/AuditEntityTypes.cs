@@ -23,11 +23,13 @@ public static class AuditEntityTypes
     public const string AppointmentType = "AppointmentType";
     /// <summary>Audit entity name for one Admin-managed attendee group.</summary>
     public const string AttendeeGroup = "AttendeeGroup";
+    /// <summary>Audit entity name for one staff-managed event group.</summary>
+    public const string EventGroup = "EventGroup";
     /// <summary>Audit entity name for the singleton system settings.</summary>
     public const string SystemSettings = "SystemSettings";
 
     /// <summary>Defines all for the current use case.</summary>
     public static readonly IReadOnlyList<string> All =
         [EventProposal, Event, Invite, Booking, StaffAccessProfile, BookingAppointment, Attendee,
-            Location, AppointmentType, AttendeeGroup, SystemSettings];
+            Location, AppointmentType, AttendeeGroup, EventGroup, SystemSettings];
 }

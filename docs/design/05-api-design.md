@@ -81,6 +81,18 @@ There is deliberately no endpoint to create a profile, delete one, or edit roles
 | `POST /api/events/{id}/cancel?confirm=` | CancelEvent, two-step (FR-7.2 to 7.4) | `CancelEvent` |
 | `GET /api/events/cancellable?locationId=&from=&to=` | Event operations list (window not started) | `ViewEventOperations` |
 
+## Event groups
+
+| Method and path | Use case | Capability |
+|---|---|---|
+| `GET /api/event-groups` | List groups with selected groups and memberships | `ManageEventGroups` |
+| `GET /api/event-groups/{id}` | One group with selected groups and memberships | `ManageEventGroups` |
+| `POST /api/event-groups` | Create `{title, description, attendeeGroupIds[]}` | `ManageEventGroups` |
+| `PUT /api/event-groups/{id}` | Update `{title, description, attendeeGroupIds[], isOpen, expectedVersion}` | `ManageEventGroups` |
+| `PUT /api/event-groups/{id}/events/{eventId}` | Add `{expectedVersion}`; active future event with the group's exact type set | `ManageEventGroups` |
+| `PATCH /api/event-groups/{id}/events/{eventId}` | Toggle one membership `{isOpen, expectedVersion}` | `ManageEventGroups` |
+| `DELETE /api/event-groups/{id}/events/{eventId}?expectedVersion=` | Remove one membership; bookings stay valid | `ManageEventGroups` |
+
 ## Attendees, invites and bookings
 
 | Method and path | Use case | Capability |

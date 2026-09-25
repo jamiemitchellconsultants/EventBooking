@@ -34,6 +34,18 @@ public sealed record AttendeeGroupResponse(
     IReadOnlyList<Guid> RequirementTypeIds, int MemberCount,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
+/// <summary>One event membership with its own publication gate.</summary>
+public sealed record EventGroupEventResponse(
+    Guid EventId, bool IsOpen,
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
+/// <summary>One event group with its selected groups and memberships.</summary>
+public sealed record EventGroupResponse(
+    Guid Id, string Title, string Description, bool IsOpen, long Version,
+    IReadOnlyList<Guid> AttendeeGroupIds, IReadOnlyList<Guid> AppointmentTypeIds,
+    IReadOnlyList<EventGroupEventResponse> Events,
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
 /// <summary>The singleton settings row.</summary>
 public sealed record SettingsResponse(
     int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount, long Version,
@@ -279,6 +291,41 @@ public static class ApiResponses
                 new LinkCandidate(
                     "update", "updateAttendeeGroup", $"/api/attendee-groups/{result.Id}",
                     nameof(StaffCapability.ManageReferenceData))));
+    }
+
+    /// <summary>Projects one event group, with mutation links only for holders.</summary>
+    /// <param name="result">The application result.</param>
+    /// <param name="capabilities">The caller's capabilities.</param>
+    /// <returns>The response body.</returns>
+    public static EventGroupResponse EventGroup(
+        EventBooking.Application.EventGroups.EventGroupResult result,
+        IReadOnlySet<string> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new EventGroupResponse(
+            result.Id, result.Title, result.Description, result.IsOpen, result.Version,
+            result.AttendeeGroupIds, result.AppointmentTypeIds,
+            [.. result.Events.Select(e => new EventGroupEventResponse(
+                e.EventId, e.IsOpen,
+                CallerLinks.For(
+                    capabilities,
+                    new LinkCandidate(
+                        "setEventOpen", "setEventGroupEventOpen",
+                        $"/api/event-groups/{result.Id}/events/{e.EventId}",
+                        nameof(StaffCapability.ManageEventGroups)),
+                    new LinkCandidate(
+                        "removeEvent", "removeEventGroupEvent",
+                        $"/api/event-groups/{result.Id}/events/{e.EventId}",
+                        nameof(StaffCapability.ManageEventGroups)))))],
+            CallerLinks.For(
+                capabilities,
+                new LinkCandidate("self", "getEventGroup", $"/api/event-groups/{result.Id}", null),
+                new LinkCandidate(
+                    "update", "updateEventGroup", $"/api/event-groups/{result.Id}",
+                    nameof(StaffCapability.ManageEventGroups)),
+                new LinkCandidate(
+                    "addEvent", "addEventGroupEvent", $"/api/event-groups/{result.Id}/events",
+                    nameof(StaffCapability.ManageEventGroups))));
     }
 
     /// <summary>Projects the settings row.</summary>

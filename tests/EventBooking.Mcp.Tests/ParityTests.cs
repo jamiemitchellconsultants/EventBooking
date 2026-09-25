@@ -21,7 +21,7 @@ public sealed class ParityTests(McpFactory factory)
             .Select(x => x.McpTool!)
             .ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(45, expected.Count);
+        Assert.Equal(52, expected.Count);
         Assert.Equal(expected.Count, tools.Count);
         Assert.Empty(expected.Except(tools.Keys));
         Assert.Empty(tools.Keys.Except(expected));

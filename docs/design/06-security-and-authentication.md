@@ -64,6 +64,7 @@ Every handler demands exactly one `StaffCapability`. Handlers never check a `Rol
 |---|:---:|:---:|:---:|:---:|
 | `ManageSettings` | ✔ | | | |
 | `ManageReferenceData` | ✔ | | | |
+| `ManageEventGroups` | ✔ | ✔ | | |
 | `ManageStaffAccess` | ✔ | | | |
 | `ManageAttendees` | | ✔ | | |
 | `ViewAttendeeDashboards` | | ✔ | | |

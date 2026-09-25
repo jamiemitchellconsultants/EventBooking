@@ -14,6 +14,8 @@ public static class CapabilityMatrix
     public static IReadOnlyList<CapabilityGrant> Grants { get; } =
     [
         new("ManageReferenceData", "Admin", false),
+        new("ManageEventGroups", "Admin", false),
+        new("ManageEventGroups", "Coordinator", false),
         new("ManageSettings", "Admin", false),
         new("ManageStaffAccess", "Admin", false),
         new("ManageAttendees", "Coordinator", false),
@@ -36,7 +38,8 @@ public static class CapabilityMatrix
     /// <summary>Gets every staff capability name the table must cover.</summary>
     public static IReadOnlyList<string> AllCapabilities { get; } =
     [
-        "ManageReferenceData", "ManageSettings", "ManageStaffAccess", "ManageAttendees",
+        "ManageReferenceData", "ManageEventGroups", "ManageSettings", "ManageStaffAccess",
+        "ManageAttendees",
         "ViewAttendeeDashboards", "ViewAttendeeAudit", "ViewEventAudit",
         "ManageEventNegotiation", "ViewEventOperations", "CancelEvent", "ConductAppointments",
     ];

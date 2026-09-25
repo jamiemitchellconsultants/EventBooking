@@ -210,6 +210,42 @@ public static class AgentOperationCatalog
                 "cancellation can still reach (FR-7.2).",
                 nameof(StaffCapability.ViewEventOperations), "list_cancellable_events", Read()),
 
+            // Event groups.
+            Staff("listEventGroups", HttpMethods.Get, "/api/event-groups", "Event groups",
+                "List event groups.",
+                "Reads every event group with its selected attendee groups and memberships.",
+                nameof(StaffCapability.ManageEventGroups), "list_event_groups", Read()),
+            Staff("getEventGroup", HttpMethods.Get, "/api/event-groups/{id}", "Event groups",
+                "Read one event group.",
+                "Reads one event group with its selected attendee groups and memberships.",
+                nameof(StaffCapability.ManageEventGroups), "get_event_group", Read()),
+            Staff("createEventGroup", HttpMethods.Post, "/api/event-groups", "Event groups",
+                "Create an event group.",
+                "Creates a closed event group serving the selected active attendee groups.",
+                nameof(StaffCapability.ManageEventGroups), "create_event_group", Create()),
+            Staff("updateEventGroup", HttpMethods.Put, "/api/event-groups/{id}", "Event groups",
+                "Update an event group.",
+                "Updates an event group's copy, selected groups and group gate. Replacing the " +
+                "selected groups is refused when the new union would break a member event.",
+                nameof(StaffCapability.ManageEventGroups), "update_event_group", Transition()),
+            Staff("addEventGroupEvent", HttpMethods.Put,
+                "/api/event-groups/{id}/events/{eventId}", "Event groups",
+                "Add an event to a group.",
+                "Adds an active future event whose capacity types equal the group's set. " +
+                "New memberships start private.",
+                nameof(StaffCapability.ManageEventGroups), "add_event_group_event", Transition()),
+            Staff("setEventGroupEventOpen", HttpMethods.Patch,
+                "/api/event-groups/{id}/events/{eventId}", "Event groups",
+                "Open or close a membership.",
+                "Toggles one event membership's public-registration gate; the group gate is " +
+                "independent.",
+                nameof(StaffCapability.ManageEventGroups), "set_event_group_event_open", Transition()),
+            Staff("removeEventGroupEvent", HttpMethods.Delete,
+                "/api/event-groups/{id}/events/{eventId}", "Event groups",
+                "Remove an event from a group.",
+                "Removes one event membership; existing bookings stay valid.",
+                nameof(StaffCapability.ManageEventGroups), "remove_event_group_event", Delete()),
+
             // Attendees.
             Staff("listAttendees", HttpMethods.Get, "/api/attendees", "Attendees", "List attendees.",
                 "Reads attendees filtered by status, group, readiness and a name or email prefix, " +
