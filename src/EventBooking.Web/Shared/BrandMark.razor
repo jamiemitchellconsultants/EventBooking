@@ -1,10 +1,7 @@
 @inject ProductOptions Product
 
+@* The adjacent link already names the product, so the logo is decorative and, with no logo, nothing is drawn. *@
 @if (Product.LogoPath is not null)
 {
-    <img class="brand-mark" src="@Product.LogoPath" alt="@Product.ProductName" />
-}
-else
-{
-    <span class="brand-mark-text" aria-hidden="true">@Product.ProductName</span>
+    <img class="brand-mark" src="@Product.LogoPath" alt="" />
 }

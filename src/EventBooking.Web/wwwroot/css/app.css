@@ -40,3 +40,46 @@ th, td { padding: var(--space-3); text-align: left; border-bottom: 1px solid var
 .loading-line-short { width: 30%; } .loading-line-medium { width: 65%; }
 @keyframes loading-pulse { 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .loading-line { animation: none; } }
+
+/* Names the ported page stylesheets (Attendees, Book, ManageBooking, Dashboards) use. They are
+   derived from the theme tokens, so an operator theme never has to define them. */
+:root {
+  --ink: var(--color-neutral-900);
+  --ink-strong: var(--color-neutral-900);
+  --sub: var(--color-neutral-700);
+  --line: var(--color-neutral-200);
+  --line-strong: var(--color-neutral-500);
+  --surface: var(--color-on-primary);
+  --surface-sunken: var(--color-neutral-100);
+  --radius: var(--radius-card);
+  --radius-sm: var(--radius-control);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--color-neutral-900) 14%, transparent);
+  --accent-hover: color-mix(in srgb, var(--accent) 82%, black);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, white);
+  --focus: var(--color-primary);
+  --error-ink: var(--color-danger);
+  --error-bg: color-mix(in srgb, var(--color-danger) 8%, white);
+  --error-line: color-mix(in srgb, var(--color-danger) 35%, white);
+  --success-ink: var(--color-success);
+  --success-bg: color-mix(in srgb, var(--color-success) 8%, white);
+  --success-line: color-mix(in srgb, var(--color-success) 35%, white);
+}
+
+.button:hover:not(:disabled) { filter: brightness(0.95); }
+.button-primary:hover:not(:disabled) { filter: brightness(1.15); }
+.button:disabled { opacity: 0.55; cursor: not-allowed; }
+.button-small { min-height: 2rem; padding: var(--space-1) var(--space-3); }
+.button-quiet { border-color: var(--color-neutral-200); background: transparent; color: var(--color-neutral-900); }
+.card-body { padding: var(--space-4); }
+.empty-state { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-8) var(--space-4); border: 1px dashed var(--color-neutral-200); border-radius: var(--radius-card); color: var(--color-neutral-700); text-align: center; }
+.empty-state p { margin: 0; }
+.chip { display: inline-flex; align-items: center; padding: 0 var(--space-2); border-radius: 999px; background: var(--color-neutral-100); color: var(--color-neutral-900); font-size: var(--font-size-label); font-weight: 600; }
+.topbar-signin { display: flex; align-items: center; gap: var(--space-3); }
+.capacity-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block: var(--space-1); }
+.audit-history { display: grid; gap: var(--space-2); }
+.audit-history th, .audit-history td { padding: var(--space-1) var(--space-2); font-size: 0.8125rem; }
+.guide-toc ul { columns: 2 16rem; margin: 0; padding-inline-start: var(--space-4); }
+.guide-toc h2, .guide-section h2 { margin-top: 0; }
+.guide-section { scroll-margin-top: var(--space-4); line-height: 1.6; }
+.guide-section code { padding: 0 var(--space-1); border-radius: var(--radius-control); background: var(--color-neutral-100); }
+.guide-section img { max-width: 100%; height: auto; }
