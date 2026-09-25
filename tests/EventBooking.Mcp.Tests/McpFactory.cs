@@ -95,7 +95,8 @@ public sealed class McpFactory : WebApplicationFactory<EventTools>, IAsyncLifeti
             profile => profile.StaffUserId == staffUserId);
     }
 
-    /// <summary>Starts the container and migrates the throwaway database.</summary>
+    /// <summary>Starts the container, migrates the throwaway database and seeds the fixed
+    /// reference rows the suites address by their well-known identifiers.</summary>
     /// <returns>A task tracking initialization.</returns>
     public async Task InitializeAsync()
     {
@@ -105,6 +106,8 @@ public sealed class McpFactory : WebApplicationFactory<EventTools>, IAsyncLifeti
         var context = scope.ServiceProvider
             .GetRequiredService<EventBooking.Infrastructure.Persistence.EventBookingDbContext>();
         await context.Database.MigrateAsync();
+        FixedReferenceData.Seed(context);
+        await context.SaveChangesAsync();
     }
 
     /// <summary>Disposes the container and the host.</summary>

@@ -57,7 +57,7 @@ public sealed class InviteSnapshotAuthorityTests
         var result = await new ViewInviteHandler(
                 invites, attendees, events, new EligibleEventFinder(events, events, clock),
                 new RecordingAuditLogger(), new FakeUnitOfWork(), tokens, clock,
-                locations, new InMemoryAppointmentTypeRepository())
+                ProposalFixture.Zones, locations, new InMemoryAppointmentTypeRepository())
             .HandleAsync(new ViewInviteQuery(issued), CancellationToken.None);
 
         Assert.True(result.IsSuccess);

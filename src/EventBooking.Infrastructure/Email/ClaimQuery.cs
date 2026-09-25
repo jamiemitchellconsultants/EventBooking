@@ -29,4 +29,18 @@ public static class ClaimQuery
              ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED)
         RETURNING id, claim_count;
         """;
+
+    /// <summary>
+    /// Claims one named pending row under the same lease, backoff and write-once correlation
+    /// rules as <see cref="Sql"/>, so a targeted send never erases a staged request identifier.
+    /// </summary>
+    public const string OneSql = """
+        UPDATE email_log SET claimed_at = @now, claim_count = claim_count + 1,
+            correlation_id = COALESCE(correlation_id, @correlationId)
+         WHERE id = @deliveryId
+           AND status = 3
+           AND (claimed_at IS NULL OR claimed_at < @now - make_interval(mins => 5))
+           AND (not_before IS NULL OR not_before <= @now)
+        RETURNING id;
+        """;
 }

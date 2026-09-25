@@ -106,7 +106,7 @@ public sealed class GetAppointmentWorkspaceHandlerTests
 
         public Task<AppointmentWorkspaceEventList> ListEventsAsync(
             Guid appointmentTypeId,
-            DateOnly onOrAfter,
+            DateTimeOffset asOf,
             CancellationToken cancellationToken)
         {
             ListCallCount++;

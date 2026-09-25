@@ -1,0 +1,144 @@
+# docker-compose.yml (complete)
+name: eventbooking
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eventbooking
+      POSTGRES_USER: eventbooking_owner
+      POSTGRES_PASSWORD: local-owner-password
+      EVENTBOOKING_API_DB_PASSWORD: local-api-password
+      EVENTBOOKING_MCP_DB_PASSWORD: local-mcp-password
+    ports: ["5432:5432"]
+    volumes:
+      - eventbooking-postgres:/var/lib/postgresql/data
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventbooking_owner -d eventbooking"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3
+    command: ["start-dev", "--http-port=8081", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-keycloak-password
+      KC_HOSTNAME: http://keycloak.localhost:8081
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports: ["8081:8081"]
+    volumes:
+      - ./deploy/keycloak/realm-export.json:/opt/keycloak/data/import/eventbooking-realm.json:ro
+    networks:
+      default:
+        aliases: [keycloak.localhost]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    ports: ["1025:1025", "8025:8025"]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: src/EventBooking.Api/Dockerfile
+    environment: &application-environment
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__EventBooking: Host=postgres;Database=eventbooking;Username=eventbooking_api;Password=local-api-password
+      Auth__Authority: http://keycloak.localhost:8081/realms/eventbooking
+      Auth__Audience: eventbooking-web
+      Auth__RequireHttpsMetadata: "false"
+      Tokens__SigningKey: local-only-token-signing-key-at-least-32-bytes
+      Email__Smtp__Host: mailpit
+      Email__Smtp__Port: "1025"
+      Email__FromAddress: eventbooking@example.test
+      Email__FromName: EventBooking
+      Portal__BaseUrl: http://localhost:5002
+      Portal__CoordinatorContact: coordinator@example.test
+      Cors__AllowedOrigins__0: http://localhost:5002
+      Identity__StaffIdPattern: ^DEMO[0-9]{3}$
+    ports: ["5001:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      mailpit: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  mcp:
+    build:
+      context: .
+      dockerfile: src/EventBooking.Mcp/Dockerfile
+    environment:
+      <<: *application-environment
+      ConnectionStrings__EventBooking: Host=postgres;Database=eventbooking;Username=eventbooking_mcp;Password=local-mcp-password
+    ports: ["5003:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      mailpit: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: src/EventBooking.Web/Dockerfile
+    ports: ["5002:8080"]
+    volumes:
+      - ./deploy/web/appsettings.json:/usr/share/nginx/html/appsettings.json:ro
+    depends_on:
+      api: { condition: service_healthy }
+
+  seed:
+    profiles: [seed]
+    build:
+      context: .
+      dockerfile: src/EventBooking.SeedData/Dockerfile
+    environment:
+      ConnectionStrings__EventBooking: Host=postgres;Database=eventbooking;Username=eventbooking_owner;Password=local-owner-password
+      Keycloak__BaseUrl: http://keycloak.localhost:8081
+      Keycloak__Realm: eventbooking
+      Keycloak__AdminRealm: master
+      Keycloak__AdminUsername: admin
+      Keycloak__AdminPassword: local-keycloak-password
+      Keycloak__DemoPassword: EventBooking1!
+      Keycloak__RealmExportPath: /config/eventbooking-realm.json
+      Tokens__SigningKey: local-only-token-signing-key-at-least-32-bytes
+      Email__Smtp__Host: mailpit
+      Email__Smtp__Port: "1025"
+      Email__FromAddress: eventbooking@example.test
+      Email__FromName: EventBooking
+      Portal__BaseUrl: http://localhost:5002
+      Portal__CoordinatorContact: coordinator@example.test
+      Identity__StaffIdPattern: ^DEMO[0-9]{3}$
+    volumes:
+      - ./deploy/keycloak/realm-export.json:/config/eventbooking-realm.json:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      mailpit: { condition: service_healthy }
+
+volumes:
+  eventbooking-postgres:

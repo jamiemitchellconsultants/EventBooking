@@ -1,6 +1,10 @@
 {
   "realm": "eventbooking",
   "enabled": true,
+  "sslRequired": "external",
+  "accessTokenLifespan": 300,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
   "attributes": {
     "userProfileEnabled": "true"
   },
@@ -11,31 +15,37 @@
         "providerId": "declarative-user-profile",
         "subComponents": {},
         "config": {
-          "config-pieces-count": [
-            "1"
-          ],
-          "config-piece-0": [
-            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{}}},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}}},{\"name\":\"staffId\",\"displayName\":\"Staff number\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"admin\"]},\"validations\":{\"pattern\":{\"pattern\":\"^[A-Za-z0-9]{1,32}$\"}}}],\"groups\":[]}"
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{}}},{\"name\":\"email\",\"displayName\":\"Email\",\"validations\":{\"email\":{},\"length\":{\"max\":255}}},{\"name\":\"firstName\",\"displayName\":\"First name\",\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"user\",\"admin\"]}},{\"name\":\"lastName\",\"displayName\":\"Last name\",\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"user\",\"admin\"]}},{\"name\":\"staffId\",\"displayName\":\"Staff number\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"permissions\":{\"view\":[\"user\",\"admin\"],\"edit\":[\"admin\"]},\"validations\":{\"pattern\":{\"pattern\":\"^[A-Z0-9]{1,32}$\"}}}],\"groups\":[]}"
           ]
         }
       }
     ]
   },
+  "roles": {
+    "realm": [
+      { "name": "Admin" },
+      { "name": "Coordinator" },
+      { "name": "Manager" },
+      { "name": "AppointmentStaff" }
+    ]
+  },
   "clients": [
     {
       "clientId": "eventbooking-web",
+      "name": "EventBooking Web",
+      "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
-        "https://EVENTBOOKING_HOSTNAME/authentication/login-callback"
+        "https://${EVENTBOOKING_HOSTNAME}/authentication/login-callback",
+        "https://${EVENTBOOKING_HOSTNAME}/authentication/logout-callback"
       ],
-      "webOrigins": [
-        "https://EVENTBOOKING_HOSTNAME"
-      ],
+      "webOrigins": ["https://${EVENTBOOKING_HOSTNAME}"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://EVENTBOOKING_HOSTNAME/authentication/logout-callback"
+        "post.logout.redirect.uris": "https://${EVENTBOOKING_HOSTNAME}/authentication/logout-callback"
       },
       "protocolMappers": [
         {
@@ -55,7 +65,6 @@
           "name": "audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
           "config": {
             "included.client.audience": "eventbooking-web",
             "id.token.claim": "false",
@@ -63,36 +72,35 @@
           }
         },
         {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
           "name": "staff_id",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
           "config": {
             "user.attribute": "staffId",
             "claim.name": "staff_id",
             "jsonType.label": "String",
             "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "roles",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "consentRequired": false,
-          "config": {
-            "multivalued": "true",
-            "claim.name": "roles",
-            "jsonType.label": "String",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
           }
         },
         {
           "name": "name",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-full-name-mapper",
-          "consentRequired": false,
           "config": {
             "id.token.claim": "true",
             "access.token.claim": "true",
@@ -101,33 +109,5 @@
         }
       ]
     }
-  ],
-  "roles": {
-    "realm": [
-      {
-        "name": "Admin",
-        "description": "EventBooking Admin",
-        "composite": false,
-        "clientRole": false
-      },
-      {
-        "name": "Coordinator",
-        "description": "EventBooking Coordinator",
-        "composite": false,
-        "clientRole": false
-      },
-      {
-        "name": "Manager",
-        "description": "EventBooking Manager",
-        "composite": false,
-        "clientRole": false
-      },
-      {
-        "name": "AppointmentStaff",
-        "description": "EventBooking AppointmentStaff",
-        "composite": false,
-        "clientRole": false
-      }
-    ]
-  }
+  ]
 }

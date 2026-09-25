@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using EventBooking.Application.Abstractions;
 
 namespace EventBooking.Application.Appointments;
 
@@ -19,8 +18,7 @@ public sealed record RosterCsvResult
 /// consumes only the event detail the workspace handler already returns, so it cannot expose a
 /// field the JSON event-detail route does not already expose.
 /// </summary>
-/// <param name="clock">The clock.</param>
-public sealed class AppointmentRosterCsvFormatter(IClock clock)
+public sealed class AppointmentRosterCsvFormatter()
 {
     private static readonly string[] HeaderFields =
     [
@@ -64,11 +62,11 @@ public sealed class AppointmentRosterCsvFormatter(IClock clock)
         };
     }
 
-    /// <summary>Formats a nullable instant as transitional-location ISO 8601, or empty when null.</summary>
-    private string FormatInstant(DateTimeOffset? instant) =>
+    /// <summary>Formats a nullable instant as UTC ISO 8601, or empty when null.</summary>
+    private static string FormatInstant(DateTimeOffset? instant) =>
         instant is null
             ? string.Empty
-            : clock.InstantAtTransitionalLocation(instant.Value).ToString("o", CultureInfo.InvariantCulture);
+            : instant.Value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
 
     /// <summary>Builds the download filename from the event's type slug, date, and start time.</summary>
     private static string BuildFileName(AppointmentEventDetail detail)

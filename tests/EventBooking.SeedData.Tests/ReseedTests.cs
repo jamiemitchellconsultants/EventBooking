@@ -14,7 +14,7 @@ using Testcontainers.PostgreSql;
 namespace EventBooking.SeedData.Tests;
 
 /// <summary>
-/// Verifies that reseeding restores the complete deterministic demo dataset after domain data has
+/// Verifies that reseeding restores the complete generalised demo dataset after domain data has
 /// been mutated.
 /// </summary>
 [Collection("seed-anchor")]
@@ -28,6 +28,7 @@ public sealed class ReseedTests : IAsyncLifetime
     /// <inheritdoc/>
     public async Task InitializeAsync()
     {
+        DemoSeedSpec.OverrideAnchor(new DateOnly(2026, 9, 22));
         await _database.StartAsync();
 
         var services = new ServiceCollection();
@@ -37,20 +38,21 @@ public sealed class ReseedTests : IAsyncLifetime
         services.AddEventBookingApplication(
             new AttendeePortalOptions(
                 "http://localhost:5002", "recruitment@example.com"));
-        services.AddSingleton<IClock>(new FixedClock(DemoSeedSpec.AnchorDate()));
+        services.AddSingleton<IClock, EventBooking.Infrastructure.Time.SystemClock>();
         services.AddScoped<IAuditLogger, EfAuditLogger>();
         services.AddScoped<DemoSeeder>();
         _services = services.BuildServiceProvider();
 
         using var scope = _services.CreateScope();
-        await scope.ServiceProvider
-            .GetRequiredService<EventBookingDbContext>()
-            .Database.MigrateAsync();
+        var database = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        await database.Database.ExecuteSqlRawAsync(DatabaseRoles.Script);
+        await database.Database.MigrateAsync();
     }
 
     /// <inheritdoc/>
     public async Task DisposeAsync()
     {
+        DemoSeedSpec.OverrideAnchor(null);
         await _services.DisposeAsync();
         await _database.DisposeAsync();
     }
@@ -74,12 +76,21 @@ public sealed class ReseedTests : IAsyncLifetime
 
         var summary = await seeder.ReseedAsync(CancellationToken.None);
 
-        Assert.Equal(6, summary.IdentitiesEnsured);
-        Assert.Equal(6, summary.ProfilesEnsured);
-        Assert.Equal(3, summary.AgreedEventsImported);
-        Assert.Equal(5, summary.ProposalsEnsured);
-        Assert.Equal(100, summary.AttendeesCreated);
-        Assert.Equal(6, await database.StaffAccessProfiles.CountAsync());
+        Assert.Equal(3, summary.LocationsEnsured);
+        Assert.Equal(6, summary.AppointmentTypesEnsured);
+        Assert.Equal(4, summary.AttendeeGroupsEnsured);
+        Assert.Equal(8, summary.IdentitiesEnsured);
+        Assert.Equal(8, summary.ProfilesEnsured);
+        Assert.Equal(7, summary.EventsEnsured);
+        Assert.Equal(2, summary.ProposalsEnsured);
+        Assert.Equal(9, summary.AttendeesEnsured);
+        Assert.Equal(3, await database.Locations.CountAsync());
+        Assert.Equal(6, await database.AppointmentTypes.CountAsync());
+        Assert.Equal(
+            "DOC",
+            Assert.Single(await database.AppointmentTypes.Where(t => !t.IsActive).Select(t => t.Code).ToListAsync()));
+        Assert.Equal(4, await database.AttendeeGroups.CountAsync());
+        Assert.Equal(8, await database.StaffAccessProfiles.CountAsync());
         var expectedProfiles = DemoSeedSpec.Staff().ToDictionary(value => value.UserId);
         var actualProfiles = await database.StaffAccessProfiles
             .AsNoTracking()
@@ -95,63 +106,31 @@ public sealed class ReseedTests : IAsyncLifetime
                 actual.Roles.OrderBy(value => value));
             Assert.Equal(pair.Value.AppointmentTypeId, actual.AppointmentTypeId);
         });
-        Assert.Equal(6, await database.StaffIdentities.CountAsync());
-        Assert.Equal(9, await database.Events.CountAsync());
-        // Five negotiation scenarios plus one accepted proposal for each of nine events.
-        Assert.Equal(14, await database.EventProposals.CountAsync());
+        Assert.Equal(8, await database.StaffIdentities.CountAsync());
+        Assert.Equal(7, await database.Events.CountAsync());
+        // Seven accepted-event proposals plus the two open negotiation scenarios.
+        Assert.Equal(9, await database.EventProposals.CountAsync());
+        Assert.Equal(2, await database.EventProposals.CountAsync(p => p.Status == EventProposalStatus.Open));
         var events = await database.Events.AsNoTracking().ToListAsync();
         var proposals = await database.EventProposals.AsNoTracking().ToDictionaryAsync(p => p.Id);
         Assert.Equal(events.Count, events.Select(e => e.ProposalId).Distinct().Count());
         Assert.All(events, e => Assert.Equal(EventProposalStatus.Confirmed, proposals[e.ProposalId].Status));
-        Assert.Equal(100, await database.Attendees.CountAsync());
-        Assert.Equal(3, await database.AppointmentTypes.CountAsync());
+        Assert.Equal(9, await database.Attendees.CountAsync());
         Assert.Equal(1, await database.SystemSettings.CountAsync());
-        Assert.Equal(5, await database.AttendeeGroups.CountAsync());
+        Assert.Equal(9, await database.Invites.CountAsync());
+        Assert.Equal(6, await database.Bookings.CountAsync());
+        Assert.Equal(16, await database.BookingAppointments.CountAsync());
         Assert.Equal(
-            10,
-            await database.AttendeeGroups.SelectMany(group => group.Requirements).CountAsync());
-        Assert.Equal(
-            200,
-            await database.Attendees.SelectMany(attendee => attendee.Requirements).CountAsync());
-        Assert.Equal(90, await database.Invites.CountAsync());
-        Assert.Equal(90, await database.Bookings.CountAsync());
-        Assert.Equal(170, await database.BookingAppointments.CountAsync());
-        Assert.Equal(
-            170,
-            await database.Invites.SelectMany(invite => invite.Requirements).CountAsync());
-        Assert.Equal(
-            25,
+            2,
             await database.BookingAppointments.CountAsync(
                 appointment => appointment.Status == BookingAppointmentStatus.NoShow));
         Assert.Equal(
-            70,
+            2,
             await database.BookingAppointments.CountAsync(
                 appointment => appointment.Status == BookingAppointmentStatus.Completed));
         Assert.True(
             await database.BookingAppointments.AnyAsync(
                 appointment => appointment.Status == BookingAppointmentStatus.CheckedIn));
-    }
-
-    private sealed class FixedClock(DateOnly today) : IClock
-    {
-        private static readonly TimeZoneInfo TransitionalLocationTimeZone =
-            TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
-
-        /// <inheritdoc/>
-        public DateTimeOffset UtcNow { get; } =
-            new(today.ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero);
-
-        /// <inheritdoc/>
-        public DateTimeOffset NowAtTransitionalLocation => TimeZoneInfo.ConvertTime(UtcNow, TransitionalLocationTimeZone);
-
-        /// <inheritdoc/>
-        public DateOnly TodayAtTransitionalLocation => DateAtTransitionalLocation(UtcNow);
-
-        /// <inheritdoc/>
-        public DateOnly DateAtTransitionalLocation(DateTimeOffset instant) =>
-            DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, TransitionalLocationTimeZone).DateTime);
-
-        public DateTimeOffset InstantAtTransitionalLocation(DateTimeOffset instant) =>
-            TimeZoneInfo.ConvertTime(instant, TransitionalLocationTimeZone);
+        Assert.Equal(0, await database.EmailLogs.CountAsync());
     }
 }

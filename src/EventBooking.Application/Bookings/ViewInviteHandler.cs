@@ -54,6 +54,7 @@ public sealed record ViewInviteQuery(string? Token);
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="tokens">The tokens.</param>
 /// <param name="clock">The clock.</param>
+/// <param name="zones">The location time-zone abstraction.</param>
 /// <param name="locations">The locations.</param>
 /// <param name="types">Resolves requirement names for the invite view.</param>
 public sealed class ViewInviteHandler(
@@ -65,6 +66,7 @@ public sealed class ViewInviteHandler(
     IUnitOfWork unitOfWork,
     ITokenService tokens,
     IClock clock,
+    IEventWindowZones zones,
     ILocationRepository locations,
     IAppointmentTypeRepository types)
 {
@@ -116,16 +118,19 @@ public sealed class ViewInviteHandler(
         }
 
         var required = invite.RequiredAppointmentTypeIds;
-        var today = clock.TodayAtTransitionalLocation;
+        var now = clock.UtcNow;
 
         var options = new List<Event>();
         var deadEventIds = new List<Guid>();
         foreach (var eventId in invite.OfferedEventIds)
         {
             var eventItem = await events.GetAsync(eventId, cancellationToken);
+            var location = eventItem is null
+                ? null
+                : await locations.GetAsync(eventItem.LocationId, cancellationToken);
             if (eventItem is not null
                 && eventItem.Status == EventStatus.Active
-                && eventItem.Window.StartsAfter(today)
+                && eventItem.Window.Date > zones.LocalDateOf(now, location?.TimeZoneId ?? "Etc/UTC")
                 && HasSpareFor(eventItem, required))
             {
                 options.Add(eventItem);

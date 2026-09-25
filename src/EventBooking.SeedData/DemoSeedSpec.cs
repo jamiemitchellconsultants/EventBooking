@@ -1,296 +1,176 @@
-using System.Reflection;
-using System.Text.Json;
+// src/EventBooking.SeedData/DemoSeedSpec.cs (complete)
 using EventBooking.Domain.Access;
-using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.Attendees;
+using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Common;
-using EventBooking.Domain.AttendeeGroups;
 
 namespace EventBooking.SeedData;
 
-/// <summary>The deterministic lifecycle state constructed for a demo Attendee.</summary>
-public enum DemoAttendeeJourney
+public interface IDemoProposalScenario
 {
-    /// <summary>The Attendee has a group but no Booking.</summary>
-    Unbooked = 1,
-    /// <summary>Every current requirement has a Completed attempt.</summary>
-    Ready = 2,
-    /// <summary>At least one current requirement is Expected or CheckedIn.</summary>
-    Outstanding = 3,
-    /// <summary>At least one current requirement has a recoverable NoShow.</summary>
-    NoShow = 4,
-    /// <summary>A recovery Booking has completed a previously missed requirement.</summary>
-    RecoveryCompleted = 5,
+    string LocationCode { get; }
+    DateOnly Date { get; }
+    TimeOnly StartTime { get; }
+    int DurationMinutes { get; }
+    IReadOnlyList<string> TypeCodes { get; }
+    IReadOnlyList<string> AcceptedTypeCodes { get; }
 }
 
-/// <summary>One deterministic Attendee seed assignment and requested demo journey.</summary>
-/// <param name="Name">The demo Attendee full name.</param>
-/// <param name="Email">The demo Attendee email address.</param>
-/// <param name="AttendeeGroupCode">The canonical Attendee Group code.</param>
-/// <param name="Journey">The deterministic lifecycle state to construct.</param>
-public sealed record AttendeeSpec(
-    string Name,
-    string Email,
-    string AttendeeGroupCode,
-    DemoAttendeeJourney Journey);
+public sealed record DemoLocationSpec(Guid Id, string Code, string Name, string Address, string TimeZoneId, bool IsActive);
+public sealed record DemoAppointmentTypeSpec(Guid Id, string Code, string Name, bool IsActive, string? ManagerUsername);
+public sealed record DemoAttendeeGroupSpec(Guid Id, string Code, string Name, IReadOnlyList<string> TypeCodes, bool IsActive);
+public sealed record DemoEventSpec(
+    Guid Id, string LocationCode, DateOnly Date, TimeOnly StartTime, int DurationMinutes,
+    IReadOnlyList<string> TypeCodes, IReadOnlyList<string> AcceptedTypeCodes) : IDemoProposalScenario;
+public sealed record DemoProposalSpec(
+    Guid Id, string LocationCode, DateOnly Date, TimeOnly StartTime, int DurationMinutes,
+    IReadOnlyList<string> TypeCodes, IReadOnlyList<string> AcceptedTypeCodes) : IDemoProposalScenario;
+public enum DemoRecovery { None, Pending, Completed }
+public sealed record DemoAttendeeSpec(
+    Guid Id, string Name, string Email, string GroupCode, AttendeeStatus Status,
+    IReadOnlyList<BookingAppointmentStatus> AppointmentStatuses,
+    DemoRecovery Recovery, bool SendInvitation = false);
 
-public sealed record AgreedEventSpec(DateOnly Date, TimeOnly StartTime, int DatHeadcount, int MedHeadcount, int UniHeadcount);
-
-public sealed record OpenProposalSpec(
-    DateOnly Date,
-    TimeOnly StartTime,
-    Guid CreatedByManagerUserId,
-    int? DatHeadcount,
-    int? MedHeadcount,
-    int? UniHeadcount);
-
-
-
-/// <summary>One deterministic demo access profile and its provider identity fields.</summary>
-/// <param name="Username">The unique Keycloak username created for the demo identity.</param>
-/// <param name="UserId">The stable identity-provider object identifier.</param>
-/// <param name="StaffId">The canonical HR-issued staff number.</param>
-/// <param name="Roles">The identity-provider roles mirrored for the staff user.</param>
-/// <param name="AppointmentTypeId">The optional EventBooking-owned appointment-type scope.</param>
 public sealed record StaffProfileSpec(
-    string Username,
-    Guid UserId,
-    StaffId StaffId,
-    IReadOnlyList<Role> Roles,
-    Guid? AppointmentTypeId)
-{
-    /// <summary>Gets the unique Keycloak username created for the demo identity.</summary>
-    public string Username { get; init; } = Username;
+    string Username, string GivenName, string FamilyName, string Email,
+    Guid UserId, StaffId StaffId, IReadOnlyList<Role> Roles, Guid? AppointmentTypeId);
 
-    /// <summary>Gets the stable identity-provider object identifier.</summary>
-    public Guid UserId { get; init; } = UserId;
+public sealed record DemoDataset(
+    DateOnly Anchor,
+    IReadOnlyList<DemoLocationSpec> Locations,
+    IReadOnlyList<DemoAppointmentTypeSpec> AppointmentTypes,
+    IReadOnlyList<DemoAttendeeGroupSpec> AttendeeGroups,
+    IReadOnlyList<StaffProfileSpec> Staff,
+    IReadOnlyList<DemoEventSpec> Events,
+    IReadOnlyList<DemoProposalSpec> OpenProposals,
+    IReadOnlyList<DemoAttendeeSpec> Attendees);
 
-    /// <summary>Gets the canonical HR-issued staff number.</summary>
-    public StaffId StaffId { get; init; } = StaffId;
-
-    /// <summary>Gets the identity-provider roles mirrored for the staff user.</summary>
-    public IReadOnlyList<Role> Roles { get; init; } = Roles;
-
-    /// <summary>Gets the EventBooking-owned appointment-type scope, or null when unscoped.</summary>
-    public Guid? AppointmentTypeId { get; init; } = AppointmentTypeId;
-}
-
-/// <summary>
-/// The demo dataset, loaded from the embedded demo-seed.json so it can be edited without
-/// touching code. Day offsets resolve against the file's anchor date, so every run matches
-/// the same windows and re-runs only ever fill in newly edited placeholders.
-/// </summary>
 public static class DemoSeedSpec
 {
-    private static Lazy<SeedDocument> Document = new(Load);
+    private static DateOnly? _anchor;
+    private static IReadOnlyDictionary<string, Guid>? _providerIds;
+    public static DateOnly AnchorDate() => _anchor ?? new DateOnly(2026, 9, 22);
+    public static bool AnchorOverridden => _anchor.HasValue;
+    public static void OverrideAnchor(DateOnly? anchor) => _anchor = anchor;
 
-    private static DateOnly? AnchorOverride;
+    /// <summary>Adopts Keycloak-assigned provider identifiers, which the provider generates
+    /// server-side. Until overridden, the stable specification identifiers apply.</summary>
+    public static void OverrideProviderIds(IReadOnlyDictionary<string, Guid>? providerIds) =>
+        _providerIds = providerIds;
 
-    private static string? StaffIdPatternOverride;
-
-    /// <summary>
-    /// Gets the fixed calendar date against which the demo dataset's day offsets resolve.
-    /// </summary>
-    public static DateOnly AnchorDate() => AnchorOverride ?? Document.Value.Anchor;
-
-    /// <summary>Gets whether a run override replaced the file anchor.</summary>
-    public static bool AnchorOverridden => AnchorOverride.HasValue;
-
-    /// <summary>
-    /// Overrides the file anchor for this run (the --reanchor option), or restores file
-    /// behavior with null. Applies to agreed events, proposals, and journey windows alike.
-    /// </summary>
-    public static void OverrideAnchor(DateOnly? anchor) => AnchorOverride = anchor;
-
-    /// <summary>
-    /// Validates seed staff numbers against the deployment's staff-ID policy
-    /// (<c>Identity__StaffIdPattern</c>) instead of the default format, or restores the default
-    /// with null. Re-parses the dataset so the policy takes effect on the next read.
-    /// </summary>
-    public static void ConfigureStaffIdPattern(string? pattern)
+    /// <summary>The effective user identifier: the adopted provider id, or the specification
+    /// identifier when Keycloak has not converged in this process.</summary>
+    public static Guid ProviderUserId(string username)
     {
-        StaffIdPatternOverride = pattern;
-        Document = new(Load);
+        var staff = Staff().Single(x => x.Username == username);
+        return _providerIds is not null && _providerIds.TryGetValue(username, out var providerId)
+            ? providerId
+            : staff.UserId;
     }
 
-    public static IReadOnlyList<StaffProfileSpec> Staff() => Document.Value.Staff;
-
-    public static Guid AdminUserId() =>
-        Document.Value.Staff.Single(profile => profile.Roles.SequenceEqual([Role.Admin])).UserId;
-
-    public static Guid CoordinatorUserId() =>
-        Document.Value.Staff.Single(profile =>
-            profile.Roles.Contains(Role.Coordinator)
-            && !profile.Roles.Contains(Role.Manager)
-            && !profile.Roles.Contains(Role.AppointmentStaff)).UserId;
-
-    public static IReadOnlyDictionary<Guid, Guid> ManagerForType() =>
-        Document.Value.Staff
-            .Where(profile => profile.Roles.Contains(Role.Manager))
-            .ToDictionary(profile => profile.AppointmentTypeId!.Value, profile => profile.UserId);
-
-    public static IReadOnlyList<AgreedEventSpec> AgreedEvents() =>
-        Document.Value.AgreedEvents
-            .Select(s => new AgreedEventSpec(
-                AnchorDate().AddDays(s.DaysOffset), ParseStartTime(s.StartTime),
-                s.DatHeadcount, s.MedHeadcount, s.UniHeadcount))
-            .ToList();
-
-    public static IReadOnlyList<OpenProposalSpec> OpenProposals() =>
-        Document.Value.OpenProposals
-            .Select(p => new OpenProposalSpec(
-                AnchorDate().AddDays(p.DaysOffset), ParseStartTime(p.StartTime),
-                ManagerId(p.CreatedBy), p.DatHeadcount, p.MedHeadcount, p.UniHeadcount))
-            .ToList();
-
-    public static IReadOnlyList<AttendeeSpec> Attendees() =>
-        Document.Value.Attendees
-            .Select(c => new AttendeeSpec(
-                c.Name, c.Email, GroupCode(c.AttendeeGroup), Journey(c.Journey)))
-            .ToList();
-
-    private static string GroupCode(string code) =>
-        AttendeeGroupIds.TryFromCode(code, out var id)
-            ? AttendeeGroupIds.CodeOf(id)
-            : throw new SeedException($"Unknown attendee group code '{code}' in demo-seed.json.");
-
-    private static DemoAttendeeJourney Journey(string value) =>
-        Enum.TryParse<DemoAttendeeJourney>(value, ignoreCase: true, out var journey)
-            && Enum.IsDefined(journey)
-            ? journey
-            : throw new SeedException(
-                $"Journey '{value}' in demo-seed.json must be one of Unbooked, Ready, Outstanding, NoShow, or RecoveryCompleted.");
-
-    private static Guid ManagerId(string username) =>
-        Document.Value.StaffByUsername.TryGetValue(username, out var userId)
-            ? userId
-            : throw new SeedException($"Unknown staff username '{username}' in demo-seed.json.");
-
-    private static Guid TypeId(string code) =>
-        AppointmentTypeIds.TryFromCode(code, out var id)
-            ? id
-            : throw new SeedException($"Unknown appointment type code '{code}' in demo-seed.json.");
-
-    private static TimeOnly ParseStartTime(string value) =>
-        TimeOnly.TryParseExact(
-            value, "HH:mm", System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out var startTime)
-            ? startTime
-            : throw new SeedException($"Start time '{value}' in demo-seed.json must read HH:mm.");
-
-    private static SeedDocument Load()
+    public static DemoDataset Build()
     {
-        using var stream = Assembly.GetExecutingAssembly()
-            .GetManifestResourceStream("EventBooking.SeedData.demo-seed.json")
-            ?? throw new SeedException("Embedded demo-seed.json is missing.");
-
-        var document = JsonSerializer.Deserialize<SeedFile>(
-            stream, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? throw new SeedException("demo-seed.json is empty.");
-
-        var staffById = new HashSet<Guid>();
-        var staffIds = new HashSet<StaffId>();
-        var staff = document.Staff.Select(row =>
+        var anchor = AnchorDate();
+        var locations = new[]
         {
-            if (!Guid.TryParse(row.UserId, out var userId) || userId == Guid.Empty)
-            {
-                throw new SeedException($"Staff entry '{row.Username}' has an invalid userId.");
-            }
-
-            if (!staffById.Add(userId))
-            {
-                throw new SeedException($"Duplicate staff userId '{row.UserId}'.");
-            }
-
-            var parsedRoles = row.Roles.Select(roleName =>
-            {
-                if (!Enum.TryParse<Role>(roleName, ignoreCase: true, out var role)
-                    || !Enum.IsDefined(role))
-                {
-                    throw new SeedException(
-                        $"Staff entry '{row.Username}' has an unknown role '{roleName}'.");
-                }
-
-                return role;
-            }).ToList();
-
-            Guid? appointmentTypeId = row.AppointmentType is null
-                ? null
-                : TypeId(row.AppointmentType);
-
-            try
-            {
-                var staffId = new StaffId(
-                    row.StaffId, StaffIdPatternOverride ?? StaffId.DefaultPattern);
-                if (!staffIds.Add(staffId))
-                {
-                    throw new SeedException($"Duplicate staffId '{row.StaffId}'.");
-                }
-
-                var validated = StaffAccessProfile.Create(
-                    userId, parsedRoles, appointmentTypeId);
-                return new StaffRow(
-                    row.Username,
-                    new StaffProfileSpec(
-                        row.Username,
-                        userId,
-                        staffId,
-                        validated.Roles.OrderBy(role => role).ToList(),
-                        validated.AppointmentTypeId));
-            }
-            catch (DomainException exception)
-            {
-                throw new SeedException(
-                    $"Staff entry '{row.Username}' is invalid: {exception.Message}");
-            }
-        }).ToList();
-
-        if (!DateOnly.TryParseExact(
-                document.AnchorDate, "yyyy-MM-dd",
-                System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.None, out var anchor))
+            new DemoLocationSpec(Id(1, 1), "LONDON", "London Centre", "1 Example Street, London", "Europe/London", true),
+            new DemoLocationSpec(Id(1, 2), "MANCHESTER", "Manchester Centre", "2 Example Street, Manchester", "Europe/London", false),
+            new DemoLocationSpec(Id(1, 3), "DUBLIN", "Dublin Centre", "3 Example Street, Dublin", "Europe/Dublin", true),
+        };
+        var types = new[]
         {
-            throw new SeedException("anchorDate in demo-seed.json must read yyyy-MM-dd.");
+            new DemoAppointmentTypeSpec(Id(2, 1), "MED", "Medical", true, "coordinator.med"),
+            new DemoAppointmentTypeSpec(Id(2, 2), "FIT", "Fitness", true, "manager.fit"),
+            new DemoAppointmentTypeSpec(Id(2, 3), "IND", "Induction", true, "manager.ind"),
+            new DemoAppointmentTypeSpec(Id(2, 4), "LAB", "Laboratory", true, "manager.lab"),
+            new DemoAppointmentTypeSpec(Id(2, 5), "ESC", "Escalation", true, null),
+            new DemoAppointmentTypeSpec(Id(2, 6), "DOC", "Document review", false, null),
+        };
+        var typeByCode = types.ToDictionary(x => x.Code);
+        var staff = new[]
+        {
+            Staff("admin", 1, "Ari", "Admin", [Role.Admin], null),
+            Staff("coordinator", 2, "Casey", "Coordinator", [Role.Coordinator], null),
+            Staff("coordinator.med", 3, "Morgan", "Medical", [Role.Coordinator, Role.Manager], typeByCode["MED"].Id),
+            Staff("manager.fit", 4, "Frankie", "Fitness", [Role.Manager], typeByCode["FIT"].Id),
+            Staff("manager.ind", 5, "Indra", "Induction", [Role.Manager], typeByCode["IND"].Id),
+            Staff("manager.lab", 6, "Luca", "Laboratory", [Role.Manager], typeByCode["LAB"].Id),
+            Staff("appointment.med", 7, "Sam", "Appointments", [Role.AppointmentStaff], typeByCode["MED"].Id),
+            Staff("appointment.unscoped", 8, "Taylor", "Unscoped", [Role.AppointmentStaff], null),
+        };
+        var groups = new[]
+        {
+            new DemoAttendeeGroupSpec(Id(3, 1), "IND_ONLY", "Induction only", ["IND"], true),
+            new DemoAttendeeGroupSpec(Id(3, 2), "CORE_THREE", "Medical fitness and induction", ["MED", "FIT", "IND"], true),
+            new DemoAttendeeGroupSpec(Id(3, 3), "DOC_HISTORY", "Historical document review", ["MED", "DOC"], false),
+            new DemoAttendeeGroupSpec(Id(3, 4), "FIT_ESC", "Fitness and escalation", ["FIT", "ESC"], true),
+        };
+        var dst = NextOffsetChange(anchor.AddDays(1), "Europe/Dublin");
+        var events = new[]
+        {
+            Event(1, "LONDON", anchor.AddDays(3), 9, 0, 60, ["MED"]),
+            Event(2, "DUBLIN", anchor.AddDays(6), 9, 30, 90, ["MED", "FIT"]),
+            Event(3, "LONDON", anchor.AddDays(9), 10, 0, 240, ["MED", "FIT", "IND"]),
+            Event(4, "DUBLIN", dst, 12, 0, 480, ["MED", "FIT", "IND", "LAB"]),
+            Event(5, "LONDON", anchor.AddDays(12), 8, 0, 240, ["MED", "FIT", "IND", "LAB"]),
+            Event(6, "DUBLIN", anchor.AddDays(15), 8, 30, 240, ["MED", "FIT", "IND", "LAB"]),
+            Event(7, "LONDON", anchor.AddDays(18), 9, 0, 240, ["MED", "FIT", "IND", "LAB"]),
+        };
+        var proposals = new[]
+        {
+            new DemoProposalSpec(Id(6, 1), "LONDON", anchor.AddDays(20), new TimeOnly(9, 0), 90,
+                ["MED", "FIT"], ["MED"]),
+            new DemoProposalSpec(Id(6, 2), "DUBLIN", anchor.AddDays(22), new TimeOnly(10, 0), 240,
+                ["MED", "FIT", "IND", "LAB"], ["MED", "FIT"]),
+        };
+        var attendees = new[]
+        {
+            Person(1, "Nia New", "IND_ONLY", AttendeeStatus.NotYetInvited, [], send: true),
+            Person(2, "Avery Awaiting", "FIT_ESC", AttendeeStatus.AwaitingAvailability, []),
+            Person(3, "Ira Invited", "IND_ONLY", AttendeeStatus.Invited, []),
+            Person(4, "Blair Booked", "CORE_THREE", AttendeeStatus.Booked, [BookingAppointmentStatus.Expected]),
+            Person(5, "Chris Checked", "CORE_THREE", AttendeeStatus.Booked, [BookingAppointmentStatus.CheckedIn]),
+            Person(6, "Rae Ready", "CORE_THREE", AttendeeStatus.Booked, [BookingAppointmentStatus.Completed]),
+            Person(7, "Noah No Response", "IND_ONLY", AttendeeStatus.NoResponseNeedsFollowUp, []),
+            Person(8, "Parker Pending Recovery", "CORE_THREE", AttendeeStatus.Booked,
+                [BookingAppointmentStatus.NoShow], DemoRecovery.Pending),
+            Person(9, "Robin Recovered", "CORE_THREE", AttendeeStatus.Booked,
+                [BookingAppointmentStatus.NoShow, BookingAppointmentStatus.Completed], DemoRecovery.Completed),
+        };
+        return new DemoDataset(anchor, locations, types, groups, staff, events, proposals, attendees);
+    }
+
+    public static IReadOnlyList<StaffProfileSpec> Staff() => Build().Staff;
+    public static Guid AdminUserId() => ProviderUserId(
+        Staff().Single(x => x.Roles.SequenceEqual([Role.Admin])).Username);
+    public static Guid CoordinatorUserId() => ProviderUserId("coordinator");
+    public static IReadOnlyDictionary<Guid, Guid> ManagerForType() => Staff()
+        .Where(x => x.Roles.Contains(Role.Manager))
+        .ToDictionary(x => x.AppointmentTypeId!.Value, x => ProviderUserId(x.Username));
+
+    private static StaffProfileSpec Staff(
+        string username, int number, string given, string family, IReadOnlyList<Role> roles, Guid? type) =>
+        new(username, given, family, $"{username}@example.test", Id(4, number),
+            new StaffId($"DEMO{number:000}"), roles, type);
+    private static DemoEventSpec Event(
+        int number, string location, DateOnly date, int hour, int minute, int duration, string[] types) =>
+        new(Id(5, number), location, date, new TimeOnly(hour, minute), duration, types, types);
+    private static DemoAttendeeSpec Person(
+        int number, string name, string group, AttendeeStatus status,
+        BookingAppointmentStatus[] appointments, DemoRecovery recovery = DemoRecovery.None, bool send = false) =>
+        new(Id(7, number), name, $"demo.attendee.{number:00}@example.test", group, status,
+            appointments, recovery, send);
+    private static Guid Id(int family, int number) =>
+        Guid.Parse($"{family}0000000-0000-0000-0000-{number:000000000000}");
+
+    private static DateOnly NextOffsetChange(DateOnly first, string timeZoneId)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        for (var date = first; date < first.AddYears(2); date = date.AddDays(1))
+        {
+            var start = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+            if (zone.GetUtcOffset(start) != zone.GetUtcOffset(start.AddDays(1))) return date;
         }
-
-        return new SeedDocument(
-            anchor,
-            staff.Select(s => s.Assignment).ToList(),
-            staff.ToDictionary(s => s.Username, s => s.Assignment.UserId),
-            document.AgreedEvents,
-            document.OpenProposals,
-            document.Attendees);
+        throw new SeedException($"No offset change found for {timeZoneId} within two years of {first:yyyy-MM-dd}.");
     }
-
-    private sealed record StaffRow(string Username, StaffProfileSpec Assignment);
-
-    private sealed record SeedDocument(
-        DateOnly Anchor,
-        IReadOnlyList<StaffProfileSpec> Staff,
-        IReadOnlyDictionary<string, Guid> StaffByUsername,
-        IReadOnlyList<AgreedEventRow> AgreedEvents,
-        IReadOnlyList<OpenProposalRow> OpenProposals,
-        IReadOnlyList<AttendeeRow> Attendees);
-
-    private sealed record SeedFile(
-        string AnchorDate,
-        List<StaffRowFile> Staff,
-        List<AgreedEventRow> AgreedEvents,
-        List<OpenProposalRow> OpenProposals,
-        List<AttendeeRow> Attendees);
-
-    private sealed record StaffRowFile(
-        string Username,
-        string UserId,
-        string StaffId,
-        List<string> Roles,
-        string? AppointmentType);
-
-    private sealed record AgreedEventRow(
-        int DaysOffset, string StartTime, int DatHeadcount, int MedHeadcount, int UniHeadcount);
-
-    private sealed record OpenProposalRow(
-        int DaysOffset, string StartTime, string CreatedBy,
-        int? DatHeadcount, int? MedHeadcount, int? UniHeadcount);
-
-    private sealed record AttendeeRow(string Name, string Email, string AttendeeGroup, string Journey);
 }

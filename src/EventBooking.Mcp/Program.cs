@@ -11,8 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 var settings = EventBookingConfiguration.Read(builder.Configuration);
 
-builder.Services.AddEventBookingInfrastructure(
-    settings.ConnectionString, settings.Clock, settings.Tokens);
+builder.Services.AddEventBookingInfrastructure(settings.ConnectionString, settings.Tokens);
 builder.Services.AddLocalEmailTransport(settings.Email, settings.Smtp);
 builder.Services.AddEventBookingApplication(
     settings.Portal,
@@ -43,6 +42,15 @@ app.UseMiddleware<StaffIdentityRecorder>();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+
+app.MapGet("/health/ready", async (
+        EventBooking.Infrastructure.Persistence.EventBookingDbContext context,
+        CancellationToken ct) =>
+    await context.Database.CanConnectAsync(ct)
+        ? Results.Ok(new { status = "ok" })
+        : Results.Json(new { status = "unavailable" },
+            statusCode: StatusCodes.Status503ServiceUnavailable))
+    .AllowAnonymous();
 
 // Same bearer tokens and the same staff policy as the API: every tool call runs
 // as the signed-in staff identity, and each handler re-checks its capability.

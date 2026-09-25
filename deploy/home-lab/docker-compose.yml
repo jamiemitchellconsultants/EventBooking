@@ -1,0 +1,150 @@
+# deploy/home-lab/docker-compose.yml (complete)
+name: eventbooking
+
+x-app-environment: &app-environment
+  ASPNETCORE_URLS: http://+:8080
+  Auth__Authority: ${EVENTBOOKING_KEYCLOAK_URL:?required}/realms/eventbooking
+  Auth__Audience: eventbooking-web
+  Tokens__SigningKey: ${EVENTBOOKING_TOKENS_SIGNING_KEY:?required}
+  Email__Smtp__Host: ${EVENTBOOKING_SMTP_HOST:-eventbooking-mailpit}
+  Email__Smtp__Port: ${EVENTBOOKING_SMTP_PORT:-1025}
+  Email__Smtp__Username: ${EVENTBOOKING_SMTP_USERNAME:-}
+  Email__Smtp__Password: ${EVENTBOOKING_SMTP_PASSWORD:-}
+  Email__FromAddress: ${EVENTBOOKING_SMTP_FROM_ADDRESS:-eventbooking@localhost}
+  Email__FromName: ${EVENTBOOKING_SMTP_FROM_NAME:-EventBooking}
+  Portal__BaseUrl: https://${EVENTBOOKING_HOSTNAME:?required}
+  Portal__CoordinatorContact: ${EVENTBOOKING_COORDINATOR_CONTACT:?required}
+  Cors__AllowedOrigins__0: https://${EVENTBOOKING_HOSTNAME:?required}
+  Proxy__Networks__0: ${EVENTBOOKING_PROXY_NETWORK:-172.16.0.0/12}
+  Identity__StaffIdPattern: ${EVENTBOOKING_STAFF_ID_PATTERN:-^DEMO[0-9]{3}$}
+
+services:
+  eventbooking-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eventbooking
+      POSTGRES_USER: eventbooking_owner
+      POSTGRES_PASSWORD: ${EVENTBOOKING_DB_PASSWORD:?required}
+      EVENTBOOKING_API_DB_PASSWORD: ${EVENTBOOKING_DB_APP_PASSWORD:?required}
+      EVENTBOOKING_MCP_DB_PASSWORD: ${EVENTBOOKING_DB_APP_PASSWORD:?required}
+    volumes:
+      - eventbooking-db:/var/lib/postgresql/data
+      - ../postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    networks: [eventbooking-private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventbooking_owner -d eventbooking"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  eventbooking-mailpit:
+    image: axllent/mailpit:v1.27.8
+    restart: unless-stopped
+    environment:
+      MP_WEBROOT: /mailpit/
+    networks: [eventbooking-private, edge]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  eventbooking-api:
+    image: ghcr.io/jamiemitchellconsultants/eventbooking-api:${EVENTBOOKING_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      ConnectionStrings__EventBooking: Host=eventbooking-db;Database=eventbooking;Username=eventbooking_api;Password=${EVENTBOOKING_DB_APP_PASSWORD:?required}
+    networks: [eventbooking-private, edge]
+    depends_on:
+      eventbooking-db: { condition: service_healthy }
+      eventbooking-mailpit: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  eventbooking-mcp:
+    image: ghcr.io/jamiemitchellconsultants/eventbooking-mcp:${EVENTBOOKING_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      ConnectionStrings__EventBooking: Host=eventbooking-db;Database=eventbooking;Username=eventbooking_mcp;Password=${EVENTBOOKING_DB_APP_PASSWORD:?required}
+    networks: [eventbooking-private, edge]
+    depends_on:
+      eventbooking-db: { condition: service_healthy }
+
+  eventbooking-web:
+    image: ghcr.io/jamiemitchellconsultants/eventbooking-web-caddy:${EVENTBOOKING_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      EVENTBOOKING_KEYCLOAK_URL: ${EVENTBOOKING_KEYCLOAK_URL:?required}
+    volumes:
+      - ./.rendered/web-appsettings.json:/srv/appsettings.json:ro
+      - ./theme.css:/srv/theme.css:ro
+    networks: [eventbooking-private, edge]
+    depends_on:
+      eventbooking-api: { condition: service_healthy }
+
+  eventbooking-seed:
+    profiles: [seed]
+    image: ghcr.io/jamiemitchellconsultants/eventbooking-seed:${EVENTBOOKING_IMAGE_TAG:-latest}
+    environment:
+      ConnectionStrings__EventBooking: Host=eventbooking-db;Database=eventbooking;Username=eventbooking_owner;Password=${EVENTBOOKING_DB_PASSWORD:?required}
+      Keycloak__BaseUrl: ${EVENTBOOKING_KEYCLOAK_URL:?required}
+      Keycloak__Realm: eventbooking
+      Keycloak__AdminRealm: master
+      Keycloak__AdminUsername: ${EVENTBOOKING_KEYCLOAK_SEED_ADMIN_USERNAME:-}
+      Keycloak__AdminPassword: ${EVENTBOOKING_KEYCLOAK_SEED_ADMIN_PASSWORD:-}
+      Keycloak__DemoPassword: ${EVENTBOOKING_KEYCLOAK_DEMO_PASSWORD:-}
+      Keycloak__RealmExportPath: /config/eventbooking-realm.json
+      Tokens__SigningKey: ${EVENTBOOKING_TOKENS_SIGNING_KEY:?required}
+      Email__Smtp__Host: ${EVENTBOOKING_SMTP_HOST:-eventbooking-mailpit}
+      Email__Smtp__Port: ${EVENTBOOKING_SMTP_PORT:-1025}
+      Email__FromAddress: ${EVENTBOOKING_SMTP_FROM_ADDRESS:-eventbooking@localhost}
+      Email__FromName: ${EVENTBOOKING_SMTP_FROM_NAME:-EventBooking}
+      Portal__BaseUrl: https://${EVENTBOOKING_HOSTNAME:?required}
+      Portal__CoordinatorContact: ${EVENTBOOKING_COORDINATOR_CONTACT:?required}
+      Identity__StaffIdPattern: ${EVENTBOOKING_STAFF_ID_PATTERN:-^DEMO[0-9]{3}$}
+      EVENTBOOKING_ALLOW_RESEED: ${EVENTBOOKING_ALLOW_RESEED:-false}
+    volumes:
+      - ./.rendered/eventbooking-realm.json:/config/eventbooking-realm.json:ro
+    networks: [eventbooking-private, edge]
+    depends_on:
+      eventbooking-db: { condition: service_healthy }
+      eventbooking-mailpit: { condition: service_healthy }
+
+  eventbooking-backup:
+    profiles: [backup]
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${EVENTBOOKING_DB_PASSWORD:?required}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        while true; do
+          stamp="$$(date -u +%Y%m%dT%H%M%SZ)"
+          pg_dump --host=eventbooking-db --username=eventbooking_owner --dbname=eventbooking --format=custom --file="/backups/eventbooking-$${stamp}.dump"
+          find /backups -type f -name 'eventbooking-*.dump' -mtime +14 -delete
+          sleep 86400
+        done
+    volumes:
+      - ./backups:/backups
+    networks: [eventbooking-private]
+    depends_on:
+      eventbooking-db: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  eventbooking-db:
+
+networks:
+  eventbooking-private:
+    internal: true
+  edge:
+    external: true
+    name: ${EVENTBOOKING_EDGE_NETWORK:-edge}

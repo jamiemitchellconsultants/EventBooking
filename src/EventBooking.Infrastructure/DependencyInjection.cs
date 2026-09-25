@@ -68,12 +68,10 @@ public static class InfrastructureServiceCollectionExtensions
     public static IServiceCollection AddEventBookingInfrastructure(
         this IServiceCollection services,
         string connectionString,
-        ClockOptions clock,
         TokenOptions tokens)
     {
         services.AddEventBookingPersistence(connectionString);
 
-        services.AddSingleton(clock);
         services.AddSingleton(tokens);
 
         services.AddSingleton<IClock, SystemClock>();

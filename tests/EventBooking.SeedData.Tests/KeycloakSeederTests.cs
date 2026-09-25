@@ -102,7 +102,14 @@ public sealed class KeycloakSeederTests
 
         var summary = await sut.EnsureAsync([Admin()], CancellationToken.None);
 
-        Assert.Equal(new KeycloakSeedSummary(4, 1, 1, 1), summary);
+        Assert.Equal((4, 1, 1, 1),
+            (summary.RolesCreated, summary.MapperWrites, summary.UsersCreated, summary.RoleMappingWrites));
+        Assert.Equal(
+            new Dictionary<string, Guid>
+            {
+                ["admin.user"] = Guid.Parse("17e8cd60-b849-470f-a7d1-44ff39993688"),
+            },
+            summary.ProviderIds);
         Assert.Empty(handler.Pending);
         Assert.All(handler.Requests.Skip(1), request =>
             Assert.Equal("Bearer token", request.Authorization));
@@ -124,7 +131,14 @@ public sealed class KeycloakSeederTests
 
         var summary = await sut.EnsureAsync([Admin()], CancellationToken.None);
 
-        Assert.Equal(new KeycloakSeedSummary(0, 0, 0, 0), summary);
+        Assert.Equal((0, 0, 0, 0),
+            (summary.RolesCreated, summary.MapperWrites, summary.UsersCreated, summary.RoleMappingWrites));
+        Assert.Equal(
+            new Dictionary<string, Guid>
+            {
+                ["admin.user"] = Guid.Parse("17e8cd60-b849-470f-a7d1-44ff39993688"),
+            },
+            summary.ProviderIds);
         Assert.Empty(handler.Pending);
         Assert.DoesNotContain(handler.Requests.Skip(1), request =>
             request.Method != HttpMethod.Get);
@@ -153,29 +167,46 @@ public sealed class KeycloakSeederTests
 
         var summary = await sut.EnsureAsync([Admin()], CancellationToken.None);
 
-        Assert.Equal(new KeycloakSeedSummary(0, 1, 0, 2), summary);
+        Assert.Equal((0, 1, 0, 2),
+            (summary.RolesCreated, summary.MapperWrites, summary.UsersCreated, summary.RoleMappingWrites));
+        Assert.Equal(
+            new Dictionary<string, Guid>
+            {
+                ["admin.user"] = Guid.Parse("17e8cd60-b849-470f-a7d1-44ff39993688"),
+            },
+            summary.ProviderIds);
         var delete = Assert.Single(handler.Requests, request => request.Method == HttpMethod.Delete);
         Assert.Contains("Manager", delete.Body);
         Assert.DoesNotContain("offline_access", delete.Body);
     }
 
-    /// <summary>Verifies a matching username cannot silently adopt another provider identity.</summary>
+    /// <summary>Verifies a provider-assigned identifier is adopted for role mapping, since
+    /// Keycloak generates user identifiers server-side.</summary>
     [Fact]
-    public async Task EnsureAsync_ConflictingProviderId_FailsWithoutChangingTheUser()
+    public async Task EnsureAsync_ProviderAssignedId_IsAdoptedForRoleMapping()
     {
-        var conflicting =
+        var adopted = Guid.Parse("00000000-0000-0000-0000-000000000099");
+        var existing =
             "[{\"id\":\"00000000-0000-0000-0000-000000000099\",\"username\":\"admin.user\",\"attributes\":{\"staffId\":[\"U000001\"]}}]";
-        var handler = ExistingRealm(CorrectMapper(), conflicting, "[]", includeMappings: false);
+        var handler = ExistingRealm(CorrectMapper(), existing, "[]", includeMappings: false);
+        handler.Add(HttpMethod.Get,
+            $"/admin/realms/eventbooking/users/{adopted}/role-mappings/realm",
+            HttpStatusCode.OK, "[]");
+        handler.Add(HttpMethod.Post,
+            $"/admin/realms/eventbooking/users/{adopted}/role-mappings/realm",
+            HttpStatusCode.NoContent);
         var sut = CreateSut(handler);
 
-        var exception = await Assert.ThrowsAsync<SeedException>(() =>
-            sut.EnsureAsync([Admin()], CancellationToken.None));
+        var summary = await sut.EnsureAsync([Admin()], CancellationToken.None);
 
-        Assert.Contains("admin.user", exception.Message);
-        Assert.Contains("provider identifier", exception.Message);
+        Assert.Equal((0, 0, 0, 1),
+            (summary.RolesCreated, summary.MapperWrites, summary.UsersCreated, summary.RoleMappingWrites));
+        Assert.Equal(
+            new Dictionary<string, Guid> { ["admin.user"] = adopted },
+            summary.ProviderIds);
+        Assert.Empty(handler.Pending);
         Assert.DoesNotContain(handler.Requests, request =>
-            request.Method is not null && request.Method != HttpMethod.Get
-            && request.Path.Contains("/users", StringComparison.Ordinal));
+            request.Path.Contains("17e8cd60-b849-470f-a7d1-44ff39993688", StringComparison.Ordinal));
     }
 
     /// <summary>Verifies a matching username cannot silently adopt another staff number.</summary>
@@ -216,6 +247,81 @@ public sealed class KeycloakSeederTests
             && request.Path.Contains("/users", StringComparison.Ordinal));
     }
 
+    /// <summary>Verifies the eight demo users converge with names, emails, the LAB Manager
+    /// mapping and the unscoped AppointmentStaff user.</summary>
+    [Fact]
+    public async Task EnsureAsync_DemoStaff_CreatesEightUsersWithLabManagerMapping()
+    {
+        var staff = DemoSeedSpec.Staff();
+        Assert.Equal(8, staff.Count);
+        var handler = new ScriptedHandler();
+        handler.Add(HttpMethod.Post, "/realms/master/protocol/openid-connect/token", HttpStatusCode.OK,
+            "{\"access_token\":\"token\"}");
+        foreach (var role in RoleNames)
+        {
+            handler.Add(HttpMethod.Get, $"/admin/realms/eventbooking/roles/{role}", HttpStatusCode.OK,
+                $"{{\"id\":\"role-{role}\",\"name\":\"{role}\"}}");
+        }
+        handler.Add(HttpMethod.Get,
+            "/admin/realms/eventbooking/clients?clientId=eventbooking-web", HttpStatusCode.OK,
+            "[{\"id\":\"web-id\",\"clientId\":\"eventbooking-web\"}]");
+        handler.Add(HttpMethod.Get,
+            "/admin/realms/eventbooking/clients/web-id/protocol-mappers/models", HttpStatusCode.OK,
+            CorrectMapper());
+        foreach (var person in staff)
+        {
+            var query = $"/admin/realms/eventbooking/users?username={person.Username}&exact=true&briefRepresentation=false";
+            handler.Add(HttpMethod.Get, query, HttpStatusCode.OK, "[]");
+            handler.Add(HttpMethod.Post, "/admin/realms/eventbooking/users", HttpStatusCode.Created);
+            handler.Add(HttpMethod.Get, query, HttpStatusCode.OK,
+                "[{\"id\":\"" + person.UserId + "\",\"username\":\"" + person.Username
+                + "\",\"attributes\":{\"staffId\":[\"" + person.StaffId.Value + "\"]}}]");
+            handler.Add(HttpMethod.Get,
+                $"/admin/realms/eventbooking/users/{person.UserId}/role-mappings/realm",
+                HttpStatusCode.OK, "[]");
+            handler.Add(HttpMethod.Post,
+                $"/admin/realms/eventbooking/users/{person.UserId}/role-mappings/realm",
+                HttpStatusCode.NoContent);
+        }
+        var sut = CreateSut(handler);
+
+        var summary = await sut.EnsureAsync(staff, CancellationToken.None);
+
+        Assert.Equal((0, 0, 8, 8),
+            (summary.RolesCreated, summary.MapperWrites, summary.UsersCreated, summary.RoleMappingWrites));
+        Assert.Equal(
+            staff.ToDictionary(person => person.Username, person => person.UserId),
+            summary.ProviderIds);
+        Assert.Empty(handler.Pending);
+        var creates = handler.Requests
+            .Where(request => request.Method == HttpMethod.Post
+                && request.Path == "/admin/realms/eventbooking/users")
+            .ToList();
+        Assert.Equal(8, creates.Count);
+        foreach (var person in staff)
+        {
+            var create = Assert.Single(creates, request =>
+                request.Body.Contains($"\"username\":\"{person.Username}\"", StringComparison.Ordinal));
+            Assert.Contains($"\"firstName\":\"{person.GivenName}\"", create.Body);
+            Assert.Contains($"\"lastName\":\"{person.FamilyName}\"", create.Body);
+            Assert.Contains($"\"email\":\"{person.Email}\"", create.Body);
+            Assert.Contains("\"emailVerified\":true", create.Body);
+            Assert.Contains($"\"staffId\":[\"{person.StaffId.Value}\"]", create.Body);
+        }
+        var labManager = staff.Single(person => person.Username == "manager.lab");
+        Assert.Contains(labManager.Roles, role => role == Role.Manager);
+        var labMapping = Assert.Single(handler.Requests, request =>
+            request.Method == HttpMethod.Post
+            && request.Path == $"/admin/realms/eventbooking/users/{labManager.UserId}/role-mappings/realm");
+        Assert.Contains("Manager", labMapping.Body);
+        var unscoped = staff.Single(person => person.Username == "appointment.unscoped");
+        Assert.Null(unscoped.AppointmentTypeId);
+        var unscopedMapping = Assert.Single(handler.Requests, request =>
+            request.Method == HttpMethod.Post
+            && request.Path == $"/admin/realms/eventbooking/users/{unscoped.UserId}/role-mappings/realm");
+        Assert.Contains("AppointmentStaff", unscopedMapping.Body);
+    }
+
     /// <summary>Verifies a missing application client fails before any user request.</summary>
     [Fact]
     public async Task EnsureAsync_MissingEventBookingClient_FailsBeforeUserConvergence()
@@ -243,6 +349,9 @@ public sealed class KeycloakSeederTests
 
     private static StaffProfileSpec Admin() => new(
         "admin.user",
+        "Ari",
+        "Admin",
+        "admin.user@example.test",
         Guid.Parse("17e8cd60-b849-470f-a7d1-44ff39993688"),
         new StaffId("U000001"),
         [Role.Admin],

@@ -291,7 +291,6 @@ public abstract class PostgresSweepHarness(PostgresFixture fixture) : IDisposabl
         services.AddLogging();
         services.AddEventBookingInfrastructure(
             fixture.ConnectionString,
-            new ClockOptions("Europe/London"),
             new TokenOptions("a-test-signing-key-that-is-long-enough-here"));
         services.AddEventBookingApplication(new AttendeePortalOptions(
             "https://portal.example.invalid", "coordinator@example.invalid"));

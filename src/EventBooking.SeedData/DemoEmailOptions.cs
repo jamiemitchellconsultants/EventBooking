@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Net.Mail;
 using EventBooking.Application.Notifications;
 using EventBooking.Infrastructure.Email;
-using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Tokens;
 
 namespace EventBooking.SeedData;
@@ -11,13 +10,12 @@ namespace EventBooking.SeedData;
 public sealed class DemoEmailOptions
 {
     private DemoEmailOptions(AttendeePortalOptions portal, TokenOptions tokens,
-        EmailOptions sender, SmtpOptions smtp, ClockOptions clock)
+        EmailOptions sender, SmtpOptions smtp)
     {
         Portal = portal;
         Tokens = tokens;
         Sender = sender;
         Smtp = smtp;
-        Clock = clock;
     }
 
     /// <summary>Gets the public attendee portal URL and coordinator contact.</summary>
@@ -28,8 +26,6 @@ public sealed class DemoEmailOptions
     public EmailOptions Sender { get; }
     /// <summary>Gets the Mailpit SMTP host and port reachable from this process.</summary>
     public SmtpOptions Smtp { get; }
-    /// <summary>Gets the timezone used to determine future demo dates.</summary>
-    public ClockOptions Clock { get; }
 
     /// <summary>Reads environment-style settings, with local defaults and explicit non-local keys.</summary>
     /// <param name="readSetting">Returns a setting value, or null when the key is absent.</param>
@@ -65,26 +61,12 @@ public sealed class DemoEmailOptions
             || !string.Equals(mailbox.Address, address, StringComparison.Ordinal))
             throw Invalid("Email__FromAddress");
         var name = Read("Email__FromName", "Recruitment Team");
-        var timezone = Read("Clock__TimeZoneId", "Europe/London");
-        try
-        {
-            TimeZoneInfo.FindSystemTimeZoneById(timezone);
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            throw Invalid("Clock__TimeZoneId");
-        }
-        catch (InvalidTimeZoneException)
-        {
-            throw Invalid("Clock__TimeZoneId");
-        }
         return new DemoEmailOptions(
             new AttendeePortalOptions(uri.AbsoluteUri.TrimEnd('/'),
                 Read("Portal__CoordinatorContact", "recruitment@example.com")),
             new TokenOptions(signingKey),
             new EmailOptions(address, name, EmailProvider.Smtp),
-            new SmtpOptions(smtpHost, port),
-            new ClockOptions(timezone));
+            new SmtpOptions(smtpHost, port));
     }
 
     private static SeedException Invalid(string key) =>

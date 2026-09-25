@@ -2,14 +2,12 @@ using System.Text;
 using EventBooking.Api.Auth;
 using EventBooking.Application.Notifications;
 using EventBooking.Infrastructure.Email;
-using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Tokens;
 
 namespace EventBooking.Api;
 
 /// <summary>Everything the host needs, validated before it binds a port.</summary>
 /// <param name="ConnectionString">The application-user PostgreSQL connection string.</param>
-/// <param name="Clock">The transitional single-zone clock options.</param>
 /// <param name="Tokens">The attendee-token signing options.</param>
 /// <param name="Email">The sender identity and provider.</param>
 /// <param name="Smtp">The SMTP endpoint.</param>
@@ -20,7 +18,6 @@ namespace EventBooking.Api;
 /// <param name="SweepInterval">The invite-sweep schedule.</param>
 public sealed record EventBookingSettings(
     string ConnectionString,
-    ClockOptions Clock,
     TokenOptions Tokens,
     EmailOptions Email,
     SmtpOptions Smtp,
@@ -128,7 +125,6 @@ public static class EventBookingConfiguration
 
         return new EventBookingSettings(
             connectionString,
-            new ClockOptions(configuration["Clock:TimeZoneId"] ?? "Etc/UTC"),
             new TokenOptions(signingKey),
             new EmailOptions(
                 fromAddress, configuration["Email:FromName"] ?? "EventBooking", EmailProvider.Smtp),

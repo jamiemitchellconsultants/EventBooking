@@ -1,0 +1,15 @@
+# deploy/home-lab/caddy/eventbooking.caddy (complete template)
+${EVENTBOOKING_HOSTNAME} {
+    handle /mailpit* {
+        basic_auth {
+            operator ${EVENTBOOKING_MAILPIT_BASIC_AUTH}
+        }
+        reverse_proxy eventbooking-mailpit:8025
+    }
+    handle /mcp* {
+        reverse_proxy eventbooking-mcp:8080
+    }
+    handle {
+        reverse_proxy eventbooking-web:8080
+    }
+}

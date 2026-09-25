@@ -6,6 +6,7 @@ using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Common;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Time;
 
 namespace EventBooking.Application.Appointments;
 
@@ -48,6 +49,8 @@ public sealed record BookingAppointmentUpdateView
 /// <param name="audit">The audit.</param>
 /// <param name="unitOfWork">The unit of work.</param>
 /// <param name="clock">The clock.</param>
+/// <param name="zones">The location time-zone abstraction.</param>
+/// <param name="locations">The locations.</param>
 public sealed class UpdateBookingAppointmentStatusHandler(
     IStaffAccessAuthorizer access,
     IBookingAppointmentRepository appointments,
@@ -58,7 +61,9 @@ public sealed class UpdateBookingAppointmentStatusHandler(
     RecoveryBookingOutcomeCoordinator outcomes,
     IAuditLogger audit,
     IUnitOfWork unitOfWork,
-    IClock clock)
+    IClock clock,
+    IEventWindowZones zones,
+    ILocationRepository locations)
 {
     private static readonly Error MissingAppointment =
         Error.NotFound("No such booking appointment.");
@@ -160,12 +165,11 @@ public sealed class UpdateBookingAppointmentStatusHandler(
                 "A later recovery covers this appointment type. Cancel the recovery first, then correct the no-show."));
         }
 
-        var localNow = clock.NowAtTransitionalLocation;
-        var localDate = DateOnly.FromDateTime(localNow.DateTime);
-        var localTime = TimeOnly.FromDateTime(localNow.DateTime);
-        var checkInAllowed = eventItem.Window.Date == localDate;
-        var noShowAllowed = eventItem.Window.Date < localDate
-            || (eventItem.Window.Date == localDate && localTime >= eventItem.Window.EndTime);
+        var now = clock.UtcNow;
+        var location = await locations.GetAsync(eventItem.LocationId, cancellationToken);
+        var timeZoneId = location?.TimeZoneId ?? "Etc/UTC";
+        var checkInAllowed = eventItem.Window.IsOnEventDate(zones, timeZoneId, now);
+        var noShowAllowed = eventItem.Window.HasEnded(zones, timeZoneId, now);
         var previous = appointment.Status;
 
         try

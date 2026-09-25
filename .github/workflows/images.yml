@@ -1,0 +1,106 @@
+# .github/workflows/images.yml (complete)
+name: Publish images and release bundle
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ghcr.io/jamiemitchellconsultants
+  DOCKER_METADATA_SHORT_SHA_LENGTH: 7
+
+jobs:
+  images:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: eventbooking-api
+            dockerfile: src/EventBooking.Api/Dockerfile
+          - name: eventbooking-mcp
+            dockerfile: src/EventBooking.Mcp/Dockerfile
+          - name: eventbooking-web
+            dockerfile: src/EventBooking.Web/Dockerfile
+          - name: eventbooking-web-caddy
+            dockerfile: src/EventBooking.Web/Dockerfile.caddy
+          - name: eventbooking-seed
+            dockerfile: src/EventBooking.SeedData/Dockerfile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: metadata
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=tag
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          provenance: mode=max
+          sbom: true
+
+  release-bundle:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build self-contained migration bundle
+        run: |
+          dotnet restore EventBooking.sln
+          dotnet tool install --global dotnet-ef --version 10.0.0
+          mkdir -p artifacts
+          dotnet ef migrations bundle \
+            --project src/EventBooking.Infrastructure/EventBooking.Infrastructure.csproj \
+            --startup-project src/EventBooking.SeedData/EventBooking.SeedData.csproj \
+            --configuration Release \
+            --self-contained \
+            --target-runtime linux-x64 \
+            --output artifacts/efbundle-linux-x64
+          (cd artifacts && sha256sum efbundle-linux-x64 > efbundle-linux-x64.sha256)
+
+      - name: Create or update matching release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" artifacts/* --verify-tag --generate-notes
+          fi

@@ -58,6 +58,8 @@ public static class AppointmentWorkspaceEndpoints
             ICallerAccessor caller,
             GetWorkspaceRosterHandler handler,
             IEventRepository events,
+            ILocationRepository locations,
+            IEventWindowZones zones,
             IClock clock,
             CallerCapabilities capabilities,
             CancellationToken cancellationToken) =>
@@ -73,12 +75,11 @@ public static class AppointmentWorkspaceEndpoints
             // The roster handler has already answered 404 for a missing event, so the
             // window read below cannot fail: it only feeds the link computation.
             var eventItem = await events.GetAsync(eventId, cancellationToken);
-            var localNow = clock.NowAtTransitionalLocation;
-            var localDate = DateOnly.FromDateTime(localNow.DateTime);
-            var localTime = TimeOnly.FromDateTime(localNow.DateTime);
-            var checkInAllowed = eventItem!.Window.Date == localDate;
-            var noShowAllowed = eventItem.Window.Date < localDate
-                || (eventItem.Window.Date == localDate && localTime >= eventItem.Window.EndTime);
+            var now = clock.UtcNow;
+            var location = await locations.GetAsync(eventItem!.LocationId, cancellationToken);
+            var timeZoneId = location?.TimeZoneId ?? "Etc/UTC";
+            var checkInAllowed = eventItem.Window.IsOnEventDate(zones, timeZoneId, now);
+            var noShowAllowed = eventItem.Window.HasEnded(zones, timeZoneId, now);
             var held = await capabilities.GetAsync(cancellationToken);
             return Results.Ok(new Page<WorkspaceRosterRowResponse>(
                 [.. result.Value.Select(row => ApiResponses.WorkspaceRosterRow(

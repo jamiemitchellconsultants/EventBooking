@@ -12,23 +12,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Persistence.Queries;
 
-public sealed class DashboardQueries(EventBookingDbContext context, IClock clock) : IDashboardQueries
+public sealed class DashboardQueries(
+    EventBookingDbContext context, IClock clock, IEventWindowZones eventZones) : IDashboardQueries
 {
     public async Task<IReadOnlyList<AwaitingAvailabilityRow>> AwaitingAvailabilityAsync(
         CancellationToken cancellationToken)
     {
-        var today = clock.TodayAtTransitionalLocation;
+        var today = UtcToday();
+        var codes = await AppointmentTypeCodes.LoadAsync(context, cancellationToken);
         var rows = await AttendeeRows(AttendeeStatus.AwaitingAvailability).ToListAsync(cancellationToken);
 
         return rows
             .Select(row =>
             {
-                var since = clock.DateAtTransitionalLocation(row.StatusChangedAt);
+                var since = DateOnly.FromDateTime(row.StatusChangedAt.UtcDateTime);
                 return new AwaitingAvailabilityRow(
                     row.Id,
                     row.Name,
                     row.Email,
-                    row.AppointmentTypeIds.Select(AppointmentTypeIds.CodeOf)
+                    row.AppointmentTypeIds.Select(codes.CodeOf)
                         .OrderBy(code => code, StringComparer.Ordinal).ToList(),
                     since,
                     Math.Max(0, today.DayNumber - since.DayNumber));
@@ -39,6 +41,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
 
     public async Task<IReadOnlyList<NoResponseRow>> NoResponseAsync(CancellationToken cancellationToken)
     {
+        var codes = await AppointmentTypeCodes.LoadAsync(context, cancellationToken);
         var rows = await AttendeeRows(AttendeeStatus.NoResponseNeedsFollowUp).ToListAsync(cancellationToken);
 
         return rows
@@ -46,9 +49,9 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 row.Id,
                 row.Name,
                 row.Email,
-                row.AppointmentTypeIds.Select(AppointmentTypeIds.CodeOf)
+                row.AppointmentTypeIds.Select(codes.CodeOf)
                     .OrderBy(code => code, StringComparer.Ordinal).ToList(),
-                clock.DateAtTransitionalLocation(row.StatusChangedAt)))
+                DateOnly.FromDateTime(row.StatusChangedAt.UtcDateTime)))
             .OrderBy(row => row.GaveUpOn)
             .ToList();
     }
@@ -56,11 +59,14 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
     public async Task<IReadOnlyList<EventOverviewRow>> EventsOverviewAsync(CancellationToken cancellationToken)
     {
         // Past events can no longer be cancelled, so the operations list shows only
-        // today and future events.
-        var today = clock.TodayAtTransitionalLocation;
+        // today and future events, where "today" is the date at each event's own location.
+        // SQL pre-filters a day either side of the UTC date; the exact cut is per zone below.
+        var now = clock.UtcNow;
+        var earliest = UtcToday().AddDays(-1);
+        var codes = await AppointmentTypeCodes.LoadAsync(context, cancellationToken);
         var rows = await context.Events
             .AsNoTracking()
-            .Where(eventItem => eventItem.Status == EventStatus.Active && eventItem.Window.Date >= today)
+            .Where(eventItem => eventItem.Status == EventStatus.Active && eventItem.Window.Date >= earliest)
             .Select(eventItem => new
             {
                 eventItem.Id,
@@ -85,7 +91,8 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
             .ToDictionaryAsync(location => location.Id, cancellationToken);
 
         return rows
-            .Where(row => locations.ContainsKey(row.LocationId))
+            .Where(row => locations.TryGetValue(row.LocationId, out var location)
+                && row.Date >= eventZones.LocalDateOf(now, location.TimeZoneId))
             .Select(row => new EventOverviewRow(
                 row.Id,
                 row.LocationId,
@@ -94,7 +101,7 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 row.StartTime,
                 row.StartTime.Add(TimeSpan.FromMinutes(row.DurationMinutes)),
                 row.Capacities.Select(capacity => new EventCapacityRow(
-                    AppointmentTypeIds.CodeOf(capacity.AppointmentTypeId),
+                    codes.CodeOf(capacity.AppointmentTypeId),
                     capacity.TotalHeadcount,
                     capacity.RemainingCapacity))
                     .OrderBy(capacity => capacity.Code, StringComparer.Ordinal).ToList(),
@@ -360,6 +367,10 @@ public sealed class DashboardQueries(EventBookingDbContext context, IClock clock
                 attendee.Email,
                 attendee.StatusChangedAt,
                 attendee.Requirements.Select(requirement => requirement.AppointmentTypeId).ToList()));
+
+    /// <summary>The current UTC date. Attendee aggregates have no location, so they cut off at
+    /// UTC; event cutoffs use the event's own location zone.</summary>
+    private DateOnly UtcToday() => DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
     private sealed record AttendeeRow(
         Guid Id,

@@ -15,7 +15,8 @@ public sealed record KeycloakSeedSummary(
     int RolesCreated,
     int MapperWrites,
     int UsersCreated,
-    int RoleMappingWrites);
+    int RoleMappingWrites,
+    IReadOnlyDictionary<string, Guid> ProviderIds);
 
 /// <summary>Converges the Keycloak-owned half of the deterministic demo staff seed.</summary>
 public sealed class KeycloakSeeder
@@ -124,6 +125,7 @@ public sealed class KeycloakSeeder
             mapperWrites++;
         }
 
+        var providerIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
         foreach (var person in staff)
         {
             var userPath =
@@ -140,20 +142,7 @@ public sealed class KeycloakSeeder
                 await SendAsync(
                     HttpMethod.Post,
                     $"admin/realms/{Escape(options.Realm)}/users",
-                    JsonContent.Create(new
-                    {
-                        id = person.UserId,
-                        username = person.Username,
-                        enabled = true,
-                        attributes = new Dictionary<string, string[]>
-                        {
-                            ["staffId"] = [person.StaffId.Value],
-                        },
-                        credentials = new[]
-                        {
-                            new { type = "password", value = options.DemoPassword, temporary = false },
-                        },
-                    }, options: Json),
+                    JsonContent.Create(BuildUserRepresentation(person, options.DemoPassword), options: Json),
                     cancellationToken);
                 userWrites++;
                 matches = await GetAsync<List<UserRepresentation>>(userPath, cancellationToken);
@@ -162,15 +151,15 @@ public sealed class KeycloakSeeder
                     throw new SeedException(
                         $"Keycloak did not return the newly created user '{person.Username}'.");
                 }
-
-                ValidateIdentity(matches[0], person);
-            }
-            else
-            {
-                ValidateIdentity(matches[0], person);
             }
 
-            var id = person.UserId.ToString();
+            // Keycloak assigns provider identifiers server-side and ignores the requested id,
+            // so the seed adopts whatever the provider returned for this username. The staff
+            // number is the stable cross-system key, not the provider identifier.
+            var providerId = ValidateIdentity(matches[0], person);
+            providerIds[person.Username] = providerId;
+
+            var id = providerId.ToString();
             var mappingsPath =
                 $"admin/realms/{Escape(options.Realm)}/users/{Escape(id)}/role-mappings/realm";
             var currentMappings = await GetAsync<List<RoleRepresentation>>(
@@ -199,7 +188,7 @@ public sealed class KeycloakSeeder
             }
         }
 
-        return new KeycloakSeedSummary(roleWrites, mapperWrites, userWrites, mappingWrites);
+        return new KeycloakSeedSummary(roleWrites, mapperWrites, userWrites, mappingWrites, providerIds);
     }
 
     private async Task<string> GetTokenAsync(CancellationToken cancellationToken)
@@ -254,12 +243,12 @@ public sealed class KeycloakSeeder
             $"Keycloak request '{path}' failed with {(int)response.StatusCode}: {body}");
     }
 
-    private static void ValidateIdentity(UserRepresentation actual, StaffProfileSpec expected)
+    private static Guid ValidateIdentity(UserRepresentation actual, StaffProfileSpec expected)
     {
-        if (!Guid.TryParse(actual.Id, out var actualId) || actualId != expected.UserId)
+        if (!Guid.TryParse(actual.Id, out var actualId))
         {
             throw new SeedException(
-                $"Keycloak user '{expected.Username}' has a conflicting provider identifier.");
+                $"Keycloak user '{expected.Username}' has an unusable provider identifier.");
         }
 
         if (actual.Attributes is null
@@ -270,6 +259,8 @@ public sealed class KeycloakSeeder
             throw new SeedException(
                 $"Keycloak user '{expected.Username}' has a conflicting staffId attribute.");
         }
+
+        return actualId;
     }
 
     private static MapperRepresentation DesiredMapper(string? id) => new()
@@ -298,6 +289,19 @@ public sealed class KeycloakSeeder
             && desired.Config.All(pair =>
                 mapper.Config.TryGetValue(pair.Key, out var value) && value == pair.Value);
     }
+
+    private static object BuildUserRepresentation(StaffProfileSpec person, string password) => new
+    {
+        id = person.UserId,
+        username = person.Username,
+        enabled = true,
+        firstName = person.GivenName,
+        lastName = person.FamilyName,
+        email = person.Email,
+        emailVerified = true,
+        attributes = new Dictionary<string, string[]> { ["staffId"] = [person.StaffId.Value] },
+        credentials = new[] { new { type = "password", value = password, temporary = false } },
+    };
 
     private static string Escape(string value) => Uri.EscapeDataString(value);
 

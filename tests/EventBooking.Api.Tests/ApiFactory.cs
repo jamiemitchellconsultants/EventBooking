@@ -50,6 +50,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         using var scope = Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
         await context.Database.MigrateAsync();
+        FixedReferenceData.Seed(context);
+        await context.SaveChangesAsync();
     }
 
     public new async Task DisposeAsync()

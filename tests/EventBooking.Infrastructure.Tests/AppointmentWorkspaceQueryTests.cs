@@ -7,6 +7,7 @@ using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Queries;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Tests;
@@ -47,9 +48,9 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        var result = await new AppointmentWorkspaceQueries(read, new TestClock()).ListEventsAsync(
+        var result = await new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones()).ListEventsAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
-            new DateOnly(2026, 9, 7),
+            new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero),
             CancellationToken.None);
 
         Assert.Equal("Drug & Alcohol Testing", result.AppointmentTypeName);
@@ -83,7 +84,7 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        var detail = await new AppointmentWorkspaceQueries(read, new TestClock()).GetEventAsync(
+        var detail = await new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones()).GetEventAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
             eventId,
             CancellationToken.None);
@@ -124,7 +125,7 @@ public sealed class AppointmentWorkspaceQueryTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        Assert.Null(await new AppointmentWorkspaceQueries(read, new TestClock()).GetEventAsync(
+        Assert.Null(await new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones()).GetEventAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
             eventId,
             CancellationToken.None));

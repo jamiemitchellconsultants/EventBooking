@@ -11,6 +11,7 @@ using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Audit;
+using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Queries;
 using EventBooking.Infrastructure.Persistence.Repositories;
@@ -99,7 +100,9 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new RecoveryBookingOutcomeCoordinator(),
                 new EfAuditLogger(context, new FixedClock(now)),
                 new UnitOfWork(context),
-                new FixedClock(now));
+                new FixedClock(now),
+                new NodaTimeEventWindowZones(),
+                new LocationRepository(context));
             return await handler.HandleAsync(
                 new UpdateBookingAppointmentStatusCommand
                 {
@@ -178,7 +181,9 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new RecoveryBookingOutcomeCoordinator(),
                 new EfAuditLogger(context, new FixedClock(now)),
                 new UnitOfWork(context),
-                new FixedClock(now));
+                new FixedClock(now),
+                new NodaTimeEventWindowZones(),
+                new LocationRepository(context));
             return await handler.HandleAsync(
                 new UpdateBookingAppointmentStatusCommand
                 {
@@ -273,7 +278,9 @@ public sealed class BookingAppointmentConcurrencyTests(PostgresFixture fixture)
                 new RecoveryBookingOutcomeCoordinator(),
                 new EfAuditLogger(context, new FixedClock(at)),
                 new UnitOfWork(context),
-                new FixedClock(at));
+                new FixedClock(at),
+                new NodaTimeEventWindowZones(),
+                new LocationRepository(context));
             return await handler.HandleAsync(
                 new UpdateBookingAppointmentStatusCommand
                 {

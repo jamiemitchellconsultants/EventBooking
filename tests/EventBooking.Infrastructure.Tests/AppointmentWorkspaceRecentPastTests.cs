@@ -7,6 +7,7 @@ using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Queries;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Tests;
@@ -35,14 +36,42 @@ public sealed class AppointmentWorkspaceRecentPastTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        var result = await new AppointmentWorkspaceQueries(read, new TestClock()).ListEventsAsync(
+        var result = await new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones()).ListEventsAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
-            new DateOnly(2026, 9, 7),
+            new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero),
             CancellationToken.None);
 
         Assert.Equal(2, result.Events.Count);
         Assert.Equal(new DateOnly(2026, 8, 31), result.Events[0].Date);
         Assert.Equal(new DateOnly(2026, 9, 7), result.Events[1].Date);
+    }
+
+    /// <summary>Verifies the allowance counts back from the location's date, not the UTC date.</summary>
+    [Fact]
+    public async Task EventListCountsTheAllowanceFromTheLocationDate()
+    {
+        await fixture.ResetAsync();
+        await using (var write = fixture.NewContext())
+        {
+            // At 23:30 UTC on 7 September it is already 8 September in London, so the
+            // seven-day allowance reaches back to 1 September there, not 31 August.
+            var sevenLocalDaysPast = AddEvent(write, new DateOnly(2026, 9, 1), cancelled: false);
+            var eightLocalDaysPast = AddEvent(write, new DateOnly(2026, 8, 31), cancelled: false);
+            AddBooking(write, sevenLocalDaysPast, "Recent Past", "recent@example.com",
+                AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
+            AddBooking(write, eightLocalDaysPast, "Too Old", "old@example.com",
+                AppointmentTypeIds.DrugAndAlcoholTesting, BookingAppointmentStatus.Expected, false);
+            await write.SaveChangesAsync();
+        }
+
+        await using var read = fixture.NewContext();
+        var result = await new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones())
+            .ListEventsAsync(
+                AppointmentTypeIds.DrugAndAlcoholTesting,
+                new DateTimeOffset(2026, 9, 7, 23, 30, 0, TimeSpan.Zero),
+                CancellationToken.None);
+
+        Assert.Equal(new DateOnly(2026, 9, 1), Assert.Single(result.Events).Date);
     }
 
     /// <summary>Verifies event detail loads a recently past event inside trusted scope.</summary>
@@ -61,7 +90,7 @@ public sealed class AppointmentWorkspaceRecentPastTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        var detail = await new AppointmentWorkspaceQueries(read, new TestClock()).GetEventAsync(
+        var detail = await new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones()).GetEventAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting,
             eventId,
             CancellationToken.None);
@@ -93,7 +122,7 @@ public sealed class AppointmentWorkspaceRecentPastTests(PostgresFixture fixture)
         }
 
         await using var read = fixture.NewContext();
-        var queries = new AppointmentWorkspaceQueries(read, new TestClock());
+        var queries = new AppointmentWorkspaceQueries(read, new TestClock(), new NodaTimeEventWindowZones());
         Assert.Null(await queries.GetEventAsync(
             AppointmentTypeIds.DrugAndAlcoholTesting, tooOldId, CancellationToken.None));
         Assert.Null(await queries.GetEventAsync(

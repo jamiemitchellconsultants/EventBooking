@@ -7,11 +7,11 @@ public interface IAppointmentWorkspaceQueries
 {
     /// <summary>Lists recent-past, current, and future active events containing active bookings in trusted scope.</summary>
     /// <param name="appointmentTypeId">The appointment type id.</param>
-    /// <param name="onOrAfter">The on or after.</param>
+    /// <param name="asOf">The instant the recent-past allowance counts back from, at each event's location.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<AppointmentWorkspaceEventList> ListEventsAsync(
         Guid appointmentTypeId,
-        DateOnly onOrAfter,
+        DateTimeOffset asOf,
         CancellationToken cancellationToken);
 
     /// <summary>Gets one active event's minimum appointment rows inside trusted scope.</summary>

@@ -16,6 +16,15 @@ namespace EventBooking.Mcp.Tests;
 [Collection("mcp")]
 public sealed class McpEndpointTests(McpFactory factory)
 {
+    /// <summary>The readiness probe answers without authentication once the database connects.</summary>
+    [Fact]
+    public async Task HealthReady_ReturnsOkAnonymously()
+    {
+        var response = await factory.CreateClient().GetAsync("/health/ready");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     /// <summary>Anonymous MCP requests are refused before any tool runs.</summary>
     [Fact]
     public async Task AnonymousMcpRequest_IsUnauthorized()

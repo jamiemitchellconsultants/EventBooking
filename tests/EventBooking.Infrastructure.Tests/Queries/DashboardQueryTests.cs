@@ -109,7 +109,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
     }
 
     private static DashboardQueries Query(EventBookingDbContext context) =>
-        new(context, new FixedClock(Now));
+        new(context, new FixedClock(Now), new NodaTimeEventWindowZones());
 
     private static async Task<Guid> AddEventAsync(
         EventBookingDbContext context, DateTimeOffset endInstant, Guid? locationId = null)

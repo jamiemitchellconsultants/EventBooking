@@ -9,6 +9,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.Locations;
 
 namespace EventBooking.Application.Tests.Appointments;
 
@@ -444,6 +445,10 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
         var audit = new RecordingAuditLogger();
         var unitOfWork = new FakeUnitOfWork(operations);
         var clock = new FakeClock(now);
+        var locations = new InMemoryLocationRepository();
+        locations.Add(Location.Create(
+            ProposalFixture.LocationId, "LONDON_HQ", "London HQ", "1 High St",
+            "Europe/London", ProposalFixture.Zones));
         var handler = new UpdateBookingAppointmentStatusHandler(
             new StaffAccessAuthorizer(profiles),
             appointments,
@@ -454,7 +459,9 @@ public sealed class UpdateBookingAppointmentStatusHandlerTests
             new RecoveryBookingOutcomeCoordinator(),
             audit,
             unitOfWork,
-            clock);
+            clock,
+            ProposalFixture.Zones,
+            locations);
         return new Scenario(
             staff, profiles, attendee, eventItem, appointment, booking,
             attendees, invites, bookings, appointments,

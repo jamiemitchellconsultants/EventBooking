@@ -1,56 +1,47 @@
-using EventBooking.Domain.Access;
-using EventBooking.Domain.AppointmentTypes;
-using EventBooking.Application.Events;
-using EventBooking.Domain.Audit;
+// src/EventBooking.SeedData/DemoEventFactory.cs (complete)
 using EventBooking.Domain.Events;
-using EventBooking.Domain.Locations;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Persistence;
 
 namespace EventBooking.SeedData;
 
-/// <summary>Reconstructs accepted demo proposals instead of creating events without negotiation history.</summary>
 internal static class DemoEventFactory
 {
-    private static readonly IEventWindowZones zones = new Infrastructure.Time.NodaTimeEventWindowZones();
-
-    internal static Event Create(EventBookingDbContext database, Guid id, EventWindow window,
-        IReadOnlyDictionary<Guid, int> headcounts, DateTimeOffset timestamp)
+    internal static EventProposal CreateProposal(
+        EventBookingDbContext database,
+        IDemoProposalScenario spec,
+        DemoDataset data,
+        IEventWindowZones zones)
     {
-        var managers = DemoSeedSpec.Staff().Where(staff => staff.Roles.Contains(Role.Manager))
-            .ToDictionary(staff => staff.AppointmentTypeId!.Value, staff => staff.UserId);
-        var types = AppointmentTypeIds.All.Order().ToArray();
+        var location = data.Locations.Single(x => x.Code == spec.LocationCode);
+        var types = spec.TypeCodes.Select(code => data.AppointmentTypes.Single(x => x.Code == code)).ToList();
+        var staff = data.Staff.ToDictionary(x => x.Username);
+        var proposer = types[0];
+        var manager = staff[proposer.ManagerUsername!];
+        var window = new EventWindow(spec.Date, spec.StartTime, spec.DurationMinutes);
         var proposal = EventProposal.Propose(
-            Guid.NewGuid(),
-            TransitionalLocation.Id,
-            locationIsActive: true,
-            TransitionalLocation.TimeZoneId,
-            window,
-            zones,
-            window.StartInstant(zones, TransitionalLocation.TimeZoneId).AddDays(-1),
-            [.. types.Select(type => new ProposableAppointmentType(
-                type, AppointmentTypeIds.CodeOf(type), true, true))],
-            types[0],
-            managers[types[0]],
-            headcounts[types[0]]);
-        foreach (var type in types)
-            proposal.Accept(type, managers[type], headcounts[type]);
-        var created = Event.CreateFrom(id, proposal);
+            spec is DemoProposalSpec p ? p.Id : Guid.NewGuid(),
+            location.Id, location.IsActive, location.TimeZoneId, window, zones,
+            window.StartInstant(zones, location.TimeZoneId).AddDays(-1),
+            types.Select(x => new ProposableAppointmentType(
+                x.Id, x.Code, x.IsActive, x.ManagerUsername is not null)).ToList(),
+            proposer.Id, DemoSeedSpec.ProviderUserId(manager.Username), 12);
+        foreach (var code in spec.AcceptedTypeCodes.Skip(1))
+        {
+            var type = data.AppointmentTypes.Single(x => x.Code == code);
+            proposal.Accept(type.Id,
+                DemoSeedSpec.ProviderUserId(staff[type.ManagerUsername!].Username), 12);
+        }
         database.EventProposals.Add(proposal);
-        database.Events.Add(created);
-        database.AuditLogs.Add(AuditLog.Record(
-            Guid.NewGuid(), AuditEntityTypes.EventProposal, proposal.Id,
-            AuditAction.ProposalCreated, ActorType.Staff, managers[types[0]].ToString(),
-            timestamp, window.ToString()));
-        foreach (var type in types)
-            database.AuditLogs.Add(AuditLog.Record(
-                Guid.NewGuid(), AuditEntityTypes.EventProposal, proposal.Id,
-                AuditAction.AcceptanceRecorded, ActorType.Staff, managers[type].ToString(),
-                timestamp, $"{AppointmentTypeIds.NameOf(type)} headcount {headcounts[type]}"));
-        database.AuditLogs.Add(AuditLog.Record(
-            Guid.NewGuid(), AuditEntityTypes.Event, created.Id,
-            AuditAction.EventConfirmed, ActorType.Staff, managers[types[^1]].ToString(),
-            timestamp, created.Window.ToString()));
-        return created;
+        return proposal;
+    }
+
+    internal static Event CreateEvent(
+        EventBookingDbContext database, DemoEventSpec spec, DemoDataset data, IEventWindowZones zones)
+    {
+        var proposal = CreateProposal(database, spec, data, zones);
+        var eventItem = Event.CreateFrom(spec.Id, proposal);
+        database.Events.Add(eventItem);
+        return eventItem;
     }
 }
