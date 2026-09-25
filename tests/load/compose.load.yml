@@ -1,0 +1,16 @@
+# tests/load/compose.load.yml (complete)
+services:
+  # The burst holds one EF connection plus one advisory-lock connection per
+  # confirmation, so 500 simultaneous confirmations need more backends than the
+  # default 100. This tuning is load-rig only; every other stack keeps the default.
+  postgres:
+    command: postgres -c max_connections=300
+  api:
+    environment:
+      RateLimiting__AttendeePerMinute: "600"
+  seed:
+    environment:
+      EVENTBOOKING_ENABLE_LOAD_FIXTURE: "true"
+      EVENTBOOKING_LOAD_FIXTURE_PATH: /load/fixture.json
+    volumes:
+      - ./tests/load:/load

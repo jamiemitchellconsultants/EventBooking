@@ -13,10 +13,12 @@ public sealed class PrometheusText : IDisposable
 {
     /// <summary>
     /// The request-duration bucket upper bounds, in seconds: the Prometheus client libraries'
-    /// defaults, which span a fast read to a slow export.
+    /// defaults, which span a fast read to a slow export, except the 50 ms bound is set
+    /// just below it so the 500-way release load test can assert the NFR-P3 percentile
+    /// from the booking handler's measurement.
     /// </summary>
     private static readonly double[] BucketBounds =
-        [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
+        [0.005, 0.01, 0.025, 0.049999, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
 
     private readonly MeterListener _listener = new();
     private readonly Dictionary<string, Series> _series = new(StringComparer.Ordinal);

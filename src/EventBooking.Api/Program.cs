@@ -50,7 +50,10 @@ builder.Services.Configure<RateLimitSettings>(options =>
     options.StaffPerMinute = settings.RateLimits.StaffPerMinute;
 });
 builder.Services.AddSingleton<ICorrelationContext, AsyncLocalCorrelationContext>();
+builder.Services.AddMetrics();
 builder.Services.AddSingleton<EventBookingMetrics>();
+builder.Services.AddSingleton<ICapacityLockHoldObserver>(
+    provider => provider.GetRequiredService<EventBookingMetrics>());
 builder.Services.AddSingleton<PrometheusText>();
 builder.Services.AddSingleton(new PageCursor(Encoding.UTF8.GetBytes(settings.Tokens.SigningKey)));
 // The session advisory lock needs a dedicated pooled connection that lives through the handler;

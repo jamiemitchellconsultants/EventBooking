@@ -5,6 +5,7 @@ using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Time;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -35,6 +36,7 @@ public sealed class SeedRunSteps : ISeedRunSteps
                 new EventBooking.Application.Access.StaffIdPolicy(environment("Identity__StaffIdPattern")));
             services.AddLocalEmailTransport(email.Sender, email.Smtp);
             services.AddScoped<DemoSeeder>();
+            services.AddScoped<LoadFixtureSeeder>();
             services.AddScoped<DemoInvitationSeeder>();
             services.AddSingleton<OutboxDispatcher>();
         }
@@ -96,6 +98,29 @@ public sealed class SeedRunSteps : ISeedRunSteps
         var seeder = scope.ServiceProvider.GetRequiredService<DemoInvitationSeeder>();
         if (_options.Verbose) seeder.Progress = Console.Out;
         return await seeder.RunAsync(ct);
+    }
+
+    public async Task<int> SeedLoadFixtureAsync(string outputPath, CancellationToken ct)
+    {
+        if (File.Exists(outputPath))
+            throw new SeedException("Load fixture output already exists; use a fresh disposable project.");
+        await using var scope = Scope();
+        var fixture = await scope.ServiceProvider.GetRequiredService<LoadFixtureSeeder>().RunAsync(ct);
+        var streamOptions = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+#pragma warning disable CA1416 // Unix-only creation mode, guarded by the check above.
+            streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+#pragma warning restore CA1416
+        }
+        await using var stream = new FileStream(outputPath, streamOptions);
+        await JsonSerializer.SerializeAsync(
+            stream, fixture, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);
+        return fixture.BookTokens.Count;
     }
 
     public ValueTask DisposeAsync() => _provider.DisposeAsync();

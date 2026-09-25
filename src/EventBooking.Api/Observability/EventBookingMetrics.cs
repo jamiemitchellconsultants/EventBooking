@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using EventBooking.Application.Abstractions;
 
 namespace EventBooking.Api.Observability;
 
@@ -7,7 +8,7 @@ namespace EventBooking.Api.Observability;
 /// OpenTelemetry metrics API in .NET, so this is an OpenTelemetry meter without taking a
 /// dependency on a pre-release exporter package; PrometheusText renders it.
 /// </summary>
-public sealed class EventBookingMetrics : IDisposable
+public sealed class EventBookingMetrics : ICapacityLockHoldObserver, IDisposable
 {
     /// <summary>The meter name every instrument here is published under.</summary>
     public const string MeterName = "EventBooking.Api";
@@ -32,6 +33,9 @@ public sealed class EventBookingMetrics : IDisposable
         RateLimited = _meter.CreateCounter<long>(
             "eventbooking_rate_limited_total", "rejections",
             "Requests rejected by a rate limiter, by policy.");
+        CapacityLockHoldDuration = _meter.CreateHistogram<double>(
+            "eventbooking_capacity_lock_hold_duration_seconds", "s",
+            "Time from capacity lock acquisition through transaction release.");
 
         // Declare the business series even before the first refusal: a counter no request
         // has touched yet would otherwise be absent from the scrape rather than zero.
@@ -49,6 +53,14 @@ public sealed class EventBookingMetrics : IDisposable
 
     /// <summary>Gets the rate-limiter rejection counter.</summary>
     public Counter<long> RateLimited { get; }
+
+    /// <summary>Gets the capacity-lock hold duration histogram.</summary>
+    public Histogram<double> CapacityLockHoldDuration { get; }
+
+    /// <summary>Records one capacity-lock hold interval in seconds, without labels.</summary>
+    /// <param name="elapsed">The time from capacity lock acquisition through release.</param>
+    public void Record(TimeSpan elapsed) =>
+        CapacityLockHoldDuration.Record(elapsed.TotalSeconds);
 
     /// <inheritdoc />
     public void Dispose() => _meter.Dispose();

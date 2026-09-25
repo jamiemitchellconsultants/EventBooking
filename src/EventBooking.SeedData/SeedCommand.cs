@@ -2,38 +2,40 @@
 namespace EventBooking.SeedData;
 
 public sealed record SeedCliOptions(
-    string ConnectionString, bool Demo, bool Reanchor, bool Reseed, bool Verbose)
+    string ConnectionString, bool Demo, bool Reanchor, bool Reseed, bool Verbose,
+    bool LoadFixture, string? LoadFixturePath)
 {
     public static SeedCliOptions Parse(string[] args, Func<string, string?> environment)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(environment);
-
         var values = args.Where(x => !x.StartsWith('-')).ToList();
         if (values.Count > 1)
             throw new SeedException("Supply exactly one PostgreSQL connection string.");
-        var connection = values.SingleOrDefault()
-            ?? environment("ConnectionStrings__EventBooking");
+        var connection = values.SingleOrDefault() ?? environment("ConnectionStrings__EventBooking");
         if (string.IsNullOrWhiteSpace(connection))
             throw new SeedException("A PostgreSQL connection string argument or ConnectionStrings__EventBooking is required.");
-
         var known = new HashSet<string>(StringComparer.Ordinal)
-            { "--demo", "--reanchor", "--reseed", "--verbose" };
+            { "--demo", "--reanchor", "--reseed", "--verbose", "--load-fixture" };
         var unknown = args.Where(x => x.StartsWith('-') && !known.Contains(x)).ToList();
         if (unknown.Count > 0)
             throw new SeedException($"Unknown option '{unknown[0]}'.");
         var demo = args.Contains("--demo", StringComparer.Ordinal);
         var reanchor = args.Contains("--reanchor", StringComparer.Ordinal);
         var reseed = args.Contains("--reseed", StringComparer.Ordinal);
-        if (reanchor && !demo)
-            throw new SeedException("--reanchor requires --demo.");
-        if (reseed && !demo)
-            throw new SeedException("--reseed requires --demo.");
+        var load = args.Contains("--load-fixture", StringComparer.Ordinal);
+        if (reanchor && !demo) throw new SeedException("--reanchor requires --demo.");
+        if (reseed && !demo) throw new SeedException("--reseed requires --demo.");
         if (reseed && !string.Equals(environment("EVENTBOOKING_ALLOW_RESEED"), "true", StringComparison.Ordinal))
             throw new SeedException("--reseed requires EVENTBOOKING_ALLOW_RESEED=true.");
-
+        if (load && !demo) throw new SeedException("--load-fixture requires --demo.");
+        if (load && !string.Equals(environment("EVENTBOOKING_ENABLE_LOAD_FIXTURE"), "true", StringComparison.Ordinal))
+            throw new SeedException("--load-fixture requires EVENTBOOKING_ENABLE_LOAD_FIXTURE=true.");
+        var path = load ? environment("EVENTBOOKING_LOAD_FIXTURE_PATH") : null;
+        if (load && (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)))
+            throw new SeedException("--load-fixture requires an absolute EVENTBOOKING_LOAD_FIXTURE_PATH.");
         return new SeedCliOptions(connection, demo, reanchor, reseed,
-            args.Contains("--verbose", StringComparer.Ordinal));
+            args.Contains("--verbose", StringComparer.Ordinal), load, path);
     }
 }
 
@@ -45,6 +47,7 @@ public interface ISeedRunSteps : IAsyncDisposable
     Task<KeycloakSeedSummary?> ConvergeKeycloakAsync(bool recreateRealm, CancellationToken ct);
     Task<SeedSummary> SeedDemoAsync(bool wipeFirst, CancellationToken ct);
     Task<int> SendDemoInvitationsAsync(CancellationToken ct);
+    Task<int> SeedLoadFixtureAsync(string outputPath, CancellationToken ct);
 }
 
 public static class SeedCommand
@@ -59,7 +62,6 @@ public static class SeedCommand
             await output.WriteLineAsync("Database roles and migrations applied; demo data was not requested.");
             return 0;
         }
-
         if (options.Reanchor) await steps.ReanchorToTodayAsync(ct);
         var keycloak = await steps.ConvergeKeycloakAsync(options.Reseed, ct);
         var summary = await steps.SeedDemoAsync(options.Reseed, ct);
@@ -68,6 +70,11 @@ public static class SeedCommand
             $"Demo seed complete: {summary.LocationsEnsured} locations, " +
             $"{summary.AppointmentTypesEnsured} appointment types, {summary.AttendeesEnsured} attendees; " +
             $"{sent} invitations sent; Keycloak {(keycloak is null ? "not configured" : "converged")}.");
+        if (options.LoadFixture)
+        {
+            var count = await steps.SeedLoadFixtureAsync(options.LoadFixturePath!, ct);
+            await output.WriteLineAsync($"Load fixture ready: {count} invitations.");
+        }
         return 0;
     }
 }

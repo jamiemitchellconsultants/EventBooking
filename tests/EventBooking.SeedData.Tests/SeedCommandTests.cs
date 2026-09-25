@@ -77,5 +77,10 @@ public sealed class SeedCommandTests
         { Calls.Add(wipeFirst ? "seed:wipe" : "seed"); return Task.FromResult(SeedSummary.Empty); }
         public Task<int> SendDemoInvitationsAsync(CancellationToken ct)
         { Calls.Add("invitations"); return Task.FromResult(1); }
+        public Task<int> SeedLoadFixtureAsync(string outputPath, CancellationToken ct)
+        {
+            Calls.Add($"load:{outputPath}");
+            return Task.FromResult(500);
+        }
     }
 }

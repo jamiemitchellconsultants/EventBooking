@@ -1,0 +1,3 @@
+# tests/load/.gitignore (complete)
+/fixture.json
+/postgres.log
