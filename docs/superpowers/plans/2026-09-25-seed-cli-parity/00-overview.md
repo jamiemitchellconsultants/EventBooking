@@ -81,8 +81,8 @@ signature and records the date it was given):
 **Behaviour.** New SeedUsage.Text documents every switch and environment variable named in the
 spec. New SeedFailureReport formats a failure: message only by default, the full exception when
 --verbose is among the raw arguments (even if parsing failed). Program prints usage and exits 0
-for --help or -h before parsing anything; on any failure it prints the report followed by the
-usage text and exits 2.
+for --help or -h before parsing anything; on an option-parse failure it prints the report followed
+by the usage text and exits 2; on a runtime failure it prints the report only and exits 2.
 
 **Tests to write first.**
 - The usage text mentions every switch and the two --reseed and --load-fixture environment guards.
