@@ -10,6 +10,7 @@ using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Settings;
 using EventBooking.Domain.Events;
+using EventBooking.Domain.EventGroups;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,10 @@ public sealed class EventBookingDbContext(
     public DbSet<Event> Events => Set<Event>();
 
     public DbSet<EventCapacity> EventCapacities => Set<EventCapacity>();
+
+    public DbSet<EventGroup> EventGroups => Set<EventGroup>();
+
+    public DbSet<EventGroupEvent> EventGroupEvents => Set<EventGroupEvent>();
 
     /// <summary>Gets Attendee Group reference rows and their required Appointment Type mappings.</summary>
     public DbSet<Location> Locations => Set<Location>();

@@ -40,8 +40,10 @@ public class SchemaTests(PostgresFixture fixture)
             // index with the list page's composite, the migration adding the
             // Idempotency-Key retention table, the migration retaining the replayed
             // response's Location and content type, the migration retiring the
-            // predecessor's fixed reference seeds, and the migration granting the
-            // application role every table, including those later migrations create.
+            // predecessor's fixed reference seeds, the migration granting the
+            // application role every table, including those later migrations create,
+            // the migration adding the attendee group description, and the migration
+            // adding the event group publication tables.
             // Committed migrations are never rewritten: the chain is what keeps the
             // schema regenerable.
             Assert.Equal(
@@ -49,7 +51,8 @@ public class SchemaTests(PostgresFixture fixture)
                     "20260923202304_InviteSettingsSnapshots", "20260924040652_EmailOutboxColumns",
                     "20260924045221_AttendeeListIndex", "20260924095643_IdempotencyRetention",
                     "20260924123603_IdempotencyReplayHeaders", "20260924201133_RetireTransitionalSeedRows",
-                    "20260925034812_GrantApplicationRoleOnLaterTables"],
+                    "20260925034812_GrantApplicationRoleOnLaterTables",
+                    "20260925120000_AttendeeGroupDescription", "20260925123000_EventGroups"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();
@@ -104,8 +107,14 @@ public class SchemaTests(PostgresFixture fixture)
                     proposal.Accept(type, Guid.NewGuid(), 1);
                 before.EventProposals.Add(proposal);
                 before.Events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
-                var cabinCrew = await before.AttendeeGroups.Include(g => g.Requirements)
-                    .SingleAsync(g => g.Id == AttendeeGroupIds.CabinCrew);
+                // This baseline predates the attendee group description column, so the
+                // current model cannot read that table here. The group is rebuilt from
+                // its known fixed mapping and attached unchanged instead.
+                var cabinCrew = AttendeeGroup.Define(
+                    AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
+                    [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
+                        AppointmentTypeIds.UniformFitting]);
+                before.Attach(cabinCrew);
                 before.Attendees.Add(Attendee.Create(
                     Guid.NewGuid(), "Kept Attendee", "kept@example.com", cabinCrew, ProposalFixture.Now));
                 await before.SaveChangesAsync();

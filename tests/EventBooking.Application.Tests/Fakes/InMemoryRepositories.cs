@@ -5,6 +5,7 @@ using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
+using EventBooking.Domain.EventGroups;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Locations;
@@ -472,6 +473,36 @@ public sealed class InMemoryAttendeeGroupRepository : IAttendeeGroupRepository
             Items.OrderBy(group => group.Name).ToList());
 
     public void Add(AttendeeGroup group) => Items.Add(group);
+}
+
+public sealed class InMemoryEventGroupRepository : IEventGroupRepository
+{
+    /// <summary>Gets the mutable event group collection.</summary>
+    public List<EventGroup> Items { get; } = [];
+
+    /// <summary>Gets a group with both membership collections.</summary>
+    public Task<EventGroup?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
+
+    /// <summary>Locks the parent row before any gate or mapping mutation.</summary>
+    public Task<EventGroup?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
+
+    /// <summary>Lists every group ordered by title.</summary>
+    public Task<IReadOnlyList<EventGroup>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EventGroup>>(Items.OrderBy(group => group.Title).ToList());
+
+    /// <summary>Lists every group selecting the attendee group, in ascending id order.</summary>
+    public Task<IReadOnlyList<EventGroup>> ListContainingAttendeeGroupAsync(
+        Guid attendeeGroupId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EventGroup>>(Items
+            .Where(group => group.AttendeeGroups.Any(selected => selected.AttendeeGroupId == attendeeGroupId))
+            .OrderBy(group => group.Id)
+            .ToList());
+
+    /// <summary>Seeds the store directly.</summary>
+    /// <param name="group">The event group to hold.</param>
+    public void Add(EventGroup group) => Items.Add(group);
 }
 
 public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeRepository

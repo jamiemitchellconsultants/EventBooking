@@ -47,8 +47,11 @@ public sealed class AttendeeGroupHandlerTests
         return type.Id;
     }
 
+    private readonly InMemoryEventGroupRepository _eventGroups = new();
+    private readonly InMemoryEventRepository _events = new();
+
     private CreateAttendeeGroupHandler Creator => new(_groups, _types, _profiles, _unitOfWork, _audit);
-    private UpdateAttendeeGroupHandler Updater => new(_groups, _types, _attendees, _invites, _profiles, _blocking, _unitOfWork, _audit, _clock);
+    private UpdateAttendeeGroupHandler Updater => new(_groups, _types, _attendees, _invites, _profiles, _blocking, _unitOfWork, _audit, _clock, _eventGroups, _events);
 
     [Fact]
     public async Task Requirement_change_rederives_both_members_and_supersedes_the_pending_invite()
