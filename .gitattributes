@@ -1,0 +1,6 @@
+# Files that run inside Linux containers must keep LF endings when checked out on Windows:
+# Git for Windows defaults to core.autocrlf=true, and a CRLF shebang line
+# ("#!/usr/bin/env bash\r") makes the Postgres init script fail on first start.
+*.sh text eol=lf
+Dockerfile* text eol=lf
+deploy/** text eol=lf
