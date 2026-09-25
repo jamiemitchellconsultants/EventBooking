@@ -137,3 +137,50 @@ td input,
         background: var(--surface-sunken);
     }
 }
+
+.attendee-status {
+    background: var(--surface-sunken);
+    border-radius: 999px;
+    display: inline-flex;
+    font-weight: 600;
+    padding: 2px 10px;
+}
+
+.invite-locations {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: grid;
+    gap: 6px;
+    margin: 8px 0;
+    padding: 10px 12px;
+}
+
+.booking-detail {
+    background: var(--surface-sunken);
+    border-radius: var(--radius-sm);
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 10px 12px;
+}
+
+.booking-list {
+    display: grid;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.booking-list li {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.booking-window { font-variant-numeric: tabular-nums; }
+.booking-loading { color: var(--sub); }
+.booking-outcome { color: var(--success-ink); }
+.booking-error { color: var(--error-ink); }

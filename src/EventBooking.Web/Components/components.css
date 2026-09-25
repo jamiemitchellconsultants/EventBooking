@@ -16,3 +16,4 @@
 .banner-warning { color: var(--color-warning); } .banner-error { color: var(--color-danger); }
 .picker-list, .capacity-breakdown { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .loading-skeleton { min-height: 6rem; background: var(--color-neutral-100); border-radius: var(--radius-card); }
+.status-neutral { color: var(--color-neutral-700); } .status-new { color: var(--color-primary); }
