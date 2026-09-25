@@ -95,7 +95,8 @@ public sealed class SeedCommandTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         public Task ApplyDatabaseRolesAsync(CancellationToken ct) { Calls.Add("roles"); return Task.CompletedTask; }
         public Task ApplyMigrationsAsync(CancellationToken ct) { Calls.Add("migrations"); return Task.CompletedTask; }
-        public Task ReanchorToTodayAsync(CancellationToken ct) { Calls.Add("reanchor"); return Task.CompletedTask; }
+        public Task<DateOnly> ReanchorAsync(DateOnly? date, CancellationToken ct)
+        { Calls.Add("reanchor"); return Task.FromResult(date ?? new DateOnly(2026, 9, 25)); }
         public Task<KeycloakSeedSummary?> ConvergeKeycloakAsync(bool recreateRealm, CancellationToken ct)
         { Calls.Add(recreateRealm ? "keycloak:reset" : "keycloak"); return Task.FromResult<KeycloakSeedSummary?>(null); }
         public Task<SeedSummary> SeedDemoAsync(bool wipeFirst, CancellationToken ct)

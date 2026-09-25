@@ -64,7 +64,7 @@ public interface ISeedRunSteps : IAsyncDisposable
 {
     Task ApplyDatabaseRolesAsync(CancellationToken ct);
     Task ApplyMigrationsAsync(CancellationToken ct);
-    Task ReanchorToTodayAsync(CancellationToken ct);
+    Task<DateOnly> ReanchorAsync(DateOnly? date, CancellationToken ct);
     Task<KeycloakSeedSummary?> ConvergeKeycloakAsync(bool recreateRealm, CancellationToken ct);
     Task<SeedSummary> SeedDemoAsync(bool wipeFirst, CancellationToken ct);
     Task<int> SendDemoInvitationsAsync(CancellationToken ct);
@@ -76,16 +76,47 @@ public static class SeedCommand
     public static async Task<int> RunAsync(
         SeedCliOptions options, ISeedRunSteps steps, TextWriter output, CancellationToken ct)
     {
+        async Task Progress(string message)
+        {
+            if (options.Verbose) await output.WriteLineAsync($"[seed] {message}");
+        }
+
+        await Progress("Applying database roles...");
         await steps.ApplyDatabaseRolesAsync(ct);
+        await Progress("Applying pending migrations...");
         await steps.ApplyMigrationsAsync(ct);
+        await Progress("Migrations applied.");
         if (!options.Demo)
         {
             await output.WriteLineAsync("Database roles and migrations applied; demo data was not requested.");
             return 0;
         }
-        if (options.Reanchor) await steps.ReanchorToTodayAsync(ct);
+        if (options.Reanchor)
+        {
+            var anchor = await steps.ReanchorAsync(options.ReanchorDate, ct);
+            await output.WriteLineAsync($"[seed] Reanchored to {anchor:yyyy-MM-dd}.");
+        }
+        if (options.Reseed)
+            await Progress("Reseed requested: the Keycloak realm will be deleted and recreated first, if configured.");
         var keycloak = await steps.ConvergeKeycloakAsync(options.Reseed, ct);
+        if (keycloak is null)
+        {
+            await Progress("Keycloak provider seed skipped.");
+        }
+        else
+        {
+            await Progress(options.Reseed
+                ? "Keycloak realm reset and convergence complete."
+                : "Keycloak convergence complete.");
+            await output.WriteLineAsync(
+                $"Keycloak seed complete: {keycloak.RolesCreated} roles created, " +
+                $"{keycloak.MapperWrites} mapper writes, " +
+                $"{keycloak.UsersCreated} users created, " +
+                $"{keycloak.RoleMappingWrites} role-mapping writes.");
+        }
+        await Progress("Seeding demo data...");
         var summary = await steps.SeedDemoAsync(options.Reseed, ct);
+        await Progress("Sending demo invitations...");
         var sent = await steps.SendDemoInvitationsAsync(ct);
         await output.WriteLineAsync(
             $"Demo seed complete: {summary.LocationsEnsured} locations, " +
@@ -93,6 +124,7 @@ public static class SeedCommand
             $"{sent} invitations sent; Keycloak {(keycloak is null ? "not configured" : "converged")}.");
         if (options.LoadFixture)
         {
+            await Progress("Writing load fixture...");
             var count = await steps.SeedLoadFixtureAsync(options.LoadFixturePath!, ct);
             await output.WriteLineAsync($"Load fixture ready: {count} invitations.");
         }
