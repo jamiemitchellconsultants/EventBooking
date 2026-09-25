@@ -46,4 +46,10 @@ public interface IEventGroupRepository
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<PendingRegistration?> GetRegistrationAsync(
         Guid requestId, CancellationToken cancellationToken);
+
+    /// <summary>Re-reads one pending registration without tracking, for post-lock validation.</summary>
+    /// <param name="requestId">The request id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<PendingRegistration?> GetRegistrationUntrackedAsync(
+        Guid requestId, CancellationToken cancellationToken);
 }

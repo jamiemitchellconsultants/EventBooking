@@ -521,6 +521,11 @@ public sealed class InMemoryEventGroupRepository : IEventGroupRepository
     public Task<PendingRegistration?> GetRegistrationAsync(
         Guid requestId, CancellationToken cancellationToken) =>
         Task.FromResult(Registrations.SingleOrDefault(x => x.RequestId == requestId));
+
+    /// <summary>Re-reads one pending registration without tracking, for post-lock validation.</summary>
+    public Task<PendingRegistration?> GetRegistrationUntrackedAsync(
+        Guid requestId, CancellationToken cancellationToken) =>
+        Task.FromResult(Registrations.SingleOrDefault(x => x.RequestId == requestId));
 }
 
 public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeRepository

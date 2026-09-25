@@ -66,4 +66,10 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
         Guid requestId, CancellationToken cancellationToken) =>
         context.PendingRegistrations.SingleOrDefaultAsync(
             x => x.RequestId == requestId, cancellationToken);
+
+    /// <summary>Re-reads one pending registration without tracking, for post-lock validation.</summary>
+    public Task<PendingRegistration?> GetRegistrationUntrackedAsync(
+        Guid requestId, CancellationToken cancellationToken) =>
+        context.PendingRegistrations.AsNoTracking().SingleOrDefaultAsync(
+            x => x.RequestId == requestId, cancellationToken);
 }
