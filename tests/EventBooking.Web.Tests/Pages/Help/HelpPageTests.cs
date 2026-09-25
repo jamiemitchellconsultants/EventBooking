@@ -14,6 +14,7 @@ public sealed class HelpPageTests : BunitContext
     {
         Services.AddSingleton<IUserGuideCatalog>(new FakeCatalog());
         Services.AddSingleton<AuthenticationStateProvider>(new StateProvider("Coordinator", "Manager"));
+        Services.AddSingleton<IMeClient>(new FakeMe());
         var cut = Render<EventBooking.Web.Pages.Help>();
         cut.WaitForAssertion(() => Assert.Contains("Contents", cut.Markup));
         Assert.Contains("Coordinator guide", cut.Markup);
@@ -27,10 +28,34 @@ public sealed class HelpPageTests : BunitContext
     {
         Services.AddSingleton<IUserGuideCatalog>(new FakeCatalog());
         Services.AddSingleton<AuthenticationStateProvider>(new StateProvider());
+        Services.AddSingleton<IMeClient>(new FakeMe());
         var cut = Render<EventBooking.Web.Pages.Help>();
         cut.WaitForAssertion(() => Assert.Contains("Attendee guide", cut.Markup));
         Assert.DoesNotContain("Coordinator guide", cut.Markup);
         Assert.DoesNotContain("Admin guide", cut.Markup);
+    }
+
+    [Fact]
+    public void SignedInUserWithoutRoleClaimsGetsRolesFromApi()
+    {
+        Services.AddSingleton<IUserGuideCatalog>(new FakeCatalog());
+        Services.AddSingleton<AuthenticationStateProvider>(new SignedInNoRoles());
+        Services.AddSingleton<IMeClient>(new FakeMe("Admin"));
+        var cut = Render<EventBooking.Web.Pages.Help>();
+        cut.WaitForAssertion(() => Assert.Contains("Admin guide", cut.Markup));
+        Assert.DoesNotContain("has not been assigned a role", cut.Markup);
+    }
+
+    private sealed class FakeMe(params string[] roles) : IMeClient
+    {
+        public Task<ApiOutcome<MeDto>> GetAsync(CancellationToken ct) => Task.FromResult(ApiOutcome<MeDto>.Success(
+            new MeDto(roles, null, null)));
+    }
+
+    private sealed class SignedInNoRoles : AuthenticationStateProvider
+    {
+        public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
+            Task.FromResult(new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity([new Claim("name", "x")], "test"))));
     }
 
     private sealed class FakeCatalog : IUserGuideCatalog

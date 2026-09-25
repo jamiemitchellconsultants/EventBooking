@@ -18,8 +18,8 @@
 ![Direct visit to /attendees: Coordinator profile required, no records](screenshots/adm01-attendees-boundary.png)
 *Direct visit to /attendees: Coordinator profile required, no records.*
 
-![Signed-in Help for the Admin account (local build shows the no-role message)](screenshots/adm01-help.png)
-*Signed-in Help for the Admin account (local build shows the no-role message).*
+![Signed-in Help for the Admin account](screenshots/adm01-help.png)
+*Signed-in Help for the Admin account.*
 
 **Result:** Pass / Fail / Blocked / Not run
 
