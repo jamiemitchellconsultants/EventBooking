@@ -5,6 +5,12 @@ Keycloak service and external Docker network. It publishes no database or API ho
 `.env.example` to `.env`, replace every example secret, pin `EVENTBOOKING_IMAGE_TAG` to a reviewed
 `vX.Y.Z` or `sha-xxxxxxx` tag, then run `./install.sh`.
 
+On a Windows host, do not run `install.sh`. The operator's LocalAI repository owns an equivalent
+installer, `docs/setup-eventbooking-windows.ps1`, which renders the same templates, creates the
+realm once and publishes through the shared Caddy; see its `docs/deploy-eventbooking.md`. The
+Compose file, Caddy fragment, realm and web settings in this directory remain the source of truth
+for both.
+
 ## Install
 
 1. Confirm the shared Caddy container imports `EVENTBOOKING_CADDY_IMPORT_DIR/*.caddy` and joins
