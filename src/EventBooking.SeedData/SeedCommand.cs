@@ -1,15 +1,31 @@
 // src/EventBooking.SeedData/SeedCommand.cs (complete)
+using System.Globalization;
+
 namespace EventBooking.SeedData;
 
 public sealed record SeedCliOptions(
-    string ConnectionString, bool Demo, bool Reanchor, bool Reseed, bool Verbose,
-    bool LoadFixture, string? LoadFixturePath)
+    string ConnectionString, bool Demo, bool Reanchor, DateOnly? ReanchorDate, bool Reseed,
+    bool Verbose, bool LoadFixture, string? LoadFixturePath)
 {
     public static SeedCliOptions Parse(string[] args, Func<string, string?> environment)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(environment);
-        var values = args.Where(x => !x.StartsWith('-')).ToList();
+        var tokens = args.ToList();
+        DateOnly? reanchorDate = null;
+        var reanchorIndex = tokens.IndexOf("--reanchor");
+        if (reanchorIndex >= 0 && reanchorIndex + 1 < tokens.Count
+            && LooksLikeDate(tokens[reanchorIndex + 1]))
+        {
+            var token = tokens[reanchorIndex + 1];
+            if (!DateOnly.TryParseExact(
+                    token, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                throw new SeedException($"--reanchor date must be yyyy-MM-dd (got '{token}').");
+            reanchorDate = parsed;
+            tokens.RemoveAt(reanchorIndex + 1);
+        }
+
+        var values = tokens.Where(x => !x.StartsWith('-')).ToList();
         if (values.Count > 1)
             throw new SeedException("Supply exactly one PostgreSQL connection string.");
         var connection = values.SingleOrDefault() ?? environment("ConnectionStrings__EventBooking");
@@ -17,13 +33,13 @@ public sealed record SeedCliOptions(
             throw new SeedException("A PostgreSQL connection string argument or ConnectionStrings__EventBooking is required.");
         var known = new HashSet<string>(StringComparer.Ordinal)
             { "--demo", "--reanchor", "--reseed", "--verbose", "--load-fixture" };
-        var unknown = args.Where(x => x.StartsWith('-') && !known.Contains(x)).ToList();
+        var unknown = tokens.Where(x => x.StartsWith('-') && !known.Contains(x)).ToList();
         if (unknown.Count > 0)
             throw new SeedException($"Unknown option '{unknown[0]}'.");
-        var demo = args.Contains("--demo", StringComparer.Ordinal);
-        var reanchor = args.Contains("--reanchor", StringComparer.Ordinal);
-        var reseed = args.Contains("--reseed", StringComparer.Ordinal);
-        var load = args.Contains("--load-fixture", StringComparer.Ordinal);
+        var demo = tokens.Contains("--demo", StringComparer.Ordinal);
+        var reanchor = tokens.Contains("--reanchor", StringComparer.Ordinal);
+        var reseed = tokens.Contains("--reseed", StringComparer.Ordinal);
+        var load = tokens.Contains("--load-fixture", StringComparer.Ordinal);
         if (reanchor && !demo) throw new SeedException("--reanchor requires --demo.");
         if (reseed && !demo) throw new SeedException("--reseed requires --demo.");
         if (reseed && !string.Equals(environment("EVENTBOOKING_ALLOW_RESEED"), "true", StringComparison.Ordinal))
@@ -34,9 +50,14 @@ public sealed record SeedCliOptions(
         var path = load ? environment("EVENTBOOKING_LOAD_FIXTURE_PATH") : null;
         if (load && (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)))
             throw new SeedException("--load-fixture requires an absolute EVENTBOOKING_LOAD_FIXTURE_PATH.");
-        return new SeedCliOptions(connection, demo, reanchor, reseed,
-            args.Contains("--verbose", StringComparer.Ordinal), load, path);
+        return new SeedCliOptions(connection, demo, reanchor, reanchorDate, reseed,
+            tokens.Contains("--verbose", StringComparer.Ordinal), load, path);
     }
+
+    // Shape check only (dddd-dd-dd); whether it is a real calendar date is decided by TryParseExact.
+    private static bool LooksLikeDate(string token) =>
+        token.Length == 10 && token[4] == '-' && token[7] == '-'
+        && token.Where((_, index) => index != 4 && index != 7).All(char.IsAsciiDigit);
 }
 
 public interface ISeedRunSteps : IAsyncDisposable
