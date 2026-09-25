@@ -86,6 +86,7 @@ public static class ApplicationServiceCollectionExtensions
 
         // Self-registrations.
         services.AddScoped<SelfRegistrations.SubmitSelfRegistrationHandler>();
+        services.AddScoped<SelfRegistrations.ViewSelfRegistrationHandler>();
         services.AddScoped<SelfRegistrations.ConfirmSelfRegistrationHandler>();
 
         // Administration.

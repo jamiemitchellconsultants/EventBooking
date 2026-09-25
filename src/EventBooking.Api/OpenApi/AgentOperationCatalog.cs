@@ -383,6 +383,21 @@ public static class AgentOperationCatalog
                 "Submit a registration request.",
                 "Anonymous. Submits a request to join an event and returns its confirmation token.",
                 "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("submitEventRegistration", HttpMethods.Post,
+                "/api/public/event-groups/{id}/events/{eventId}/registrations",
+                "Public Event Groups", "Submit a registration request for one event.",
+                "Anonymous. Submits a request to join one event and returns its confirmation token.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("viewSelfRegistration", HttpMethods.Get,
+                "/api/public/event-groups/confirm/{token}", "Public Event Groups",
+                "View a pending registration request.",
+                "Anonymous. Shows one pending request's public summary before confirmation.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("confirmSelfRegistration", HttpMethods.Post,
+                "/api/public/event-groups/confirm/{token}", "Public Event Groups",
+                "Confirm a registration request.",
+                "Anonymous. Confirms one pending request and returns the created booking.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
         };
 
         var byId = new Dictionary<string, AgentOperation>(StringComparer.Ordinal);

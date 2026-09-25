@@ -1,0 +1,86 @@
+.public-group-page {
+    margin: 0 auto;
+    max-width: 580px;
+    padding: 36px 28px 60px;
+}
+
+.public-group-page__intro {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.public-group-page h1 {
+    color: var(--ink-strong);
+    font-size: 1.5rem;
+    line-height: 1.2;
+    margin: 0;
+}
+
+.public-group-page__lead,
+.public-group-page__note {
+    color: var(--sub);
+    font-size: 0.875rem;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.public-group-page__events {
+    display: grid;
+    gap: 12px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.public-group-page__event-link {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    color: var(--ink);
+    display: grid;
+    gap: 6px;
+    padding: 20px;
+    text-decoration: none;
+}
+
+.public-group-page__event-link:hover {
+    background: var(--surface-sunken);
+}
+
+.public-group-page__event-place {
+    color: var(--ink-strong);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.public-group-page__event-when,
+.public-group-page__event-types {
+    color: var(--sub);
+    font-size: 0.875rem;
+    line-height: 1.55;
+}
+
+.public-group-page__banner {
+    background: var(--error-bg);
+    border: 1px solid var(--error-line);
+    border-left-width: 5px;
+    border-radius: var(--radius-sm);
+    color: var(--error-ink);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin: 0 0 18px;
+    padding: 11px 14px;
+}
+
+.public-group-page__status {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    display: grid;
+    gap: 10px;
+    padding: 22px 20px;
+}

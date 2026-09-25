@@ -100,6 +100,9 @@ There is deliberately no endpoint to create a profile, delete one, or edit roles
 | `GET /api/public/event-groups` | Open groups with public choices | Anonymous |
 | `GET /api/public/event-groups/{id}` | One open group with public choices | Anonymous |
 | `POST /api/public/event-groups/{id}/registrations` | Submit `{eventId, attendeeGroupId, name, email}`; returns the confirmation token | Anonymous |
+| `POST /api/public/event-groups/{id}/events/{eventId}/registrations` | Submit `{attendeeGroupId, name, email}` for one event; returns the confirmation token | Anonymous |
+| `GET /api/public/event-groups/confirm/{token}` | One pending request's public summary | Anonymous |
+| `POST /api/public/event-groups/confirm/{token}` | Confirm one pending request; returns the created booking | Anonymous |
 
 ## Attendees, invites and bookings
 

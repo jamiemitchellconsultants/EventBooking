@@ -1,0 +1,104 @@
+.confirm-registration-page {
+    margin: 0 auto;
+    max-width: 580px;
+    padding: 36px 28px 60px;
+}
+
+.confirm-registration-page__intro {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.confirm-registration-page h1 {
+    color: var(--ink-strong);
+    font-size: 1.5rem;
+    line-height: 1.2;
+    margin: 0;
+}
+
+.confirm-registration-page__lead,
+.confirm-registration-page__note {
+    color: var(--sub);
+    font-size: 0.875rem;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.confirm-registration-page__card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    display: grid;
+    gap: 6px;
+    padding: 20px;
+}
+
+.confirm-registration-page__label {
+    color: var(--sub);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.confirm-registration-page__window {
+    color: var(--ink-strong);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.confirm-registration-page__banner {
+    background: var(--error-bg);
+    border: 1px solid var(--error-line);
+    border-left-width: 5px;
+    border-radius: var(--radius-sm);
+    color: var(--error-ink);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    margin: 18px 0 0;
+    padding: 11px 14px;
+}
+
+.confirm-registration-page__note {
+    margin-top: 18px;
+}
+
+.confirm-registration-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.confirm-registration-page__button {
+    background: var(--surface);
+    border: 1.5px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    min-height: 46px;
+    padding: 12px 20px;
+}
+
+.confirm-registration-page__button--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
+    color: var(--color-on-primary);
+}
+
+.confirm-registration-page__button--primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.confirm-registration-page__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}

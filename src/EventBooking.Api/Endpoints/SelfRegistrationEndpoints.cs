@@ -19,6 +19,13 @@ public static class SelfRegistrationEndpoints
     public sealed record SubmitSelfRegistrationRequest(
         Guid EventId, Guid AttendeeGroupId, string? Name, string? Email);
 
+    /// <summary>The per-event submission body: the event comes from the route.</summary>
+    /// <param name="AttendeeGroupId">The requested attendee group id.</param>
+    /// <param name="Name">The requester's name.</param>
+    /// <param name="Email">The requester's email.</param>
+    public sealed record SubmitEventRegistrationRequest(
+        Guid AttendeeGroupId, string? Name, string? Email);
+
     /// <summary>Maps the public event-group routes.</summary>
     /// <param name="app">The endpoint route builder.</param>
     /// <returns>The endpoint route builder.</returns>
@@ -87,6 +94,67 @@ public static class SelfRegistrationEndpoints
             .Produces<SubmitSelfRegistrationResponse>(201)
             .ProducesProblem(404)
             .ProducesProblem(422)
+            .ProducesProblem(429);
+
+        group.MapPost("/{id:guid}/events/{eventId:guid}/registrations", async (
+            Guid id,
+            Guid eventId,
+            SubmitEventRegistrationRequest request,
+            SubmitSelfRegistrationHandler handler,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await handler.HandleAsync(
+                new SubmitSelfRegistrationCommand(
+                    id, eventId, request.AttendeeGroupId, request.Name, request.Email),
+                cancellationToken);
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Created(
+                    $"/api/public/event-groups/{id}/registrations/{result.Value.RequestId}",
+                    ApiResponses.SubmittedRegistration(result.Value));
+        })
+            .WithAgentMetadata("submitEventRegistration")
+            .Produces<SubmitSelfRegistrationResponse>(201)
+            .ProducesProblem(404)
+            .ProducesProblem(422)
+            .ProducesProblem(429);
+
+        group.MapGet("/confirm/{token}", async (
+            string token,
+            ViewSelfRegistrationHandler handler,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await handler.HandleAsync(
+                new ViewSelfRegistrationQuery(token), cancellationToken);
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Ok(ApiResponses.SelfRegistrationSummary(result.Value));
+        })
+            .WithAgentMetadata("viewSelfRegistration")
+            .Produces<SelfRegistrationSummaryResponse>(200)
+            .ProducesProblem(404)
+            .ProducesProblem(409)
+            .ProducesProblem(410)
+            .ProducesProblem(429);
+
+        group.MapPost("/confirm/{token}", async (
+            string token,
+            ConfirmSelfRegistrationHandler handler,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await handler.HandleAsync(
+                new ConfirmSelfRegistrationCommand(token), cancellationToken);
+            return result.IsFailure
+                ? result.ToResponse()
+                : Results.Created(
+                    $"/api/public/event-groups/confirm/{token}",
+                    new ConfirmSelfRegistrationResponse(result.Value.BookingId));
+        })
+            .WithAgentMetadata("confirmSelfRegistration")
+            .Produces<ConfirmSelfRegistrationResponse>(201)
+            .ProducesProblem(404)
+            .ProducesProblem(409)
+            .ProducesProblem(410)
             .ProducesProblem(429);
 
         return app;

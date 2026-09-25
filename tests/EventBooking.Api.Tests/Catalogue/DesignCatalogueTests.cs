@@ -33,7 +33,7 @@ public sealed partial class DesignCatalogueTests(ApiFactory factory)
 
     /// <summary>
     /// A parser that matches nothing passes every other case in this file, so the row count is
-    /// asserted first and on its own. Sixty-four is what this parser returns against design 05
+    /// asserted first and on its own. Sixty-seven is what this parser returns against design 05
     /// as it stands; if a table gains a row, this number changes with it, deliberately.
     /// </summary>
     [Fact]
@@ -41,7 +41,7 @@ public sealed partial class DesignCatalogueTests(ApiFactory factory)
     {
         var design = ParseDesign();
 
-        Assert.Equal(64, design.Count);
+        Assert.Equal(67, design.Count);
         Assert.Contains("GET /api/me", design.Keys);
         Assert.Contains("POST /api/events/{id}/cancel", design.Keys);
         Assert.Contains("POST /api/manage/{token}/cancel", design.Keys);

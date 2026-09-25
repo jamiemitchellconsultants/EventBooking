@@ -84,6 +84,17 @@ builder.Services.AddHttpClient(BookingClient.ClientName, client =>
 #endif
 builder.Services.AddScoped<IBookingClient>(services => new BookingClient(
     services.GetRequiredService<IHttpClientFactory>().CreateClient(BookingClient.ClientName)));
+#if EVENTBOOKING_E2E
+builder.Services.AddHttpClient(PublicEventGroupsClient.ClientName, client =>
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress));
+#else
+builder.Services.AddHttpClient(PublicEventGroupsClient.ClientName, client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+});
+#endif
+builder.Services.AddScoped<IPublicEventGroupsClient>(services => new PublicEventGroupsClient(
+    services.GetRequiredService<IHttpClientFactory>().CreateClient(PublicEventGroupsClient.ClientName)));
 builder.Services.AddSingleton(new AttendeePageOptions(
     builder.Configuration["CoordinatorContact"] ?? "the recruitment team"));
 

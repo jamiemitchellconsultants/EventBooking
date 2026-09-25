@@ -59,6 +59,14 @@ public sealed record SubmitSelfRegistrationResponse(
     Guid RequestId, Guid EventGroupId, Guid EventId, Guid AttendeeGroupId,
     string Name, string Email, DateTimeOffset ExpiresAt, string ConfirmationToken);
 
+/// <summary>One pending self-registration request's public summary.</summary>
+public sealed record SelfRegistrationSummaryResponse(
+    Guid EventGroupId, Guid EventId, string EventGroupTitle, string LocationName,
+    DateOnly Date, TimeOnly StartTime, string AttendeeGroupName);
+
+/// <summary>The booking one confirmed self-registration request created.</summary>
+public sealed record ConfirmSelfRegistrationResponse(Guid BookingId);
+
 /// <summary>One event group with its selected groups and memberships.</summary>
 public sealed record EventGroupResponse(
     Guid Id, string Title, string Description, bool IsOpen, long Version,
@@ -379,6 +387,19 @@ public static class ApiResponses
         return new SubmitSelfRegistrationResponse(
             result.RequestId, result.EventGroupId, result.EventId, result.AttendeeGroupId,
             result.Name, result.Email, result.ExpiresAt, result.ConfirmationToken);
+    }
+
+    /// <summary>Projects one pending self-registration request's public summary.</summary>
+    /// <param name="summary">The application summary.</param>
+    /// <returns>The response body.</returns>
+    public static SelfRegistrationSummaryResponse SelfRegistrationSummary(
+        EventBooking.Application.SelfRegistrations.SelfRegistrationSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return new SelfRegistrationSummaryResponse(
+            summary.EventGroupId, summary.EventId, summary.EventGroupTitle,
+            summary.LocationName, summary.Date, summary.StartTime,
+            summary.AttendeeGroupName);
     }
 
     /// <summary>Projects the settings row.</summary>

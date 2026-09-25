@@ -1,0 +1,151 @@
+@page "/event-groups/confirm/{Token}"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Services
+@layout EventBooking.Web.Layout.AttendeeLayout
+@inject IPublicEventGroupsClient Groups
+@inject IServiceProvider Services
+
+<PageTitle>Confirm your place</PageTitle>
+
+<section class="confirm-registration-page" aria-busy="@(_loading || _busy)">
+    @if (_loading)
+    {
+        <div class="confirm-registration-page__status" aria-label="Loading registration">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+        </div>
+    }
+    else if (_confirmed)
+    {
+        <div class="confirm-registration-page__intro">
+            <h1>Your place is booked</h1>
+        </div>
+        <div class="confirm-registration-page__status">
+            <p class="confirm-registration-page__note" role="status">Check the booking-confirmation email for your manage link.</p>
+        </div>
+    }
+    else if (_summary is null)
+    {
+        <div class="confirm-registration-page__intro">
+            <h1>We couldn’t open that link</h1>
+        </div>
+        <div class="confirm-registration-page__status">
+            <p class="confirm-registration-page__banner" role="alert">@(_error ?? "This confirmation link is invalid.")</p>
+            <p class="confirm-registration-page__note">If you need help, contact @CoordinatorContact.</p>
+        </div>
+    }
+    else
+    {
+        <div class="confirm-registration-page__intro">
+            <h1>@_summary.EventGroupTitle</h1>
+            <p class="confirm-registration-page__lead">Confirm your place for @_summary.AttendeeGroupName.</p>
+        </div>
+
+        <div class="confirm-registration-page__card">
+            <span class="confirm-registration-page__label">Your time</span>
+            <span class="confirm-registration-page__window">@_summary.LocationName · @_summary.Date.ToString("dddd, dd MMM yyyy") · @_summary.StartTime.ToString("HH\\:mm")</span>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="confirm-registration-page__banner" role="alert">@_error</p>
+            <p class="confirm-registration-page__note">If you need help, contact @CoordinatorContact.</p>
+        }
+
+        <div class="confirm-registration-page__actions">
+            <button data-action="confirm-registration" class="confirm-registration-page__button confirm-registration-page__button--primary"
+                    @onclick="ConfirmAsync" disabled="@_busy">@(_busy ? "Confirming…" : "Confirm my place")</button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public string Token { get; set; } = string.Empty;
+
+    private SelfRegistrationSummaryDto? _summary;
+    private string? _error;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _confirmed;
+    private readonly PendingSubmission _confirmSubmission = new();
+
+    private string CoordinatorContact =>
+        Services.GetService<AttendeePageOptions>()?.CoordinatorContact ?? "the recruitment team";
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _summary = null;
+        _error = null;
+        _confirmed = false;
+
+        try
+        {
+            var outcome = await Groups.ViewConfirmationAsync(Token, CancellationToken.None);
+            if (outcome.IsSuccess && outcome.Value is not null)
+            {
+                _summary = outcome.Value;
+            }
+            else if (outcome.StatusCode == 409)
+            {
+                _confirmed = true;
+            }
+            else
+            {
+                _error = outcome.ErrorMessage;
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_busy || _summary is null)
+            return;
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var outcome = await Groups.ConfirmAsync(
+                Token, _confirmSubmission.For(Token), CancellationToken.None);
+            if (outcome.IsSuccess)
+            {
+                _confirmSubmission.Complete();
+                _confirmed = true;
+                _summary = null;
+                return;
+            }
+
+            if (outcome.StatusCode == 409)
+            {
+                _confirmSubmission.Complete();
+                _confirmed = true;
+                _summary = null;
+                return;
+            }
+
+            _error = outcome.ErrorMessage;
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

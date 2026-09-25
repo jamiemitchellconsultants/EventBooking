@@ -1,0 +1,182 @@
+@page "/event-groups/{GroupId:guid}/events/{EventId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Services
+@layout EventBooking.Web.Layout.AttendeeLayout
+@inject IPublicEventGroupsClient Groups
+@inject IServiceProvider Services
+
+<PageTitle>Request a place</PageTitle>
+
+<section class="public-registration-page" aria-busy="@(_loading || _busy)">
+    @if (_loading)
+    {
+        <div class="public-registration-page__status" aria-label="Loading event">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+        </div>
+    }
+    else if (_sent)
+    {
+        <div class="public-registration-page__intro">
+            <h1>Check your email</h1>
+        </div>
+        <div class="public-registration-page__status">
+            <p class="public-registration-page__note" role="status">If that address can receive mail, a confirmation link is on its way. Use the link within 24 hours to confirm your place.</p>
+        </div>
+    }
+    else if (_event is null || _group is null)
+    {
+        <div class="public-registration-page__intro">
+            <h1>We couldn’t find that time</h1>
+        </div>
+        <div class="public-registration-page__status">
+            <p class="public-registration-page__banner" role="alert">@(_error ?? "This time is no longer open.")</p>
+            <p class="public-registration-page__note">If you need help, contact @CoordinatorContact.</p>
+        </div>
+    }
+    else
+    {
+        <div class="public-registration-page__intro">
+            <h1>@_group.Title</h1>
+            <p class="public-registration-page__lead">@_group.Description</p>
+        </div>
+
+        <div class="public-registration-page__card">
+            <span class="public-registration-page__label">Your time</span>
+            <span class="public-registration-page__window">@_event.LocationName, @_event.Address · @_event.Date.ToString("dddd, dd MMM yyyy") · @_event.StartTime.ToString("HH\\:mm")</span>
+            <span class="public-registration-page__types">@string.Join(" and ", _event.AppointmentTypeNames)</span>
+        </div>
+
+        @if (_error is not null)
+        {
+            <p class="public-registration-page__banner" role="alert">@_error</p>
+        }
+
+        <div class="public-registration-page__field">
+            <label for="registration-name">Full name</label>
+            <input id="registration-name" name="name" type="text" value="@_name"
+                   @onchange="(e => _name = e.Value?.ToString() ?? string.Empty)" />
+        </div>
+        <div class="public-registration-page__field">
+            <label for="registration-email">Email address</label>
+            <input id="registration-email" name="email" type="email" value="@_email"
+                   @onchange="(e => _email = e.Value?.ToString() ?? string.Empty)" />
+        </div>
+        <div class="public-registration-page__field">
+            <label for="registration-group">Your group</label>
+            <select id="registration-group" name="attendee-group" value="@_attendeeGroupId"
+                    @onchange="(e => _attendeeGroupId = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Choose your group…</option>
+                @foreach (var choice in _group.AttendeeGroups)
+                {
+                    <option value="@choice.Id.ToString("D")" title="@choice.Description">@choice.Name</option>
+                }
+            </select>
+        </div>
+
+        <p class="public-registration-page__note">Sending this request does not hold a place. Your place is booked only when you confirm through the email link.</p>
+
+        <div class="public-registration-page__actions">
+            <button data-action="send-request" class="public-registration-page__button public-registration-page__button--primary"
+                    @onclick="SendAsync" disabled="@_busy">@(_busy ? "Sending…" : "Send request")</button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public Guid GroupId { get; set; }
+
+    [Parameter]
+    public Guid EventId { get; set; }
+
+    private PublicEventGroupDto? _group;
+    private PublicEventDto? _event;
+    private string? _error;
+    private string _name = string.Empty;
+    private string _email = string.Empty;
+    private string _attendeeGroupId = string.Empty;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _sent;
+
+    private string CoordinatorContact =>
+        Services.GetService<AttendeePageOptions>()?.CoordinatorContact ?? "the recruitment team";
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _group = null;
+        _event = null;
+        _error = null;
+        _sent = false;
+
+        try
+        {
+            var outcome = await Groups.GetGroupAsync(GroupId, CancellationToken.None);
+            if (outcome.IsSuccess && outcome.Value is not null)
+            {
+                _group = outcome.Value;
+                _event = outcome.Value.Events.SingleOrDefault(x => x.Id == EventId);
+                if (_event is null)
+                    _error = "This time is no longer open.";
+            }
+            else
+            {
+                _error = outcome.StatusCode == 404
+                    ? "This group is no longer open."
+                    : outcome.ErrorMessage;
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        if (_busy || _group is null || _event is null)
+            return;
+
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name)
+            || string.IsNullOrWhiteSpace(_email)
+            || !_email.Contains('@')
+            || !Guid.TryParse(_attendeeGroupId, out var attendeeGroupId))
+        {
+            _error = "Enter your name, a valid email address and your group.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var outcome = await Groups.RequestAsync(
+                GroupId, EventId, _name.Trim(), _email.Trim(), attendeeGroupId,
+                CancellationToken.None);
+            if (outcome.IsSuccess)
+            {
+                _sent = true;
+                return;
+            }
+
+            _error = outcome.ErrorMessage;
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
