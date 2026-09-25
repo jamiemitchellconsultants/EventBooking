@@ -33,6 +33,28 @@ deployment environment to Keycloak__BaseUrl, Keycloak__AdminUsername, Keycloak__
 Keycloak__DemoPassword. The realm owns roles; EventBooking owns appointment-type scope. Secrets
 must not be committed.
 
+## Seed switches
+
+The seed job (`docker compose --profile seed run --rm eventbooking-seed [switches]`) always applies
+database roles and pending migrations first. Without `--demo` it stops there. The switches match
+JointBooking's seed host, with one deliberate inversion: JointBooking seeds by default and uses
+`--skip-seed` for migrate-only; EventBooking is migrate-only by default and seeds with `--demo`.
+
+| Switch | Effect |
+|---|---|
+| `--demo` | Seed the demo dataset, converge the Keycloak demo staff and send the demo invitations. |
+| `--reanchor [yyyy-MM-dd]` | Resolve demo dates against the given date (default: today in Europe/London) and move existing demo rows to match. Needs `--demo`. A malformed date fails the run rather than falling back to today. |
+| `--reseed` | Destructive: wipe the domain tables and recreate the Keycloak realm. Needs `--demo` and `EVENTBOOKING_ALLOW_RESEED=true`. |
+| `--load-fixture` | Write the load-test fixture. Needs `--demo` and the two `EVENTBOOKING_*LOAD_FIXTURE*` variables. |
+| `--verbose` | Print a `[seed]` line for every step; a failure prints the full exception. |
+| `--help`, `-h` | Print the full usage text. |
+
+To refresh stale demo dates without wiping anything:
+
+```bash
+docker compose --profile seed run --rm eventbooking-seed --demo --reanchor 2026-10-01 --verbose
+```
+
 ## Upgrade and rollback
 
 For an upgrade, change only `EVENTBOOKING_IMAGE_TAG`, run `docker compose pull`, run the seed job
