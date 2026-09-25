@@ -31,6 +31,8 @@ For the 500-confirmation capacity race, follow [the load-test guide](tests/load/
 - [Design package](docs/design/README.md) — requirements, architecture, security, deployment and
   non-functional targets.
 - [Application ontology](docs/ontology.md) — canonical domain terminology.
+- [User acceptance pack](docs/user-acceptance/README.md) — role-by-role scripts for the home-lab deployment.
+- [User guides](docs/user-guides/README.md) — background guidance for each role.
 - [Detailed implementation plans](docs/detailed-implementations/README.md) — task-by-task build
   instructions and their verification status.
 - [Home-lab operator runbook](deploy/home-lab/README.md) — install, upgrade, backup and recovery.
