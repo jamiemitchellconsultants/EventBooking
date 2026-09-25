@@ -31,6 +31,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [21](#entry-phase-5-web-front-end-tasks-24-27) | 2026-09-24 | Phase 5: web front end (Tasks 24–27) | product | The web project stays a standalone WASM client that references no server assembly. Its wire DTOs duplicate the JSON contract and are checked against the served OpenAPI document. |
 | [22](#entry-seed-and-deploy-eventbooking) | 2026-09-25 | Seed and deploy EventBooking | product | Use a migrate-only seed default, add LAB as the fourth managed active appointment type, retire the single-zone clock, and support local Compose plus an isolated home-lab topology behind shared Caddy and Keycloak services. |
 | [23](#entry-verify-and-document-eventbooking-release) | 2026-09-25 | Verify and document EventBooking release | product | - The booking handler reports its capacity-lock hold, from the event row lock through transaction release, through an Application timing port implemented by the existing API metrics service. |
+| [24](#entry-feat-seed-jointbooking-parity-for-reanchor-verbose-and-help) | 2026-09-25 | feat(seed): JointBooking parity for --reanchor, --verbose and --help | product | Add the missing switches, but not `--skip-seed`: the original EventBooking design deliberately made migrate-only the default with `--demo` as the opt-in, and reversing that is out of scope. |
 
 ---
 
@@ -924,5 +925,31 @@ The release gate needed proof that 500 simultaneous confirmations against one 10
 ---
 
 AI-Fingerprint: sha256:9f9491fefdaf
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+<a id="entry-feat-seed-jointbooking-parity-for-reanchor-verbose-and-help"></a>
+
+## Entry 24 — 2026-09-25 — feat(seed): JointBooking parity for --reanchor, --verbose and --help
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+Operators and the LocalAI installer drive both JointBooking's and EventBooking's seed hosts, but EventBooking's exposed a thinner command line: no reanchor date, no step-level progress, message-only failures and one line of usage.
+
+## Decision
+
+Add the missing switches, but not `--skip-seed`: the original EventBooking design deliberately made migrate-only the default with `--demo` as the opt-in, and reversing that is out of scope. A malformed `--reanchor` date fails the run instead of silently falling back to today as JointBooking does, because that fallback leaves demo dates stale with no signal.
+
+## Consequences
+
+One mental model across both repositories apart from the documented `--demo` / `--skip-seed` inversion. The steps interface loses its reanchor-to-today member in favour of one taking an optional date and returning the date applied. The LocalAI installer can gain matching reanchor and verbose switches in a follow-up.
+
+---
+
+AI-Fingerprint: sha256:698e9e4e0ff7
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
