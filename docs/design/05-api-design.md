@@ -93,6 +93,14 @@ There is deliberately no endpoint to create a profile, delete one, or edit roles
 | `PATCH /api/event-groups/{id}/events/{eventId}` | Toggle one membership `{isOpen, expectedVersion}` | `ManageEventGroups` |
 | `DELETE /api/event-groups/{id}/events/{eventId}?expectedVersion=` | Remove one membership; bookings stay valid | `ManageEventGroups` |
 
+## Public event groups
+
+| Method and path | Use case | Capability |
+|---|---|---|
+| `GET /api/public/event-groups` | Open groups with public choices | Anonymous |
+| `GET /api/public/event-groups/{id}` | One open group with public choices | Anonymous |
+| `POST /api/public/event-groups/{id}/registrations` | Submit `{eventId, attendeeGroupId, name, email}`; returns the confirmation token | Anonymous |
+
 ## Attendees, invites and bookings
 
 | Method and path | Use case | Capability |

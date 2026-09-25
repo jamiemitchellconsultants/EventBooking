@@ -39,6 +39,26 @@ public sealed record EventGroupEventResponse(
     Guid EventId, bool IsOpen,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
+/// <summary>One attendee-group choice with its public copy.</summary>
+public sealed record PublicAttendeeGroupChoiceResponse(
+    Guid AttendeeGroupId, string Name, string Description);
+
+/// <summary>One open event choice with its public copy.</summary>
+public sealed record PublicEventChoiceResponse(
+    Guid EventId, string LocationName, string Address, EventTimeResponse EventTime,
+    IReadOnlyList<string> AppointmentTypeCodes);
+
+/// <summary>One open event group with its public choices.</summary>
+public sealed record PublicEventGroupResponse(
+    Guid Id, string Title, string Description, long Version,
+    IReadOnlyList<PublicAttendeeGroupChoiceResponse> AttendeeGroups,
+    IReadOnlyList<PublicEventChoiceResponse> Events);
+
+/// <summary>The submitted self-registration request with its confirmation token.</summary>
+public sealed record SubmitSelfRegistrationResponse(
+    Guid RequestId, Guid EventGroupId, Guid EventId, Guid AttendeeGroupId,
+    string Name, string Email, DateTimeOffset ExpiresAt, string ConfirmationToken);
+
 /// <summary>One event group with its selected groups and memberships.</summary>
 public sealed record EventGroupResponse(
     Guid Id, string Title, string Description, bool IsOpen, long Version,
@@ -48,7 +68,8 @@ public sealed record EventGroupResponse(
 
 /// <summary>The singleton settings row.</summary>
 public sealed record SettingsResponse(
-    int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount, long Version,
+    int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount,
+    int PendingRegistrationExpiryHours, long Version,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>One staff access profile with its read-only roles and scope.</summary>
@@ -328,6 +349,38 @@ public static class ApiResponses
                     nameof(StaffCapability.ManageEventGroups))));
     }
 
+    /// <summary>Projects one open event group with its public choices.</summary>
+    /// <param name="result">The application result.</param>
+    /// <param name="zones">The zone abstraction.</param>
+    /// <returns>The response body.</returns>
+    public static PublicEventGroupResponse PublicEventGroup(
+        EventBooking.Application.SelfRegistrations.PublicEventGroupResult result,
+        IEventWindowZones zones)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new PublicEventGroupResponse(
+            result.Id, result.Title, result.Description, result.Version,
+            [.. result.AttendeeGroups.Select(x =>
+                new PublicAttendeeGroupChoiceResponse(x.AttendeeGroupId, x.Name, x.Description))],
+            [.. result.Events.Select(x => new PublicEventChoiceResponse(
+                x.EventId, x.LocationName, x.Address,
+                EventTimeResponse.From(
+                    x.Date, x.StartTime, x.DurationMinutes, x.TimeZoneId, zones),
+                x.AppointmentTypeCodes))]);
+    }
+
+    /// <summary>Projects one submitted self-registration request.</summary>
+    /// <param name="result">The application result.</param>
+    /// <returns>The response body.</returns>
+    public static SubmitSelfRegistrationResponse SubmittedRegistration(
+        EventBooking.Application.SelfRegistrations.SubmitSelfRegistrationResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new SubmitSelfRegistrationResponse(
+            result.RequestId, result.EventGroupId, result.EventId, result.AttendeeGroupId,
+            result.Name, result.Email, result.ExpiresAt, result.ConfirmationToken);
+    }
+
     /// <summary>Projects the settings row.</summary>
     /// <param name="result">The application result.</param>
     /// <param name="capabilities">The caller's capabilities.</param>
@@ -338,7 +391,7 @@ public static class ApiResponses
         ArgumentNullException.ThrowIfNull(result);
         return new SettingsResponse(
             result.InviteExpiryDays, result.MaxAutoRetryCount, result.InviteOptionCount,
-            result.Version,
+            result.PendingRegistrationExpiryHours, result.Version,
             CallerLinks.For(
                 capabilities,
                 new LinkCandidate("self", "getSettings", "/api/settings", null),
@@ -357,7 +410,7 @@ public static class ApiResponses
         ArgumentNullException.ThrowIfNull(view);
         return new SettingsResponse(
             view.InviteExpiryDays, view.MaxAutoRetryCount, view.InviteOptionCount,
-            view.Version,
+            view.PendingRegistrationExpiryHours, view.Version,
             CallerLinks.For(
                 capabilities,
                 new LinkCandidate("self", "getSettings", "/api/settings", null),

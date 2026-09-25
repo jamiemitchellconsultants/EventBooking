@@ -15,6 +15,7 @@ public sealed class SystemSettingsConfiguration : IEntityTypeConfiguration<Syste
         builder.Property(s => s.InviteExpiryDays).HasColumnName("invite_expiry_days");
         builder.Property(s => s.MaxAutoRetryCount).HasColumnName("max_auto_retry_count");
         builder.Property(s => s.InviteOptionCount).HasColumnName("invite_option_count");
+        builder.Property(s => s.PendingRegistrationExpiryHours).HasColumnName("pending_registration_expiry_hours");
         builder.Property(s => s.Version).HasColumnName("version").IsConcurrencyToken();
 
         builder.HasData(
@@ -24,6 +25,7 @@ public sealed class SystemSettingsConfiguration : IEntityTypeConfiguration<Syste
                 InviteExpiryDays = 7,
                 MaxAutoRetryCount = 2,
                 InviteOptionCount = 3,
+                PendingRegistrationExpiryHours = 48,
                 Version = 1L,
             });
     }

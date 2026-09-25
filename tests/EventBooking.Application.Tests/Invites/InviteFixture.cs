@@ -74,7 +74,7 @@ public sealed class InviteFixture
         fixture.Attendees.Items.Add(attendee);
         fixture.AttendeeId = attendee.Id;
         fixture.Profiles.Add(StaffAccessProfile.Create(fixture.Coordinator, Role.Coordinator, null));
-        fixture.Settings.Settings.Update(7, 2, optionCount);
+        fixture.Settings.Settings.Update(7, 2, optionCount, 48);
         return fixture;
     }
 

@@ -10,6 +10,7 @@ public sealed record AttendeeGroupDto(Guid Id, string Code, string Name, string 
     IReadOnlyList<Guid> RequirementTypeIds, int MemberCount,
     [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 public sealed record SettingsDto(int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount,
+    int PendingRegistrationExpiryHours,
     long Version, [property: System.Text.Json.Serialization.JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 public sealed class AdminClient(HttpClient http)
@@ -25,7 +26,7 @@ public sealed class AdminClient(HttpClient http)
     public Task<ApiOutcome<AppointmentTypeDto>> UpdateAppointmentTypeAsync(AppointmentTypeDto value, CancellationToken ct) => Send<AppointmentTypeDto>(HttpMethod.Put, $"/api/appointment-types/{value.Id}", new { value.Name, value.IsActive, expectedVersion = value.Version }, null, ct);
     public Task<ApiOutcome<AttendeeGroupDto>> CreateAttendeeGroupAsync(string code, string name, string description, IReadOnlyList<Guid> ids, IdempotencySubmission submission, CancellationToken ct) => Send<AttendeeGroupDto>(HttpMethod.Post, "/api/attendee-groups", new { code, name, description, appointmentTypeIds = ids }, submission, ct);
     public Task<ApiOutcome<AttendeeGroupDto>> UpdateAttendeeGroupAsync(AttendeeGroupDto value, CancellationToken ct) => Send<AttendeeGroupDto>(HttpMethod.Put, $"/api/attendee-groups/{value.Id}", new { value.Name, value.Description, appointmentTypeIds = value.RequirementTypeIds, value.IsActive, expectedVersion = value.Version }, null, ct);
-    public Task<ApiOutcome<SettingsDto>> UpdateSettingsAsync(SettingsDto value, CancellationToken ct) => Send<SettingsDto>(HttpMethod.Put, "/api/settings", new { value.InviteExpiryDays, value.MaxAutoRetryCount, value.InviteOptionCount, expectedVersion = value.Version }, null, ct);
+    public Task<ApiOutcome<SettingsDto>> UpdateSettingsAsync(SettingsDto value, CancellationToken ct) => Send<SettingsDto>(HttpMethod.Put, "/api/settings", new { value.InviteExpiryDays, value.MaxAutoRetryCount, value.InviteOptionCount, value.PendingRegistrationExpiryHours, expectedVersion = value.Version }, null, ct);
 
     private async Task<ApiOutcome<T>> Get<T>(string path, CancellationToken ct) { using var response = await http.GetAsync(path, ct); return await ApiCall.ReadAsync<T>(response, ct); }
     private async Task<ApiOutcome<T>> Send<T>(HttpMethod method, string path, object body, IdempotencySubmission? submission, CancellationToken ct)

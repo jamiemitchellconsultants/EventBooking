@@ -141,8 +141,8 @@ public static class AgentOperationCatalog
                 nameof(StaffCapability.ManageSettings), "get_settings", Read()),
             Staff("updateSettings", HttpMethods.Put, "/api/settings", "Settings",
                 "Update the system settings.",
-                "Updates invite expiry, automatic retry count and option count. Existing invites " +
-                "keep the values they were issued under.",
+                "Updates invite expiry, automatic retry count, option count and self-registration " +
+                "expiry. Existing invites keep the values they were issued under.",
                 nameof(StaffCapability.ManageSettings), "update_settings", Transition()),
 
             // Staff access. There is deliberately no create, delete or role edit (FR-10.5).
@@ -367,6 +367,22 @@ public static class AgentOperationCatalog
                 "Attendee Booking", "Cancel a booking.",
                 "Anonymous. Cancels the booking and optionally asks for a new time.",
                 "Anonymous attendee token flow; excluded by the approved remote MCP design."),
+
+            // Public event groups. Anonymous, rate-limited and REST-only like the attendee
+            // token routes above: an agent holding a staff token must not act as a registrant.
+            Excluded("listPublicEventGroups", HttpMethods.Get, "/api/public/event-groups",
+                "Public Event Groups", "List open event groups.",
+                "Anonymous. Lists every open group with its public choices.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("getPublicEventGroup", HttpMethods.Get, "/api/public/event-groups/{id}",
+                "Public Event Groups", "Read one open event group.",
+                "Anonymous. Reads one open group with its public choices.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("submitSelfRegistration", HttpMethods.Post,
+                "/api/public/event-groups/{id}/registrations", "Public Event Groups",
+                "Submit a registration request.",
+                "Anonymous. Submits a request to join an event and returns its confirmation token.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
         };
 
         var byId = new Dictionary<string, AgentOperation>(StringComparer.Ordinal);

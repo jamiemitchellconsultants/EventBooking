@@ -1,5 +1,6 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.EventGroups;
+using EventBooking.Domain.SelfRegistrations;
 using EventBooking.Infrastructure.Persistence.Locking;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,4 +48,22 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
 
     /// <summary>Stages a new event group for the next save.</summary>
     public void Add(EventGroup group) => context.EventGroups.Add(group);
+
+    /// <summary>Stages a new pending registration for the next save.</summary>
+    public void AddRegistration(PendingRegistration registration) =>
+        context.PendingRegistrations.Add(registration);
+
+    /// <summary>Finds the pending registration for one event and email address.</summary>
+    public Task<PendingRegistration?> FindInFlightAsync(
+        Guid eventId, string email, CancellationToken cancellationToken) =>
+        context.PendingRegistrations.SingleOrDefaultAsync(
+            x => x.EventId == eventId && x.Email == email
+                && x.Status == SelfRegistrationStatus.Pending,
+            cancellationToken);
+
+    /// <summary>Gets one pending registration by its request identifier.</summary>
+    public Task<PendingRegistration?> GetRegistrationAsync(
+        Guid requestId, CancellationToken cancellationToken) =>
+        context.PendingRegistrations.SingleOrDefaultAsync(
+            x => x.RequestId == requestId, cancellationToken);
 }

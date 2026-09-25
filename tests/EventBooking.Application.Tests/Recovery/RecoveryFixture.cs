@@ -139,7 +139,7 @@ public sealed class RecoveryFixture
             .TransitionTo(BookingAppointmentStatus.NoShow, fixture.Coordinator, Now, false, true);
         fixture.Profiles.Add(StaffAccessProfile.Create(fixture.Coordinator, Role.Coordinator, null));
         fixture.Profiles.Add(StaffAccessProfile.Create(fixture.MedStaff, Role.AppointmentStaff, med.Id));
-        fixture.Settings.Settings.Update(7, 2, 1);
+        fixture.Settings.Settings.Update(7, 2, 1, 48);
         return fixture;
     }
 

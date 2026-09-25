@@ -87,6 +87,7 @@ public class AttendeeEndpointTests(ApiFactory factory)
                 InviteExpiryDays = 7,
                 MaxAutoRetryCount = 1,
                 InviteOptionCount = 3,
+                PendingRegistrationExpiryHours = 48,
                 ExpectedVersion = read!.Version,
             });
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
@@ -535,7 +536,8 @@ public class AttendeeEndpointTests(ApiFactory factory)
     private sealed record AttendeeGroupItem(Guid Id, string Code, string Name, bool IsActive);
 
     private sealed record SettingsValues(
-        int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount, long Version);
+        int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount,
+        int PendingRegistrationExpiryHours, long Version);
 
     private sealed record JsonProblem(string Type, List<JsonProblemError> Errors);
 

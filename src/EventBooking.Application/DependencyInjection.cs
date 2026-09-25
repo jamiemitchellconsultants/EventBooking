@@ -84,6 +84,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ManageEventGroupHandler>();
         services.AddScoped<ListEventGroupsHandler>();
 
+        // Self-registrations.
+        services.AddScoped<SelfRegistrations.SubmitSelfRegistrationHandler>();
+
         // Administration.
         services.AddScoped<AdminSettingsHandler>();
         services.AddScoped<MeHandler>();

@@ -179,6 +179,7 @@ app.MapStaffAccessEndpoints();
 app.MapEventProposalEndpoints();
 app.MapEventEndpoints();
 app.MapEventGroupEndpoints();
+app.MapSelfRegistrationEndpoints();
 
 app.MapAttendeeEndpoints();
 app.MapDashboardEndpoints();

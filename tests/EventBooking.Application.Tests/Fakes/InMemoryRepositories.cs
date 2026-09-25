@@ -6,6 +6,7 @@ using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.EventGroups;
+using EventBooking.Domain.SelfRegistrations;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Locations;
@@ -503,6 +504,23 @@ public sealed class InMemoryEventGroupRepository : IEventGroupRepository
     /// <summary>Seeds the store directly.</summary>
     /// <param name="group">The event group to hold.</param>
     public void Add(EventGroup group) => Items.Add(group);
+
+    /// <summary>Gets the mutable pending registration collection.</summary>
+    public List<PendingRegistration> Registrations { get; } = [];
+
+    /// <summary>Stages a new pending registration for the next save.</summary>
+    public void AddRegistration(PendingRegistration registration) => Registrations.Add(registration);
+
+    /// <summary>Finds the pending registration for one event and email address.</summary>
+    public Task<PendingRegistration?> FindInFlightAsync(
+        Guid eventId, string email, CancellationToken cancellationToken) =>
+        Task.FromResult(Registrations.SingleOrDefault(x =>
+            x.EventId == eventId && x.Email == email && x.Status == SelfRegistrationStatus.Pending));
+
+    /// <summary>Gets one pending registration by its request identifier.</summary>
+    public Task<PendingRegistration?> GetRegistrationAsync(
+        Guid requestId, CancellationToken cancellationToken) =>
+        Task.FromResult(Registrations.SingleOrDefault(x => x.RequestId == requestId));
 }
 
 public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeRepository

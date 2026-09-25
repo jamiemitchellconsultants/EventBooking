@@ -79,4 +79,10 @@ public enum AuditAction
     EventGroupUpdated = 39,
     /// <summary>Records staff changing an event group's event membership.</summary>
     EventGroupEventChanged = 40,
+    /// <summary>Records an anonymous caller submitting a self-registration request.</summary>
+    SelfRegistrationRequested = 41,
+    /// <summary>Records an anonymous caller confirming a self-registration request.</summary>
+    SelfRegistrationConfirmed = 42,
+    /// <summary>Records the sweep expiring an unconfirmed self-registration request.</summary>
+    SelfRegistrationExpired = 43,
 }

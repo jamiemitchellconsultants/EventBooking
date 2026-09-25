@@ -230,6 +230,8 @@ public sealed class OutboxDispatcher(
                 await InviteContextAsync(scope, row, codes, ct),
             EmailTemplate.BookingConfirmation =>
                 await BookingContextAsync(scope, row, attendee.Id, codes, ct),
+            EmailTemplate.SelfRegistrationConfirmation =>
+                await BookingContextAsync(scope, row, attendee.Id, codes, ct),
             EmailTemplate.EventCancelledRebookingNeeded =>
                 await CancellationContextAsync(scope, row, attendee.Id, codes, ct),
             _ => throw new InvalidOperationException($"Template {row.TemplateName} cannot be rendered."),

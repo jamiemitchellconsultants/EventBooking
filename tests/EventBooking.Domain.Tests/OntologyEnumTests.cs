@@ -96,6 +96,7 @@ public class OntologyEnumTests
                 "AttendeeGroupCreated", "AttendeeGroupUpdated",
                 "SystemSettingsChanged",
                 "EventGroupCreated", "EventGroupUpdated", "EventGroupEventChanged",
+                "SelfRegistrationRequested", "SelfRegistrationConfirmed", "SelfRegistrationExpired",
             },
             Enum.GetNames<AuditAction>());
     }
@@ -117,7 +118,7 @@ public class OntologyEnumTests
             new[]
             {
                 "AttendeeInvite", "BookingConfirmation", "EventCancelledRebookingNeeded",
-                "AttendeeReinvite",
+                "AttendeeReinvite", "SelfRegistrationConfirmation",
             },
             Enum.GetNames<EmailTemplate>());
     }

@@ -12,9 +12,11 @@ public static class SettingsEndpoints
     /// <param name="InviteExpiryDays">Days an invitation stays usable.</param>
     /// <param name="MaxAutoRetryCount">Automatic re-issues before giving up.</param>
     /// <param name="InviteOptionCount">Options offered per invitation.</param>
+    /// <param name="PendingRegistrationExpiryHours">Hours a self-registration request stays confirmable.</param>
     /// <param name="ExpectedVersion">The version the caller read.</param>
     public sealed record UpdateSettingsRequest(
-        int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount, long ExpectedVersion);
+        int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount,
+        int PendingRegistrationExpiryHours, long ExpectedVersion);
 
     /// <summary>Maps the settings routes.</summary>
     /// <param name="app">The endpoint route builder.</param>
@@ -56,7 +58,7 @@ public static class SettingsEndpoints
                 new SaveSystemSettingsCommand(
                     caller.RequireStaffUserId(), request.InviteExpiryDays,
                     request.MaxAutoRetryCount, request.InviteOptionCount,
-                    request.ExpectedVersion),
+                    request.PendingRegistrationExpiryHours, request.ExpectedVersion),
                 cancellationToken);
             if (result.IsFailure)
             {

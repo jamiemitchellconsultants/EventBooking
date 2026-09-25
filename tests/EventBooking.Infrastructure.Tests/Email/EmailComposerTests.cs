@@ -58,6 +58,16 @@ public sealed class EmailComposerTests
     }
 
     [Fact]
+    public void Self_registration_confirmation_carries_confirmed_subject_and_manage_url()
+    {
+        var message = EmailComposer.Compose("SelfRegistrationConfirmation", LondonJuly("MED"));
+
+        Assert.StartsWith("Confirmed:", message.Subject, StringComparison.Ordinal);
+        Assert.Contains("https://portal.example.invalid/book/token", message.TextBody);
+        Assert.Contains("https://portal.example.invalid/book/token", message.HtmlBody);
+    }
+
+    [Fact]
     public void Unknown_template_is_refused()
     {
         Assert.Throws<ArgumentException>(() =>

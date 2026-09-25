@@ -183,6 +183,7 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
             inviteExpiryDays = 10,
             maxAutoRetryCount = 1,
             inviteOptionCount = 4,
+            pendingRegistrationExpiryHours = 72,
             expectedVersion = read.GetProperty("version").GetInt64(),
         });
 
@@ -190,6 +191,7 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
         var body = await BodyAsync(written);
         Assert.Equal(10, body.GetProperty("inviteExpiryDays").GetInt32());
         Assert.Equal(4, body.GetProperty("inviteOptionCount").GetInt32());
+        Assert.Equal(72, body.GetProperty("pendingRegistrationExpiryHours").GetInt32());
     }
 
     [Fact]
@@ -252,6 +254,7 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
         var response = await client.PutAsJsonAsync("/api/settings", new
         {
             inviteExpiryDays = 7, maxAutoRetryCount = 2, inviteOptionCount = 9,
+            pendingRegistrationExpiryHours = 48,
             expectedVersion = read.GetProperty("version").GetInt64(),
         });
 

@@ -891,7 +891,7 @@
           "Settings"
         ],
         "summary": "Update the system settings.",
-        "description": "Updates invite expiry, automatic retry count and option count. Existing invites keep the values they were issued under.",
+        "description": "Updates invite expiry, automatic retry count, option count and self-registration expiry. Existing invites keep the values they were issued under.",
         "operationId": "updateSettings",
         "requestBody": {
           "content": {
@@ -2531,6 +2531,165 @@
           "destructive": true,
           "idempotent": true,
           "openWorld": false
+        }
+      }
+    },
+    "/api/public/event-groups": {
+      "get": {
+        "tags": [
+          "Public Event Groups"
+        ],
+        "summary": "List open event groups.",
+        "description": "Anonymous. Lists every open group with its public choices.",
+        "operationId": "listPublicEventGroups",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfPublicEventGroupResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-eventbooking-list": true
+      }
+    },
+    "/api/public/event-groups/{id}": {
+      "get": {
+        "tags": [
+          "Public Event Groups"
+        ],
+        "summary": "Read one open event group.",
+        "description": "Anonymous. Reads one open group with its public choices.",
+        "operationId": "getPublicEventGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicEventGroupResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/event-groups/{id}/registrations": {
+      "post": {
+        "tags": [
+          "Public Event Groups"
+        ],
+        "summary": "Submit a registration request.",
+        "description": "Anonymous. Submits a request to join an event and returns its confirmation token.",
+        "operationId": "submitSelfRegistration",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitSelfRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitSelfRegistrationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -6296,6 +6455,27 @@
           }
         }
       },
+      "PageOfPublicEventGroupResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicEventGroupResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PageOfStaffAccessResponse": {
         "required": [
           "items",
@@ -6491,6 +6671,100 @@
           }
         }
       },
+      "PublicAttendeeGroupChoiceResponse": {
+        "required": [
+          "attendeeGroupId",
+          "name",
+          "description"
+        ],
+        "type": "object",
+        "properties": {
+          "attendeeGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicEventChoiceResponse": {
+        "required": [
+          "eventId",
+          "locationName",
+          "address",
+          "eventTime",
+          "appointmentTypeCodes"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "eventTime": {
+            "$ref": "#/components/schemas/EventTimeResponse"
+          },
+          "appointmentTypeCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PublicEventGroupResponse": {
+        "required": [
+          "id",
+          "title",
+          "description",
+          "version",
+          "attendeeGroups",
+          "events"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "attendeeGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicAttendeeGroupChoiceResponse"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicEventChoiceResponse"
+            }
+          }
+        }
+      },
       "RecordAcceptanceOutcome": {
         "required": [
           "proposalId",
@@ -6663,6 +6937,7 @@
           "inviteExpiryDays",
           "maxAutoRetryCount",
           "inviteOptionCount",
+          "pendingRegistrationExpiryHours",
           "version",
           "_links"
         ],
@@ -6685,6 +6960,14 @@
             "format": "int32"
           },
           "inviteOptionCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingRegistrationExpiryHours": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -6797,6 +7080,81 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ApiLink"
             }
+          }
+        }
+      },
+      "SubmitSelfRegistrationRequest": {
+        "required": [
+          "eventId",
+          "attendeeGroupId",
+          "name",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attendeeGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SubmitSelfRegistrationResponse": {
+        "required": [
+          "requestId",
+          "eventGroupId",
+          "eventId",
+          "attendeeGroupId",
+          "name",
+          "email",
+          "expiresAt",
+          "confirmationToken"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attendeeGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmationToken": {
+            "type": "string"
           }
         }
       },
@@ -6962,6 +7320,7 @@
           "inviteExpiryDays",
           "maxAutoRetryCount",
           "inviteOptionCount",
+          "pendingRegistrationExpiryHours",
           "expectedVersion"
         ],
         "type": "object",
@@ -6983,6 +7342,14 @@
             "format": "int32"
           },
           "inviteOptionCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingRegistrationExpiryHours": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -7127,6 +7494,9 @@
     },
     {
       "name": "Event groups"
+    },
+    {
+      "name": "Public Event Groups"
     },
     {
       "name": "Attendees"

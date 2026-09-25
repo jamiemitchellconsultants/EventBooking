@@ -76,7 +76,7 @@ public sealed class BookingFixture
         fixture.Events.Items.Add(eventItem);
         fixture.EventId = eventItem.Id;
         fixture.Eligibility.EligibleInOrder = [eventItem.Id];
-        fixture.Settings.Settings.Update(7, 2, 1);
+        fixture.Settings.Settings.Update(7, 2, 1, 48);
         return fixture;
     }
 

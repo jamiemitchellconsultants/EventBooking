@@ -10,7 +10,7 @@ public sealed class SettingsPageTests : BunitContext
     public void AllThreeFutureInviteSettingsAreBounded()
     {
         AdminPageFixture.Register(Services, AdminPageFixture.Json(HttpStatusCode.OK,
-            """{"inviteExpiryDays":7,"maxAutoRetryCount":2,"inviteOptionCount":3,"version":1,"_links":{"update":{"href":"/api/settings","method":"PUT","operationId":"updateSettings"}}}"""));
+            """{"inviteExpiryDays":7,"maxAutoRetryCount":2,"inviteOptionCount":3,"pendingRegistrationExpiryHours":48,"version":1,"_links":{"update":{"href":"/api/settings","method":"PUT","operationId":"updateSettings"}}}"""));
         var cut = Render<Settings>();
         cut.WaitForElement("#invite-expiry-days");
         Assert.Equal("1", cut.Find("#invite-expiry-days").GetAttribute("min"));
