@@ -8,6 +8,7 @@ using EventBooking.Domain.Notifications;
 using EventBooking.Domain.Events;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Persistence.Queries;
+using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventBooking.Infrastructure.Tests;
@@ -59,7 +60,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         clock.UtcNow = new DateTimeOffset(2026, 9, 3, 23, 30, 0, TimeSpan.Zero);
 
         await using var read = NewContext(clock);
-        var row = Assert.Single(await new DashboardQueries(read, clock)
+        var row = Assert.Single(await new DashboardQueries(read, clock, new NodaTimeEventWindowZones())
             .AwaitingAvailabilityAsync(CancellationToken.None));
 
         Assert.Equal("C. Diallo", row.Name);
@@ -208,7 +209,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         }
 
         await using var read = NewContext(clock);
-        var row = Assert.Single(await new DashboardQueries(read, clock)
+        var row = Assert.Single(await new DashboardQueries(read, clock, new NodaTimeEventWindowZones())
             .NoResponseAsync(CancellationToken.None));
 
         Assert.Equal("D. Reyes", row.Name);
@@ -258,7 +259,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         }
 
         await using var read = NewContext(clock);
-        var rows = await new DashboardQueries(read, clock).EventsOverviewAsync(CancellationToken.None);
+        var rows = await new DashboardQueries(read, clock, new NodaTimeEventWindowZones()).EventsOverviewAsync(CancellationToken.None);
         var row = rows.Single(s => s.Date == new DateOnly(2026, 9, 21));
 
         Assert.Equal(new TimeOnly(13, 0), row.EndTime);
@@ -267,6 +268,28 @@ public class DashboardQueryTests(PostgresFixture fixture)
         var drugAndAlcohol = row.Capacities.Single(c => c.Code == "DAT");
         Assert.Equal(10, drugAndAlcohol.TotalHeadcount);
         Assert.Equal(9, drugAndAlcohol.RemainingCapacity);
+    }
+
+    [Fact]
+    public async Task TheOverviewCutsOffAtTheLocationDateNotTheUtcDate()
+    {
+        await fixture.ResetAsync();
+        // 00:30 on 22 September in London is still 21 September at UTC.
+        var clock = new MovableLondonClock(new DateTimeOffset(2026, 9, 21, 23, 30, 0, TimeSpan.Zero));
+
+        await using (var write = NewContext(clock))
+        {
+            write.Events.AddRange(
+                EventFor(new DateOnly(2026, 9, 21), new TimeOnly(9, 0)),
+                EventFor(new DateOnly(2026, 9, 22), new TimeOnly(9, 0)));
+            await write.SaveChangesAsync();
+        }
+
+        await using var read = NewContext(clock);
+        var rows = await new DashboardQueries(read, clock, new NodaTimeEventWindowZones())
+            .EventsOverviewAsync(CancellationToken.None);
+
+        Assert.Equal(new DateOnly(2026, 9, 22), Assert.Single(rows).Date);
     }
 
     [Fact]
@@ -284,7 +307,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         }
 
         await using var read = NewContext(clock);
-        Assert.Empty(await new DashboardQueries(read, clock).EventsOverviewAsync(CancellationToken.None));
+        Assert.Empty(await new DashboardQueries(read, clock, new NodaTimeEventWindowZones()).EventsOverviewAsync(CancellationToken.None));
     }
 
     [Fact]
@@ -315,7 +338,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
 
         await using var read = NewContext(clock);
         var row = Assert.Single(
-            await new DashboardQueries(read, clock).LatestEmailStatusAsync(CancellationToken.None));
+            await new DashboardQueries(read, clock, new NodaTimeEventWindowZones()).LatestEmailStatusAsync(CancellationToken.None));
 
         Assert.Equal(attendeeId, row.AttendeeId);
         Assert.Equal(EmailTemplate.AttendeeReinvite, row.TemplateName);
@@ -345,7 +368,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
 
         await using var read = NewContext(clock);
         Assert.Empty(
-            await new DashboardQueries(read, clock).LatestEmailStatusAsync(CancellationToken.None));
+            await new DashboardQueries(read, clock, new NodaTimeEventWindowZones()).LatestEmailStatusAsync(CancellationToken.None));
     }
 
     /// <summary>Retry visibility follows the latest delivery's current attendee and event context.</summary>
@@ -419,7 +442,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         }
 
         await using var read = NewContext(clock);
-        var rows = await new DashboardQueries(read, clock)
+        var rows = await new DashboardQueries(read, clock, new NodaTimeEventWindowZones())
             .LatestEmailStatusAsync(CancellationToken.None);
 
         var actionable = rows.Single(row => row.AttendeeId == actionableId);
@@ -436,7 +459,7 @@ public class DashboardQueryTests(PostgresFixture fixture)
         }
 
         await using var reread = NewContext(clock);
-        var terminal = (await new DashboardQueries(reread, clock)
+        var terminal = (await new DashboardQueries(reread, clock, new NodaTimeEventWindowZones())
             .LatestEmailStatusAsync(CancellationToken.None))
             .Single(row => row.AttendeeId == actionableId);
         Assert.Equal(EmailTemplate.AttendeeInvite, terminal.TemplateName);

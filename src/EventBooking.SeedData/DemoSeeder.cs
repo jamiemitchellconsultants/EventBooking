@@ -106,25 +106,36 @@ public sealed class DemoSeeder(
             {
                 x.Id, x.LocationId, x.ProposalId,
                 Date = x.Window.Date, Start = x.Window.StartTime, x.Window.DurationMinutes,
+                StartUtc = EF.Property<DateTimeOffset?>(x, EventStartInstants.PropertyName),
             })
             .ToListAsync(ct);
+        // Every demo row moves in this one transaction, so a demo row's current window never
+        // blocks another demo row's target: only rows the demo does not own can occupy one.
+        var demoProposalIds = existingEvents.Select(x => x.ProposalId).Concat(proposalIds).ToList();
 
         foreach (var spec in target.Events)
         {
             var current = existingEvents.SingleOrDefault(x => x.Id == spec.Id);
             if (current is null) continue;
-            var locationId = locationByCode[spec.LocationCode].Id;
-            if (current.LocationId != locationId || current.Start != spec.StartTime
+            var location = locationByCode[spec.LocationCode];
+            if (current.LocationId != location.Id || current.Start != spec.StartTime
                 || current.DurationMinutes != spec.DurationMinutes || current.ProposalId == Guid.Empty)
                 throw new SeedException($"Demo Event {spec.Id} no longer has its seeded identity.");
-            var collision = await database.Events.AnyAsync(x => x.Id != spec.Id
-                && x.LocationId == locationId && x.Window.Date == spec.Date
-                && x.Window.StartTime == spec.StartTime, ct);
+            var collision = await database.Events.AnyAsync(x => !eventIds.Contains(x.Id)
+                    && x.LocationId == location.Id && x.Window.Date == spec.Date
+                    && x.Window.StartTime == spec.StartTime, ct)
+                || await database.EventProposals.AnyAsync(x => !demoProposalIds.Contains(x.Id)
+                    && x.LocationId == location.Id && x.Window.Date == spec.Date
+                    && x.Window.StartTime == spec.StartTime, ct);
             if (collision)
                 throw new SeedException($"Cannot reanchor demo Event {spec.Id}; its target window is occupied.");
-            if (current.Date == spec.Date) continue;
+            // start_utc is derived from the window, so moving the date in SQL must restamp it,
+            // or the eligibility query keeps reading the old instant.
+            var startUtc = EventStartInstants.InstantOf(
+                new EventWindow(spec.Date, spec.StartTime, spec.DurationMinutes), location.TimeZoneId, zones);
+            if (current.Date == spec.Date && current.StartUtc == startUtc) continue;
             var eventsMoved = await database.Database.ExecuteSqlInterpolatedAsync(
-                $"""UPDATE "event" SET "date" = {spec.Date} WHERE "id" = {spec.Id}""", ct);
+                $"""UPDATE "event" SET "date" = {spec.Date}, "start_utc" = {startUtc} WHERE "id" = {spec.Id}""", ct);
             var proposalsMoved = await database.Database.ExecuteSqlInterpolatedAsync(
                 $"""UPDATE "event_proposal" SET "date" = {spec.Date} WHERE "id" = {current.ProposalId}""", ct);
             if (eventsMoved != 1 || proposalsMoved != 1)
@@ -147,7 +158,7 @@ public sealed class DemoSeeder(
             if (current.LocationId != locationId || current.Start != spec.StartTime
                 || current.DurationMinutes != spec.DurationMinutes || current.Status != EventProposalStatus.Open)
                 throw new SeedException($"Demo EventProposal {spec.Id} no longer has its seeded identity.");
-            var collision = await database.EventProposals.AnyAsync(x => x.Id != spec.Id
+            var collision = await database.EventProposals.AnyAsync(x => !demoProposalIds.Contains(x.Id)
                 && x.LocationId == locationId && x.Window.Date == spec.Date
                 && x.Window.StartTime == spec.StartTime, ct);
             if (collision)
@@ -353,6 +364,9 @@ public sealed class DemoSeeder(
                 throw new SeedException($"Demo attendee {spec.Email} cannot use inactive group {spec.GroupCode}.");
             var group = await groups.GetByCodeAsync(spec.GroupCode, ct)
                 ?? throw new SeedException($"Demo AttendeeGroup {spec.GroupCode} is missing.");
+            // The attendee and its journey commit together. Committed apart, a journey that failed
+            // part-way would leave an attendee a rerun skips as finished because its email exists.
+            await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
             var result = await saveAttendee.CreateAsync(
                 new CreateAttendeeCommand(CoordinatorUserId(), spec.Name, spec.Email, group.Id), ct);
             if (result.IsFailure)
@@ -360,6 +374,7 @@ public sealed class DemoSeeder(
             var attendee = await attendees.GetAsync(result.Value, ct)
                 ?? throw new SeedException($"Created demo Attendee {spec.Email} cannot be loaded.");
             await BuildJourneyAsync(attendee, group, groupSpec, spec, data, ct);
+            await transaction.CommitAsync(ct);
             created++;
         }
         return created;

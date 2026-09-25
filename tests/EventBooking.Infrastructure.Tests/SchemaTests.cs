@@ -1,9 +1,13 @@
 using EventBooking.Domain.AppointmentTypes;
+using EventBooking.Domain.AttendeeGroups;
+using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Locations;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 
 namespace EventBooking.Infrastructure.Tests;
@@ -35,14 +39,17 @@ public class SchemaTests(PostgresFixture fixture)
             // correlation columns, the migration replacing the attendee status
             // index with the list page's composite, the migration adding the
             // Idempotency-Key retention table, the migration retaining the replayed
-            // response's Location and content type, and the migration retiring the
-            // predecessor's fixed reference seeds. Committed migrations are never
-            // rewritten: the chain is what keeps the schema regenerable.
+            // response's Location and content type, the migration retiring the
+            // predecessor's fixed reference seeds, and the migration granting the
+            // application role every table, including those later migrations create.
+            // Committed migrations are never rewritten: the chain is what keeps the
+            // schema regenerable.
             Assert.Equal(
                 ["20260920120000_InitialSchema", "20260920145721_RequireEventStartInstant",
                     "20260923202304_InviteSettingsSnapshots", "20260924040652_EmailOutboxColumns",
                     "20260924045221_AttendeeListIndex", "20260924095643_IdempotencyRetention",
-                    "20260924123603_IdempotencyReplayHeaders", "20260924201133_RetireTransitionalSeedRows"],
+                    "20260924123603_IdempotencyReplayHeaders", "20260924201133_RetireTransitionalSeedRows",
+                    "20260925034812_GrantApplicationRoleOnLaterTables"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();
@@ -52,6 +59,68 @@ public class SchemaTests(PostgresFixture fixture)
             Assert.Empty(await context.AttendeeGroups.ToListAsync());
             Assert.Empty(await context.Locations.ToListAsync());
             Assert.Equal(1, (await context.SystemSettings.SingleAsync()).Id);
+
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+            // A table a later migration created in the same run still reaches the application
+            // role, and the audit trail stays append-only.
+            Assert.Equal(true, await ScalarAsync(connection,
+                "SELECT has_table_privilege('eventbooking_app', 'idempotency_record', 'INSERT')"));
+            Assert.Equal(false, await ScalarAsync(connection,
+                "SELECT has_table_privilege('eventbooking_app', 'audit_log', 'UPDATE')"));
+            await ExecuteAsync(connection, "CREATE TABLE later_table (id uuid PRIMARY KEY)");
+            Assert.Equal(true, await ScalarAsync(connection,
+                "SELECT has_table_privilege('eventbooking_app', 'later_table', 'INSERT')"));
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName);
+        }
+    }
+
+    [Fact]
+    public async Task RetiringTheTransitionalSeedsKeepsRowsExistingDataStillUses()
+    {
+        var databaseName = $"eventbooking_upgrade_{Guid.NewGuid():N}";
+        var connectionString = ConnectionTo(databaseName);
+
+        try
+        {
+            await CreateDatabaseAsync(databaseName);
+            await ApplyRolesScriptAsync(connectionString);
+
+            await using (var before = NewContext(connectionString))
+            {
+                await before.GetService<IMigrator>()
+                    .MigrateAsync("20260924123603_IdempotencyReplayHeaders");
+
+                // Real data built on the predecessor's seeds: an event at the transitional
+                // location offering all three types, and an attendee in Cabin Crew.
+                var proposal = ProposalFixture.Create(
+                    Guid.NewGuid(),
+                    new EventWindow(new DateOnly(2026, 9, 10), new TimeOnly(9, 0), 240),
+                    Guid.NewGuid());
+                foreach (var type in AppointmentTypeIds.All)
+                    proposal.Accept(type, Guid.NewGuid(), 1);
+                before.EventProposals.Add(proposal);
+                before.Events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
+                var cabinCrew = await before.AttendeeGroups.Include(g => g.Requirements)
+                    .SingleAsync(g => g.Id == AttendeeGroupIds.CabinCrew);
+                before.Attendees.Add(Attendee.Create(
+                    Guid.NewGuid(), "Kept Attendee", "kept@example.com", cabinCrew, ProposalFixture.Now));
+                await before.SaveChangesAsync();
+            }
+
+            await using var context = NewContext(connectionString);
+            await context.Database.MigrateAsync();
+
+            Assert.Equal([ProposalFixture.LocationId],
+                await context.Locations.Select(l => l.Id).ToListAsync());
+            Assert.Equal(["DAT", "MED", "UNI"],
+                await context.AppointmentTypes.OrderBy(t => t.Code).Select(t => t.Code).ToListAsync());
+            var kept = Assert.Single(await context.AttendeeGroups.Include(g => g.Requirements).ToListAsync());
+            Assert.Equal(AttendeeGroupIds.CabinCrew, kept.Id);
+            Assert.Equal(3, kept.Requirements.Count);
         }
         finally
         {

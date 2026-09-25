@@ -2,10 +2,12 @@
 using EventBooking.Application;
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Notifications;
+using EventBooking.Domain.Events;
 using EventBooking.Infrastructure;
 using EventBooking.Infrastructure.Audit;
 using EventBooking.Infrastructure.Email;
 using EventBooking.Infrastructure.Persistence;
+using EventBooking.Infrastructure.Time;
 using EventBooking.Infrastructure.Tokens;
 using EventBooking.SeedData;
 using Microsoft.EntityFrameworkCore;
@@ -74,14 +76,18 @@ public sealed class DemoSeederIntegrationTests : IAsyncLifetime
         Assert.Single(_mail.Recipients);
     }
 
-    [Fact]
-    public async Task ReanchorOnALaterDayMovesOwnedWindowsWithoutChangingCounts()
+    [Theory]
+    [InlineData(1)]
+    // Event 1 (LONDON 09:00, anchor+3) lands on event 7's old slot (anchor+18), and its
+    // proposal likewise; both move together, so neither is a collision.
+    [InlineData(15)]
+    public async Task ReanchorOnALaterDayMovesOwnedWindowsWithoutChangingCounts(int days)
     {
         await RunSeedAndInvitationsAsync();
         var before = await CountsAsync();
 
-        _clock.Advance(TimeSpan.FromDays(1));
-        DemoSeedSpec.OverrideAnchor(new DateOnly(2026, 9, 23));
+        _clock.Advance(TimeSpan.FromDays(days));
+        DemoSeedSpec.OverrideAnchor(new DateOnly(2026, 9, 22).AddDays(days));
         var target = DemoSeedSpec.Build();
         await using (var scope = _provider.CreateAsyncScope())
         {
@@ -99,11 +105,45 @@ public sealed class DemoSeederIntegrationTests : IAsyncLifetime
         var eventDates = await db.Events.Where(x => eventIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Window.Date);
         Assert.All(target.Events, spec => Assert.Equal(spec.Date, eventDates[spec.Id]));
+        var startInstants = await db.Events.Where(x => eventIds.Contains(x.Id))
+            .Select(x => new { x.Id, StartUtc = EF.Property<DateTimeOffset?>(x, EventStartInstants.PropertyName) })
+            .ToDictionaryAsync(x => x.Id, x => x.StartUtc);
+        var zones = new NodaTimeEventWindowZones();
+        Assert.All(target.Events, spec => Assert.Equal(
+            EventStartInstants.InstantOf(
+                new EventWindow(spec.Date, spec.StartTime, spec.DurationMinutes),
+                target.Locations.Single(x => x.Code == spec.LocationCode).TimeZoneId, zones),
+            startInstants[spec.Id]));
         var proposalIds = target.OpenProposals.Select(x => x.Id).ToList();
         var proposalDates = await db.EventProposals
             .Where(x => proposalIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Window.Date);
         Assert.All(target.OpenProposals, spec => Assert.Equal(spec.Date, proposalDates[spec.Id]));
+    }
+
+    [Fact]
+    public async Task AJourneyThatFailsPartWayLeavesNoAttendeeForTheRerunToSkip()
+    {
+        await ExecuteSqlAsync(
+            """
+            CREATE FUNCTION fail_invite_insert() RETURNS trigger LANGUAGE plpgsql
+                AS $$ BEGIN RAISE EXCEPTION 'injected invite failure'; END $$;
+            CREATE TRIGGER fail_invite_insert BEFORE INSERT ON invite
+                FOR EACH ROW EXECUTE FUNCTION fail_invite_insert();
+            """);
+        await Assert.ThrowsAnyAsync<Exception>(() => RunSeedOnlyAsync());
+        await ExecuteSqlAsync("""
+            DROP TRIGGER fail_invite_insert ON invite;
+            DROP FUNCTION fail_invite_insert();
+            """);
+
+        await RunSeedOnlyAsync();
+
+        await using var scope = _provider.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<EventBookingDbContext>();
+        var statuses = await db.Attendees.ToDictionaryAsync(x => x.Email, x => x.Status);
+        Assert.All(DemoSeedSpec.Build().Attendees,
+            spec => Assert.Equal(spec.Status, statuses[spec.Email]));
     }
 
     [Fact]
@@ -152,6 +192,13 @@ public sealed class DemoSeederIntegrationTests : IAsyncLifetime
     {
         await using var scope = _provider.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<DemoInvitationSeeder>().RunAsync(default);
+    }
+
+    private async Task ExecuteSqlAsync(string sql)
+    {
+        await using var scope = _provider.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<EventBookingDbContext>()
+            .Database.ExecuteSqlRawAsync(sql);
     }
 
     private async Task<Counts> CountsAsync()

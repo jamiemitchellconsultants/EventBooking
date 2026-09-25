@@ -1,4 +1,4 @@
-# src/EventBooking.Web/Dockerfile.caddy (complete Task 30 replacement; Task 31 publication input)
+# src/EventBooking.Web/Dockerfile.caddy (complete; the published home-lab web image)
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .

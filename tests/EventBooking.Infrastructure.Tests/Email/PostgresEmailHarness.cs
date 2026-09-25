@@ -20,6 +20,7 @@ using EventBooking.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace EventBooking.Infrastructure.Tests.Email;
 
@@ -39,17 +40,71 @@ public sealed class HarnessTransport : IEmailTransport
     /// <summary>The outcome every send reports until reassigned.</summary>
     public EmailSendOutcome Next { get; set; } = EmailSendOutcome.Sent;
 
+    /// <summary>When set, the next send cancels this source and observes the cancellation,
+    /// as a host shutting down mid-send would.</summary>
+    public CancellationTokenSource? CancelDuringSend { get; set; }
+
     /// <inheritdoc />
     public Task<EmailSendOutcome> SendAsync(
         string recipient, string subject, string textBody, string htmlBody,
         CancellationToken cancellationToken)
     {
+        if (CancelDuringSend is { } shutdown)
+        {
+            shutdown.Cancel();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         if (Next == EmailSendOutcome.Sent)
         {
             Sent.Add(new DispatchedMail(recipient, subject, textBody, htmlBody));
         }
 
         return Task.FromResult(Next);
+    }
+}
+
+/// <summary>Captures error-level log messages from every logger it creates.</summary>
+public sealed class ErrorLogCapture : ILoggerProvider
+{
+    private readonly List<string> _messages = [];
+
+    /// <summary>The captured messages, in the order they were logged.</summary>
+    public IReadOnlyList<string> Messages
+    {
+        get
+        {
+            lock (_messages)
+            {
+                return [.. _messages];
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public ILogger CreateLogger(string categoryName) => new Capturing(_messages);
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+    }
+
+    private sealed class Capturing(List<string> messages) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(logLevel)) return;
+            lock (messages)
+            {
+                messages.Add(formatter(state, exception));
+            }
+        }
     }
 }
 
@@ -93,6 +148,9 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
     /// <summary>The clock the harness and its dispatchers share.</summary>
     protected readonly HarnessClock Clock = new(Now);
 
+    /// <summary>Every error the harness dispatchers logged.</summary>
+    protected readonly ErrorLogCapture LoggedErrors = new();
+
     private readonly List<ServiceProvider> _providers = [];
 
     /// <inheritdoc />
@@ -109,7 +167,7 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
     protected OutboxDispatcher Dispatcher(HarnessTransport transport)
     {
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(logging => logging.AddProvider(LoggedErrors));
         services.AddEventBookingInfrastructure(
             fixture.ConnectionString,
             new TokenOptions("a-test-signing-key-that-is-long-enough-here"));
@@ -332,6 +390,15 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
         var row = await context.EmailLogs.SingleAsync(e => e.Id == rowId);
         row.StampCorrelation(correlationId);
         await context.SaveChangesAsync();
+    }
+
+    /// <summary>Reads the row's backoff on a fresh context.</summary>
+    /// <param name="rowId">The row.</param>
+    protected async Task<DateTimeOffset?> NotBeforeOfAsync(Guid rowId)
+    {
+        await using var context = fixture.NewContext();
+        return await context.EmailLogs.Where(e => e.Id == rowId)
+            .Select(e => e.NotBefore).SingleAsync();
     }
 
     /// <summary>Concatenates every column's text for the personal-data scan.</summary>

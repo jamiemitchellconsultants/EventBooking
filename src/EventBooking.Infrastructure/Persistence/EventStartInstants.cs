@@ -88,7 +88,22 @@ public static class EventStartInstants
     /// <param name="zones">The zone abstraction.</param>
     private static DateTimeOffset InstantOf(
         Event eventItem, string timeZoneId, IEventWindowZones zones) =>
-        eventItem.Window.StartInstant(zones, timeZoneId).ToUniversalTime();
+        InstantOf(eventItem.Window, timeZoneId, zones);
+
+    /// <summary>
+    /// The column value for a window at a location, for a writer that moves an event's window
+    /// in SQL rather than through a tracked entity and so must restamp the column itself.
+    /// </summary>
+    /// <param name="window">The event's window.</param>
+    /// <param name="timeZoneId">The location's IANA zone.</param>
+    /// <param name="zones">The zone abstraction.</param>
+    public static DateTimeOffset InstantOf(
+        EventWindow window, string timeZoneId, IEventWindowZones zones)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        return window.StartInstant(zones, timeZoneId).ToUniversalTime();
+    }
 
     /// <summary>The zone an event's location must have, refusing a location that is not persisted.</summary>
     /// <param name="timeZoneId">The zone read for that location, or null if there was no row.</param>
