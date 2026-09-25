@@ -33,7 +33,7 @@ The [local Docker review after reseeding](local-review-2026-09-25.md) exercises 
 **Reference screens (local demo build):**
 
 ![Signed-out landing page](screenshots/uat00-landing.png)
-*Signed-out landing page. The bottom-left "An unhandled error has occurred" strip is visible in the local build (see the note under Screenshots).*
+*Signed-out landing page.*
 
 ![Public Help](screenshots/uat00-help-public.png)
 *Public Help while signed out.*
@@ -44,7 +44,7 @@ The [local Docker review after reseeding](local-review-2026-09-25.md) exercises 
 
 ## Screenshots
 
-Each case shows reference screens in [`screenshots/`](screenshots/), captured on 2026-09-25 from the local Docker demo build (seeded with `--demo --reanchor`) at 1280 px wide, full page; the mobile shots are 375 px. They show what a passing page should broadly look like, using demo data; the home-lab site will differ in records and dates. Two things visible in them are faults, not expected appearance: signed-in Help tells the Admin account it has no assigned role, and the `#blazor-error-ui` strip ("An unhandled error has occurred") renders permanently at the foot of every page because no stylesheet hides it. The invitation booking shown in ATT-01 changed local demo data (Nia New now holds a 4 October booking).
+Each case shows reference screens in [`screenshots/`](screenshots/), captured on 2026-09-25 from the local Docker demo build (seeded with `--demo --reanchor`) at 1280 px wide, full page; the mobile shots are 375 px. They show what a passing page should broadly look like, using demo data; the home-lab site will differ in records and dates. One thing visible in them is a fault, not expected appearance: signed-in Help tells the Admin account it has no assigned role. The invitation booking shown in ATT-01 changed local demo data (Nia New now holds a 4 October booking).
 
 ## Exploratory questions for every role
 
