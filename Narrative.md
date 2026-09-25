@@ -32,6 +32,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [22](#entry-seed-and-deploy-eventbooking) | 2026-09-25 | Seed and deploy EventBooking | product | Use a migrate-only seed default, add LAB as the fourth managed active appointment type, retire the single-zone clock, and support local Compose plus an isolated home-lab topology behind shared Caddy and Keycloak services. |
 | [23](#entry-verify-and-document-eventbooking-release) | 2026-09-25 | Verify and document EventBooking release | product | - The booking handler reports its capacity-lock hold, from the event row lock through transaction release, through an Application timing port implemented by the existing API metrics service. |
 | [24](#entry-feat-seed-jointbooking-parity-for-reanchor-verbose-and-help) | 2026-09-25 | feat(seed): JointBooking parity for --reanchor, --verbose and --help | product | Add the missing switches, but not `--skip-seed`: the original EventBooking design deliberately made migrate-only the default with `--demo` as the opt-in, and reversing that is out of scope. |
+| [25](#entry-fix-web-allow-the-import-map-in-the-home-lab-csp-so-blazor-starts) | 2026-09-25 | fix(web): allow the import map in the home-lab CSP so Blazor starts | product | Keep a strict `script-src` and allow the import map by build-time hash, rather than adding `'unsafe-inline'`. Remove the app's other inline script instead of hashing it, and fail the image build if a new inline script appears. |
 
 ---
 
@@ -951,5 +952,31 @@ One mental model across both repositories apart from the documented `--demo` / `
 ---
 
 AI-Fingerprint: sha256:698e9e4e0ff7
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+<a id="entry-fix-web-allow-the-import-map-in-the-home-lab-csp-so-blazor-starts"></a>
+
+## Entry 25 — 2026-09-25 — fix(web): allow the import map in the home-lab CSP so Blazor starts
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+The home-lab rehearsal exercised install, upgrade and restore against the API but never loaded the web front end through the Caddy image, so a policy that blocks the app's own inline scripts shipped.
+
+## Decision
+
+Keep a strict `script-src` and allow the import map by build-time hash, rather than adding `'unsafe-inline'`. Remove the app's other inline script instead of hashing it, and fail the image build if a new inline script appears.
+
+## Consequences
+
+The policy stays tight and self-updating across publishes. Adding any inline script to `index.html` now fails the image build, which is deliberate. Not covered: there is still no automated browser test of the home-lab web image.
+
+---
+
+AI-Fingerprint: sha256:5dd2ddec47e9
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
