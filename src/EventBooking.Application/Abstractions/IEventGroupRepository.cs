@@ -52,4 +52,18 @@ public interface IEventGroupRepository
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<PendingRegistration?> GetRegistrationUntrackedAsync(
         Guid requestId, CancellationToken cancellationToken);
+
+    /// <summary>Lists the pending registrations at or past their expiry.</summary>
+    /// <param name="now">The current instant.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<IReadOnlyList<PendingRegistration>> ListExpiredPendingAsync(
+        DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes one bounded batch of terminal requests at or past retention, with their
+    /// confirmation email rows. Returns the deleted request count, zero when none remain.
+    /// </summary>
+    /// <param name="cutoff">The oldest terminal instant to keep.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<int> DeleteTerminalBeforeAsync(DateTimeOffset cutoff, CancellationToken cancellationToken);
 }

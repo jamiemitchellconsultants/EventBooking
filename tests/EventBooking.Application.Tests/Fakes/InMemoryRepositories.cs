@@ -526,6 +526,32 @@ public sealed class InMemoryEventGroupRepository : IEventGroupRepository
     public Task<PendingRegistration?> GetRegistrationUntrackedAsync(
         Guid requestId, CancellationToken cancellationToken) =>
         Task.FromResult(Registrations.SingleOrDefault(x => x.RequestId == requestId));
+
+    /// <summary>Lists the pending registrations at or past their expiry.</summary>
+    public Task<IReadOnlyList<PendingRegistration>> ListExpiredPendingAsync(
+        DateTimeOffset now, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PendingRegistration>>([.. Registrations
+            .Where(x => x.Status == SelfRegistrationStatus.Pending && x.ExpiresAt <= now)
+            .OrderBy(x => x.ExpiresAt)]);
+
+    /// <summary>
+    /// Deletes one bounded batch of terminal requests at or past retention. The in-memory
+    /// store holds deliveries in a separate repository it cannot reach, so confirmation
+    /// email rows are left for the PostgreSQL implementation to remove.
+    /// </summary>
+    public Task<int> DeleteTerminalBeforeAsync(
+        DateTimeOffset cutoff, CancellationToken cancellationToken)
+    {
+        var due = Registrations
+            .Where(x => (x.Status == SelfRegistrationStatus.Confirmed
+                    || x.Status == SelfRegistrationStatus.Expired)
+                && x.TerminalAt is { } terminal && terminal <= cutoff)
+            .OrderBy(x => x.TerminalAt)
+            .Take(500)
+            .ToList();
+        foreach (var request in due) Registrations.Remove(request);
+        return Task.FromResult(due.Count);
+    }
 }
 
 public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeRepository

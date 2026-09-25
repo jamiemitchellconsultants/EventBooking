@@ -42,6 +42,9 @@ public sealed class PendingRegistration
     /// <summary>Gets when the request was confirmed, once it is.</summary>
     public DateTimeOffset? ConfirmedAt { get; private set; }
 
+    /// <summary>Gets when the request reached its terminal state, once it has.</summary>
+    public DateTimeOffset? TerminalAt { get; private set; }
+
     /// <summary>Gets the token version the confirmation link was issued against.</summary>
     public int TokenVersion { get; private set; }
 
@@ -99,6 +102,7 @@ public sealed class PendingRegistration
         Guard.Against(tokenVersion != TokenVersion,
             "The confirmation link is no longer current.");
         ConfirmedAt = now;
+        TerminalAt = now;
         Status = SelfRegistrationStatus.Confirmed;
         Version++;
     }
@@ -110,6 +114,7 @@ public sealed class PendingRegistration
     {
         if (Status != SelfRegistrationStatus.Pending || now < ExpiresAt) return false;
         Status = SelfRegistrationStatus.Expired;
+        TerminalAt = now;
         Version++;
         return true;
     }

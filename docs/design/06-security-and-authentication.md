@@ -98,11 +98,13 @@ This settles the token lifecycle the predecessor left open (decision D14).
 |---|---|---|---|
 | Book token | When the `Invite` is created (`tokenVersion` = 1) | The `Invite` is `Pending` and `now < expiresAt` | The invite becoming `Used`, `Expired`, `Superseded` or `Cancelled` |
 | Manage token | When the `Booking` is created (`manageTokenVersion` = 1). It is shown on the confirmation page and in the `BookingConfirmation` email | The `Booking` exists. Actions are allowed only while it is `Active` and the window has not started; otherwise the token is read-only | Nothing in the first release. After the event has ended, the page shows history only |
+| Registration token | When the `SelfRegistration` is submitted (`tokenVersion` = 1). It is returned in the submit response and emailed in the confirmation path | The request is `Pending` and `now < expiresAt` | Confirmation, which is single-use; a repeated confirmation reports the existing booking |
 
 Token format and handling:
 
 - **Format:** `base64url(purpose ‖ id ‖ version ‖ HMAC-SHA256(key, purpose ‖ id ‖ version))`,
-  where `purpose` is book or manage and `id` is the `Invite` or `Booking` id. The token is
+  where `purpose` is book, manage or registration and `id` is the `Invite`, `Booking` or
+  `SelfRegistration` request id. The token is
   deterministic: the server can reproduce the same link at email-dispatch time without ever
   storing it. That is what lets the confirmation page and the confirmation email share one manage
   link.
@@ -129,6 +131,9 @@ outstanding link. That is acceptable, because a Coordinator can resend.
   other attendees, and one leaked link cannot be hammered. Forwarded headers are trusted only from
   the configured reverse-proxy network.
 - **Staff endpoints:** 300 requests per minute per `staffUserId`, as defence in depth.
+- **Public event-group endpoints:** the shared remote-IP limiter, like the other anonymous
+  routes: no staff token is ever accepted or required there, and the plain public HTTP client
+  sends none.
 - A rejected request returns 429 with `Retry-After`.
 
 ## Audit
@@ -145,7 +150,10 @@ outstanding link. That is acceptable, because a Coordinator can resend.
 ## Data protection
 
 - **Least data by screen.** The workspace's never-sent list (FR-8.1) is enforced by the read model,
-  not by the UI.
+  not by the UI. The public group payload carries no capacities, emails or tokens.
+- **Terminal retention.** A terminal `SelfRegistration` (name, email) is purged with its
+  confirmation email rows 30 days after `terminalAt` (FR-16.6). Expiry is audited with the
+  request id and status only; names, emails and tokens never enter the audit log.
 - **CSV injection.** Every generated CSV neutralises cells that start with a formula character.
 - **Transport.** TLS terminates at the reverse proxy (Caddy) with automatic certificates. The
   containers talk over an internal Docker network with no published database port. Nothing is

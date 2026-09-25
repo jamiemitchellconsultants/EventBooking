@@ -23,11 +23,13 @@ public sealed class PendingRegistrationConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.SubmittedAt).HasColumnName("submitted_at");
         builder.Property(x => x.ExpiresAt).HasColumnName("expires_at");
         builder.Property(x => x.ConfirmedAt).HasColumnName("confirmed_at");
+        builder.Property(x => x.TerminalAt).HasColumnName("terminal_at");
         builder.Property(x => x.TokenVersion).HasColumnName("token_version");
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
 
         builder.HasIndex(x => new { x.EventId, x.Email }).IsUnique()
             .HasFilter("status = 1");
         builder.HasIndex(x => new { x.Status, x.ExpiresAt });
+        builder.HasIndex(x => new { x.Status, x.TerminalAt });
     }
 }

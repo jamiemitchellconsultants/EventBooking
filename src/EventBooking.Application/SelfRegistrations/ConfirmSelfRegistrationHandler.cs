@@ -77,8 +77,10 @@ public sealed class ConfirmSelfRegistrationHandler(
                 Error.TokenInvalid(InvalidLinkMessage));
 
         // Port read: the registration without a lock, so the locks below follow the
-        // canonical order. Everything is re-validated after locking.
-        var port = await groups.GetRegistrationAsync(requestId, ct);
+        // canonical order. Untracked, like the post-lock re-read below is not: only one
+        // instance may be tracked, and it must be the mutated one. Everything is
+        // re-validated after locking.
+        var port = await groups.GetRegistrationUntrackedAsync(requestId, ct);
         if (port is null)
             return Result<ConfirmSelfRegistrationOutcome>.Failure(
                 Error.TokenInvalid(InvalidLinkMessage));
@@ -93,9 +95,10 @@ public sealed class ConfirmSelfRegistrationHandler(
             return Result<ConfirmSelfRegistrationOutcome>.Failure(
                 Error.TokenInvalid(InvalidLinkMessage));
 
-        // Re-read without tracking: the port read above may predate a concurrent
-        // confirmation that the group lock just serialized against.
-        var registration = await groups.GetRegistrationUntrackedAsync(requestId, ct);
+        // Re-read tracked: the port read above may predate a concurrent
+        // confirmation that the group lock just serialized against, and this is the
+        // instance whose confirmation must persist.
+        var registration = await groups.GetRegistrationAsync(requestId, ct);
         if (registration is null)
             return Result<ConfirmSelfRegistrationOutcome>.Failure(
                 Error.TokenInvalid(InvalidLinkMessage));

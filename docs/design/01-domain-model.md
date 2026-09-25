@@ -153,6 +153,22 @@ stateDiagram-v2
     NoShow --> Expected: correction (refused while a later recovery exists)
 ```
 
+### SelfRegistration
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: submit (anonymous)
+    Pending --> Confirmed: confirm with a valid token\nbefore expiry (Anonymous)
+    Pending --> Expired: sweep, once past expiresAt (System)
+    Confirmed --> [*]: purged with its confirmation email rows\n30 days after terminalAt (System)
+    Expired --> [*]: purged 30 days after terminalAt (System)
+```
+
+A `SelfRegistration` stores the submitted name and normalized email through confirmation or
+expiry until terminal retention ends. Confirmation creates or reuses the `Attendee` and creates
+a one-option initial `Invite` and the `Booking` in one transaction; it takes no `EventCapacity`
+before confirmation. `terminalAt` is stamped on confirmation and on expiry.
+
 ### AttendeeStatus
 
 `AttendeeStatus` describes the invitation journey only. Whether an attendee has *finished* is a

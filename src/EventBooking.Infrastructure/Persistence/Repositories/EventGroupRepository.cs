@@ -1,5 +1,6 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Domain.EventGroups;
+using EventBooking.Domain.Notifications;
 using EventBooking.Domain.SelfRegistrations;
 using EventBooking.Infrastructure.Persistence.Locking;
 using Microsoft.EntityFrameworkCore;
@@ -72,4 +73,54 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
         Guid requestId, CancellationToken cancellationToken) =>
         context.PendingRegistrations.AsNoTracking().SingleOrDefaultAsync(
             x => x.RequestId == requestId, cancellationToken);
+
+    /// <summary>Lists the pending registrations at or past their expiry.</summary>
+    public async Task<IReadOnlyList<PendingRegistration>> ListExpiredPendingAsync(
+        DateTimeOffset now, CancellationToken cancellationToken) =>
+        await context.PendingRegistrations
+            .Where(x => x.Status == SelfRegistrationStatus.Pending && x.ExpiresAt <= now)
+            .OrderBy(x => x.ExpiresAt)
+            .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Deletes one bounded batch of terminal requests at or past retention, with the
+    /// confirmation email rows for the bookings those requests created. Stale email rows
+    /// only: a recent rebooking of the same event keeps its own delivery rows.
+    /// </summary>
+    public async Task<int> DeleteTerminalBeforeAsync(
+        DateTimeOffset cutoff, CancellationToken cancellationToken)
+    {
+        var due = await context.PendingRegistrations
+            .Where(x => (x.Status == SelfRegistrationStatus.Confirmed
+                    || x.Status == SelfRegistrationStatus.Expired)
+                && x.TerminalAt != null && x.TerminalAt <= cutoff)
+            .OrderBy(x => x.TerminalAt)
+            .Take(500)
+            .ToListAsync(cancellationToken);
+        if (due.Count == 0) return 0;
+
+        var confirmed = due.Where(x => x.Status == SelfRegistrationStatus.Confirmed).ToList();
+        if (confirmed.Count > 0)
+        {
+            var emails = confirmed.Select(x => x.Email).ToList();
+            var events = confirmed.Select(x => x.EventId).ToList();
+            var attendeeIds = await context.Attendees
+                .Where(x => emails.Contains(x.Email))
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+            var bookingIds = await context.Bookings
+                .Where(x => attendeeIds.Contains(x.AttendeeId) && events.Contains(x.EventId))
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+            var deliveries = await context.EmailLogs
+                .Where(x => x.TemplateName == EmailTemplate.SelfRegistrationConfirmation
+                    && x.BookingId != null && bookingIds.Contains(x.BookingId.Value)
+                    && x.SentAt <= cutoff)
+                .ToListAsync(cancellationToken);
+            context.EmailLogs.RemoveRange(deliveries);
+        }
+
+        context.PendingRegistrations.RemoveRange(due);
+        return due.Count;
+    }
 }

@@ -30,7 +30,8 @@ Application handler. The MCP server exposes the same handlers as tools (FR-14).
   `zoneAbbreviation`. Timestamps are UTC ISO 8601.
 - **Idempotency.** Attendee confirm and cancel are idempotent against the final state. Staff
   commands that create resources accept an optional `Idempotency-Key` header, retained for 24
-  hours.
+  hours. Self-registration confirmation is single-use by token version: a repeated confirmation
+  reports the existing booking (`already-confirmed`) instead of creating another.
 
 ## Discovery and identity
 

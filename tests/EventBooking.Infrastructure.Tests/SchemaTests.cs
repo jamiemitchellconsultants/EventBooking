@@ -43,8 +43,9 @@ public class SchemaTests(PostgresFixture fixture)
             // predecessor's fixed reference seeds, the migration granting the
             // application role every table, including those later migrations create,
             // the migration adding the attendee group description, the migration
-            // adding the event group publication tables, and the migration adding
-            // the pending registration table and its expiry setting.
+            // adding the event group publication tables, the migration adding
+            // the pending registration table and its expiry setting, and the
+            // migration adding the request terminal timestamp and its index.
             // Committed migrations are never rewritten: the chain is what keeps the
             // schema regenerable.
             Assert.Equal(
@@ -54,7 +55,8 @@ public class SchemaTests(PostgresFixture fixture)
                     "20260924123603_IdempotencyReplayHeaders", "20260924201133_RetireTransitionalSeedRows",
                     "20260925034812_GrantApplicationRoleOnLaterTables",
                     "20260925120000_AttendeeGroupDescription", "20260925123000_EventGroups",
-                    "20260925130000_AddSelfRegistration"],
+                    "20260925130000_AddSelfRegistration",
+                    "20260925204034_SelfRegistrationTerminalAt"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();

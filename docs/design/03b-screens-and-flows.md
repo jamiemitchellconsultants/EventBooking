@@ -300,6 +300,31 @@ forbidden · error.
 ("We'll be in touch") · confirmed · manage · cancelled (4 wordings) · too late to cancel · busy ·
 error.
 
+## Event-group self-registration (`/event-groups/…`) — anonymous
+
+**Group (`/event-groups/{groupId}`):** the open group's title and description, then its open
+events ordered by local start, each linking to its event page. Closed groups show a
+"no longer open" error with the Coordinator contact; a group with no open events shows an
+empty state instead of a list.
+
+**Event (`/event-groups/{groupId}/events/{eventId}`):** the group copy, the event's place,
+time and appointment types, and labelled name, email and group controls. The page states
+that sending the request does not hold a place — only confirming through the email link
+books it. A successful send shows the same "check your email" copy for new and existing
+addresses (FR-16.2). A refusal (for example, the group just filled) shows an accessible
+error and keeps the entered values.
+
+**Confirm (`/event-groups/confirm/{token}`):** the request summary (group title, place, date,
+start, group name) with one confirm button guarded by an idempotency key. Success tells the
+user the place is booked and points at the booking-confirmation email for the manage link.
+An invalid, expired or already-used link shows an accessible error with the Coordinator
+contact; the raw token never appears in markup, analytics or logs.
+
+**States:** loading · group 404 · no open events · invalid form · sent · confirm ·
+confirmed · link invalid/expired/used · busy · error. Groups with spare capacity are never
+distinguished from full ones on screen; the server refuses over-capacity confirms (FR-16.1,
+FR-16.4).
+
 ## Audit search (`/audit`) — Admin or Coordinator
 
 **Captures:**

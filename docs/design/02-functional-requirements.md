@@ -456,9 +456,31 @@ location's name followed by its address on the next line.
 - FR-15.1 The API host shall run the invite sweep every 15 minutes. It shall:
   - expire and re-issue invites (FR-5.6);
   - withdraw started proposals (FR-2.12);
-  - conclude eligible recovery bookings missed by the event-driven path (FR-9.5).
+  - conclude eligible recovery bookings missed by the event-driven path (FR-9.5);
+  - expire lapsed self-registration requests and purge terminal ones past retention
+    with their confirmation email rows (FR-16.6).
 - FR-15.2 The API host shall run the outbox dispatcher continuously (FR-11.2).
 - FR-15.3 Each background job shall hold a PostgreSQL advisory lock for its run, so that running
   several API replicas never duplicates work. Each job shall be idempotent.
 - FR-15.4 **(carried hardening)** Background job failures shall be logged with a job-level metric,
   and shall not stop later runs.
+
+## FR-16 — Public event-group self-registration
+
+- FR-16.1 Open groups and their open events shall be readable anonymously, showing only
+  public copy: titles, descriptions, places, times and appointment-type names. Closed groups,
+  closed memberships, started events and capacities shall never be exposed.
+- FR-16.2 An anonymous submission (`{attendeeGroupId, name, email}`) shall create a pending
+  `SelfRegistration` with a confirmation token and take no capacity. The page shall show the
+  same "check your email" copy whether the address is new or already requesting.
+- FR-16.3 Confirmation through the emailed link shall revalidate both public gates, group
+  membership, event compatibility and capacity, then create or reuse the `Attendee` and create
+  a one-option initial `Invite` and the `Booking` atomically. A repeated confirmation shall
+  report the existing booking without creating another.
+- FR-16.4 Concurrent confirmations shall serialize at the event-group boundary; only the
+  required appointment types shall be charged, all or nothing.
+- FR-16.5 Closing a group or membership shall block new submissions and confirmations but
+  never cancel an existing booking.
+- FR-16.6 Terminal requests (`Confirmed`, `Expired`) shall be purged with their confirmation
+  email rows once `terminalAt` is at least 30 days past. Pending requests, attendees,
+  bookings and audit rows shall never be purged.
