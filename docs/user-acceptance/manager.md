@@ -9,6 +9,7 @@
 1. Sign in and read the role and appointment type on the home page. **Expect:** **Negotiation board** and **Appointment workspace** appear under **Your work**; read-only **Locations**, **Appointment types**, and **Attendee groups** appear under **Reference data**. A combined Coordinator and Manager account also has Coordinator links.
 2. Open **Negotiation board**. **Expect:** its heading names your appointment type; **Open proposals** and **Confirmed events** are separate lists.
 3. On an open proposal, compare **Types**, **Accepted**, and **You**. **Expect:** the accepted count is visible, but other Managers' headcounts are not. On a confirmed event, find Total and Remaining capacity for your type.
+4. Open **Help**. **Expect:** the Manager guide is available.
 
 **Result:** Pass / Fail / Blocked / Not run
 

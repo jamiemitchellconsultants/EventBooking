@@ -8,7 +8,7 @@
 
 1. Sign in at [EventBooking](https://eventbooking.tqaentry.com/). **Expect:** the home page shows the Admin role and no appointment-type scope.
 2. In **Administration**, find **Locations**, **Appointment types**, **Attendee groups**, **System settings**, and **Staff access**. In **Your work**, find **Event operations** and **Audit search**. Open **Help**. **Expect:** the pages load and the Admin guide is available.
-3. Inspect the home page and navigation. **Expect:** no **Attendees**, **Dashboards**, **Negotiation board**, or **Appointment workspace** link. An Admin must not be able to read attendee records through the application.
+3. Inspect the home page and navigation. **Expect:** no **Attendees**, **Dashboards**, **Negotiation board**, or **Appointment workspace** link. Open `/attendees` directly in the address bar. **Expect:** the page states that a Coordinator profile is required and shows no attendee records.
 
 **Result:** Pass / Fail / Blocked / Not run
 

@@ -9,6 +9,7 @@
 1. Sign in. **Expect:** **Attendees**, **Dashboards**, **Event operations**, and **Audit search** under **Your work**; read-only **Locations**, **Appointment types**, and **Attendee groups** under **Reference data**. **Staff access** and **System settings** are absent.
 2. Open **Dashboards**. Switch between **Awaiting availability**, **No response**, and **Events**. **Expect:** each tab shows its own count and rows or an empty message. Use the Location filter and note whether the data changes as expected.
 3. Open **Attendees**. Use Status, Group, Readiness, and **Search by name or email…** to locate an existing test attendee. **Expect:** the row shows required types, status, readiness, delivery, booking and history.
+4. Open **Help**. **Expect:** the Coordinator guide is available.
 
 **Result:** Pass / Fail / Blocked / Not run
 

@@ -10,6 +10,7 @@
 2. Open **Appointment workspace**. **Expect:** the heading names your type. The Event selector groups active events by Location and displays their local date, time and time zone.
 3. Choose the event reserved for the test. **Expect:** a row for each booked attendee who needs your type, with Status and the actions currently allowed. If no one is booked, the page says **No appointments on this event yet.**
 4. Select **Download roster (CSV)**. **Expect:** a CSV file for the selected event. Check its columns and one reserved attendee, then store or dispose of the file according to the test lead's data-handling instructions.
+5. Open **Help**. **Expect:** the Appointment staff guide is available.
 
 **Result:** Pass / Fail / Blocked / Not run
 

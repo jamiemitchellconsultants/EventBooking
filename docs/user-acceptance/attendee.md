@@ -9,7 +9,7 @@
 1. Open the **Choose a time** link in the test invitation email. **Expect:** your name, required appointments, and one or more future options showing Location, address, local date, time and time zone. If the name or appointments are wrong, stop and tell the Coordinator.
 2. Select one option. **Expect:** **Confirm this time** becomes available. Before selecting it, check that the window and site are workable for you.
 3. Select **Confirm this time** once. **Expect:** **Booking confirmed**, the chosen site and window, and **Use your booking management link**. Save the management link privately; the confirmation email should also arrive.
-4. Return to the invitation link in a separate tab. **Expect:** it cannot create another booking. Record the screen wording without sharing the token.
+4. Return to the invitation link in a separate tab. **Expect:** **This link has expired.** and no option to create another booking. Record the screen wording without sharing the token.
 
 **Result:** Pass / Fail / Blocked / Not run
 

@@ -22,6 +22,8 @@ Each case has a **Result** line for Pass, Fail, Blocked or Not run. Mark **Block
 
 The [review after the UI redeployment](live-review-2026-09-25-after-ui-fixes.md) found that the signed-out landing page is styled and has no visible error strip. The identity-provider handoff and invalid-link messages still work. Anonymous Help still fails, and no signed-in role journey has yet been verified. The [earlier review](live-review-2026-09-25.md) records the presentation faults seen before the UI fixes. Recheck the smoke test before each session and record actual results against the cases below.
 
+The [local Docker review after reseeding](local-review-2026-09-25.md) exercises the demo accounts and one attendee booking at [localhost:5002](http://localhost:5002/). It found that public Help works locally but signed-in Help misidentifies staff as having no role. The local result does not replace the home-lab result above; repeat the scripts on the target deployment.
+
 ### Smoke check — UAT-00
 
 1. Open [EventBooking](https://eventbooking.tqaentry.com/) in a fresh browser session. **Expect:** an EventBooking landing page with **Sign in** and **Read the attendee guide**; no unhandled-error banner.
