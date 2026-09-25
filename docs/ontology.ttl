@@ -85,6 +85,34 @@
     kit:hasProperty "remainingCapacity" ;
     kit:invariant "No overbooking: `remainingCapacity` is never below 0 or above `totalHeadcount`. Every read-check-write is one transaction that row-locks the affected `EventCapacity` rows in ascending `appointmentTypeId` order, backed by a database check constraint." .
 
+:EventGroup a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "EventGroup" ;
+    rdfs:comment "An Admin- or Coordinator-managed collection of compatible `Event`s offered to selected `AttendeeGroup`s. Its title and description are public only while `isOpen` is true." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "title" ;
+    kit:hasProperty "description" ;
+    kit:hasProperty "isOpen" ;
+    kit:hasProperty "version" ;
+    kit:invariant "Has at least one active `AttendeeGroup`. The union of their required `AppointmentType`s is the group's exact appointment-type set; every member `Event` has exactly this set. A change that would break this equality is refused." ;
+    kit:invariant "Anonymous users can see its title, description, listed `AttendeeGroup`s and open member `Event`s only while `isOpen` is true." .
+
+:EventGroupAttendeeGroup a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "EventGroupAttendeeGroup" ;
+    rdfs:comment "One active `AttendeeGroup` selectable for self-registration in an `EventGroup`. Each listed group's requirements are a subset of the group's appointment-type set." ;
+    kit:hasProperty "eventGroupId" ;
+    kit:hasProperty "attendeeGroupId" .
+
+:EventGroupEvent a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "EventGroupEvent" ;
+    rdfs:comment "Membership of one `Event` in one `EventGroup`, with an independent `isOpen` public-registration gate. An `Event` may belong to several groups with different gate values." ;
+    kit:hasProperty "eventGroupId" ;
+    kit:hasProperty "eventId" ;
+    kit:hasProperty "isOpen" ;
+    kit:invariant "A public registration requires both this membership and its `EventGroup` to be open, and the `Event` to be active and not started." .
+
 :AttendeeGroup a owl:Class ;
     rdfs:subClassOf kit:Entity ;
     rdfs:label "AttendeeGroup" ;
@@ -92,9 +120,10 @@
     kit:hasProperty "id" ;
     kit:hasProperty "code" ;
     kit:hasProperty "name" ;
+    kit:hasProperty "description" ;
     kit:hasProperty "isActive" ;
     kit:hasProperty "version" ;
-    kit:invariant "An active group maps to at least one active `AppointmentType`. Changing its mappings re-derives `AttendeeRequirement` for its members and supersedes their pending initial `Invite`s, and is refused while any member has an active original `Booking`. A group cannot be deactivated while it has members." .
+    kit:invariant "An active group maps to at least one active `AppointmentType`. Changing its mappings re-derives `AttendeeRequirement` for its members and supersedes their pending initial `Invite`s, and is refused while any member has an active original `Booking` or the change would break an `EventGroup` appointment-type equality. A group cannot be deactivated while it has members or belongs to an `EventGroup`." .
 
 :AttendeeGroupRequirement a owl:Class ;
     rdfs:subClassOf kit:Entity ;
@@ -106,7 +135,7 @@
 :Attendee a owl:Class ;
     rdfs:subClassOf kit:Entity ;
     rdfs:label "Attendee" ;
-    rdfs:comment "A person invited to attend an `Event`, entered by a Coordinator via CSV upload or the API. `attendeeGroupId` is always required. `statusChangedAt` is stamped whenever `status` is written." ;
+    rdfs:comment "A person invited to attend an `Event`, entered by a Coordinator or created after confirming a `SelfRegistration`. `attendeeGroupId` is always required. `statusChangedAt` is stamped whenever `status` is written." ;
     kit:hasProperty "id" ;
     kit:hasProperty "name" ;
     kit:hasProperty "email" ;
@@ -136,7 +165,25 @@
     kit:hasProperty "inviteExpiryDays" ;
     kit:hasProperty "maxAutoRetryCount" ;
     kit:hasProperty "inviteOptionCount" ;
-    kit:invariant "Offers exactly `inviteOptionCount` `InviteOption`s, each an `Active`, future `Event` at one of its `InviteLocation`s that lists every snapshotted `InviteRequirement` with spare `EventCapacity`. An `Event` may list types the `Attendee` does not require; only required types are charged." .
+    kit:invariant "Offers exactly `inviteOptionCount` `InviteOption`s, each an `Active`, future `Event` at one of its `InviteLocation`s that lists every snapshotted `InviteRequirement` with spare `EventCapacity`. A `SelfRegistration` confirmation creates a one-option initial `Invite` with `inviteOptionCount` 1 and uses it immediately. An `Event` may list types the `Attendee` does not require; only required types are charged." .
+
+:SelfRegistration a owl:Class ;
+    rdfs:subClassOf kit:Entity ;
+    rdfs:label "SelfRegistration" ;
+    rdfs:comment "An email-confirmation request for one open `EventGroupEvent` and selected `AttendeeGroup`. It stores the submitted name and normalized email through confirmation or expiry until terminal retention ends; it takes no `EventCapacity` before confirmation." ;
+    kit:hasProperty "id" ;
+    kit:hasProperty "eventGroupId" ;
+    kit:hasProperty "eventId" ;
+    kit:hasProperty "attendeeGroupId" ;
+    kit:hasProperty "name" ;
+    kit:hasProperty "email" ;
+    kit:hasProperty "expiresAt" ;
+    kit:hasProperty "status" ;
+    kit:hasProperty "terminalAt" ;
+    kit:hasProperty "tokenVersion" ;
+    kit:hasProperty "attendeeId" ;
+    kit:hasProperty "bookingId" ;
+    kit:invariant "Confirmation is single-use, requires a valid emailed token before expiry, revalidates both public gates, group membership, event compatibility and capacity, then creates or reuses the `Attendee` and creates an `Invite` and `Booking` in one transaction." .
 
 :InviteLocation a owl:Class ;
     rdfs:subClassOf kit:Entity ;
@@ -225,7 +272,7 @@
 :EmailLog a owl:Class ;
     rdfs:subClassOf kit:Entity ;
     rdfs:label "EmailLog" ;
-    rdfs:comment "A durable record of one attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body. `claimCount`, `notBefore` and `correlationId` carry the dispatcher's attempt count, backoff and request correlation; delivery is at-least-once, and duplicates are harmless because links regenerate deterministically." ;
+    rdfs:comment "A durable record of one attendee or potential-attendee email delivery attempt. The nullable context identifiers let a failed attempt be regenerated without storing a token, URL or body. A `SelfRegistration` confirmation email has `selfRegistrationId` instead of `attendeeId`. `claimCount`, `notBefore` and `correlationId` carry the dispatcher's attempt count, backoff and request correlation; delivery is at-least-once, and duplicates are harmless because links regenerate deterministically." ;
     kit:hasProperty "id" ;
     kit:hasProperty "attendeeId" ;
     kit:hasProperty "templateName" ;
@@ -234,6 +281,7 @@
     kit:hasProperty "inviteId" ;
     kit:hasProperty "bookingId" ;
     kit:hasProperty "eventId" ;
+    kit:hasProperty "selfRegistrationId" ;
     kit:hasProperty "claimedAt" ;
     kit:hasProperty "claimCount" ;
     kit:hasProperty "notBefore" ;
@@ -306,6 +354,9 @@
 
 :StaffCapability_ManageReferenceData a :StaffCapability ;
     rdfs:label "ManageReferenceData" .
+
+:StaffCapability_ManageEventGroups a :StaffCapability ;
+    rdfs:label "ManageEventGroups" .
 
 :StaffCapability_ManageStaffAccess a :StaffCapability ;
     rdfs:label "ManageStaffAccess" .
@@ -399,6 +450,20 @@
 :InviteStatus_Cancelled a :InviteStatus ;
     rdfs:label "Cancelled" .
 
+:SelfRegistrationStatus a owl:Class ;
+    rdfs:subClassOf kit:Enum ;
+    rdfs:label "SelfRegistrationStatus" ;
+    rdfs:comment "Lifecycle of an emailed public registration request." .
+
+:SelfRegistrationStatus_Pending a :SelfRegistrationStatus ;
+    rdfs:label "Pending" .
+
+:SelfRegistrationStatus_Confirmed a :SelfRegistrationStatus ;
+    rdfs:label "Confirmed" .
+
+:SelfRegistrationStatus_Expired a :SelfRegistrationStatus ;
+    rdfs:label "Expired" .
+
 :BookingStatus a owl:Class ;
     rdfs:subClassOf kit:Enum ;
     rdfs:label "BookingStatus" ;
@@ -461,6 +526,9 @@
 :ActorType_System a :ActorType ;
     rdfs:label "System" .
 
+:ActorType_Anonymous a :ActorType ;
+    rdfs:label "Anonymous" .
+
 :AuditAction a owl:Class ;
     rdfs:subClassOf kit:Enum ;
     rdfs:label "AuditAction" ;
@@ -483,6 +551,24 @@
 
 :AuditAction_EventCancelled a :AuditAction ;
     rdfs:label "EventCancelled" .
+
+:AuditAction_EventGroupCreated a :AuditAction ;
+    rdfs:label "EventGroupCreated" .
+
+:AuditAction_EventGroupUpdated a :AuditAction ;
+    rdfs:label "EventGroupUpdated" .
+
+:AuditAction_EventGroupEventChanged a :AuditAction ;
+    rdfs:label "EventGroupEventChanged" .
+
+:AuditAction_SelfRegistrationConfirmed a :AuditAction ;
+    rdfs:label "SelfRegistrationConfirmed" .
+
+:AuditAction_SelfRegistrationRequested a :AuditAction ;
+    rdfs:label "SelfRegistrationRequested" .
+
+:AuditAction_SelfRegistrationExpired a :AuditAction ;
+    rdfs:label "SelfRegistrationExpired" .
 
 :AuditAction_CapacityDecremented a :AuditAction ;
     rdfs:label "CapacityDecremented" .
@@ -579,6 +665,9 @@
 :EmailTemplate_AttendeeInvite a :EmailTemplate ;
     rdfs:label "AttendeeInvite" .
 
+:EmailTemplate_SelfRegistrationConfirmation a :EmailTemplate ;
+    rdfs:label "SelfRegistrationConfirmation" .
+
 :EmailTemplate_BookingConfirmation a :EmailTemplate ;
     rdfs:label "BookingConfirmation" .
 
@@ -652,6 +741,42 @@
     rdfs:range :Booking ;
     rdfs:label "holds" ;
     kit:cardinality "1 → many" .
+
+:selects a owl:ObjectProperty ;
+    rdfs:domain :EventGroup ;
+    rdfs:range :EventGroupAttendeeGroup ;
+    rdfs:label "selects" ;
+    kit:cardinality "1 → 1..*" .
+
+:includes a owl:ObjectProperty ;
+    rdfs:domain :EventGroup ;
+    rdfs:range :EventGroupEvent ;
+    rdfs:label "includes" ;
+    kit:cardinality "1 → many" .
+
+:participates_in a owl:ObjectProperty ;
+    rdfs:domain :Event ;
+    rdfs:range :EventGroupEvent ;
+    rdfs:label "participates in" ;
+    kit:cardinality "1 → many" .
+
+:offers_to a owl:ObjectProperty ;
+    rdfs:domain :EventGroupAttendeeGroup ;
+    rdfs:range :AttendeeGroup ;
+    rdfs:label "offers to" ;
+    kit:cardinality "many → 1" .
+
+:requested_through a owl:ObjectProperty ;
+    rdfs:domain :SelfRegistration ;
+    rdfs:range :EventGroup ;
+    rdfs:label "requested through" ;
+    kit:cardinality "many → 1" .
+
+:targets a owl:ObjectProperty ;
+    rdfs:domain :SelfRegistration ;
+    rdfs:range :Event ;
+    rdfs:label "targets" ;
+    kit:cardinality "many → 1" .
 
 :listed_on a owl:ObjectProperty ;
     rdfs:domain :AppointmentType ;
@@ -771,4 +896,10 @@
     rdfs:domain :EmailLog ;
     rdfs:range :Attendee ;
     rdfs:label "records a delivery attempt for" ;
-    kit:cardinality "many → 1" .
+    kit:cardinality "many → 0..1" .
+
+:records_a_confirmation_attempt_for a owl:ObjectProperty ;
+    rdfs:domain :EmailLog ;
+    rdfs:range :SelfRegistration ;
+    rdfs:label "records a confirmation attempt for" ;
+    kit:cardinality "many → 0..1" .
