@@ -11,6 +11,17 @@
 3. Select **Confirm this time** once. **Expect:** **Booking confirmed**, the chosen site and window, and **Use your booking management link**. Save the management link privately; the confirmation email should also arrive.
 4. Return to the invitation link in a separate tab. **Expect:** **This link has expired.** and no option to create another booking. Record the screen wording without sharing the token.
 
+**Reference screens (local demo build):**
+
+![Invitation page listing offered times](screenshots/att01-choose-time.png)
+*Invitation page listing offered times.*
+
+![A time selected, Confirm this time enabled](screenshots/att01-time-selected.png)
+*A time selected, Confirm this time enabled.*
+
+![Booking confirmed](screenshots/att01-confirmed.png)
+*Booking confirmed.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Chosen window and evidence:** ____________________
@@ -22,6 +33,11 @@
 3. If a fresh invitation arrives, open it and choose another time using ATT-01. **Expect:** one new booking, with its own management link. If no suitable time exists, the page should explain that the team will follow up.
 4. On a separate reserved booking, use **Cancel booking**. **Expect:** **Booking cancelled** without an automatic request for replacement times. This step is Not run if no second reserved booking exists.
 
+**Reference screens (local demo build):**
+
+![Manage your booking](screenshots/att02-manage-booking.png)
+*Manage your booking.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Cancellation outcome and evidence:** ____________________
@@ -31,6 +47,20 @@
 1. Open [Help](https://eventbooking.tqaentry.com/help) while signed out. **Expect:** attendee guidance without staff navigation.
 2. With a test link known to be expired or invalid, open the link. **Expect:** an invitation link says **This link has expired.**; an invalid management link says **This link has expired** and **This booking link is no longer valid.** Both direct you to the Coordinator contact. Never test this by editing a real person's token.
 3. Repeat the invitation review on a phone-sized screen. **Expect:** all options, addresses, buttons and messages can be read and used without horizontal scrolling. Try keyboard focus or a screen reader if available, and record where the next action is unclear.
+
+**Reference screens (local demo build):**
+
+![A reused invitation link](screenshots/att03-link-reused.png)
+*A reused invitation link.*
+
+![An invalid link](screenshots/att03-invalid-link.png)
+*An invalid link.*
+
+![Landing page at 375 px wide](screenshots/att03-mobile-landing.png)
+*Landing page at 375 px wide.*
+
+![Manage booking at 375 px wide](screenshots/att03-mobile-manage.png)
+*Manage booking at 375 px wide.*
 
 **Result:** Pass / Fail / Blocked / Not run
 

@@ -11,6 +11,14 @@
 3. On an open proposal, compare **Types**, **Accepted**, and **You**. **Expect:** the accepted count is visible, but other Managers' headcounts are not. On a confirmed event, find Total and Remaining capacity for your type.
 4. Open **Help**. **Expect:** the Manager guide is available.
 
+**Reference screens (local demo build):**
+
+![Fitness Manager home](screenshots/mgr01-home.png)
+*Fitness Manager home.*
+
+![Negotiation board: open proposals and confirmed events](screenshots/mgr01-negotiation.png)
+*Negotiation board: open proposals and confirmed events.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Actual result and evidence:** ____________________
@@ -42,6 +50,11 @@
 1. Open **Appointment workspace**. **Expect:** the heading names the same appointment type and the Event selector contains only events for that type.
 2. Select an event and inspect its roster. **Expect:** only appointments for your scoped type appear. If there are no rows, the page says so.
 3. Note any event or type you expected to see but cannot. Ask the Coordinator to check booking and the Admin to check scope before treating absence as a defect.
+
+**Reference screens (local demo build):**
+
+![Appointment workspace for the Fitness Manager](screenshots/mgr04-appointments.png)
+*Appointment workspace for the Fitness Manager.*
 
 **Result:** Pass / Fail / Blocked / Not run
 

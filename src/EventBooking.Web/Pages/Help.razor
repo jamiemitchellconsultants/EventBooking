@@ -5,6 +5,7 @@
 @using System.Security.Claims
 @inject IUserGuideCatalog Catalog
 @inject AuthenticationStateProvider Auth
+@inject IMeClient Me
 
 <PageTitle>Help</PageTitle>
 
@@ -85,7 +86,13 @@
             var state = await Auth.GetAuthenticationStateAsync();
             var user = state.User;
             _authenticated = user.Identity?.IsAuthenticated == true;
-            var roles = user.FindAll(ClaimTypes.Role).Select(claim => claim.Value).ToArray();
+            var roles = user.FindAll(ClaimTypes.Role).Select(claim => claim.Value).ToList();
+            if (_authenticated)
+            {
+                // The identity provider's token carries no role claims; the API's /api/me is the source.
+                var me = await Me.GetAsync(CancellationToken.None);
+                if (me.IsSuccess && me.Value is not null) roles.AddRange(me.Value.Roles);
+            }
             var guides = await Catalog.ForAsync(_authenticated, roles, CancellationToken.None);
             foreach (var guide in guides)
             {
