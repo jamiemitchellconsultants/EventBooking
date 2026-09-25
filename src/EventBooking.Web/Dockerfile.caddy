@@ -3,9 +3,23 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
 RUN dotnet publish src/EventBooking.Web/EventBooking.Web.csproj -c Release -o /out
+# The published index.html carries one inline script, the fingerprint import map, whose content
+# changes on every publish; the Content-Security-Policy in the Caddyfile allows it by hash. Compute
+# that hash here, and fail the build if any other inline script appears (it would be blocked
+# and Blazor would never start).
+RUN set -eu; \
+    html=/out/wwwroot/index.html; \
+    if perl -0777 -ne 'exit(/<script(?![^>]*\bsrc=)(?![^>]*type="importmap")[^>]*>/ ? 0 : 1)' "$html"; then \
+        echo "index.html contains an inline script other than the import map; the CSP would block it." >&2; exit 1; \
+    fi; \
+    map="$(perl -0777 -ne 'print $1 if /<script type="importmap">(.*?)<\/script>/s' "$html" | tr -d '\r')"; \
+    case "$map" in *'"imports"'*) ;; *) echo "import map content not found in index.html" >&2; exit 1 ;; esac; \
+    hash="$(printf '%s' "$map" | openssl dgst -sha256 -binary | openssl base64 -A)"; \
+    sed "s|__IMPORTMAP_HASH__|$hash|" deploy/home-lab/web/Caddyfile > /out/Caddyfile; \
+    ! grep -q '__IMPORTMAP_HASH__' /out/Caddyfile
 
 FROM caddy:2.10-alpine AS runtime
 COPY --from=build /out/wwwroot /srv
-COPY deploy/home-lab/web/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /out/Caddyfile /etc/caddy/Caddyfile
 USER 1000:1000
 EXPOSE 8080
