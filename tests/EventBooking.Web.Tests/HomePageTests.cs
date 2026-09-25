@@ -40,6 +40,48 @@ public class HomePageTests : BunitContext
         Assert.Equal("Read the attendee guide", link.TextContent.Trim());
     }
 
+    [Fact]
+    public void CoordinatorsSeeTheirWorkSeparatedFromReadOnlyReferenceData()
+    {
+        this.AddAuthorization().SetAuthorized("Cory Coordinator");
+
+        var cut = RenderHome(ApiOutcome<MeDto>.Success(new MeDto(["Coordinator"], null, null), 200));
+
+        var work = cut.Find("nav[aria-label='Your work']");
+        Assert.Contains("Attendees", work.TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Locations", work.TextContent, StringComparison.Ordinal);
+        var reference = cut.Find("nav[aria-label='Reference data']");
+        Assert.Contains("Locations", reference.TextContent, StringComparison.Ordinal);
+        Assert.Contains("Read-only", cut.Markup, StringComparison.Ordinal);
+        Assert.Single(cut.FindAll("nav[aria-label='Help']"));
+    }
+
+    [Fact]
+    public void AdminsSeeAnAdministrationGroupForTheReferenceScreens()
+    {
+        this.AddAuthorization().SetAuthorized("Ari Admin");
+
+        var cut = RenderHome(ApiOutcome<MeDto>.Success(new MeDto(["Admin"], null, null), 200));
+
+        var administration = cut.Find("nav[aria-label='Administration']");
+        Assert.Contains("Staff access", administration.TextContent, StringComparison.Ordinal);
+        Assert.Empty(cut.FindAll("nav[aria-label='Reference data']"));
+    }
+
+    [Fact]
+    public void EveryTileHasATitleAndItsOwnDescriptionInSeparateElements()
+    {
+        this.AddAuthorization().SetAuthorized("Cory Coordinator");
+
+        var cut = RenderHome(ApiOutcome<MeDto>.Success(new MeDto(["Coordinator"], null, null), 200));
+
+        foreach (var card in cut.FindAll("a.link-card"))
+        {
+            Assert.NotEmpty(card.QuerySelectorAll(".link-title"));
+            Assert.NotEmpty(card.QuerySelectorAll(".landing-sub"));
+        }
+    }
+
     private IRenderedComponent<CascadingAuthenticationState> RenderHome(ApiOutcome<MeDto>? meOutcome)
     {
         RenderFragment homeWithMeOutcome = builder =>

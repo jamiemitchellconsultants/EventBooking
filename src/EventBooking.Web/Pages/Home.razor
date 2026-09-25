@@ -48,7 +48,7 @@
                     </p>
                 </div>
 
-                @if (StaffNavigation.LinksFor(Me).Count == 0)
+                @if (Links.Count == 0)
                 {
                     <p class="landing-hint">
                         Your appointment workspace will appear here when appointment delivery is enabled.
@@ -56,19 +56,62 @@
                 }
                 else
                 {
-                    <nav class="landing-links" aria-label="Workspace sections">
-                        @foreach (var link in StaffNavigation.LinksFor(Me))
-                        {
-                            <a class="link-card" href="@link.Href">
-                                <span>@link.Label<span class="landing-sub">@link.Description</span></span>
+                    @if (WorkLinks.Count > 0)
+                    {
+                        <section class="landing-group" aria-labelledby="landing-work">
+                            <h2 id="landing-work" class="landing-group-title">Your work</h2>
+                            <p class="landing-group-note">The pages you use day to day.</p>
+                            <nav class="landing-links" aria-label="Your work">
+                                @foreach (var link in WorkLinks)
+                                {
+                                    <a class="link-card" href="@link.Href">
+                                        <span class="link-text">
+                                            <span class="link-title">@link.Label</span>
+                                            <span class="landing-sub">@link.Description</span>
+                                        </span>
+                                        <span class="arrow" aria-hidden="true">→</span>
+                                    </a>
+                                }
+                            </nav>
+                        </section>
+                    }
+
+                    @if (ReferenceLinks.Count > 0)
+                    {
+                        <section class="landing-group" aria-labelledby="landing-reference">
+                            <h2 id="landing-reference" class="landing-group-title">@(IsAdmin ? "Administration" : "Reference data")</h2>
+                            <p class="landing-group-note">
+                                @(IsAdmin
+                                    ? "Set up locations, appointment types, attendee groups, settings and who can do what."
+                                    : "Read-only lists that events and invitations draw on. Ask an administrator if something needs changing.")
+                            </p>
+                            <nav class="landing-links" aria-label="@(IsAdmin ? "Administration" : "Reference data")">
+                                @foreach (var link in ReferenceLinks)
+                                {
+                                    <a class="link-card" href="@link.Href">
+                                        <span class="link-text">
+                                            <span class="link-title">@link.Label</span>
+                                            <span class="landing-sub">@link.Description</span>
+                                        </span>
+                                        <span class="arrow" aria-hidden="true">→</span>
+                                    </a>
+                                }
+                            </nav>
+                        </section>
+                    }
+
+                    <section class="landing-group" aria-labelledby="landing-help">
+                        <h2 id="landing-help" class="landing-group-title">Help</h2>
+                        <nav class="landing-links" aria-label="Help">
+                            <a class="link-card" href="/help">
+                                <span class="link-text">
+                                    <span class="link-title">Help</span>
+                                    <span class="landing-sub">Read the guide for your role</span>
+                                </span>
                                 <span class="arrow" aria-hidden="true">→</span>
                             </a>
-                        }
-                        <a class="link-card" href="/help">
-                            <span>Help<span class="landing-sub">Read the guide for your role</span></span>
-                            <span class="arrow" aria-hidden="true">→</span>
-                        </a>
-                    </nav>
+                        </nav>
+                    </section>
                 }
             }
         </div>
@@ -97,4 +140,12 @@
     private bool Loading => MeOutcome is null;
     private string? Error => MeOutcome is { IsSuccess: false } ? MeOutcome.ErrorMessage : null;
     private MeDto? Me => MeOutcome?.Value;
+
+    private IReadOnlyList<StaffLink> Links => Me is null ? [] : StaffNavigation.LinksFor(Me);
+    private IReadOnlyList<StaffLink> WorkLinks => Links.Where(x => !IsReference(x)).ToList();
+    private IReadOnlyList<StaffLink> ReferenceLinks => Links.Where(IsReference).ToList();
+    private bool IsAdmin => Me?.Roles.Contains("Admin") == true;
+
+    // Admin screens are settings for an Admin and read-only reference lists for everyone else.
+    private static bool IsReference(StaffLink link) => link.Href.StartsWith("/admin/", StringComparison.Ordinal);
 }
