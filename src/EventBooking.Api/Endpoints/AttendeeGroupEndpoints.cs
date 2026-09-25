@@ -14,17 +14,19 @@ public static class AttendeeGroupEndpoints
     /// <param name="Code">The canonical code.</param>
     /// <param name="Name">The display name.</param>
     /// <param name="AppointmentTypeIds">The required appointment types.</param>
+    /// <param name="Description">The public description.</param>
     public sealed record CreateAttendeeGroupRequest(
-        string? Code, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds);
+        string? Code, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds, string? Description = null);
 
     /// <summary>The update body design 05 names.</summary>
     /// <param name="Name">The display name.</param>
     /// <param name="IsActive">Whether the group stays in use.</param>
     /// <param name="AppointmentTypeIds">The required appointment types.</param>
     /// <param name="ExpectedVersion">The version the caller read.</param>
+    /// <param name="Description">The public description.</param>
     public sealed record UpdateAttendeeGroupRequest(
         string? Name, bool IsActive, IReadOnlyList<Guid>? AppointmentTypeIds,
-        long ExpectedVersion);
+        long ExpectedVersion, string? Description = null);
 
     /// <summary>Maps the attendee-group routes.</summary>
     /// <param name="app">The endpoint route builder.</param>
@@ -69,7 +71,7 @@ public static class AttendeeGroupEndpoints
             var result = await handler.HandleAsync(
                 new CreateAttendeeGroupCommand(
                     caller.RequireStaffUserId(), request.Code, request.Name,
-                    request.AppointmentTypeIds ?? []),
+                    request.AppointmentTypeIds ?? [], request.Description),
                 cancellationToken);
             if (result.IsFailure)
             {
@@ -98,7 +100,8 @@ public static class AttendeeGroupEndpoints
             var result = await handler.HandleAsync(
                 new UpdateAttendeeGroupCommand(
                     caller.RequireStaffUserId(), id, request.Name,
-                    request.AppointmentTypeIds, request.IsActive, request.ExpectedVersion),
+                    request.AppointmentTypeIds, request.IsActive, request.ExpectedVersion,
+                    request.Description),
                 cancellationToken);
             if (result.IsFailure)
             {

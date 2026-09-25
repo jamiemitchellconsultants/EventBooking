@@ -184,7 +184,7 @@ public class AttendeesClientTests
         handler.Responses.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = JsonContent.Create(new PageDto<AttendeeGroupDto>(
-                [new AttendeeGroupDto(groupId, "FIELD", "Field staff", true, 1,
+                [new AttendeeGroupDto(groupId, "FIELD", "Field staff", "", true, 1,
                     [typeId], 3, new Dictionary<string, ApiLink>())], null)),
         });
         handler.Responses.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)

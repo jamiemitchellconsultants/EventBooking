@@ -30,7 +30,7 @@ public sealed record AppointmentTypeResponse(
 
 /// <summary>One attendee group with its requirements and member count.</summary>
 public sealed record AttendeeGroupResponse(
-    Guid Id, string Code, string Name, bool IsActive, long Version,
+    Guid Id, string Code, string Name, string Description, bool IsActive, long Version,
     IReadOnlyList<Guid> RequirementTypeIds, int MemberCount,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
@@ -252,7 +252,7 @@ public static class ApiResponses
     {
         ArgumentNullException.ThrowIfNull(item);
         return new AttendeeGroupResponse(
-            item.Id, item.Code, item.Name, item.IsActive, item.Version,
+            item.Id, item.Code, item.Name, item.Description, item.IsActive, item.Version,
             item.RequirementTypeIds, item.MemberCount,
             CallerLinks.For(
                 capabilities,
@@ -271,7 +271,7 @@ public static class ApiResponses
     {
         ArgumentNullException.ThrowIfNull(result);
         return new AttendeeGroupResponse(
-            result.Id, result.Code, result.Name, result.IsActive, result.Version,
+            result.Id, result.Code, result.Name, result.Description, result.IsActive, result.Version,
             result.RequirementTypeIds, result.MemberCount,
             CallerLinks.For(
                 capabilities,

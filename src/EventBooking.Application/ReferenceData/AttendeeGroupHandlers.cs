@@ -34,7 +34,7 @@ public sealed class CreateAttendeeGroupHandler(
         AttendeeGroup group;
         try
         {
-            group = AttendeeGroup.Create(Guid.NewGuid(), command.Code, command.Name, command.AppointmentTypeIds, activeIds);
+            group = AttendeeGroup.Create(Guid.NewGuid(), command.Code, command.Name, command.AppointmentTypeIds, activeIds, command.Description);
         }
         catch (DomainException ex)
         {
@@ -50,7 +50,7 @@ public sealed class CreateAttendeeGroupHandler(
         await unitOfWork.SaveChangesAsync(ct);
         return Result<AttendeeGroupResult>.Success(new AttendeeGroupResult(
             group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, 0));
+            group.RequiredAppointmentTypeIds, 0, group.Description));
     }
 }
 
@@ -92,6 +92,12 @@ public sealed class UpdateAttendeeGroupHandler(
         try
         {
             if (command.Name is not null) { group.Rename(command.Name); changes.Add("name"); }
+            if (command.Description is not null)
+            {
+                var before = group.Version;
+                group.ChangeDescription(command.Description);
+                if (group.Version != before) changes.Add("description");
+            }
             if (command.AppointmentTypeIds is not null)
             {
                 var activeIds = (await types.ListAsync(ct)).Where(t => t.IsActive).Select(t => t.Id).ToList();
@@ -144,7 +150,7 @@ public sealed class UpdateAttendeeGroupHandler(
         await unitOfWork.SaveChangesAsync(ct);
         return Result<AttendeeGroupResult>.Success(new AttendeeGroupResult(
             group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, memberCount));
+            group.RequiredAppointmentTypeIds, memberCount, group.Description));
     }
 
     // Every member's attendee lock is already held in ascending id order by
@@ -168,7 +174,7 @@ public sealed class UpdateAttendeeGroupHandler(
 
     private async Task<AttendeeGroupResult> ToResultAsync(AttendeeGroup group, CancellationToken ct) =>
         new(group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct));
+            group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Description);
 }
 
 /// <summary>Lists attendee groups in code order, hiding inactive rows unless asked. Open
@@ -192,7 +198,7 @@ public sealed class ListAttendeeGroupsHandler(
                      .OrderBy(g => g.Code, StringComparer.Ordinal))
         {
             items.Add(new AttendeeGroupListItem(group.Id, group.Code, group.Name, group.IsActive,
-                group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Version));
+                group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Version, group.Description));
         }
 
         return Result<IReadOnlyList<AttendeeGroupListItem>>.Success(items);

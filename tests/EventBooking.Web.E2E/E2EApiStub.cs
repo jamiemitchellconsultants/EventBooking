@@ -45,7 +45,7 @@ public static class E2EApiStub
         app.MapGet("/api/appointment-types", (HttpContext context) => Results.Json(new { items = new[] { new { id = Guid.NewGuid(), code = "MED", name = "Medical check", isActive = true, version = 1, hasManager = true, managerDisplayName = "M. Manager",
             _links = FixtureState(context) == "reference-read-only" ? new Dictionary<string, object>() :
                 new Dictionary<string, object> { ["update"] = new { href = "/api/appointment-types/1", method = "PUT", operationId = "updateAppointmentType" } } } }, nextCursor = (string?)null }));
-        app.MapGet("/api/attendee-groups", (HttpContext context) => Results.Json(new { items = new[] { new { id = Guid.NewGuid(), code = "FIELD", name = "Field staff", isActive = true, version = 1, requirementTypeIds = Array.Empty<Guid>(), memberCount = 17,
+        app.MapGet("/api/attendee-groups", (HttpContext context) => Results.Json(new { items = new[] { new { id = Guid.NewGuid(), code = "FIELD", name = "Field staff", description = "", isActive = true, version = 1, requirementTypeIds = Array.Empty<Guid>(), memberCount = 17,
             _links = FixtureState(context) == "reference-read-only" ? new Dictionary<string, object>() :
                 new Dictionary<string, object> { ["update"] = new { href = "/api/attendee-groups/1", method = "PUT", operationId = "updateAttendeeGroup" } } } }, nextCursor = (string?)null }));
         app.MapGet("/api/settings", () => Results.Json(new { inviteExpiryDays = 7, maxAutoRetryCount = 2, inviteOptionCount = 3, version = 1, _links = new { update = new { href = "/api/settings", method = "PUT", operationId = "updateSettings" } } }));

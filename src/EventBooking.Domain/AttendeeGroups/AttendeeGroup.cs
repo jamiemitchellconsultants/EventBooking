@@ -17,6 +17,7 @@ public sealed class AttendeeGroup
         // Materializes persisted rows, including inactive ones that Define would reject.
         Code = string.Empty;
         Name = string.Empty;
+        Description = string.Empty;
     }
 
     /// <summary>Gets the stable reference-data identifier.</summary>
@@ -30,6 +31,9 @@ public sealed class AttendeeGroup
 
     /// <summary>Gets whether new and changed Attendees may be assigned this group.</summary>
     public bool IsActive { get; private set; }
+
+    /// <summary>Gets the public-facing explanation of who should choose this group.</summary>
+    public string Description { get; private set; }
 
     /// <summary>Gets the optimistic-concurrency token.</summary>
     public long Version { get; private set; }
@@ -47,12 +51,14 @@ public sealed class AttendeeGroup
     /// <param name="name">The name.</param>
     /// <param name="isActive">The is active.</param>
     /// <param name="appointmentTypeIds">The appointment type ids.</param>
+    /// <param name="description">The public description.</param>
     public static AttendeeGroup Define(
         Guid id,
         string? code,
         string? name,
         bool isActive,
-        IEnumerable<Guid> appointmentTypeIds)
+        IEnumerable<Guid> appointmentTypeIds,
+        string? description = null)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
         Guard.Against(
@@ -79,6 +85,7 @@ public sealed class AttendeeGroup
             Code = code!,
             Name = displayName,
             IsActive = isActive,
+            Description = BoundedDescription(description),
         };
 
         foreach (var appointmentTypeId in mapping.Order())
@@ -95,6 +102,9 @@ public sealed class AttendeeGroup
     /// <summary>The longest name an attendee group may have (design 08).</summary>
     public const int MaximumNameLength = 200;
 
+    /// <summary>The longest public description an attendee group may have.</summary>
+    public const int MaximumDescriptionLength = 500;
+
     /// <summary>
     /// Creates an active Admin-managed group whose mapping names only active appointment types
     /// (FR-1.4).
@@ -104,12 +114,14 @@ public sealed class AttendeeGroup
     /// <param name="name">The display name.</param>
     /// <param name="appointmentTypeIds">The appointment types every member requires.</param>
     /// <param name="activeAppointmentTypeIds">Every appointment type currently active.</param>
+    /// <param name="description">The public description.</param>
     public static AttendeeGroup Create(
         Guid id,
         string? code,
         string? name,
         IEnumerable<Guid> appointmentTypeIds,
-        IReadOnlyCollection<Guid> activeAppointmentTypeIds)
+        IReadOnlyCollection<Guid> activeAppointmentTypeIds,
+        string? description = null)
     {
         Guard.Against(id == Guid.Empty, "id must not be empty.");
         ArgumentNullException.ThrowIfNull(activeAppointmentTypeIds);
@@ -125,6 +137,7 @@ public sealed class AttendeeGroup
             Name = displayName,
             IsActive = true,
             Version = 1,
+            Description = BoundedDescription(description),
         };
 
         foreach (var appointmentTypeId in mapping)
@@ -140,6 +153,16 @@ public sealed class AttendeeGroup
     public void Rename(string? name)
     {
         Name = BoundedName(name);
+        Version++;
+    }
+
+    /// <summary>Replaces the public description, trimming it and permitting empty.</summary>
+    /// <param name="description">The new description.</param>
+    public void ChangeDescription(string? description)
+    {
+        var next = BoundedDescription(description);
+        if (next == Description) return;
+        Description = next;
         Version++;
     }
 
@@ -228,6 +251,14 @@ public sealed class AttendeeGroup
             displayName.Length > MaximumNameLength,
             $"name must be at most {MaximumNameLength} characters.");
         return displayName;
+    }
+
+    private static string BoundedDescription(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        Guard.Against(text.Length > MaximumDescriptionLength,
+            $"description must be at most {MaximumDescriptionLength} characters.");
+        return text;
     }
 
     private static List<Guid> ValidatedMapping(
