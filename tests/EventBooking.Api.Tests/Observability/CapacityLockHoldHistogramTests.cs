@@ -31,4 +31,21 @@ public sealed class CapacityLockHoldHistogramTests
         Assert.Contains("eventbooking_capacity_lock_hold_duration_seconds_count 2", output);
         Assert.Contains("eventbooking_capacity_lock_hold_duration_seconds_sum ", output);
     }
+
+    [Fact]
+    public void Lock_hold_bounds_leave_request_duration_on_the_default_50ms_bucket()
+    {
+        var services = new ServiceCollection();
+        services.AddMetrics();
+        using var provider = services.BuildServiceProvider();
+        using var exposition = new PrometheusText();
+        using var metrics = new EventBookingMetrics(
+            provider.GetRequiredService<System.Diagnostics.Metrics.IMeterFactory>());
+        metrics.Record(TimeSpan.FromMilliseconds(20));
+        metrics.Duration.Record(0.02);
+        var output = exposition.Render();
+        Assert.Contains("eventbooking_http_request_duration_seconds_bucket{le=\"0.05\"} 1", output);
+        Assert.DoesNotContain("eventbooking_http_request_duration_seconds_bucket{le=\"0.049999\"}", output);
+        Assert.DoesNotContain("eventbooking_capacity_lock_hold_duration_seconds_bucket{le=\"0.05\"}", output);
+    }
 }

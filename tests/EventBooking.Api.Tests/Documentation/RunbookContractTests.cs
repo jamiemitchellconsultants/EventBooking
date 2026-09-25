@@ -5,8 +5,17 @@ namespace EventBooking.Api.Tests.Documentation;
 
 public sealed class RunbookContractTests
 {
-    private static readonly string Root = Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory, "../../../../../"));
+    private static readonly string Root = FindRepositoryRoot();
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "EventBooking.sln")))
+        {
+            directory = directory.Parent;
+        }
+        return directory?.FullName ?? throw new InvalidOperationException("Repository root not found.");
+    }
 
     private static string Read(string path) => File.ReadAllText(Path.Combine(Root, path));
 

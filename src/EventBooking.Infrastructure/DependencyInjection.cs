@@ -26,7 +26,7 @@ public static class InfrastructureServiceCollectionExtensions
         // needs a context of its own that is not tied to the request's unit of work, and this is
         // the pattern that gives it one without a second registration of the context type.
         services.AddDbContextFactory<EventBookingDbContext>((sp, options) => options
-            .UseNpgsql(connectionString));
+            .UseNpgsql(ConnectionPooling.WithDefaultMaxPoolSize(connectionString)));
         services.AddScoped(sp =>
             sp.GetRequiredService<IDbContextFactory<EventBookingDbContext>>().CreateDbContext());
 

@@ -1,9 +1,22 @@
 // tests/load/confirm-burst.js (complete)
 import http from 'k6/http';
 import { sleep } from 'k6';
+import { SharedArray } from 'k6/data';
 import { Counter, Gauge } from 'k6/metrics';
 
-const fixture = JSON.parse(open('./fixture.json'));
+// SharedArray runs its loader once and shares the result read-only across all 500 VUs,
+// instead of every VU parsing and validating its own copy of the manifest.
+const bookTokens = new SharedArray('book tokens', () => {
+  const fixture = JSON.parse(open('./fixture.json'));
+  if (!fixture.eventId || !Array.isArray(fixture.bookTokens)
+      || fixture.bookTokens.length !== 500
+      || new Set(fixture.bookTokens).size !== 500
+      || new Set(fixture.bookTokens.map((token) => token.slice(0, 12))).size !== 500) {
+    throw new Error('The load fixture must contain one event and 500 distinct token prefixes.');
+  }
+  return fixture.bookTokens;
+});
+const eventId = new SharedArray('event id', () => [JSON.parse(open('./fixture.json')).eventId])[0];
 const target = __ENV.API_URL || 'http://localhost:5001';
 const prefix = 'eventbooking_capacity_lock_hold_duration_seconds';
 const created = new Counter('load_created');
@@ -12,13 +25,6 @@ const unexpected = new Counter('load_unexpected');
 const serverErrors = new Counter('load_server_errors');
 const lockSamples = new Gauge('load_lock_samples');
 const under50ms = new Gauge('load_lock_under_50ms');
-
-if (!fixture.eventId || !Array.isArray(fixture.bookTokens)
-    || fixture.bookTokens.length !== 500
-    || new Set(fixture.bookTokens).size !== 500
-    || new Set(fixture.bookTokens.map((token) => token.slice(0, 12))).size !== 500) {
-  throw new Error('The load fixture must contain one event and 500 distinct token prefixes.');
-}
 
 export const options = {
   scenarios: {
@@ -40,17 +46,9 @@ export const options = {
   },
 };
 
-function sample(text, suffix) {
+function sample(lines, suffix) {
   const name = prefix + suffix;
-  const row = text.split('\n').find((line) => line.startsWith(name + ' '));
-  if (!row) return null;
-  const value = Number(row.slice(name.length + 1).trim());
-  return Number.isFinite(value) ? value : null;
-}
-
-function bucket(text) {
-  const name = prefix + '_bucket{le="0.049999"}';
-  const row = text.split('\n').find((line) => line.startsWith(name + ' '));
+  const row = lines.find((line) => line.startsWith(name + ' '));
   if (!row) return null;
   const value = Number(row.slice(name.length + 1).trim());
   return Number.isFinite(value) ? value : null;
@@ -59,7 +57,8 @@ function bucket(text) {
 function scrape() {
   const response = http.get(target + '/metrics', { timeout: '10s' });
   if (response.status !== 200) return null;
-  return { count: sample(response.body, '_count'), under: bucket(response.body) };
+  const lines = response.body.split('\n');
+  return { count: sample(lines, '_count'), under: sample(lines, '_bucket{le="0.049999"}') };
 }
 
 export function setup() {
@@ -75,10 +74,10 @@ export function setup() {
 export default function (data) {
   const delay = (data.startAt - Date.now()) / 1000;
   if (delay > 0) sleep(delay);
-  const token = fixture.bookTokens[__VU - 1];
+  const token = bookTokens[__VU - 1];
   const response = http.post(
     target + '/api/booking/' + encodeURIComponent(token) + '/confirm',
-    JSON.stringify({ eventId: fixture.eventId }),
+    JSON.stringify({ eventId }),
     { headers: { 'Content-Type': 'application/json' }, timeout: '120s',
       tags: { name: 'POST /api/booking/{token}/confirm' } },
   );

@@ -24,10 +24,10 @@ rm -f tests/load/fixture.json tests/load/postgres.log
 ```
 
 The load-only override raises the attendee per-IP allowance to 600/min; normal local and
-home-lab defaults remain 30/min. It also raises the load project's PostgreSQL
-`max_connections` to 300, because each confirmation holds two connections and the default
-100 cannot admit 500 simultaneous ones; every other stack keeps the default. Each of the 500 book tokens occupies a different token
-prefix partition, so the 10/min per-token policy remains enabled. The test passes only with
+home-lab defaults remain 30/min. PostgreSQL keeps its default `max_connections` of 100: the
+API's Npgsql pool defaults to 20 connections (design 08), so the 500 confirmations queue for a
+pooled connection instead of exhausting the server. Each of the 500 book tokens occupies a
+different token prefix partition, so the 10/min per-token policy remains enabled. The test passes only with
 100 HTTP 201 bookings, 400 HTTP 409 `capacity-exhausted` problems, no unexpected responses,
 no 5xx, no PostgreSQL deadlock, 500 new lock-hold samples and at least 475 samples strictly
 under 50 ms. A missing or malformed metric fails the run.

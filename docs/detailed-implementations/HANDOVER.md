@@ -645,11 +645,23 @@ contradiction it closes carry one number between them.
   applies to both.
 - The first burst failed (100 created, 38 capacity-exhausted, 362 5xx, 138 lock samples) and
   is kept as evidence, not retried away. Root cause: PostgreSQL logged remaining connection
-  slots reserved for superusers while the API logged one connection error per 5xx. The burst
-  holds two connections per confirmation (one handler transaction, one advisory-lock session)
-  against the default limit of 100. The fix is load-rig only: the override raises
-  max_connections to 300 and the load guide documents it. No threshold, rate limit or fixture
-  shape changed.
+  slots reserved for superusers while the API logged one connection error per 5xx. An attendee
+  confirmation holds one connection (the idempotency advisory lock is staff-only), but the API
+  opened Npgsql's default pool of up to 100 against PostgreSQL's default limit of 100, which
+  also serves reserved slots and the MCP role. Design 08's 20-per-replica pool default had never
+  been applied. The fix is in the application, for every stack: the Infrastructure pooling helper applies a
+  maximum pool size of 20 unless the connection string names one, for both the EF pool and the
+  idempotency-lock data source, so a burst queues for a pooled connection. PostgreSQL keeps its
+  default `max_connections` everywhere, including the load project. No threshold, rate limit or
+  fixture shape changed.
+- The lock-hold interval now opens at the event row lock, which carries the capacities it
+  charges and is where the 500 confirmations serialize, rather than at the later capacity-row
+  lock. The histogram's just-under-50 ms bucket is set on that instrument alone through
+  its bucket advice, so the request-duration histogram keeps the default 0.05 bound.
+- Rerun after both changes, with `max_connections` at 100: 100 created, 400
+  capacity-exhausted, 0 5xx, 0 unexpected, no deadlock or connection-slot errors in the
+  PostgreSQL log, 500 new lock-hold samples and 500 of them under 50 ms. Request p95 was
+  1.05 s, the queue behind the event row lock.
 - Task 33 gate: the four runbook contract tests pass; the full build and suite pass with no
   skipped tests; the ontology check is clean. The fresh-clone walk passed from a scratch clone
   of `main` at `59164e5` outside this checkout: the three ordered Compose commands, the demo

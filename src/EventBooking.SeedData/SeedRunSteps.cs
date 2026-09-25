@@ -102,10 +102,8 @@ public sealed class SeedRunSteps : ISeedRunSteps
 
     public async Task<int> SeedLoadFixtureAsync(string outputPath, CancellationToken ct)
     {
-        if (File.Exists(outputPath))
-            throw new SeedException("Load fixture output already exists; use a fresh disposable project.");
-        await using var scope = Scope();
-        var fixture = await scope.ServiceProvider.GetRequiredService<LoadFixtureSeeder>().RunAsync(ct);
+        // The manifest is created before the fixture is committed: an unwritable or existing
+        // path then fails with nothing seeded, instead of seeding tokens nobody can read.
         var streamOptions = new FileStreamOptions
         {
             Mode = FileMode.CreateNew,
@@ -117,10 +115,33 @@ public sealed class SeedRunSteps : ISeedRunSteps
             streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 #pragma warning restore CA1416
         }
-        await using var stream = new FileStream(outputPath, streamOptions);
-        await JsonSerializer.SerializeAsync(
-            stream, fixture, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);
-        return fixture.BookTokens.Count;
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(outputPath, streamOptions);
+        }
+        catch (IOException) when (File.Exists(outputPath))
+        {
+            throw new SeedException("Load fixture output already exists; use a fresh disposable project.");
+        }
+
+        try
+        {
+            await using (stream)
+            {
+                await using var scope = Scope();
+                var fixture = await scope.ServiceProvider.GetRequiredService<LoadFixtureSeeder>().RunAsync(ct);
+                await JsonSerializer.SerializeAsync(
+                    stream, fixture, new JsonSerializerOptions(JsonSerializerDefaults.Web), ct);
+                return fixture.BookTokens.Count;
+            }
+        }
+        catch
+        {
+            // An empty or partial manifest would block the runner's fresh-fixture check.
+            File.Delete(outputPath);
+            throw;
+        }
     }
 
     public ValueTask DisposeAsync() => _provider.DisposeAsync();

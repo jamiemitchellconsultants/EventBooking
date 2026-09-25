@@ -5,6 +5,6 @@ namespace EventBooking.Application.Abstractions;
 public interface ICapacityLockHoldObserver
 {
     /// <summary>Records one post-lock interval, after the transaction is released.</summary>
-    /// <param name="elapsed">The time from capacity lock acquisition through release.</param>
+    /// <param name="elapsed">The time from the event capacity lock through release.</param>
     void Record(TimeSpan elapsed);
 }

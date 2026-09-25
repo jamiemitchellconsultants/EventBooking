@@ -64,6 +64,31 @@ public sealed class SeedCommandTests
             steps.Calls);
     }
 
+    [Fact]
+    public async Task LoadFixtureIsGuardedAndRunsAfterTheDemoSeed()
+    {
+        Assert.Throws<SeedException>(() => SeedCliOptions.Parse(
+            [Connection, "--load-fixture"], _ => null));
+        Assert.Throws<SeedException>(() => SeedCliOptions.Parse(
+            [Connection, "--demo", "--load-fixture"],
+            key => key == "EVENTBOOKING_ENABLE_LOAD_FIXTURE" ? "true" : null));
+        var steps = new RecordingSteps();
+        var options = SeedCliOptions.Parse([Connection, "--demo", "--load-fixture"], key =>
+            key switch
+            {
+                "EVENTBOOKING_ENABLE_LOAD_FIXTURE" => "true",
+                "EVENTBOOKING_LOAD_FIXTURE_PATH" => "/load/fixture.json",
+                _ => null,
+            });
+
+        var exit = await SeedCommand.RunAsync(options, steps, TextWriter.Null, default);
+
+        Assert.Equal(0, exit);
+        Assert.Equal(
+            ["roles", "migrations", "keycloak", "seed", "invitations", "load:/load/fixture.json"],
+            steps.Calls);
+    }
+
     private sealed class RecordingSteps : ISeedRunSteps
     {
         public List<string> Calls { get; } = [];

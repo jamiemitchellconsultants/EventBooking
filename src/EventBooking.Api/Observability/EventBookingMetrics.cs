@@ -33,9 +33,16 @@ public sealed class EventBookingMetrics : ICapacityLockHoldObserver, IDisposable
         RateLimited = _meter.CreateCounter<long>(
             "eventbooking_rate_limited_total", "rejections",
             "Requests rejected by a rate limiter, by policy.");
+        // NFR-P3's bound is 50 ms exclusive, and a bucket counts values at or below its bound,
+        // so this histogram alone sets its 50 ms bucket just under it.
         CapacityLockHoldDuration = _meter.CreateHistogram<double>(
             "eventbooking_capacity_lock_hold_duration_seconds", "s",
-            "Time from capacity lock acquisition through transaction release.");
+            "Time from the event capacity lock through transaction release.",
+            tags: null,
+            advice: new InstrumentAdvice<double>
+            {
+                HistogramBucketBoundaries = [0.005, 0.01, 0.025, 0.049999, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+            });
 
         // Declare the business series even before the first refusal: a counter no request
         // has touched yet would otherwise be absent from the scrape rather than zero.
@@ -58,7 +65,7 @@ public sealed class EventBookingMetrics : ICapacityLockHoldObserver, IDisposable
     public Histogram<double> CapacityLockHoldDuration { get; }
 
     /// <summary>Records one capacity-lock hold interval in seconds, without labels.</summary>
-    /// <param name="elapsed">The time from capacity lock acquisition through release.</param>
+    /// <param name="elapsed">The time from the event capacity lock through release.</param>
     public void Record(TimeSpan elapsed) =>
         CapacityLockHoldDuration.Record(elapsed.TotalSeconds);
 

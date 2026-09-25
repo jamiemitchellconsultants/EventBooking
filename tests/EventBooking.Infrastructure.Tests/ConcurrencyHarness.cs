@@ -65,8 +65,10 @@ public sealed class ConcurrencyHarness : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddLogging();
 
+        // Every attempt in a batch holds its own open connection at once, so the pool must admit
+        // the largest batch rather than the 20-per-replica production default.
         services.AddEventBookingInfrastructure(
-            fixture.ConnectionString,
+            new NpgsqlConnectionStringBuilder(fixture.ConnectionString) { MaxPoolSize = 100 }.ConnectionString,
             new TokenOptions("a-concurrency-test-signing-key-long-enough"));
 
         services.AddSingleton<EventBooking.Domain.Time.IEventWindowZones>(

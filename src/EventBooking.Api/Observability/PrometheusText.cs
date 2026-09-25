@@ -12,13 +12,12 @@ namespace EventBooking.Api.Observability;
 public sealed class PrometheusText : IDisposable
 {
     /// <summary>
-    /// The request-duration bucket upper bounds, in seconds: the Prometheus client libraries'
-    /// defaults, which span a fast read to a slow export, except the 50 ms bound is set
-    /// just below it so the 500-way release load test can assert the NFR-P3 percentile
-    /// from the booking handler's measurement.
+    /// The default bucket upper bounds, in seconds: the Prometheus client libraries'
+    /// defaults, which span a fast read to a slow export. A histogram created with
+    /// <see cref="InstrumentAdvice{T}.HistogramBucketBoundaries"/> uses its own instead.
     /// </summary>
-    private static readonly double[] BucketBounds =
-        [0.005, 0.01, 0.025, 0.049999, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
+    private static readonly double[] DefaultBucketBounds =
+        [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
 
     private readonly MeterListener _listener = new();
     private readonly Dictionary<string, Series> _series = new(StringComparer.Ordinal);
@@ -82,11 +81,11 @@ public sealed class PrometheusText : IDisposable
     private static void AppendHistogram(
         StringBuilder builder, string name, Series series, long[] buckets)
     {
-        for (var index = 0; index < BucketBounds.Length; index++)
+        for (var index = 0; index < series.Bounds.Count; index++)
         {
             AppendSample(
                 builder, name + "_bucket",
-                WithLabel(series.Labels, "le", BucketBounds[index].ToString(CultureInfo.InvariantCulture)),
+                WithLabel(series.Labels, "le", series.Bounds[index].ToString(CultureInfo.InvariantCulture)),
                 buckets[index]);
         }
 
@@ -114,11 +113,13 @@ public sealed class PrometheusText : IDisposable
         {
             if (!_series.TryGetValue(key, out var series))
             {
+                var histogram = instrument as Histogram<double>;
                 series = new Series(
                     instrument.Name,
                     labels,
-                    instrument is Histogram<double> ? "histogram" : "counter",
-                    instrument.Description ?? instrument.Name);
+                    histogram is null ? "counter" : "histogram",
+                    instrument.Description ?? instrument.Name,
+                    histogram?.Advice?.HistogramBucketBoundaries ?? DefaultBucketBounds);
                 _series[key] = series;
             }
 
@@ -127,9 +128,9 @@ public sealed class PrometheusText : IDisposable
             if (series.Buckets is { } buckets)
             {
                 // Cumulative at record time: each bound counts every observation at or below it.
-                for (var index = 0; index < BucketBounds.Length; index++)
+                for (var index = 0; index < series.Bounds.Count; index++)
                 {
-                    if (measurement <= BucketBounds[index])
+                    if (measurement <= series.Bounds[index])
                     {
                         buckets[index]++;
                     }
@@ -169,7 +170,8 @@ public sealed class PrometheusText : IDisposable
         return builder.Append('}').ToString();
     }
 
-    private sealed class Series(string name, string labels, string kind, string description)
+    private sealed class Series(
+        string name, string labels, string kind, string description, IReadOnlyList<double> bounds)
     {
         public string Name { get; } = name;
 
@@ -179,6 +181,9 @@ public sealed class PrometheusText : IDisposable
 
         public string Description { get; } = description;
 
+        /// <summary>Gets the bucket upper bounds, used on a histogram only.</summary>
+        public IReadOnlyList<double> Bounds { get; } = bounds;
+
         /// <summary>Gets or sets the counter's total, or the histogram's sum.</summary>
         public double Value { get; set; }
 
@@ -186,6 +191,6 @@ public sealed class PrometheusText : IDisposable
         public long Count { get; set; }
 
         /// <summary>Gets the cumulative count per upper bound, on a histogram only.</summary>
-        public long[]? Buckets { get; } = kind == "histogram" ? new long[BucketBounds.Length] : null;
+        public long[]? Buckets { get; } = kind == "histogram" ? new long[bounds.Count] : null;
     }
 }

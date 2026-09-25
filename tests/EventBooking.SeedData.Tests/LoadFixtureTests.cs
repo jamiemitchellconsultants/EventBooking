@@ -56,26 +56,6 @@ public sealed class LoadFixtureTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Guard_rejects_load_mode_before_any_side_effect()
-    {
-        var connection = _postgres.GetConnectionString();
-        Assert.Throws<SeedException>(() => SeedCliOptions.Parse(
-            [connection, "--load-fixture"], _ => null));
-        Assert.Throws<SeedException>(() => SeedCliOptions.Parse(
-            [connection, "--demo", "--load-fixture"],
-            key => key == "EVENTBOOKING_ENABLE_LOAD_FIXTURE" ? "true" : null));
-        var options = SeedCliOptions.Parse([connection, "--demo", "--load-fixture"], key =>
-            key switch
-            {
-                "EVENTBOOKING_ENABLE_LOAD_FIXTURE" => "true",
-                "EVENTBOOKING_LOAD_FIXTURE_PATH" => "/load/fixture.json",
-                _ => null,
-            });
-        Assert.True(options.LoadFixture);
-        Assert.Equal("/load/fixture.json", options.LoadFixturePath);
-    }
-
-    [Fact]
     public async Task Fixture_has_one_100_place_event_and_500_distinct_pending_invites()
     {
         await using var scope = _services.CreateAsyncScope();
