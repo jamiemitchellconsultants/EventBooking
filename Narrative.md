@@ -34,6 +34,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [24](#entry-feat-seed-jointbooking-parity-for-reanchor-verbose-and-help) | 2026-09-25 | feat(seed): JointBooking parity for --reanchor, --verbose and --help | product | Add the missing switches, but not `--skip-seed`: the original EventBooking design deliberately made migrate-only the default with `--demo` as the opt-in, and reversing that is out of scope. |
 | [25](#entry-fix-web-allow-the-import-map-in-the-home-lab-csp-so-blazor-starts) | 2026-09-25 | fix(web): allow the import map in the home-lab CSP so Blazor starts | product | Keep a strict `script-src` and allow the import map by build-time hash, rather than adding `'unsafe-inline'`. Remove the app's other inline script instead of hashing it, and fail the image build if a new inline script appears. |
 | [26](#entry-fix-web-allow-keycloak-silent-sign-in-frame-so-the-page-loads-in-under-a) | 2026-09-25 | fix(web): allow Keycloak silent sign-in frame so the page loads in under a second | product | Allow framing of the Keycloak origin and same-origin framing, keeping every other restriction, rather than removing the policy or disabling silent sign-in in the app. |
+| [27](#entry-docs-event-groups-specify-self-registration-feature) | 2026-09-25 | docs(event-groups): specify self-registration feature | product | Introduce Event Groups with selected Attendee Groups and independent publication gates for each Event membership. |
 
 ---
 
@@ -1007,3 +1008,25 @@ Page load no longer waits for the silent sign-in timeout. Same-origin framing is
 AI-Fingerprint: sha256:22862a1f72a7
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+<a id="entry-docs-event-groups-specify-self-registration-feature"></a>
+
+## Entry 27 — 2026-09-25 — docs(event-groups): specify self-registration feature
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+The current workflow requires staff to create Attendees. The requested feature lets Admins and Coordinators publish selected Events for potential attendees while preserving Event capacity and role boundaries.
+
+## Decision
+
+Introduce Event Groups with selected Attendee Groups and independent publication gates for each Event membership. Interpret appointment-type compatibility as exact equality between each member Event's types and the union of selected Attendee Group requirements. Collect name, email, and group on the public form, then require email confirmation before creating a Booking or charging capacity. At confirmation, use the existing Attendee, Invite, Booking, and outbox pipeline.
+
+## Consequences
+
+A pending registration does not reserve capacity, so confirmation can fail if a gate closes or capacity fills. The exact-union interpretation is a stated planning assumption for review. The implementation is divided into nine separately committable tasks; no feature code is included here.
+
+AI-Fingerprint: sha256:9e29ab77a07f
