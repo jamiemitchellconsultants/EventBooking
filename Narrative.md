@@ -29,6 +29,7 @@ This document records what was asked, what was decided, why, and what followed.
 | [19](#entry-phase-3-application-layer-tasks-12-20b) | 2026-09-24 | Phase 3: application layer (Tasks 12–20b) | product | Chose the durable outbox dispatcher with golden templates for notifications; the invite engine enforces the token lifecycle as specified in D14; and audit search resolves the caller's buckets (event, attendee) from its capabilities while… |
 | [20](#entry-phase-4-api-endpoint-catalogue-and-mcp-parity) | 2026-09-24 | Phase 4: API endpoint catalogue and MCP parity | product | The branch implements the design-05 endpoint catalogue and a 45-tool MCP surface with three-way parity (operation catalogue, OpenAPI document, tools/list). |
 | [21](#entry-phase-5-web-front-end-tasks-24-27) | 2026-09-24 | Phase 5: web front end (Tasks 24–27) | product | The web project stays a standalone WASM client that references no server assembly. Its wire DTOs duplicate the JSON contract and are checked against the served OpenAPI document. |
+| [22](#entry-seed-and-deploy-eventbooking) | 2026-09-25 | Seed and deploy EventBooking | product | Use a migrate-only seed default, add LAB as the fourth managed active appointment type, retire the single-zone clock, and support local Compose plus an isolated home-lab topology behind shared Caddy and Keycloak services. |
 
 ---
 
@@ -866,3 +867,30 @@ The web project stays a standalone WASM client that references no server assembl
 AI-Fingerprint: sha256:154063e6bccb
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+---
+
+<a id="entry-seed-and-deploy-eventbooking"></a>
+
+## Entry 22 — 2026-09-25 — Seed and deploy EventBooking
+
+*Kind: product. Status: accepted.*
+
+## Context
+
+EventBooking needed reproducible demo data and two supported container deployment shapes after the
+application and Web surfaces were defined.
+
+## Decision
+
+Use a migrate-only seed default, add LAB as the fourth managed active appointment type, retire the
+single-zone clock, and support local Compose plus an isolated home-lab topology behind shared Caddy
+and Keycloak services.
+
+## Consequences
+
+Demo state now requires an explicit flag, destructive reseeding has a second guard, operators have
+documented forward-only upgrade and fresh-volume recovery paths, and releases publish five images
+plus a self-contained migration executable.
+
+AI-Fingerprint: sha256:aed4f2c2c176
