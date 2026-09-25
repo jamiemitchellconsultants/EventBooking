@@ -1935,6 +1935,605 @@
         }
       }
     },
+    "/api/event-groups": {
+      "get": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "List event groups.",
+        "description": "Reads every event group with its selected attendee groups and memberships.",
+        "operationId": "listEventGroups",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfEventGroupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-eventbooking-list": true,
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "list_event_groups",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "post": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "Create an event group.",
+        "description": "Creates a closed event group serving the selected active attendee groups.",
+        "operationId": "createEventGroup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "create_event_group",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": false,
+          "idempotent": false,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/event-groups/{id}": {
+      "get": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "Read one event group.",
+        "description": "Reads one event group with its selected attendee groups and memberships.",
+        "operationId": "getEventGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "get_event_group",
+        "x-agent-hints": {
+          "readOnly": true,
+          "destructive": false,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "put": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "Update an event group.",
+        "description": "Updates an event group's copy, selected groups and group gate. Replacing the selected groups is refused when the new union would break a member event.",
+        "operationId": "updateEventGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "update_event_group",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
+    "/api/event-groups/{id}/events/{eventId}": {
+      "put": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "Add an event to a group.",
+        "description": "Adds an active future event whose capacity types equal the group's set. New memberships start private.",
+        "operationId": "addEventGroupEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddEventGroupEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "add_event_group_event",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "patch": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "Open or close a membership.",
+        "description": "Toggles one event membership's public-registration gate; the group gate is independent.",
+        "operationId": "setEventGroupEventOpen",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetEventGroupEventOpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "set_event_group_event_open",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      },
+      "delete": {
+        "tags": [
+          "Event groups"
+        ],
+        "summary": "Remove an event from a group.",
+        "description": "Removes one event membership; existing bookings stay valid.",
+        "operationId": "removeEventGroupEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "expectedVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventGroupResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { }
+        ],
+        "x-capability": "ManageEventGroups",
+        "x-mcp-tool": "remove_event_group_event",
+        "x-agent-hints": {
+          "readOnly": false,
+          "destructive": true,
+          "idempotent": true,
+          "openWorld": false
+        }
+      }
+    },
     "/api/attendees": {
       "get": {
         "tags": [
@@ -3786,6 +4385,22 @@
   },
   "components": {
     "schemas": {
+      "AddEventGroupEventRequest": {
+        "required": [
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "AdditionalLocationIdsRequest": {
         "required": [
           "additionalLocationIds"
@@ -4087,6 +4702,7 @@
           "id",
           "code",
           "name",
+          "description",
           "isActive",
           "version",
           "requirementTypeIds",
@@ -4103,6 +4719,9 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "isActive": {
@@ -4545,6 +5164,44 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CreateEventGroupRequest": {
+        "required": [
+          "title",
+          "description",
+          "attendeeGroupIds"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "attendeeGroupIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -4917,6 +5574,92 @@
           }
         },
         "description": "Defines event capacity row for the current use case."
+      },
+      "EventGroupEventResponse": {
+        "required": [
+          "eventId",
+          "isOpen",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isOpen": {
+            "type": "boolean"
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
+      },
+      "EventGroupResponse": {
+        "required": [
+          "id",
+          "title",
+          "description",
+          "isOpen",
+          "version",
+          "attendeeGroupIds",
+          "appointmentTypeIds",
+          "events",
+          "_links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "isOpen": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "attendeeGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "appointmentTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventGroupEventResponse"
+            }
+          },
+          "_links": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ApiLink"
+            }
+          }
+        }
       },
       "EventProposalResponse": {
         "required": [
@@ -5469,6 +6212,27 @@
           }
         }
       },
+      "PageOfEventGroupResponse": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventGroupResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PageOfEventProposalResponse": {
         "required": [
           "items",
@@ -5843,6 +6607,26 @@
           }
         }
       },
+      "SetEventGroupEventOpenRequest": {
+        "required": [
+          "isOpen",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "isOpen": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "SetStaffScopeOutcome": {
         "required": [
           "targetStaffUserId",
@@ -6078,6 +6862,57 @@
               "string"
             ],
             "format": "int64"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "UpdateEventGroupRequest": {
+        "required": [
+          "title",
+          "description",
+          "attendeeGroupIds",
+          "isOpen",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "attendeeGroupIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "isOpen": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
           }
         }
       },
@@ -6289,6 +7124,9 @@
     },
     {
       "name": "Events"
+    },
+    {
+      "name": "Event groups"
     },
     {
       "name": "Attendees"

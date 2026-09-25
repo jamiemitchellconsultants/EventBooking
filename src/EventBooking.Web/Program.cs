@@ -62,6 +62,7 @@ builder.Services.AddScoped(sp =>
 #endif
 
 builder.Services.AddScoped<IEventsClient, EventsClient>();
+builder.Services.AddScoped<IEventGroupsClient, EventGroupsClient>();
 builder.Services.AddScoped<IAttendeesClient, AttendeesClient>();
 builder.Services.AddScoped<AdminClient>();
 builder.Services.AddScoped<StaffAccessClient>();

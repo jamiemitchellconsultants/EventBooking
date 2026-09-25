@@ -6,14 +6,14 @@ public sealed class StaffNavigationTests
 {
     public static TheoryData<string[], string[]> EveryValidShape => new()
     {
-        { ["Admin"], ["/admin/locations", "/admin/appointment-types", "/admin/attendee-groups", "/admin/settings", "/admin/staff-access", "/events/operations", "/audit"] },
-        { ["Coordinator"], ["/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Admin"], ["/admin/locations", "/admin/appointment-types", "/admin/attendee-groups", "/admin/settings", "/admin/staff-access", "/event-groups", "/events/operations", "/audit"] },
+        { ["Coordinator"], ["/attendees", "/dashboards", "/events/operations", "/event-groups", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
         { ["Manager"], ["/events/negotiate", "/appointments", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
         { ["AppointmentStaff"], ["/appointments"] },
-        { ["Manager", "Coordinator"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
-        { ["Coordinator", "AppointmentStaff"], ["/appointments", "/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Manager", "Coordinator"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/event-groups", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Coordinator", "AppointmentStaff"], ["/appointments", "/attendees", "/dashboards", "/events/operations", "/event-groups", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
         { ["Manager", "AppointmentStaff"], ["/events/negotiate", "/appointments", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
-        { ["Manager", "Coordinator", "AppointmentStaff"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
+        { ["Manager", "Coordinator", "AppointmentStaff"], ["/events/negotiate", "/appointments", "/attendees", "/dashboards", "/events/operations", "/event-groups", "/audit", "/admin/locations", "/admin/appointment-types", "/admin/attendee-groups"] },
     };
 
     [Theory]
