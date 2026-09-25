@@ -65,14 +65,21 @@ public sealed class SeedRunSteps : ISeedRunSteps
         await scope.ServiceProvider.GetRequiredService<EventBookingDbContext>().Database.MigrateAsync(ct);
     }
 
-    public async Task ReanchorToTodayAsync(CancellationToken ct)
+    public async Task<DateOnly> ReanchorAsync(DateOnly? date, CancellationToken ct)
     {
         await using var scope = Scope();
-        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
-        var zones = scope.ServiceProvider.GetRequiredService<EventBooking.Domain.Time.IEventWindowZones>();
-        DemoSeedSpec.OverrideAnchor(zones.LocalDateOf(clock.UtcNow, "Europe/London"));
+        var anchor = date ?? TodayInLondon(scope);
+        DemoSeedSpec.OverrideAnchor(anchor);
         await scope.ServiceProvider.GetRequiredService<DemoSeeder>()
             .ReanchorAsync(DemoSeedSpec.Build(), ct);
+        return anchor;
+    }
+
+    private static DateOnly TodayInLondon(AsyncServiceScope scope)
+    {
+        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+        var zones = scope.ServiceProvider.GetRequiredService<EventBooking.Domain.Time.IEventWindowZones>();
+        return zones.LocalDateOf(clock.UtcNow, "Europe/London");
     }
 
     public async Task<KeycloakSeedSummary?> ConvergeKeycloakAsync(bool recreateRealm, CancellationToken ct)
