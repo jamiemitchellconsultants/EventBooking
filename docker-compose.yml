@@ -31,6 +31,12 @@ services:
       KC_HEALTH_ENABLED: "true"
     ports: ["8081:8081"]
     volumes:
+      # start-dev keeps its H2 database under /opt/keycloak/data. Without this volume every
+      # container recreate lost the realm's users while Postgres kept the staff identities keyed
+      # by the old user ids, so the next seed failed on ux_staff_identity_staff_id. The realm file
+      # is imported only when the realm does not exist yet, so edits to it apply after
+      # "docker compose down -v" or a seed run with --reseed.
+      - eventbooking-keycloak:/opt/keycloak/data
       - ./deploy/keycloak/realm-export.json:/opt/keycloak/data/import/eventbooking-realm.json:ro
     networks:
       default:
@@ -142,3 +148,4 @@ services:
 
 volumes:
   eventbooking-postgres:
+  eventbooking-keycloak:
