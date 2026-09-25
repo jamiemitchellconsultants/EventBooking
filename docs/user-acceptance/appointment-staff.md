@@ -12,6 +12,17 @@
 4. Select **Download roster (CSV)**. **Expect:** a CSV file for the selected event. Check its columns and one reserved attendee, then store or dispose of the file according to the test lead's data-handling instructions.
 5. Open **Help**. **Expect:** the Appointment staff guide is available.
 
+**Reference screens (local demo build):**
+
+![Appointment staff home (MED)](screenshots/aps01-home.png)
+*Appointment staff home (MED).*
+
+![MED roster](screenshots/aps01-appointments.png)
+*MED roster.*
+
+![Unscoped staff account: awaiting assignment](screenshots/aps01-unscoped-appointments.png)
+*Unscoped staff account: awaiting assignment.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Type, event and evidence:** ____________________

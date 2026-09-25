@@ -10,6 +10,17 @@
 2. In **Administration**, find **Locations**, **Appointment types**, **Attendee groups**, **System settings**, and **Staff access**. In **Your work**, find **Event operations** and **Audit search**. Open **Help**. **Expect:** the pages load and the Admin guide is available.
 3. Inspect the home page and navigation. **Expect:** no **Attendees**, **Dashboards**, **Negotiation board**, or **Appointment workspace** link. Open `/attendees` directly in the address bar. **Expect:** the page states that a Coordinator profile is required and shows no attendee records.
 
+**Reference screens (local demo build):**
+
+![Admin home: Your work and Administration links, no attendee links](screenshots/adm01-home.png)
+*Admin home: Your work and Administration links, no attendee links.*
+
+![Direct visit to /attendees: Coordinator profile required, no records](screenshots/adm01-attendees-boundary.png)
+*Direct visit to /attendees: Coordinator profile required, no records.*
+
+![Signed-in Help for the Admin account (local build shows the no-role message)](screenshots/adm01-help.png)
+*Signed-in Help for the Admin account (local build shows the no-role message).*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Actual result and evidence:** ____________________
@@ -22,6 +33,17 @@
 4. If the test lead reserved a unique code for you, create one test Location with **New location** and a valid IANA time zone, then confirm it appears in the table. Leave it active for later tests. Otherwise mark this step Not run.
 5. If the test lead reserved a second unique code, select **New attendee group**, enter that Code and a Name, and select at least one active appointment type with a Manager. Select **Save**. **Expect:** the new group appears with those required types. Otherwise mark this step Not run.
 
+**Reference screens (local demo build):**
+
+![Locations](screenshots/adm02-locations.png)
+*Locations.*
+
+![Appointment types](screenshots/adm02-appointment-types.png)
+*Appointment types.*
+
+![Attendee groups](screenshots/adm02-attendee-groups.png)
+*Attendee groups.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Actual result and evidence:** ____________________
@@ -31,6 +53,11 @@
 1. Open **System settings**. Record **Invitation expiry (days)**, **Automatic retries**, and **Options per invitation**. **Expect:** all three current values are visible; options per invitation is between 1 and 5.
 2. If settings changes are reserved for this run, change one value by 1 within its displayed range and select **Save changes**. Refresh the page. **Expect:** the new value remains.
 3. Restore the original value and save again. **Expect:** it remains after refresh. Existing invitations should retain the settings captured when they were issued; confirm that with the Coordinator if an existing test invitation is available.
+
+**Reference screens (local demo build):**
+
+![System settings](screenshots/adm03-settings.png)
+*System settings.*
 
 **Result:** Pass / Fail / Blocked / Not run
 
@@ -42,6 +69,11 @@
 2. For a designated unscoped test account, choose its approved appointment type in **Scope for …** and select **Save scope**. **Expect:** a success message and the new scope in the row. Ask that person to refresh their home page and confirm the appointment type appears there.
 3. If the test plan calls for a temporary scope, restore it to **No scope** and select **Save scope**. **Expect:** the row returns to **No scope**. Do not change a working Manager's scope, which may displace them from their appointment type.
 
+**Reference screens (local demo build):**
+
+![Staff access](screenshots/adm04-staff-access.png)
+*Staff access.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Account, before/after scope and evidence:** ____________________
@@ -51,6 +83,14 @@
 1. Open **Event operations**. Use Location, From and To to find a future event. **Expect:** each row shows its location, local time, appointment types, remaining capacity and active booking count.
 2. Select **Cancel event** on a reserved event, then select **Keep event**. **Expect:** the confirmation can be dismissed and the event remains. Do not select **Confirm cancellation** unless this event was explicitly reserved for cancellation.
 3. Open **Audit search**. Set a date range covering your reference-data or scope change and select **Search**. **Expect:** a matching operational change with When, What, Who and Details. Attendee records should not be visible to Admin.
+
+**Reference screens (local demo build):**
+
+![Event operations](screenshots/adm05-event-operations.png)
+*Event operations.*
+
+![Audit search](screenshots/adm05-audit.png)
+*Audit search.*
 
 **Result:** Pass / Fail / Blocked / Not run
 

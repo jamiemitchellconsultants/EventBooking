@@ -11,6 +11,17 @@
 3. Open **Attendees**. Use Status, Group, Readiness, and **Search by name or email…** to locate an existing test attendee. **Expect:** the row shows required types, status, readiness, delivery, booking and history.
 4. Open **Help**. **Expect:** the Coordinator guide is available.
 
+**Reference screens (local demo build):**
+
+![Coordinator home](screenshots/coo01-home.png)
+*Coordinator home.*
+
+![Dashboards](screenshots/coo01-dashboards.png)
+*Dashboards.*
+
+![Attendees list](screenshots/coo01-attendees.png)
+*Attendees list.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Actual result and evidence:** ____________________
@@ -43,6 +54,11 @@
 3. After the Appointment staff tester records a Completed outcome, refresh readiness. **Expect:** the completed type no longer appears as outstanding. An attendee requiring several types is Ready only after all required types are Completed.
 4. Open **History** for the attendee. **Expect:** invitation, booking and appointment changes with actor and time. Do not record personal links from the audit detail.
 
+**Reference screens (local demo build):**
+
+![Audit search](screenshots/coo04-audit.png)
+*Audit search.*
+
 **Result:** Pass / Fail / Blocked / Not run
 
 **Before/after readiness and evidence:** ____________________
@@ -72,6 +88,11 @@
 1. On **Event operations**, find a future event reserved for cancellation with at least one test booking. Record its Location, window and active booking count, then select **Cancel event**. **Expect:** the confirmation states how many bookings will be affected.
 2. Select **Confirm cancellation**. **Expect:** a result states how many bookings were cancelled, re-invited or left awaiting availability; the event is no longer bookable.
 3. On **Attendees**, check one affected test attendee's Booking, Status, Delivery and History. **Expect:** the old booking is no longer active and a replacement invitation or awaiting-availability state is visible. Ask the Attendee tester to check the test mailbox for any new link.
+
+**Reference screens (local demo build):**
+
+![Event operations](screenshots/coo07-event-operations.png)
+*Event operations.*
 
 **Result:** Pass / Fail / Blocked / Not run
 
