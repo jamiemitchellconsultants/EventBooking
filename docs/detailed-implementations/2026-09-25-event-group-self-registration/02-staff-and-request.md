@@ -429,7 +429,7 @@ Expected: SelfRegistration types are missing.
 - [ ] **Step 3: Implement pending state, persistence, token and outbox**
 
 Validate nonempty IDs, name 1–200, email at most 320 using the same parsing/normalization rule
-as Attendee. Expire precisely at 24 hours; stamp TerminalAt only on Confirm/Expire. Add the
+as Attendee. Expire precisely at the configured window (default 24 hours); stamp TerminalAt only on Confirm/Expire. Add the
 `SelfRegistration` table and indexes on `(email, status, expires_at)` and terminal time. Email
 Log's AttendeeId becomes nullable; enforce exactly one recipient context ID by a database check.
 Keep attendee-scoped retry and dashboard queries restricted to non-null AttendeeId; the staff

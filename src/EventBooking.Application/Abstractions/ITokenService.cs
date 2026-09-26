@@ -9,6 +9,9 @@ public enum TokenPurpose
 
     /// <summary>The link that views, cancels or reschedules a booking.</summary>
     Manage = 2,
+
+    /// <summary>The link that confirms an anonymous self-registration request.</summary>
+    Registration = 3,
 }
 
 /// <summary>What a valid token names: the row to load and the version it must still be on.</summary>

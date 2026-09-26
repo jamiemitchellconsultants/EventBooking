@@ -1,5 +1,6 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Jobs;
+using EventBooking.Application.SelfRegistrations;
 using EventBooking.Domain.Bookings;
 using EventBooking.Infrastructure.Jobs;
 using EventBooking.Infrastructure.Persistence;
@@ -49,6 +50,8 @@ public sealed class InviteSweepService(
                 var appointments =
                     scope.ServiceProvider.GetRequiredService<IBookingAppointmentRepository>();
                 var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+                var registrations =
+                    scope.ServiceProvider.GetRequiredService<SelfRegistrationMaintenance>();
 
                 var started = false;
                 try
@@ -67,6 +70,8 @@ public sealed class InviteSweepService(
                             "Sweep: {Expired} expired, {Withdrawn} withdrawn, {Concluded} concluded, {Failures} failed.",
                             metrics.ExpiredInvites, metrics.WithdrawnProposals,
                             metrics.ConcludedRecoveries, metrics.Failures);
+
+                    await registrations.RunAsync(stoppingToken);
                 }
                 finally
                 {

@@ -4,6 +4,7 @@ using EventBooking.Application.Audit;
 using EventBooking.Application.Bookings;
 using EventBooking.Application.Attendees;
 using EventBooking.Application.Dashboards;
+using EventBooking.Application.EventGroups;
 using EventBooking.Application.Invites;
 using EventBooking.Application.Jobs;
 using EventBooking.Application.Notifications;
@@ -78,6 +79,16 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<CreateAttendeeGroupHandler>();
         services.AddScoped<UpdateAttendeeGroupHandler>();
         services.AddScoped<ListAttendeeGroupsHandler>();
+
+        // Event groups.
+        services.AddScoped<ManageEventGroupHandler>();
+        services.AddScoped<ListEventGroupsHandler>();
+
+        // Self-registrations.
+        services.AddScoped<SelfRegistrations.SubmitSelfRegistrationHandler>();
+        services.AddScoped<SelfRegistrations.ViewSelfRegistrationHandler>();
+        services.AddScoped<SelfRegistrations.ConfirmSelfRegistrationHandler>();
+        services.AddScoped<SelfRegistrations.SelfRegistrationMaintenance>();
 
         // Administration.
         services.AddScoped<AdminSettingsHandler>();

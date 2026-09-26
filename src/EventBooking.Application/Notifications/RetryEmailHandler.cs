@@ -34,7 +34,7 @@ public sealed class RetryEmailHandler(
             return Result<RetryEmailOutcome>.Failure(
                 Error.Conflict($"Only a failed delivery can be retried, not {old.Status}."));
 
-        var fresh = EmailLog.RecordPending(Guid.NewGuid(), old.AttendeeId, old.TemplateName,
+        var fresh = EmailLog.RecordPending(Guid.NewGuid(), command.AttendeeId, old.TemplateName,
             clock.UtcNow, old.InviteId, old.BookingId, old.EventId);
         deliveries.Add(fresh);
         old.MarkResolved(clock.UtcNow);
@@ -62,7 +62,7 @@ public sealed class RetryEmailHandler(
             return Result<RetryEmailOutcome>.Failure(
                 Error.Conflict($"Only a failed delivery can be retried, not {newest.Status}."));
 
-        var fresh = EmailLog.RecordPending(Guid.NewGuid(), newest.AttendeeId, newest.TemplateName,
+        var fresh = EmailLog.RecordPending(Guid.NewGuid(), command.AttendeeId, newest.TemplateName,
             clock.UtcNow, newest.InviteId, newest.BookingId, newest.EventId);
         deliveries.Add(fresh);
         newest.MarkResolved(clock.UtcNow);

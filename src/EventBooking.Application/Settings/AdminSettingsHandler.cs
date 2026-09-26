@@ -29,12 +29,14 @@ public sealed record AppointmentTypeView(
 /// <param name="InviteExpiryDays">The invite expiry days.</param>
 /// <param name="MaxAutoRetryCount">The max auto retry count.</param>
 /// <param name="InviteOptionCount">How many event options each invite offers.</param>
+/// <param name="PendingRegistrationExpiryHours">How long a self-registration request stays confirmable.</param>
 /// <param name="Version">The optimistic-concurrency version to send back with the next save.</param>
 /// <param name="AppointmentTypes">The appointment types.</param>
 public sealed record SettingsView(
     int InviteExpiryDays,
     int MaxAutoRetryCount,
     int InviteOptionCount,
+    int PendingRegistrationExpiryHours,
     long Version,
     IReadOnlyList<AppointmentTypeView> AppointmentTypes);
 
@@ -43,23 +45,27 @@ public sealed record SettingsView(
 /// <param name="InviteExpiryDays">How many days an invite stays open.</param>
 /// <param name="MaxAutoRetryCount">How many times a failed invite is retried automatically.</param>
 /// <param name="InviteOptionCount">How many event options each invite offers.</param>
+/// <param name="PendingRegistrationExpiryHours">How long a self-registration request stays confirmable.</param>
 /// <param name="ExpectedVersion">The version the caller read; stale versions conflict.</param>
 public sealed record SaveSystemSettingsCommand(
     Guid StaffUserId,
     int InviteExpiryDays,
     int MaxAutoRetryCount,
     int InviteOptionCount,
+    int PendingRegistrationExpiryHours,
     long ExpectedVersion);
 
 /// <summary>The saved system settings.</summary>
 /// <param name="InviteExpiryDays">How many days an invite stays open.</param>
 /// <param name="MaxAutoRetryCount">How many times a failed invite is retried automatically.</param>
 /// <param name="InviteOptionCount">How many event options each invite offers.</param>
+/// <param name="PendingRegistrationExpiryHours">How long a self-registration request stays confirmable.</param>
 /// <param name="Version">The new optimistic-concurrency version.</param>
 public sealed record SystemSettingsResult(
     int InviteExpiryDays,
     int MaxAutoRetryCount,
     int InviteOptionCount,
+    int PendingRegistrationExpiryHours,
     long Version);
 
 /// <summary>Saves the singleton system settings with a version check.</summary>
@@ -97,10 +103,13 @@ public sealed class SaveSystemSettingsHandler(
                 Error.VersionConflict("The settings changed under you.", current.Version));
 
         var before = new SystemSettingsResult(
-            current.InviteExpiryDays, current.MaxAutoRetryCount, current.InviteOptionCount, current.Version);
+            current.InviteExpiryDays, current.MaxAutoRetryCount, current.InviteOptionCount,
+            current.PendingRegistrationExpiryHours, current.Version);
         try
         {
-            current.Update(command.InviteExpiryDays, command.MaxAutoRetryCount, command.InviteOptionCount);
+            current.Update(
+                command.InviteExpiryDays, command.MaxAutoRetryCount, command.InviteOptionCount,
+                command.PendingRegistrationExpiryHours);
         }
         catch (DomainException ex)
         {
@@ -111,11 +120,13 @@ public sealed class SaveSystemSettingsHandler(
             ActorType.Staff, command.StaffUserId.ToString(),
             $"expiryDays {before.InviteExpiryDays} -> {current.InviteExpiryDays}; "
             + $"retryCount {before.MaxAutoRetryCount} -> {current.MaxAutoRetryCount}; "
-            + $"optionCount {before.InviteOptionCount} -> {current.InviteOptionCount}");
+            + $"optionCount {before.InviteOptionCount} -> {current.InviteOptionCount}; "
+            + $"registrationExpiryHours {before.PendingRegistrationExpiryHours} -> {current.PendingRegistrationExpiryHours}");
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Result<SystemSettingsResult>.Success(new SystemSettingsResult(
-            current.InviteExpiryDays, current.MaxAutoRetryCount, current.InviteOptionCount, current.Version));
+            current.InviteExpiryDays, current.MaxAutoRetryCount, current.InviteOptionCount,
+            current.PendingRegistrationExpiryHours, current.Version));
     }
 }
 
@@ -168,6 +179,7 @@ public sealed class AdminSettingsHandler(
             current.InviteExpiryDays,
             current.MaxAutoRetryCount,
             current.InviteOptionCount,
+            current.PendingRegistrationExpiryHours,
             current.Version,
             types.Select(type =>
             {

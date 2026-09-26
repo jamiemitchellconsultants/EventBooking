@@ -141,8 +141,8 @@ public static class AgentOperationCatalog
                 nameof(StaffCapability.ManageSettings), "get_settings", Read()),
             Staff("updateSettings", HttpMethods.Put, "/api/settings", "Settings",
                 "Update the system settings.",
-                "Updates invite expiry, automatic retry count and option count. Existing invites " +
-                "keep the values they were issued under.",
+                "Updates invite expiry, automatic retry count, option count and self-registration " +
+                "expiry. Existing invites keep the values they were issued under.",
                 nameof(StaffCapability.ManageSettings), "update_settings", Transition()),
 
             // Staff access. There is deliberately no create, delete or role edit (FR-10.5).
@@ -209,6 +209,42 @@ public static class AgentOperationCatalog
                 "Reads the active events whose window has not started, which are the ones a " +
                 "cancellation can still reach (FR-7.2).",
                 nameof(StaffCapability.ViewEventOperations), "list_cancellable_events", Read()),
+
+            // Event groups.
+            Staff("listEventGroups", HttpMethods.Get, "/api/event-groups", "Event groups",
+                "List event groups.",
+                "Reads every event group with its selected attendee groups and memberships.",
+                nameof(StaffCapability.ManageEventGroups), "list_event_groups", Read()),
+            Staff("getEventGroup", HttpMethods.Get, "/api/event-groups/{id}", "Event groups",
+                "Read one event group.",
+                "Reads one event group with its selected attendee groups and memberships.",
+                nameof(StaffCapability.ManageEventGroups), "get_event_group", Read()),
+            Staff("createEventGroup", HttpMethods.Post, "/api/event-groups", "Event groups",
+                "Create an event group.",
+                "Creates a closed event group serving the selected active attendee groups.",
+                nameof(StaffCapability.ManageEventGroups), "create_event_group", Create()),
+            Staff("updateEventGroup", HttpMethods.Put, "/api/event-groups/{id}", "Event groups",
+                "Update an event group.",
+                "Updates an event group's copy, selected groups and group gate. Replacing the " +
+                "selected groups is refused when the new union would break a member event.",
+                nameof(StaffCapability.ManageEventGroups), "update_event_group", Transition()),
+            Staff("addEventGroupEvent", HttpMethods.Put,
+                "/api/event-groups/{id}/events/{eventId}", "Event groups",
+                "Add an event to a group.",
+                "Adds an active future event whose capacity types equal the group's set. " +
+                "New memberships start private.",
+                nameof(StaffCapability.ManageEventGroups), "add_event_group_event", Transition()),
+            Staff("setEventGroupEventOpen", HttpMethods.Patch,
+                "/api/event-groups/{id}/events/{eventId}", "Event groups",
+                "Open or close a membership.",
+                "Toggles one event membership's public-registration gate; the group gate is " +
+                "independent.",
+                nameof(StaffCapability.ManageEventGroups), "set_event_group_event_open", Transition()),
+            Staff("removeEventGroupEvent", HttpMethods.Delete,
+                "/api/event-groups/{id}/events/{eventId}", "Event groups",
+                "Remove an event from a group.",
+                "Removes one event membership; existing bookings stay valid.",
+                nameof(StaffCapability.ManageEventGroups), "remove_event_group_event", Delete()),
 
             // Attendees.
             Staff("listAttendees", HttpMethods.Get, "/api/attendees", "Attendees", "List attendees.",
@@ -331,6 +367,37 @@ public static class AgentOperationCatalog
                 "Attendee Booking", "Cancel a booking.",
                 "Anonymous. Cancels the booking and optionally asks for a new time.",
                 "Anonymous attendee token flow; excluded by the approved remote MCP design."),
+
+            // Public event groups. Anonymous, rate-limited and REST-only like the attendee
+            // token routes above: an agent holding a staff token must not act as a registrant.
+            Excluded("listPublicEventGroups", HttpMethods.Get, "/api/public/event-groups",
+                "Public Event Groups", "List open event groups.",
+                "Anonymous. Lists every open group with its public choices.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("getPublicEventGroup", HttpMethods.Get, "/api/public/event-groups/{id}",
+                "Public Event Groups", "Read one open event group.",
+                "Anonymous. Reads one open group with its public choices.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("submitSelfRegistration", HttpMethods.Post,
+                "/api/public/event-groups/{id}/registrations", "Public Event Groups",
+                "Submit a registration request.",
+                "Anonymous. Submits a request to join an event and returns its confirmation token.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("submitEventRegistration", HttpMethods.Post,
+                "/api/public/event-groups/{id}/events/{eventId}/registrations",
+                "Public Event Groups", "Submit a registration request for one event.",
+                "Anonymous. Submits a request to join one event and returns its confirmation token.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("viewSelfRegistration", HttpMethods.Get,
+                "/api/public/event-groups/confirm/{token}", "Public Event Groups",
+                "View a pending registration request.",
+                "Anonymous. Shows one pending request's public summary before confirmation.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
+            Excluded("confirmSelfRegistration", HttpMethods.Post,
+                "/api/public/event-groups/confirm/{token}", "Public Event Groups",
+                "Confirm a registration request.",
+                "Anonymous. Confirms one pending request and returns the created booking.",
+                "Anonymous public flow; excluded by the approved remote MCP design."),
         };
 
         var byId = new Dictionary<string, AgentOperation>(StringComparer.Ordinal);

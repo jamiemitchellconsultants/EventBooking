@@ -30,13 +30,54 @@ public sealed record AppointmentTypeResponse(
 
 /// <summary>One attendee group with its requirements and member count.</summary>
 public sealed record AttendeeGroupResponse(
-    Guid Id, string Code, string Name, bool IsActive, long Version,
+    Guid Id, string Code, string Name, string Description, bool IsActive, long Version,
     IReadOnlyList<Guid> RequirementTypeIds, int MemberCount,
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
+/// <summary>One event membership with its own publication gate.</summary>
+public sealed record EventGroupEventResponse(
+    Guid EventId, bool IsOpen,
+    [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
+
+/// <summary>One attendee-group choice with its public copy.</summary>
+public sealed record PublicAttendeeGroupChoiceResponse(
+    Guid AttendeeGroupId, string Name, string Description);
+
+/// <summary>One open event choice with its public copy.</summary>
+public sealed record PublicEventChoiceResponse(
+    Guid EventId, string LocationName, string Address, EventTimeResponse EventTime,
+    IReadOnlyList<string> AppointmentTypeCodes, IReadOnlyList<Guid> AvailableAttendeeGroupIds);
+
+/// <summary>One open event group with its public choices.</summary>
+public sealed record PublicEventGroupResponse(
+    Guid Id, string Title, string Description, long Version,
+    IReadOnlyList<PublicAttendeeGroupChoiceResponse> AttendeeGroups,
+    IReadOnlyList<PublicEventChoiceResponse> Events);
+
+/// <summary>The neutral receipt for a submitted self-registration request.</summary>
+public sealed record SubmitSelfRegistrationResponse(
+    Guid RequestId, Guid EventGroupId, Guid EventId, Guid AttendeeGroupId,
+    string Name, string Email, DateTimeOffset ExpiresAt);
+
+/// <summary>One pending self-registration request's public summary.</summary>
+public sealed record SelfRegistrationSummaryResponse(
+    Guid EventGroupId, Guid EventId, string EventGroupTitle, string LocationName,
+    DateOnly Date, TimeOnly StartTime, string AttendeeGroupName);
+
+/// <summary>The booking one confirmed self-registration request created.</summary>
+public sealed record ConfirmSelfRegistrationResponse(Guid BookingId);
+
+/// <summary>One event group with its selected groups and memberships.</summary>
+public sealed record EventGroupResponse(
+    Guid Id, string Title, string Description, bool IsOpen, long Version,
+    IReadOnlyList<Guid> AttendeeGroupIds, IReadOnlyList<Guid> AppointmentTypeIds,
+    IReadOnlyList<EventGroupEventResponse> Events,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>The singleton settings row.</summary>
 public sealed record SettingsResponse(
-    int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount, long Version,
+    int InviteExpiryDays, int MaxAutoRetryCount, int InviteOptionCount,
+    int PendingRegistrationExpiryHours, long Version,
     [property: JsonPropertyName("_links")] IReadOnlyDictionary<string, ApiLink> Links);
 
 /// <summary>One staff access profile with its read-only roles and scope.</summary>
@@ -252,7 +293,7 @@ public static class ApiResponses
     {
         ArgumentNullException.ThrowIfNull(item);
         return new AttendeeGroupResponse(
-            item.Id, item.Code, item.Name, item.IsActive, item.Version,
+            item.Id, item.Code, item.Name, item.Description, item.IsActive, item.Version,
             item.RequirementTypeIds, item.MemberCount,
             CallerLinks.For(
                 capabilities,
@@ -271,7 +312,7 @@ public static class ApiResponses
     {
         ArgumentNullException.ThrowIfNull(result);
         return new AttendeeGroupResponse(
-            result.Id, result.Code, result.Name, result.IsActive, result.Version,
+            result.Id, result.Code, result.Name, result.Description, result.IsActive, result.Version,
             result.RequirementTypeIds, result.MemberCount,
             CallerLinks.For(
                 capabilities,
@@ -279,6 +320,86 @@ public static class ApiResponses
                 new LinkCandidate(
                     "update", "updateAttendeeGroup", $"/api/attendee-groups/{result.Id}",
                     nameof(StaffCapability.ManageReferenceData))));
+    }
+
+    /// <summary>Projects one event group, with mutation links only for holders.</summary>
+    /// <param name="result">The application result.</param>
+    /// <param name="capabilities">The caller's capabilities.</param>
+    /// <returns>The response body.</returns>
+    public static EventGroupResponse EventGroup(
+        EventBooking.Application.EventGroups.EventGroupResult result,
+        IReadOnlySet<string> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new EventGroupResponse(
+            result.Id, result.Title, result.Description, result.IsOpen, result.Version,
+            result.AttendeeGroupIds, result.AppointmentTypeIds,
+            [.. result.Events.Select(e => new EventGroupEventResponse(
+                e.EventId, e.IsOpen,
+                CallerLinks.For(
+                    capabilities,
+                    new LinkCandidate(
+                        "setEventOpen", "setEventGroupEventOpen",
+                        $"/api/event-groups/{result.Id}/events/{e.EventId}",
+                        nameof(StaffCapability.ManageEventGroups)),
+                    new LinkCandidate(
+                        "removeEvent", "removeEventGroupEvent",
+                        $"/api/event-groups/{result.Id}/events/{e.EventId}",
+                        nameof(StaffCapability.ManageEventGroups)))))],
+            CallerLinks.For(
+                capabilities,
+                new LinkCandidate("self", "getEventGroup", $"/api/event-groups/{result.Id}", null),
+                new LinkCandidate(
+                    "update", "updateEventGroup", $"/api/event-groups/{result.Id}",
+                    nameof(StaffCapability.ManageEventGroups)),
+                new LinkCandidate(
+                    "addEvent", "addEventGroupEvent", $"/api/event-groups/{result.Id}/events",
+                    nameof(StaffCapability.ManageEventGroups))));
+    }
+
+    /// <summary>Projects one open event group with its public choices.</summary>
+    /// <param name="result">The application result.</param>
+    /// <param name="zones">The zone abstraction.</param>
+    /// <returns>The response body.</returns>
+    public static PublicEventGroupResponse PublicEventGroup(
+        EventBooking.Application.SelfRegistrations.PublicEventGroupResult result,
+        IEventWindowZones zones)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new PublicEventGroupResponse(
+            result.Id, result.Title, result.Description, result.Version,
+            [.. result.AttendeeGroups.Select(x =>
+                new PublicAttendeeGroupChoiceResponse(x.AttendeeGroupId, x.Name, x.Description))],
+            [.. result.Events.Select(x => new PublicEventChoiceResponse(
+                x.EventId, x.LocationName, x.Address,
+                EventTimeResponse.From(
+                    x.Date, x.StartTime, x.DurationMinutes, x.TimeZoneId, zones),
+                x.AppointmentTypeCodes, x.AvailableAttendeeGroupIds))]);
+    }
+
+    /// <summary>Projects one submitted self-registration request.</summary>
+    /// <param name="result">The application result.</param>
+    /// <returns>The response body.</returns>
+    public static SubmitSelfRegistrationResponse SubmittedRegistration(
+        EventBooking.Application.SelfRegistrations.SubmitSelfRegistrationResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return new SubmitSelfRegistrationResponse(
+            result.RequestId, result.EventGroupId, result.EventId, result.AttendeeGroupId,
+            result.Name, result.Email, result.ExpiresAt);
+    }
+
+    /// <summary>Projects one pending self-registration request's public summary.</summary>
+    /// <param name="summary">The application summary.</param>
+    /// <returns>The response body.</returns>
+    public static SelfRegistrationSummaryResponse SelfRegistrationSummary(
+        EventBooking.Application.SelfRegistrations.SelfRegistrationSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return new SelfRegistrationSummaryResponse(
+            summary.EventGroupId, summary.EventId, summary.EventGroupTitle,
+            summary.LocationName, summary.Date, summary.StartTime,
+            summary.AttendeeGroupName);
     }
 
     /// <summary>Projects the settings row.</summary>
@@ -291,7 +412,7 @@ public static class ApiResponses
         ArgumentNullException.ThrowIfNull(result);
         return new SettingsResponse(
             result.InviteExpiryDays, result.MaxAutoRetryCount, result.InviteOptionCount,
-            result.Version,
+            result.PendingRegistrationExpiryHours, result.Version,
             CallerLinks.For(
                 capabilities,
                 new LinkCandidate("self", "getSettings", "/api/settings", null),
@@ -310,7 +431,7 @@ public static class ApiResponses
         ArgumentNullException.ThrowIfNull(view);
         return new SettingsResponse(
             view.InviteExpiryDays, view.MaxAutoRetryCount, view.InviteOptionCount,
-            view.Version,
+            view.PendingRegistrationExpiryHours, view.Version,
             CallerLinks.For(
                 capabilities,
                 new LinkCandidate("self", "getSettings", "/api/settings", null),

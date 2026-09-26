@@ -38,6 +38,7 @@ public static class EmailComposer
             "AttendeeReinvite" => InviteMessage(context),
             "EventCancelledRebookingNeeded" => CancellationMessage(context),
             "BookingConfirmation" => ConfirmationMessage(context),
+            "SelfRegistrationConfirmation" => SelfRegistrationConfirmationMessage(context),
             _ => throw new ArgumentException($"Unknown email template '{template}'.", nameof(template)),
         };
 
@@ -109,5 +110,22 @@ public static class EmailComposer
         return new EmailMessage(Guid.Empty, string.Empty, string.Empty,
             EmailTemplate.BookingConfirmation,
             $"Confirmed: {types}", string.Join("\n", lines), string.Join("\n", lines));
+    }
+
+    private static EmailMessage SelfRegistrationConfirmationMessage(EmailContext context)
+    {
+        var types = string.Join(", ", context.TypeCodes.OrderBy(code => code, StringComparer.Ordinal));
+        var lines = new List<string>
+        {
+            $"Please confirm your registration for {types}. No place is held until you do.",
+            context.LocationName,
+            context.LocationAddress,
+            context.WindowText,
+            $"Confirm here: {context.BookUrl}",
+            $"Contact: {context.CoordinatorContact}",
+        };
+        return new EmailMessage(Guid.Empty, string.Empty, string.Empty,
+            EmailTemplate.SelfRegistrationConfirmation,
+            $"Confirm your registration: {types}", string.Join("\n", lines), string.Join("\n", lines));
     }
 }

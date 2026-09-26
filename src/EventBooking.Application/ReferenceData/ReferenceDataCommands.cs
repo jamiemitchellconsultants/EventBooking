@@ -84,7 +84,8 @@ public sealed record AppointmentTypeListItem(Guid Id, string Code, string Name, 
 /// <param name="Code">The code.</param>
 /// <param name="Name">The name.</param>
 /// <param name="AppointmentTypeIds">The appointment type ids.</param>
-public sealed record CreateAttendeeGroupCommand(Guid StaffUserId, string? Code, string? Name, IReadOnlyList<Guid> AppointmentTypeIds);
+/// <param name="Description">The public description.</param>
+public sealed record CreateAttendeeGroupCommand(Guid StaffUserId, string? Code, string? Name, IReadOnlyList<Guid> AppointmentTypeIds, string? Description = null);
 
 /// <summary>Renames an attendee group, replaces its requirement set, or changes activation.</summary>
 /// <param name="StaffUserId">The staff user id.</param>
@@ -93,7 +94,8 @@ public sealed record CreateAttendeeGroupCommand(Guid StaffUserId, string? Code, 
 /// <param name="AppointmentTypeIds">The appointment type ids.</param>
 /// <param name="IsActive">Whether the group is active.</param>
 /// <param name="ExpectedVersion">The expected version.</param>
-public sealed record UpdateAttendeeGroupCommand(Guid StaffUserId, Guid AttendeeGroupId, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds, bool IsActive, long ExpectedVersion);
+/// <param name="Description">The public description.</param>
+public sealed record UpdateAttendeeGroupCommand(Guid StaffUserId, Guid AttendeeGroupId, string? Name, IReadOnlyList<Guid>? AppointmentTypeIds, bool IsActive, long ExpectedVersion, string? Description = null);
 
 /// <summary>Lists attendee groups. Open to any staff member; the endpoint's staff policy is the gate.</summary>
 /// <param name="IncludeInactive">Whether to include inactive rows.</param>
@@ -107,7 +109,8 @@ public sealed record ListAttendeeGroupsQuery(bool IncludeInactive);
 /// <param name="Version">The version.</param>
 /// <param name="RequirementTypeIds">The requirement type ids.</param>
 /// <param name="MemberCount">The member count.</param>
-public sealed record AttendeeGroupResult(Guid Id, string Code, string Name, bool IsActive, long Version, IReadOnlyList<Guid> RequirementTypeIds, int MemberCount);
+/// <param name="Description">The public description.</param>
+public sealed record AttendeeGroupResult(Guid Id, string Code, string Name, bool IsActive, long Version, IReadOnlyList<Guid> RequirementTypeIds, int MemberCount, string Description);
 
 /// <summary>One attendee-group row for staff listings.</summary>
 /// <param name="Id">The id.</param>
@@ -117,4 +120,5 @@ public sealed record AttendeeGroupResult(Guid Id, string Code, string Name, bool
 /// <param name="RequirementTypeIds">The requirement type ids.</param>
 /// <param name="MemberCount">The member count.</param>
 /// <param name="Version">The version.</param>
-public sealed record AttendeeGroupListItem(Guid Id, string Code, string Name, bool IsActive, IReadOnlyList<Guid> RequirementTypeIds, int MemberCount, long Version);
+/// <param name="Description">The public description.</param>
+public sealed record AttendeeGroupListItem(Guid Id, string Code, string Name, bool IsActive, IReadOnlyList<Guid> RequirementTypeIds, int MemberCount, long Version, string Description);

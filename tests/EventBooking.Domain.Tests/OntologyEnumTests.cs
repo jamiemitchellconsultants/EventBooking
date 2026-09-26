@@ -68,7 +68,9 @@ public class OntologyEnumTests
     [Fact]
     public void ActorTypeMatchesTheOntology()
     {
-        Assert.Equal(new[] { "Staff", "AttendeeToken", "System" }, Enum.GetNames<ActorType>());
+        Assert.Equal(
+            new[] { "Staff", "AttendeeToken", "System", "Anonymous" },
+            Enum.GetNames<ActorType>());
     }
 
     /// <summary>Checks the audit action vocabulary against the ontology.</summary>
@@ -93,6 +95,8 @@ public class OntologyEnumTests
                 "AppointmentTypeCreated", "AppointmentTypeUpdated",
                 "AttendeeGroupCreated", "AttendeeGroupUpdated",
                 "SystemSettingsChanged",
+                "EventGroupCreated", "EventGroupUpdated", "EventGroupEventChanged",
+                "SelfRegistrationRequested", "SelfRegistrationConfirmed", "SelfRegistrationExpired",
             },
             Enum.GetNames<AuditAction>());
     }
@@ -114,7 +118,7 @@ public class OntologyEnumTests
             new[]
             {
                 "AttendeeInvite", "BookingConfirmation", "EventCancelledRebookingNeeded",
-                "AttendeeReinvite",
+                "AttendeeReinvite", "SelfRegistrationConfirmation",
             },
             Enum.GetNames<EmailTemplate>());
     }

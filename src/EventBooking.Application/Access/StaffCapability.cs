@@ -25,4 +25,6 @@ public enum StaffCapability
     ConductAppointments,
     /// <summary>Manages locations, appointment types and attendee groups; Admin-only.</summary>
     ManageReferenceData,
+    /// <summary>Manages event groups and their event memberships; Admin and Coordinator.</summary>
+    ManageEventGroups,
 }

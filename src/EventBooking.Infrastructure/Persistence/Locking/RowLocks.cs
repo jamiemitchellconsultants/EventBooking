@@ -1,4 +1,5 @@
 using EventBooking.Domain.Attendees;
+using EventBooking.Domain.EventGroups;
 using EventBooking.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
@@ -100,6 +101,29 @@ public sealed class RowLocks(EventBookingDbContext context, TransactionLocks loc
         }
 
         return members;
+    }
+
+    /// <summary>Locks one event group and loads its selected groups and memberships.</summary>
+    /// <param name="id">The event group id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task<EventGroup?> LockEventGroupAsync(Guid id, CancellationToken cancellationToken)
+    {
+        locks.Enter(LockLevel.EventGroup);
+
+        var group = (await context.EventGroups
+            .FromSqlInterpolated($"SELECT * FROM event_group WHERE id = {id} FOR UPDATE")
+            .ToListAsync(cancellationToken))
+            .SingleOrDefault();
+
+        if (group is not null)
+        {
+            await context.Entry(group).Collection(item => item.AttendeeGroups)
+                .LoadAsync(cancellationToken);
+            await context.Entry(group).Collection(item => item.Events)
+                .LoadAsync(cancellationToken);
+        }
+
+        return group;
     }
 
     /// <summary>Locks one proposal and loads its acceptances and listed types.</summary>

@@ -1,0 +1,107 @@
+@page "/event-groups/{GroupId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using EventBooking.Web.Services
+@layout EventBooking.Web.Layout.AttendeeLayout
+@inject IPublicEventGroupsClient Groups
+@inject IServiceProvider Services
+
+<PageTitle>Event group</PageTitle>
+
+<section class="public-group-page" aria-busy="@_loading">
+    @if (_loading)
+    {
+        <div class="public-group-page__status" aria-label="Loading event group">
+            <span class="loading-line loading-line-short"></span>
+            <span class="loading-line"></span>
+            <span class="loading-line loading-line-medium"></span>
+        </div>
+    }
+    else if (_group is null)
+    {
+        <div class="public-group-page__intro">
+            <h1>We couldn’t find that event group</h1>
+        </div>
+        <div class="public-group-page__status">
+            <p class="public-group-page__banner" role="alert">@(_error ?? "This group is no longer open. Please contact the recruitment team.")</p>
+            <p class="public-group-page__note">If you need help, contact @CoordinatorContact.</p>
+        </div>
+    }
+    else
+    {
+        <div class="public-group-page__intro">
+            <h1>@_group.Title</h1>
+            <p class="public-group-page__lead">@_group.Description</p>
+        </div>
+
+        @if (_events.Count == 0)
+        {
+            <div class="public-group-page__status">
+                <p class="public-group-page__note" role="status">There are no open times in this group right now. Please check back later or contact @CoordinatorContact.</p>
+            </div>
+        }
+        else
+        {
+            <ul class="public-group-page__events">
+                @foreach (var option in _events)
+                {
+                    <li class="public-group-page__event">
+                        <a class="public-group-page__event-link" href="@($"/event-groups/{GroupId:D}/events/{option.Id:D}")">
+                            <span class="public-group-page__event-place">@option.LocationName, @option.Address</span>
+                            <span class="public-group-page__event-when">@option.Date.ToString("dddd, dd MMM yyyy") · @option.StartTime.ToString("HH\\:mm")</span>
+                            <span class="public-group-page__event-types">@string.Join(" and ", option.AppointmentTypeNames)</span>
+                        </a>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</section>
+
+@code {
+    [Parameter]
+    public Guid GroupId { get; set; }
+
+    private PublicEventGroupDto? _group;
+    private IReadOnlyList<PublicEventDto> _events = [];
+    private string? _error;
+    private bool _loading = true;
+
+    private string CoordinatorContact =>
+        Services.GetService<AttendeePageOptions>()?.CoordinatorContact ?? "the recruitment team";
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _group = null;
+        _events = [];
+        _error = null;
+
+        try
+        {
+            var outcome = await Groups.GetGroupAsync(GroupId, CancellationToken.None);
+            if (outcome.IsSuccess && outcome.Value is not null)
+            {
+                _group = outcome.Value;
+                _events = [.. outcome.Value.Events
+                    .OrderBy(x => x.Date)
+                    .ThenBy(x => x.StartTime)];
+            }
+            else
+            {
+                _error = outcome.StatusCode == 404
+                    ? "This group is no longer open. Please contact the recruitment team."
+                    : outcome.ErrorMessage;
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Something went wrong. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

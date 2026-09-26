@@ -20,6 +20,7 @@ public sealed class AttendeeGroupConfiguration : IEntityTypeConfiguration<Attend
         builder.Property(group => group.Id).HasColumnName("id");
         builder.Property(group => group.Code).HasColumnName("code").HasMaxLength(100).IsRequired();
         builder.Property(group => group.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+        builder.Property(group => group.Description).HasColumnName("description").HasMaxLength(500).IsRequired().HasDefaultValue("");
         builder.Property(group => group.IsActive).HasColumnName("is_active");
         builder.Property(group => group.Version).HasColumnName("version").IsConcurrencyToken();
 

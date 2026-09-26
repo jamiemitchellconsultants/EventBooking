@@ -152,6 +152,14 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("code");
 
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasDefaultValue("")
+                        .HasColumnName("description");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -414,6 +422,83 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_booking_appointment_version", "version > 0");
                         });
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.EventGroups.EventGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_open");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("title");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("event_group", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_event_group_title_nonblank", "title <> ''");
+                        });
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.EventGroups.EventGroupAttendeeGroup", b =>
+                {
+                    b.Property<Guid>("EventGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_group_id");
+
+                    b.Property<Guid>("AttendeeGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attendee_group_id");
+
+                    b.HasKey("EventGroupId", "AttendeeGroupId");
+
+                    b.HasIndex("AttendeeGroupId");
+
+                    b.ToTable("event_group_attendee_group", (string)null);
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.EventGroups.EventGroupEvent", b =>
+                {
+                    b.Property<Guid>("EventGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_group_id");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_open");
+
+                    b.HasKey("EventGroupId", "EventId");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("EventGroupId", "IsOpen")
+                        .HasFilter("is_open");
+
+                    b.ToTable("event_group_event", (string)null);
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Events.Event", b =>
@@ -707,7 +792,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("AttendeeId")
+                    b.Property<Guid?>("AttendeeId")
                         .HasColumnType("uuid")
                         .HasColumnName("attendee_id");
 
@@ -739,6 +824,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("not_before");
 
+                    b.Property<Guid?>("SelfRegistrationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("self_registration_id");
+
                     b.Property<DateTimeOffset>("SentAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("sent_at");
@@ -755,9 +844,87 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AttendeeId");
 
+                    b.HasIndex("SelfRegistrationId");
+
                     b.HasIndex("AttendeeId", "SentAt");
 
-                    b.ToTable("email_log", (string)null);
+                    b.ToTable("email_log", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_email_log_one_recipient_context", "(attendee_id IS NULL) <> (self_registration_id IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.SelfRegistrations.PendingRegistration", b =>
+                {
+                    b.Property<Guid>("RequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<Guid>("AttendeeGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attendee_group_id");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("EventGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_group_id");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<DateTimeOffset?>("TerminalAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("terminal_at");
+
+                    b.Property<int>("TokenVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("token_version");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("RequestId");
+
+                    b.HasIndex("Status", "ExpiresAt");
+
+                    b.HasIndex("Status", "TerminalAt");
+
+                    b.HasIndex("EventId", "Email", "EventGroupId", "AttendeeGroupId")
+                        .IsUnique()
+                        .HasFilter("status = 1");
+
+                    b.ToTable("pending_registration", (string)null);
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Settings.SystemSettings", b =>
@@ -778,6 +945,10 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("max_auto_retry_count");
 
+                    b.Property<int>("PendingRegistrationExpiryHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("pending_registration_expiry_hours");
+
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint")
@@ -794,6 +965,7 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                             InviteExpiryDays = 7,
                             InviteOptionCount = 3,
                             MaxAutoRetryCount = 2,
+                            PendingRegistrationExpiryHours = 24,
                             Version = 1L
                         });
                 });
@@ -910,6 +1082,36 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
                     b.HasOne("EventBooking.Domain.Bookings.Booking", null)
                         .WithMany()
                         .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.EventGroups.EventGroupAttendeeGroup", b =>
+                {
+                    b.HasOne("EventBooking.Domain.AttendeeGroups.AttendeeGroup", null)
+                        .WithMany()
+                        .HasForeignKey("AttendeeGroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EventBooking.Domain.EventGroups.EventGroup", null)
+                        .WithMany("AttendeeGroups")
+                        .HasForeignKey("EventGroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.EventGroups.EventGroupEvent", b =>
+                {
+                    b.HasOne("EventBooking.Domain.EventGroups.EventGroup", null)
+                        .WithMany("Events")
+                        .HasForeignKey("EventGroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EventBooking.Domain.Events.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -1052,6 +1254,13 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("EventBooking.Domain.Attendees.Attendee", b =>
                 {
                     b.Navigation("Requirements");
+                });
+
+            modelBuilder.Entity("EventBooking.Domain.EventGroups.EventGroup", b =>
+                {
+                    b.Navigation("AttendeeGroups");
+
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("EventBooking.Domain.Events.Event", b =>

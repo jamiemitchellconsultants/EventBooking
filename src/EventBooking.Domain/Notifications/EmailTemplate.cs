@@ -11,4 +11,6 @@ public enum EmailTemplate
     EventCancelledRebookingNeeded = 3,
     /// <summary>Defines attendee reinvite for the current use case.</summary>
     AttendeeReinvite = 4,
+    /// <summary>Defines self-registration confirmation for the current use case.</summary>
+    SelfRegistrationConfirmation = 5,
 }

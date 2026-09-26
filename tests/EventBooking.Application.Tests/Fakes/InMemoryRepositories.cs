@@ -5,6 +5,8 @@ using EventBooking.Domain.Access;
 using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Attendees;
+using EventBooking.Domain.EventGroups;
+using EventBooking.Domain.SelfRegistrations;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Locations;
@@ -472,6 +474,101 @@ public sealed class InMemoryAttendeeGroupRepository : IAttendeeGroupRepository
             Items.OrderBy(group => group.Name).ToList());
 
     public void Add(AttendeeGroup group) => Items.Add(group);
+}
+
+public sealed class InMemoryEventGroupRepository : IEventGroupRepository
+{
+    /// <summary>Gets the mutable event group collection.</summary>
+    public List<EventGroup> Items { get; } = [];
+
+    /// <summary>Gets a group with both membership collections.</summary>
+    public Task<EventGroup?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
+
+    /// <summary>Gets a group with both membership collections, untracked.</summary>
+    public Task<EventGroup?> GetUntrackedAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
+
+    /// <summary>Locks the parent row before any gate or mapping mutation.</summary>
+    public Task<EventGroup?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
+
+    /// <summary>Lists every group ordered by title.</summary>
+    public Task<IReadOnlyList<EventGroup>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EventGroup>>(Items.OrderBy(group => group.Title).ToList());
+
+    /// <summary>Lists every group selecting the attendee group, in ascending id order.</summary>
+    public Task<IReadOnlyList<EventGroup>> ListContainingAttendeeGroupAsync(
+        Guid attendeeGroupId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EventGroup>>(Items
+            .Where(group => group.AttendeeGroups.Any(selected => selected.AttendeeGroupId == attendeeGroupId))
+            .OrderBy(group => group.Id)
+            .ToList());
+
+    /// <summary>Seeds the store directly.</summary>
+    /// <param name="group">The event group to hold.</param>
+    public void Add(EventGroup group) => Items.Add(group);
+
+    /// <summary>Gets the mutable pending registration collection.</summary>
+    public List<PendingRegistration> Registrations { get; } = [];
+
+    /// <summary>Stages a new pending registration for the next save.</summary>
+    public void AddRegistration(PendingRegistration registration) => Registrations.Add(registration);
+
+    /// <summary>Finds the pending registration for one event, email address and selection.</summary>
+    public Task<PendingRegistration?> FindInFlightAsync(
+        Guid eventId, string email, Guid eventGroupId, Guid attendeeGroupId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Registrations.SingleOrDefault(x =>
+            x.EventId == eventId && x.Email == email && x.EventGroupId == eventGroupId
+            && x.AttendeeGroupId == attendeeGroupId && x.Status == SelfRegistrationStatus.Pending));
+
+    /// <summary>The in-memory store has no concurrent writers to serialise.</summary>
+    public Task LockEmailAsync(string email, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>When a test wants the newest link email to look due; null means none recent.</summary>
+    public DateTimeOffset? LinkDueAt { get; set; }
+
+    /// <summary>Returns the configured due instant.</summary>
+    public Task<DateTimeOffset?> LatestLinkDueAsync(
+        string email, DateTimeOffset since, CancellationToken cancellationToken) =>
+        Task.FromResult(LinkDueAt);
+
+    /// <summary>Gets one pending registration by its request identifier.</summary>
+    public Task<PendingRegistration?> GetRegistrationAsync(
+        Guid requestId, CancellationToken cancellationToken) =>
+        Task.FromResult(Registrations.SingleOrDefault(x => x.RequestId == requestId));
+
+    /// <summary>Re-reads one pending registration without tracking, for post-lock validation.</summary>
+    public Task<PendingRegistration?> GetRegistrationUntrackedAsync(
+        Guid requestId, CancellationToken cancellationToken) =>
+        Task.FromResult(Registrations.SingleOrDefault(x => x.RequestId == requestId));
+
+    /// <summary>Lists the pending registrations at or past their expiry.</summary>
+    public Task<IReadOnlyList<PendingRegistration>> ListExpiredPendingAsync(
+        DateTimeOffset now, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PendingRegistration>>([.. Registrations
+            .Where(x => x.Status == SelfRegistrationStatus.Pending && x.ExpiresAt <= now)
+            .OrderBy(x => x.ExpiresAt)]);
+
+    /// <summary>
+    /// Deletes one bounded batch of terminal requests at or past retention. The in-memory
+    /// store holds deliveries in a separate repository it cannot reach, so confirmation
+    /// email rows are left for the PostgreSQL implementation to remove.
+    /// </summary>
+    public Task<int> DeleteTerminalBeforeAsync(
+        DateTimeOffset cutoff, CancellationToken cancellationToken)
+    {
+        var due = Registrations
+            .Where(x => (x.Status == SelfRegistrationStatus.Confirmed
+                    || x.Status == SelfRegistrationStatus.Expired)
+                && x.TerminalAt is { } terminal && terminal <= cutoff)
+            .OrderBy(x => x.TerminalAt)
+            .Take(500)
+            .ToList();
+        foreach (var request in due) Registrations.Remove(request);
+        return Task.FromResult(due.Count);
+    }
 }
 
 public sealed class InMemoryAppointmentTypeRepository : IAppointmentTypeRepository

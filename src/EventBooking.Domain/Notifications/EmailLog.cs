@@ -16,8 +16,12 @@ public sealed class EmailLog
     /// <summary>The durable identifier of this delivery attempt.</summary>
     public Guid Id { get; private set; }
 
-    /// <summary>The attendee who is the recipient of this delivery attempt.</summary>
-    public Guid AttendeeId { get; private set; }
+    /// <summary>The attendee who is the recipient of this delivery attempt; null for a
+    /// self-registration link, whose recipient is not yet an attendee.</summary>
+    public Guid? AttendeeId { get; private set; }
+
+    /// <summary>The pending self-registration whose confirmation link this attempt carries.</summary>
+    public Guid? SelfRegistrationId { get; private set; }
 
     /// <summary>The attendee-facing template this attempt renders.</summary>
     public EmailTemplate TemplateName { get; private set; }
@@ -93,6 +97,26 @@ public sealed class EmailLog
             inviteId,
             bookingId,
             eventId);
+
+    /// <summary>Creates a pending confirmation-link delivery for a self-registration request.</summary>
+    /// <param name="id">The id.</param>
+    /// <param name="selfRegistrationId">The pending request the link confirms.</param>
+    /// <param name="createdAt">The created at.</param>
+    public static EmailLog RecordPendingSelfRegistration(
+        Guid id, Guid selfRegistrationId, DateTimeOffset createdAt)
+    {
+        Guard.Against(id == Guid.Empty, "id must not be empty.");
+        Guard.Against(selfRegistrationId == Guid.Empty, "selfRegistrationId must not be empty.");
+
+        return new EmailLog
+        {
+            Id = id,
+            SelfRegistrationId = selfRegistrationId,
+            TemplateName = EmailTemplate.SelfRegistrationConfirmation,
+            SentAt = createdAt,
+            Status = EmailStatus.Pending,
+        };
+    }
 
     /// <summary>Claims a pending delivery unless another worker holds a fresh claim.</summary>
     /// <param name="now">The now.</param>

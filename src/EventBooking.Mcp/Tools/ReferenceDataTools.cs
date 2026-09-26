@@ -200,11 +200,12 @@ public sealed class ReferenceDataTools
         [Description("Canonical uppercase snake-case code.")] string code,
         [Description("Display name.")] string name,
         [Description("Appointment types every member requires.")] Guid[] appointmentTypeIds,
+        [Description("Public description of who should choose this group.")] string? description = null,
         CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
             new CreateAttendeeGroupCommand(
-                caller.RequireStaffUserId(), code, name, appointmentTypeIds),
+                caller.RequireStaffUserId(), code, name, appointmentTypeIds, description),
             cancellationToken);
         return result.ValueOrThrow();
     }
@@ -232,12 +233,13 @@ public sealed class ReferenceDataTools
         [Description("The version you read.")] long expectedVersion,
         [Description("Replacement requirement mapping, or omit to leave it unchanged.")]
         Guid[]? appointmentTypeIds = null,
+        [Description("Public description of who should choose this group.")] string? description = null,
         CancellationToken cancellationToken = default)
     {
         var result = await handler.HandleAsync(
             new UpdateAttendeeGroupCommand(
                 caller.RequireStaffUserId(), attendeeGroupId, name, appointmentTypeIds,
-                isActive, expectedVersion),
+                isActive, expectedVersion, description),
             cancellationToken);
         return result.ValueOrThrow();
     }

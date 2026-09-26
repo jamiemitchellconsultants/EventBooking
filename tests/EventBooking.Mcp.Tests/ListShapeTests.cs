@@ -5,6 +5,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
+using EventBooking.Domain.EventGroups;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Locations;
@@ -58,6 +59,7 @@ public sealed class ListShapeTests(McpFactory factory)
         ("list_attendees", "name", "status"),
         ("list_workspace_events", "locationName", "status"),
         ("search_audit", "action", "actorType"),
+        ("list_event_groups", "title", "isOpen"),
     ];
 
     /// <summary>
@@ -97,6 +99,7 @@ public sealed class ListShapeTests(McpFactory factory)
         "search_audit",
         "list_staff_access",
         "list_attendee_bookings",
+        "list_event_groups",
     ];
 
     [Theory]
@@ -191,7 +194,7 @@ public sealed class ListShapeTests(McpFactory factory)
         Assert.Empty(covered.Except(listed));
     }
 
-    /// <summary>Everything the eleven lists need at least one row of.</summary>
+    /// <summary>Everything the twelve lists need at least one row of.</summary>
     /// <param name="AppointmentTypeId">The type the Manager and the workspace are scoped to.</param>
     /// <param name="LocationId">The site every seeded window belongs to.</param>
     /// <param name="AttendeeGroupId">The group the seeded attendee belongs to.</param>
@@ -203,7 +206,7 @@ public sealed class ListShapeTests(McpFactory factory)
 
     /// <summary>
     /// Seeds one row for every list and signs in as the role that list needs. Admin is
-    /// exclusive and holds no attendee data, so one identity cannot drive all eleven — the
+    /// exclusive and holds no attendee data, so one identity cannot drive all twelve — the
     /// role is chosen per tool rather than once for the suite.
     /// </summary>
     /// <param name="tool">The tool about to be called.</param>
@@ -223,7 +226,7 @@ public sealed class ListShapeTests(McpFactory factory)
     }
 
     /// <summary>
-    /// Writes the rows directly. Driving eight handlers to arrange eleven lists would make
+    /// Writes the rows directly. Driving eight handlers to arrange twelve lists would make
     /// this suite a test of those handlers; what it is for is the shape of what comes back.
     /// </summary>
     /// <param name="tool">The tool, used only to keep each case's codes distinct.</param>
@@ -284,6 +287,15 @@ public sealed class ListShapeTests(McpFactory factory)
         context.AuditLogs.Add(AuditLog.Record(
             Guid.NewGuid(), AuditEntityTypes.Event, eventItems[0].Id, AuditAction.EventConfirmed,
             ActorType.System, null, Now, "{}"));
+
+        var eventGroupRequirements = new Dictionary<Guid, IReadOnlyCollection<Guid>>
+        {
+            [group.Id] = [type.Id],
+        };
+        var eventGroup = EventGroup.Create(
+            Guid.NewGuid(), $"MCP {tool} event group", null, eventGroupRequirements);
+        eventGroup.AddEvent(eventItems[0].Id, [type.Id], eventGroupRequirements, isFuture: true);
+        context.EventGroups.Add(eventGroup);
         await context.SaveChangesAsync();
 
         return new SeededWorld(
@@ -303,6 +315,7 @@ public sealed class ListShapeTests(McpFactory factory)
         "list_event_proposals" or "search_audit" => new { limit = 50 },
         "list_workspace_events" => new { locationId = world.LocationId },
         "list_staff_access" => new { },
+        "list_event_groups" => new { },
         _ => new { includeInactive = true },
     };
 

@@ -48,6 +48,8 @@ That guarantee has to hold even when many attendees confirm the last places at t
 - `Attendee` management with CSV import.
 - The invite engine, with location selection, expiry, automatic re-issue and option top-up.
 - The anonymous attendee booking and manage flow.
+- Public event-group self-registration: anonymous group/event reads, email-confirmed
+  requests, single-use confirmation bookings and 30-day terminal retention.
 - Cancellation and rescheduling.
 - The appointment-day workspace: check-in, outcomes and the roster.
 - Missed-appointment recovery.
@@ -67,8 +69,8 @@ That guarantee has to hold even when many attendees confirm the last places at t
 - **Historical reporting beyond the 7-day workspace window and audit search.**
 - **Scheduling relative to an attendee's milestone** (for example, a start date).
 - **Any cloud-provider deployment target.**
-- **Payments, waiting lists and public self-registration.** Every attendee is entered by a
-  Coordinator.
+- **Payments and waiting lists.** Staff-entered attendees remain; self-registration adds
+  an anonymous email-confirmed path alongside them.
 
 ## Decisions
 

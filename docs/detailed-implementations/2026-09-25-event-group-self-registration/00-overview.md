@@ -28,7 +28,7 @@ with its own commit and push, then move to the next task.
   Event's capacity type IDs. A group's requirements may be a proper subset.
 - Name, email and group are submitted on the initial page. An emailed token must be confirmed
   before any capacity is charged.
-- A `SelfRegistration` remains pending for at most 24 hours. Its terminal row, including
+- A `SelfRegistration` remains pending for the `SystemSettings` window (default 24 hours, 1 to 168). Its terminal row, including
   submitted personal data, is retained for 30 further days. Existing Attendee names are not
   overwritten.
 - Confirmation creates a one-option Invite and immediately uses it. Staff invitations remain

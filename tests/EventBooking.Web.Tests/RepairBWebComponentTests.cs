@@ -300,6 +300,7 @@ public class RepairBWebComponentTests : BunitContext
         4,
         2,
         3,
+        48,
         1,
         new Dictionary<string, ApiLink>());
 

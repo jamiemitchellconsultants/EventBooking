@@ -9,4 +9,6 @@ public enum ActorType
     AttendeeToken = 2,
     /// <summary>Defines system for the current use case.</summary>
     System = 3,
+    /// <summary>Defines an anonymous public registration caller.</summary>
+    Anonymous = 4,
 }

@@ -7,6 +7,9 @@ namespace EventBooking.Infrastructure.Persistence.Locking;
 /// </summary>
 public enum LockLevel
 {
+    /// <summary>One event group, locked before its gates and selected-group mappings are read.</summary>
+    EventGroup = 0,
+
     /// <summary>The lifecycle root. Anything that changes what an attendee is doing starts here.</summary>
     Attendee = 1,
 

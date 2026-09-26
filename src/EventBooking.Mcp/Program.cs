@@ -30,6 +30,7 @@ builder.Services
     .WithTools<AdministrationTools>()
     .WithTools<NegotiationTools>()
     .WithTools<EventTools>()
+    .WithTools<EventGroupTools>()
     .WithTools<AttendeeTools>()
     .WithTools<DashboardTools>()
     .WithTools<AuditTools>()

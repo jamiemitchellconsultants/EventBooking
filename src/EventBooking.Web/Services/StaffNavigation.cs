@@ -24,6 +24,7 @@ public static class StaffNavigation
                 new("/admin/attendee-groups", "Attendee groups", "Manage requirement mappings"),
                 new("/admin/settings", "System settings", "Configure future invitations"),
                 new("/admin/staff-access", "Staff access", "Set appointment-type scope"),
+                new("/event-groups", "Event groups", "Publish compatible events for self-registration"),
                 new("/events/operations", "Event operations", "Review and cancel future events"),
                 new("/audit", "Audit search", "Search event and administration history"),
             ];
@@ -39,6 +40,7 @@ public static class StaffNavigation
             links.Add(new("/attendees", "Attendees", "Invite and track attendees"));
             links.Add(new("/dashboards", "Dashboards", "Review waiting lists and follow-ups"));
             links.Add(new("/events/operations", "Event operations", "Review and cancel future events"));
+            links.Add(new("/event-groups", "Event groups", "Publish compatible events for self-registration"));
             links.Add(new("/audit", "Audit search", "Search event and administration history"));
         }
 

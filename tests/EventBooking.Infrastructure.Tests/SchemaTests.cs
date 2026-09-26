@@ -3,6 +3,7 @@ using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Locations;
+using EventBooking.Domain.Notifications;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
@@ -40,8 +41,12 @@ public class SchemaTests(PostgresFixture fixture)
             // index with the list page's composite, the migration adding the
             // Idempotency-Key retention table, the migration retaining the replayed
             // response's Location and content type, the migration retiring the
-            // predecessor's fixed reference seeds, and the migration granting the
-            // application role every table, including those later migrations create.
+            // predecessor's fixed reference seeds, the migration granting the
+            // application role every table, including those later migrations create,
+            // the migration adding the attendee group description, the migration
+            // adding the event group publication tables, the migration adding
+            // the pending registration table and its expiry setting, and the
+            // migration adding the request terminal timestamp and its index.
             // Committed migrations are never rewritten: the chain is what keeps the
             // schema regenerable.
             Assert.Equal(
@@ -49,7 +54,12 @@ public class SchemaTests(PostgresFixture fixture)
                     "20260923202304_InviteSettingsSnapshots", "20260924040652_EmailOutboxColumns",
                     "20260924045221_AttendeeListIndex", "20260924095643_IdempotencyRetention",
                     "20260924123603_IdempotencyReplayHeaders", "20260924201133_RetireTransitionalSeedRows",
-                    "20260925034812_GrantApplicationRoleOnLaterTables"],
+                    "20260925034812_GrantApplicationRoleOnLaterTables",
+                    "20260925120000_AttendeeGroupDescription", "20260925123000_EventGroups",
+                    "20260925130000_AddSelfRegistration",
+                    "20260925204034_SelfRegistrationTerminalAt",
+                    "20260926043945_SelfRegistrationEmailLink",
+                    "20260926081036_SelfRegistrationPerSelectionIndex"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();
@@ -104,8 +114,14 @@ public class SchemaTests(PostgresFixture fixture)
                     proposal.Accept(type, Guid.NewGuid(), 1);
                 before.EventProposals.Add(proposal);
                 before.Events.Add(Event.CreateFrom(Guid.NewGuid(), proposal));
-                var cabinCrew = await before.AttendeeGroups.Include(g => g.Requirements)
-                    .SingleAsync(g => g.Id == AttendeeGroupIds.CabinCrew);
+                // This baseline predates the attendee group description column, so the
+                // current model cannot read that table here. The group is rebuilt from
+                // its known fixed mapping and attached unchanged instead.
+                var cabinCrew = AttendeeGroup.Define(
+                    AttendeeGroupIds.CabinCrew, "CABIN_CREW", "Cabin Crew", true,
+                    [AppointmentTypeIds.DrugAndAlcoholTesting, AppointmentTypeIds.MedicalCheckUp,
+                        AppointmentTypeIds.UniformFitting]);
+                before.Attach(cabinCrew);
                 before.Attendees.Add(Attendee.Create(
                     Guid.NewGuid(), "Kept Attendee", "kept@example.com", cabinCrew, ProposalFixture.Now));
                 await before.SaveChangesAsync();
@@ -359,6 +375,21 @@ public class SchemaTests(PostgresFixture fixture)
 
         Assert.Contains("claimed_at", columns);
         Assert.Contains("claim_count", columns);
+    }
+
+    [Fact]
+    public async Task ADeliveryNamesExactlyOneRecipientContext()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        context.EmailLogs.Add(EmailLog.RecordPendingSelfRegistration(
+            Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow));
+        await context.SaveChangesAsync();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO email_log (id, attendee_id, self_registration_id, template_name, sent_at, status, claim_count) " +
+            "VALUES (gen_random_uuid(), NULL, NULL, 5, now(), 3, 0);"));
     }
 
     private static async Task InsertManagerProfileAsync(EventBookingDbContext context, Guid typeId) =>

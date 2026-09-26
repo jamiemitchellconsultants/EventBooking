@@ -5,6 +5,7 @@ using EventBooking.Domain.Attendees;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Common;
+using EventBooking.Domain.EventGroups;
 
 namespace EventBooking.Application.ReferenceData;
 
@@ -34,7 +35,7 @@ public sealed class CreateAttendeeGroupHandler(
         AttendeeGroup group;
         try
         {
-            group = AttendeeGroup.Create(Guid.NewGuid(), command.Code, command.Name, command.AppointmentTypeIds, activeIds);
+            group = AttendeeGroup.Create(Guid.NewGuid(), command.Code, command.Name, command.AppointmentTypeIds, activeIds, command.Description);
         }
         catch (DomainException ex)
         {
@@ -50,7 +51,7 @@ public sealed class CreateAttendeeGroupHandler(
         await unitOfWork.SaveChangesAsync(ct);
         return Result<AttendeeGroupResult>.Success(new AttendeeGroupResult(
             group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, 0));
+            group.RequiredAppointmentTypeIds, 0, group.Description));
     }
 }
 
@@ -64,6 +65,8 @@ public sealed class CreateAttendeeGroupHandler(
 /// <param name="unitOfWork">The unitOfWork.</param>
 /// <param name="audit">The audit.</param>
 /// <param name="clock">The clock.</param>
+/// <param name="eventGroups">The eventGroups.</param>
+/// <param name="events">The events.</param>
 public sealed class UpdateAttendeeGroupHandler(
     IAttendeeGroupRepository groups,
     IAppointmentTypeRepository types,
@@ -73,7 +76,9 @@ public sealed class UpdateAttendeeGroupHandler(
     IReferenceDataBlockingQueries blocking,
     IUnitOfWork unitOfWork,
     IAuditLogger audit,
-    IClock clock)
+    IClock clock,
+    IEventGroupRepository eventGroups,
+    IEventRepository events)
 {
     /// <summary>Handles the command.</summary>
     /// <param name="command">The command.</param>
@@ -88,10 +93,32 @@ public sealed class UpdateAttendeeGroupHandler(
         if (group.Version != command.ExpectedVersion)
             return Result<AttendeeGroupResult>.Failure(Error.VersionConflict("The attendee group changed under you.", group.Version));
 
+        var needsMappingGuard = command.AppointmentTypeIds is not null ||
+            (command.IsActive != group.IsActive && !command.IsActive);
+        await using var transaction = needsMappingGuard
+            ? await unitOfWork.BeginTransactionAsync(ct)
+            : new NoTransaction();
+
+        if (needsMappingGuard)
+        {
+            var guard = await GuardEventGroupMappingsAsync(group, command, ct);
+            if (guard.IsFailure)
+            {
+                await transaction.RollbackAsync(ct);
+                return Result<AttendeeGroupResult>.Failure(guard.Error);
+            }
+        }
+
         var changes = new List<string>();
         try
         {
             if (command.Name is not null) { group.Rename(command.Name); changes.Add("name"); }
+            if (command.Description is not null)
+            {
+                var before = group.Version;
+                group.ChangeDescription(command.Description);
+                if (group.Version != before) changes.Add("description");
+            }
             if (command.AppointmentTypeIds is not null)
             {
                 var activeIds = (await types.ListAsync(ct)).Where(t => t.IsActive).Select(t => t.Id).ToList();
@@ -136,15 +163,19 @@ public sealed class UpdateAttendeeGroupHandler(
         }
 
         if (changes.Count == 0)
+        {
+            await transaction.CommitAsync(ct);
             return Result<AttendeeGroupResult>.Success(await ToResultAsync(group, ct));
+        }
 
         var memberCount = await blocking.AttendeeGroupMemberCountAsync(group.Id, ct);
         audit.Record(AuditEntityTypes.AttendeeGroup, group.Id, AuditAction.AttendeeGroupUpdated,
             ActorType.Staff, command.StaffUserId.ToString(), $"{string.Join("; ", changes)}; {memberCount} members");
         await unitOfWork.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return Result<AttendeeGroupResult>.Success(new AttendeeGroupResult(
             group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, memberCount));
+            group.RequiredAppointmentTypeIds, memberCount, group.Description));
     }
 
     // Every member's attendee lock is already held in ascending id order by
@@ -168,7 +199,70 @@ public sealed class UpdateAttendeeGroupHandler(
 
     private async Task<AttendeeGroupResult> ToResultAsync(AttendeeGroup group, CancellationToken ct) =>
         new(group.Id, group.Code, group.Name, group.IsActive, group.Version,
-            group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct));
+            group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Description);
+
+    // Serializes reference-data edits against EventGroup edits: both take the parent
+    // EventGroup lock before changing gates or mappings, so a close and a mapping edit
+    // cannot interleave. Every containing group is locked in ascending id order.
+    private async Task<Result> GuardEventGroupMappingsAsync(
+        AttendeeGroup group, UpdateAttendeeGroupCommand command, CancellationToken ct)
+    {
+        var containers = await eventGroups.ListContainingAttendeeGroupAsync(group.Id, ct);
+        if (containers.Count == 0) return Result.Success();
+
+        foreach (var container in containers)
+            await eventGroups.LockForUpdateAsync(container.Id, ct);
+
+        if (!command.IsActive && command.IsActive != group.IsActive)
+            return Result.Failure(Error.ReferenceDataInUse(
+                "The attendee group cannot be deactivated while an event group lists it.",
+                new Dictionary<string, int> { ["eventGroups"] = containers.Count }));
+
+        if (command.AppointmentTypeIds is not null)
+        {
+            var selected = await groups.ListAsync(ct);
+            var byId = selected.ToDictionary(
+                x => x.Id, x => (IReadOnlyCollection<Guid>)x.RequiredAppointmentTypeIds);
+            var proposed = command.AppointmentTypeIds.Distinct().Order().ToArray();
+            var eventIds = containers
+                .SelectMany(c => c.Events.Select(e => e.EventId)).Distinct().ToArray();
+            var memberEvents = eventIds.Length == 0
+                ? []
+                : await events.ListByIdsAsync(eventIds, ct);
+            var eventTypes = memberEvents.ToDictionary(
+                x => x.Id,
+                x => (IReadOnlyCollection<Guid>)x.Capacities.Select(c => c.AppointmentTypeId).ToArray());
+
+            foreach (var container in containers)
+            {
+                var requirements = container.AttendeeGroups
+                    .Select(x => x.AttendeeGroupId)
+                    .ToDictionary(
+                        id => id,
+                        id => id == group.Id ? (IReadOnlyCollection<Guid>)proposed : byId[id]);
+                try
+                {
+                    EventGroupTypeSet.Validate(
+                        requirements, container.Events.Select(e => eventTypes[e.EventId]));
+                }
+                catch (DomainException ex)
+                {
+                    return Result.Failure(Error.Validation(ex.Message));
+                }
+            }
+        }
+
+        return Result.Success();
+    }
+
+    private sealed class NoTransaction : ITransactionScope
+    {
+        public Task CommitAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task RollbackAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>Lists attendee groups in code order, hiding inactive rows unless asked. Open
@@ -192,7 +286,7 @@ public sealed class ListAttendeeGroupsHandler(
                      .OrderBy(g => g.Code, StringComparer.Ordinal))
         {
             items.Add(new AttendeeGroupListItem(group.Id, group.Code, group.Name, group.IsActive,
-                group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Version));
+                group.RequiredAppointmentTypeIds, await blocking.AttendeeGroupMemberCountAsync(group.Id, ct), group.Version, group.Description));
         }
 
         return Result<IReadOnlyList<AttendeeGroupListItem>>.Success(items);

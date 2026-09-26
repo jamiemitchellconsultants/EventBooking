@@ -58,6 +58,17 @@ public sealed class EmailComposerTests
     }
 
     [Fact]
+    public void Self_registration_confirmation_carries_the_confirm_link_and_holds_no_place()
+    {
+        var message = EmailComposer.Compose("SelfRegistrationConfirmation", LondonJuly("MED"));
+
+        Assert.StartsWith("Confirm your registration:", message.Subject, StringComparison.Ordinal);
+        Assert.Contains("No place is held", message.TextBody);
+        Assert.Contains("https://portal.example.invalid/book/token", message.TextBody);
+        Assert.Contains("https://portal.example.invalid/book/token", message.HtmlBody);
+    }
+
+    [Fact]
     public void Unknown_template_is_refused()
     {
         Assert.Throws<ArgumentException>(() =>

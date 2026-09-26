@@ -30,7 +30,8 @@ Application handler. The MCP server exposes the same handlers as tools (FR-14).
   `zoneAbbreviation`. Timestamps are UTC ISO 8601.
 - **Idempotency.** Attendee confirm and cancel are idempotent against the final state. Staff
   commands that create resources accept an optional `Idempotency-Key` header, retained for 24
-  hours.
+  hours. Self-registration confirmation is single-use by token version: a repeated confirmation
+  reports the existing booking (`already-confirmed`) instead of creating another.
 
 ## Discovery and identity
 
@@ -80,6 +81,29 @@ There is deliberately no endpoint to create a profile, delete one, or edit roles
 | `PUT /api/events/{id}/capacities/{appointmentTypeId}` | Adjust `{totalHeadcount}` (caller's own type only) | `ManageEventNegotiation` |
 | `POST /api/events/{id}/cancel?confirm=` | CancelEvent, two-step (FR-7.2 to 7.4) | `CancelEvent` |
 | `GET /api/events/cancellable?locationId=&from=&to=` | Event operations list (window not started) | `ViewEventOperations` |
+
+## Event groups
+
+| Method and path | Use case | Capability |
+|---|---|---|
+| `GET /api/event-groups` | List groups with selected groups and memberships | `ManageEventGroups` |
+| `GET /api/event-groups/{id}` | One group with selected groups and memberships | `ManageEventGroups` |
+| `POST /api/event-groups` | Create `{title, description, attendeeGroupIds[]}` | `ManageEventGroups` |
+| `PUT /api/event-groups/{id}` | Update `{title, description, attendeeGroupIds[], isOpen, expectedVersion}` | `ManageEventGroups` |
+| `PUT /api/event-groups/{id}/events/{eventId}` | Add `{expectedVersion}`; active future event with the group's exact type set | `ManageEventGroups` |
+| `PATCH /api/event-groups/{id}/events/{eventId}` | Toggle one membership `{isOpen, expectedVersion}` | `ManageEventGroups` |
+| `DELETE /api/event-groups/{id}/events/{eventId}?expectedVersion=` | Remove one membership; bookings stay valid | `ManageEventGroups` |
+
+## Public event groups
+
+| Method and path | Use case | Capability |
+|---|---|---|
+| `GET /api/public/event-groups` | Open groups with public choices | Anonymous |
+| `GET /api/public/event-groups/{id}` | One open group with public choices | Anonymous |
+| `POST /api/public/event-groups/{id}/registrations` | Submit `{eventId, attendeeGroupId, name, email}`; returns the confirmation token | Anonymous |
+| `POST /api/public/event-groups/{id}/events/{eventId}/registrations` | Submit `{attendeeGroupId, name, email}` for one event; returns the confirmation token | Anonymous |
+| `GET /api/public/event-groups/confirm/{token}` | One pending request's public summary | Anonymous |
+| `POST /api/public/event-groups/confirm/{token}` | Confirm one pending request; returns the created booking | Anonymous |
 
 ## Attendees, invites and bookings
 

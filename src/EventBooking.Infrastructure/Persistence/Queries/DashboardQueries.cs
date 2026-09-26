@@ -122,7 +122,8 @@ public sealed class DashboardQueries(
         var latest = (await context.EmailLogs
             .AsNoTracking()
             .ToListAsync(cancellationToken))
-            .GroupBy(delivery => delivery.AttendeeId)
+            .Where(delivery => delivery.AttendeeId.HasValue)
+            .GroupBy(delivery => delivery.AttendeeId!.Value)
             .Select(group => group
                 .OrderBy(delivery => delivery.Status is EmailStatus.Failed or EmailStatus.Pending ? 0 : 1)
                 .ThenByDescending(delivery => delivery.SentAt)
@@ -130,7 +131,7 @@ public sealed class DashboardQueries(
                 .First())
             .ToList();
 
-        var attendeeIds = latest.Select(delivery => delivery.AttendeeId).Distinct().ToList();
+        var attendeeIds = latest.Select(delivery => delivery.AttendeeId!.Value).Distinct().ToList();
         var attendeeStatuses = await context.Attendees
             .AsNoTracking()
             .Where(attendee => attendeeIds.Contains(attendee.Id))
@@ -172,7 +173,7 @@ public sealed class DashboardQueries(
 
         return latest
             .Select(delivery => new AttendeeEmailStatusRow(
-                delivery.AttendeeId,
+                delivery.AttendeeId!.Value,
                 delivery.TemplateName,
                 delivery.SentAt,
                 delivery.Status,
@@ -188,7 +189,7 @@ public sealed class DashboardQueries(
                             && cancelledEventIds.Contains(eventId)
                             && delivery.BookingId is { } cancellationBookingId
                             && existingBookingIds.Contains(cancellationBookingId)
-                            && attendeeStatuses.TryGetValue(delivery.AttendeeId, out var status)
+                            && attendeeStatuses.TryGetValue(delivery.AttendeeId!.Value, out var status)
                             && status is AttendeeStatus.Invited or AttendeeStatus.AwaitingAvailability,
                         _ => false,
                     })))

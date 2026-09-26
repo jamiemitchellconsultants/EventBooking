@@ -40,20 +40,21 @@ public sealed class AdministrationTools
     [McpServerTool(
         Name = "update_settings", Title = "Update settings",
         ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Updates invite expiry, automatic retry count and option count. Existing invites keep the values they were issued under.")]
+    [Description("Updates invite expiry, automatic retry count, option count and self-registration expiry. Existing invites keep the values they were issued under.")]
     public async Task<SystemSettingsResult> UpdateSettingsAsync(
         ICallerAccessor caller,
         AdminSettingsHandler handler,
         [Description("Days an invitation stays usable, 1 to 60.")] int inviteExpiryDays,
         [Description("Automatic re-issues before giving up, 0 to 10.")] int maxAutoRetryCount,
         [Description("Options offered per invitation, 1 to 5.")] int inviteOptionCount,
+        [Description("Hours a self-registration request stays confirmable, 1 to 168.")] int pendingRegistrationExpiryHours,
         [Description("The version you read.")] long expectedVersion,
         CancellationToken cancellationToken = default)
     {
         var result = await handler.SaveAsync(
             new SaveSystemSettingsCommand(
                 caller.RequireStaffUserId(), inviteExpiryDays, maxAutoRetryCount,
-                inviteOptionCount, expectedVersion),
+                inviteOptionCount, pendingRegistrationExpiryHours, expectedVersion),
             cancellationToken);
         return result.ValueOrThrow();
     }

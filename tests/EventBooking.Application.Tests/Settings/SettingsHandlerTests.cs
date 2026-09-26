@@ -26,11 +26,11 @@ public sealed class SettingsHandlerTests
     public async Task Valid_save_writes_SystemSettingsChanged_with_version()
     {
         var result = await Saver.HandleAsync(
-            new SaveSystemSettingsCommand(Admin, 14, 3, 5, 1),
+            new SaveSystemSettingsCommand(Admin, 14, 3, 5, 72, 1),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(new SystemSettingsResult(14, 3, 5, 2), result.Value);
+        Assert.Equal(new SystemSettingsResult(14, 3, 5, 72, 2), result.Value);
         var entry = Assert.Single(_audit.Entries);
         Assert.Equal(AuditAction.SystemSettingsChanged, entry.Action);
         Assert.Equal(AuditEntityTypes.SystemSettings, entry.EntityType);
@@ -41,12 +41,14 @@ public sealed class SettingsHandlerTests
     {
         foreach (var command in new[]
         {
-            new SaveSystemSettingsCommand(Admin, 0, 2, 3, 1),
-            new SaveSystemSettingsCommand(Admin, 61, 2, 3, 1),
-            new SaveSystemSettingsCommand(Admin, 7, -1, 3, 1),
-            new SaveSystemSettingsCommand(Admin, 7, 11, 3, 1),
-            new SaveSystemSettingsCommand(Admin, 7, 2, 0, 1),
-            new SaveSystemSettingsCommand(Admin, 7, 2, 6, 1),
+            new SaveSystemSettingsCommand(Admin, 0, 2, 3, 48, 1),
+            new SaveSystemSettingsCommand(Admin, 61, 2, 3, 48, 1),
+            new SaveSystemSettingsCommand(Admin, 7, -1, 3, 48, 1),
+            new SaveSystemSettingsCommand(Admin, 7, 11, 3, 48, 1),
+            new SaveSystemSettingsCommand(Admin, 7, 2, 0, 48, 1),
+            new SaveSystemSettingsCommand(Admin, 7, 2, 6, 48, 1),
+            new SaveSystemSettingsCommand(Admin, 7, 2, 3, 0, 1),
+            new SaveSystemSettingsCommand(Admin, 7, 2, 3, 169, 1),
         })
         {
             var result = await Saver.HandleAsync(command, CancellationToken.None);
@@ -65,7 +67,7 @@ public sealed class SettingsHandlerTests
         var invite = Invite.CreateInitial(Guid.NewGuid(), Guid.NewGuid(), Now.AddDays(7), [Guid.NewGuid()], optionEvents, [Guid.NewGuid()], 0);
 
         var result = await Saver.HandleAsync(
-            new SaveSystemSettingsCommand(Admin, 30, 5, 1, 1),
+            new SaveSystemSettingsCommand(Admin, 30, 5, 1, 48, 1),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -78,7 +80,7 @@ public sealed class SettingsHandlerTests
     public async Task Stale_version_returns_version_conflict()
     {
         var result = await Saver.HandleAsync(
-            new SaveSystemSettingsCommand(Admin, 14, 3, 3, 99),
+            new SaveSystemSettingsCommand(Admin, 14, 3, 3, 48, 99),
             CancellationToken.None);
 
         Assert.True(result.IsFailure);

@@ -183,6 +183,7 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
             inviteExpiryDays = 10,
             maxAutoRetryCount = 1,
             inviteOptionCount = 4,
+            pendingRegistrationExpiryHours = 72,
             expectedVersion = read.GetProperty("version").GetInt64(),
         });
 
@@ -190,6 +191,58 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
         var body = await BodyAsync(written);
         Assert.Equal(10, body.GetProperty("inviteExpiryDays").GetInt32());
         Assert.Equal(4, body.GetProperty("inviteOptionCount").GetInt32());
+        Assert.Equal(72, body.GetProperty("pendingRegistrationExpiryHours").GetInt32());
+    }
+
+    [Fact]
+    public async Task AttendeeGroupDescriptionRoundTripsThroughCreateUpdateAndList()
+    {
+        var client = await AdminAsync();
+        var typeId = await GivenAppointmentTypeAsync("RF_DESC");
+        var created = await BodyAsync(await PostAsync(client, "/api/attendee-groups", new
+        {
+            code = "RF_DESC_GRP",
+            name = "Desc group",
+            description = "  Who should choose this group.  ",
+            appointmentTypeIds = new[] { typeId },
+        }));
+        Assert.Equal("Who should choose this group.", created.GetProperty("description").GetString());
+        var id = created.GetProperty("id").GetGuid();
+
+        var updated = await client.PutAsJsonAsync($"/api/attendee-groups/{id}", new
+        {
+            name = "Desc group",
+            description = "Updated.",
+            appointmentTypeIds = new[] { typeId },
+            isActive = true,
+            expectedVersion = created.GetProperty("version").GetInt64(),
+        });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        Assert.Equal("Updated.", (await BodyAsync(updated)).GetProperty("description").GetString());
+
+        var row = (await BodyAsync(await client.GetAsync("/api/attendee-groups?includeInactive=true")))
+            .GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetGuid() == id);
+        Assert.Equal("Updated.", row.GetProperty("description").GetString());
+    }
+
+    [Fact]
+    public async Task AttendeeGroupDescriptionBeyondFiveHundredCharactersIsRejected()
+    {
+        var client = await AdminAsync();
+        var typeId = await GivenAppointmentTypeAsync("RF_DESC2");
+
+        var response = await PostAsync(client, "/api/attendee-groups", new
+        {
+            code = "RF_DESC2_GRP",
+            name = "Desc group 2",
+            description = new string('x', 501),
+            appointmentTypeIds = new[] { typeId },
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal(
+            "validation-failed", (await BodyAsync(response)).GetProperty("type").GetString());
     }
 
     [Fact]
@@ -201,6 +254,7 @@ public sealed class ReferenceDataEndpointTests(ApiFactory factory)
         var response = await client.PutAsJsonAsync("/api/settings", new
         {
             inviteExpiryDays = 7, maxAutoRetryCount = 2, inviteOptionCount = 9,
+            pendingRegistrationExpiryHours = 48,
             expectedVersion = read.GetProperty("version").GetInt64(),
         });
 

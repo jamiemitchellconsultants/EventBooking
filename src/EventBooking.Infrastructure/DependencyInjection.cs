@@ -42,6 +42,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IEventProposalRepository, EventProposalRepository>();
         services.AddScoped<IEventRepository, EventRepository>();
         services.AddScoped<IEventCapacityRepository, EventCapacityRepository>();
+        services.AddScoped<IEventGroupRepository, EventGroupRepository>();
         services.AddScoped<IAttendeeRepository, AttendeeRepository>();
         services.AddScoped<IAttendeeGroupRepository, AttendeeGroupRepository>();
         services.AddScoped<IInviteRepository, InviteRepository>();

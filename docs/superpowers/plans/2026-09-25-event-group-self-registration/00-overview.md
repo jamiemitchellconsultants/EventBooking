@@ -31,7 +31,7 @@ Testcontainers, existing HMAC token and email outbox infrastructure.
 - Group and Event membership gates are independent and closed by default. An Event may belong to
   multiple `EventGroup`s. Closing either gate blocks new confirmations, not existing Bookings.
 - The registration form takes name, email and `AttendeeGroup`. Submission sends email but reserves
-  no capacity. Confirmation tokens last 24 hours; terminal personal data is retained 30 days.
+  no capacity. Confirmation tokens last 24 hours by default (Admin-configurable, 1 to 168); terminal personal data is retained 30 days.
 - Admin and Coordinator alone get `ManageEventGroups`. Admin sees no attendee data. Admin alone
   edits `AttendeeGroup` reference data.
 - Keep audit and telemetry free of title, description, name, email and raw token. Public endpoints
