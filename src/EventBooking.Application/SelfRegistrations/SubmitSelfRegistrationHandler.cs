@@ -33,13 +33,15 @@ public sealed class SubmitSelfRegistrationHandler(
     IEventWindowZones zones,
     ICorrelationContext correlation)
 {
+    private const int LinkCooldownSeconds = 60;
+
     /// <summary>Submits an anonymous request to join an event.</summary>
     /// <param name="command">The command.</param>
     /// <param name="ct">The cancellation token.</param>
     public async Task<Result<SubmitSelfRegistrationResult>> HandleAsync(
         SubmitSelfRegistrationCommand command, CancellationToken ct)
     {
-        var group = await groups.GetAsync(command.EventGroupId, ct);
+        var group = await groups.GetUntrackedAsync(command.EventGroupId, ct);
         if (group is null) return Result<SubmitSelfRegistrationResult>.Failure(
             Error.NotFound("No such event group."));
 
@@ -95,13 +97,35 @@ public sealed class SubmitSelfRegistrationHandler(
         if (!hasSpace)
             return Result<SubmitSelfRegistrationResult>.Failure(SelfRegistrationErrors.Full());
 
-        // An address that already has a request in flight gets a fresh copy of the email for
-        // that request and the same neutral receipt: neither the reply nor the token reveals
-        // whether the address was already known.
-        var existing = await groups.FindInFlightAsync(eventItem.Id, registration.Email, ct);
-        var target = existing ?? registration;
-
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+
+        // The gates are read again under the group lock that publication changes take, so a
+        // close that committed first is honoured rather than raced.
+        var locked = await groups.LockForUpdateAsync(group.Id, ct);
+        var lockedMembership = locked?.Events.SingleOrDefault(x => x.EventId == command.EventId);
+        if (locked is null || lockedMembership is null || !locked.IsOpen || !lockedMembership.IsOpen
+            || locked.AttendeeGroups.All(x => x.AttendeeGroupId != attendeeGroup.Id))
+            return Result<SubmitSelfRegistrationResult>.Failure(SelfRegistrationErrors.NotAvailable());
+
+        await groups.LockEmailAsync(registration.Email, ct);
+
+        // One request per address and event. A live request for the same group and selection is
+        // resent; a lapsed or different one is retired so the new choice replaces it, and the
+        // link that is emailed always belongs to what the visitor just asked for.
+        var existing = await groups.FindInFlightAsync(eventItem.Id, registration.Email, ct);
+        if (existing is not null
+            && (now >= existing.ExpiresAt || existing.EventGroupId != group.Id
+                || existing.AttendeeGroupId != attendeeGroup.Id))
+        {
+            existing.Supersede(now);
+            audit.Record(AuditEntityTypes.SelfRegistration, existing.RequestId,
+                AuditAction.SelfRegistrationExpired, ActorType.System, correlation.CorrelationId,
+                $"status {existing.Status}");
+            await unitOfWork.SaveChangesAsync(ct);
+            existing = null;
+        }
+
+        var target = existing ?? registration;
         if (existing is null)
         {
             groups.AddRegistration(registration);
@@ -111,8 +135,20 @@ public sealed class SubmitSelfRegistrationHandler(
                 $"correlation {correlation.CorrelationId}; group {group.Id}; event {eventItem.Id}");
         }
 
-        emails.Add(SelfRegistrationDelivery.StageLink(
-            Guid.NewGuid(), target.RequestId, now, correlation.CorrelationId));
+        // At most one link per address per cooldown. Repeating a live request adds nothing;
+        // a new request's link waits its turn instead of being dropped.
+        var busyUntil = await groups.LatestLinkDueAsync(
+            registration.Email, now.AddSeconds(-LinkCooldownSeconds * 2), ct);
+        var due = busyUntil is { } last ? last.AddSeconds(LinkCooldownSeconds) : now;
+        if (existing is null || due <= now)
+        {
+            var link = SelfRegistrationDelivery.StageLink(
+                Guid.NewGuid(), target.RequestId, now, correlation.CorrelationId);
+            if (due > now) link.SetNotBefore(due);
+            emails.Add(link);
+        }
+
+        var requestId = target.RequestId;
         try
         {
             await unitOfWork.SaveChangesAsync(ct);
@@ -120,12 +156,14 @@ public sealed class SubmitSelfRegistrationHandler(
         }
         catch (UniqueConstraintViolationException)
         {
-            // A concurrent submission for the same address won the race; the receipt is the same.
+            // A concurrent submission for the same address won the race; report its request.
             await transaction.RollbackAsync(ct);
+            requestId = (await groups.FindInFlightAsync(
+                eventItem.Id, registration.Email, ct))?.RequestId ?? requestId;
         }
 
         return Result<SubmitSelfRegistrationResult>.Success(new SubmitSelfRegistrationResult(
-            target.RequestId, group.Id, eventItem.Id, attendeeGroup.Id, registration.Name,
+            requestId, group.Id, eventItem.Id, attendeeGroup.Id, registration.Name,
             (command.Email ?? string.Empty).Trim(), target.ExpiresAt));
     }
 

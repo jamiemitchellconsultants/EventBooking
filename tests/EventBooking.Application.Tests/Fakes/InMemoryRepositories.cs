@@ -485,6 +485,10 @@ public sealed class InMemoryEventGroupRepository : IEventGroupRepository
     public Task<EventGroup?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
 
+    /// <summary>Gets a group with both membership collections, untracked.</summary>
+    public Task<EventGroup?> GetUntrackedAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
+
     /// <summary>Locks the parent row before any gate or mapping mutation.</summary>
     public Task<EventGroup?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Items.SingleOrDefault(group => group.Id == id));
@@ -516,6 +520,17 @@ public sealed class InMemoryEventGroupRepository : IEventGroupRepository
         Guid eventId, string email, CancellationToken cancellationToken) =>
         Task.FromResult(Registrations.SingleOrDefault(x =>
             x.EventId == eventId && x.Email == email && x.Status == SelfRegistrationStatus.Pending));
+
+    /// <summary>The in-memory store has no concurrent writers to serialise.</summary>
+    public Task LockEmailAsync(string email, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>When a test wants the newest link email to look due; null means none recent.</summary>
+    public DateTimeOffset? LinkDueAt { get; set; }
+
+    /// <summary>Returns the configured due instant.</summary>
+    public Task<DateTimeOffset?> LatestLinkDueAsync(
+        string email, DateTimeOffset since, CancellationToken cancellationToken) =>
+        Task.FromResult(LinkDueAt);
 
     /// <summary>Gets one pending registration by its request identifier.</summary>
     public Task<PendingRegistration?> GetRegistrationAsync(

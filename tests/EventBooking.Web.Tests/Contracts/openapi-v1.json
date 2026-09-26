@@ -6707,7 +6707,8 @@
           "locationName",
           "address",
           "eventTime",
-          "appointmentTypeCodes"
+          "appointmentTypeCodes",
+          "availableAttendeeGroupIds"
         ],
         "type": "object",
         "properties": {
@@ -6728,6 +6729,13 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "availableAttendeeGroupIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }

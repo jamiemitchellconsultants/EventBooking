@@ -43,7 +43,7 @@ public sealed class PublicEventRegistrationPageTests : BunitContext
         cut.Find("[data-action='send-request']").Click();
 
         cut.WaitForAssertion(() => Assert.Contains("Check your email", cut.Markup));
-        Assert.Contains("within 24 hours", cut.Markup);
+        Assert.Contains("before it expires", cut.Markup);
     }
 
     [Fact]
@@ -65,21 +65,35 @@ public sealed class PublicEventRegistrationPageTests : BunitContext
         Assert.DoesNotContain("Check your email", cut.Markup);
     }
 
-    private static PublicEventGroupDto Group() => new(
+    [Fact]
+    public void AGroupWithNoSpaceIsListedButNotSelectable()
+    {
+        Services.AddSingleton<IPublicEventGroupsClient>(new FakeRegistrationClient(full: true));
+
+        var cut = Render<PublicEventRegistration>(p => p
+            .Add(x => x.GroupId, GroupId)
+            .Add(x => x.EventId, EventId));
+
+        var option = cut.WaitForElement($"option[value='{AttendeeGroupId:D}']");
+        Assert.True(option.HasAttribute("disabled"));
+        Assert.Contains("(full)", option.TextContent);
+    }
+
+    private static PublicEventGroupDto Group(bool full = false) => new(
         GroupId, "Open days", "Choose a date.",
         [new PublicAttendeeGroupDto(AttendeeGroupId, "Field staff", "Field folk.")],
         [new PublicEventDto(EventId, "London HQ", "1 Main St",
             new DateOnly(2026, 10, 5), new TimeOnly(9, 0), 60,
-            ["Medical check"], [AttendeeGroupId])]);
+            ["Medical check"], full ? [] : [AttendeeGroupId])]);
 
     private sealed class FakeRegistrationClient(
-        (string Code, string Detail)? requestError = null)
+        (string Code, string Detail)? requestError = null, bool full = false)
         : IPublicEventGroupsClient
     {
         public List<(Guid GroupId, Guid EventId, string Name, string Email, Guid GroupChoice)> Requests { get; } = [];
 
         public Task<ApiOutcome<PublicEventGroupDto>> GetGroupAsync(Guid id, CancellationToken ct) =>
-            Task.FromResult(ApiOutcome<PublicEventGroupDto>.Success(Group()));
+            Task.FromResult(ApiOutcome<PublicEventGroupDto>.Success(Group(full)));
 
         public Task<ApiOutcome<PublicEventDto>> GetEventAsync(Guid groupId, Guid eventId, CancellationToken ct) =>
             throw new NotImplementedException();

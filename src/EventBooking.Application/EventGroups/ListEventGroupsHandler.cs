@@ -2,6 +2,7 @@ using EventBooking.Application.Abstractions;
 using EventBooking.Application.Access;
 using EventBooking.Application.Common;
 using EventBooking.Application.SelfRegistrations;
+using EventBooking.Domain.Common;
 using EventBooking.Domain.EventGroups;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Time;
@@ -110,16 +111,30 @@ public sealed class ListEventGroupsHandler(
             [.. group.Events.Select(x => new EventGroupEventResult(x.EventId, x.IsOpen))]);
     }
 
+    private static bool HasSpare(Event eventItem, IReadOnlyCollection<Guid> typeIds)
+    {
+        try
+        {
+            return eventItem.HasSpareCapacityForAll(typeIds);
+        }
+        catch (DomainException)
+        {
+            return false;
+        }
+    }
+
     // Public projections carry group and event choices but no Attendee state: no member
     // lists, no counts. Only open memberships on live future events are offered.
     private async Task<PublicEventGroupResult?> ToPublicResultAsync(
         EventGroup group, CancellationToken ct)
     {
         var choices = new List<PublicAttendeeGroupChoice>();
+        var required = new Dictionary<Guid, IReadOnlyCollection<Guid>>();
         foreach (var id in group.AttendeeGroups.Select(x => x.AttendeeGroupId).Order())
         {
             var attendeeGroup = await attendeeGroups.GetAsync(id, ct);
             if (attendeeGroup is null || !attendeeGroup.IsActive) continue;
+            required[attendeeGroup.Id] = attendeeGroup.RequiredAppointmentTypeIds;
             choices.Add(new PublicAttendeeGroupChoice(
                 attendeeGroup.Id, attendeeGroup.Name, attendeeGroup.Description));
         }
@@ -142,7 +157,9 @@ public sealed class ListEventGroupsHandler(
                 location.TimeZoneId,
                 [.. eventItem.Capacities
                     .Select(c => codeById.GetValueOrDefault(c.AppointmentTypeId, "?"))
-                    .Order()]));
+                    .Order()],
+                [.. choices.Select(c => c.AttendeeGroupId)
+                    .Where(id => HasSpare(eventItem, required[id]))]));
         }
 
         return new PublicEventGroupResult(

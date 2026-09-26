@@ -107,6 +107,83 @@ public sealed class SelfRegistrationHandlerTests
     }
 
     [Fact]
+    public async Task ADifferentGroupSelectionRetiresTheOldRequestAndEmailsTheNewOne()
+    {
+        var group = SeedOpenGroup();
+        var second = Domain.EventGroups.EventGroup.Create(Guid.NewGuid(), "Other days", null,
+            new Dictionary<Guid, IReadOnlyCollection<Guid>>
+            {
+                [CabinCrewId] = [AppointmentTypeIds.MedicalCheckUp],
+            });
+        var eventId = group.Events.Single().EventId;
+        second.AddEvent(eventId, [AppointmentTypeIds.MedicalCheckUp],
+            new Dictionary<Guid, IReadOnlyCollection<Guid>>
+            {
+                [CabinCrewId] = [AppointmentTypeIds.MedicalCheckUp],
+            }, isFuture: true);
+        second.SetOpen(true);
+        second.SetEventOpen(eventId, true);
+        _eventGroups.Items.Add(second);
+
+        var first = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
+            group.Id, eventId, CabinCrewId, "Robin", "robin@example.com"), CancellationToken.None);
+        var other = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
+            second.Id, eventId, CabinCrewId, "Robin", "robin@example.com"), CancellationToken.None);
+
+        Assert.NotEqual(first.Value.RequestId, other.Value.RequestId);
+        Assert.Equal(SelfRegistrationStatus.Expired,
+            _eventGroups.Registrations.Single(x => x.RequestId == first.Value.RequestId).Status);
+        Assert.Equal(second.Id, _eventGroups.Registrations
+            .Single(x => x.Status == SelfRegistrationStatus.Pending).EventGroupId);
+        Assert.Equal(other.Value.RequestId, _emails.Items.Last().SelfRegistrationId);
+    }
+
+    [Fact]
+    public async Task ALapsedRequestIsReplacedRatherThanResent()
+    {
+        var group = SeedOpenGroup();
+        var command = new SubmitSelfRegistrationCommand(
+            group.Id, group.Events.Single().EventId, CabinCrewId, "Robin", "robin@example.com");
+        var first = await Handler.HandleAsync(command, CancellationToken.None);
+        _clock.Advance(TimeSpan.FromHours(25));
+
+        var again = await Handler.HandleAsync(command, CancellationToken.None);
+
+        Assert.NotEqual(first.Value.RequestId, again.Value.RequestId);
+        Assert.Equal(again.Value.RequestId, _emails.Items.Last().SelfRegistrationId);
+    }
+
+    [Fact]
+    public async Task ARepeatWithinTheCooldownQueuesNoExtraEmail()
+    {
+        var group = SeedOpenGroup();
+        var command = new SubmitSelfRegistrationCommand(
+            group.Id, group.Events.Single().EventId, CabinCrewId, "Robin", "robin@example.com");
+        await Handler.HandleAsync(command, CancellationToken.None);
+        _eventGroups.LinkDueAt = _clock.UtcNow;
+
+        var again = await Handler.HandleAsync(command, CancellationToken.None);
+
+        Assert.True(again.IsSuccess);
+        Assert.Single(_emails.Items);
+    }
+
+    [Fact]
+    public async Task ANewRequestInsideTheCooldownHasItsLinkDeferredNotDropped()
+    {
+        var group = SeedOpenGroup();
+        _eventGroups.LinkDueAt = _clock.UtcNow;
+
+        var result = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
+            group.Id, group.Events.Single().EventId, CabinCrewId, "Robin", "robin@example.com"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var link = Assert.Single(_emails.Items);
+        Assert.Equal(_clock.UtcNow.AddSeconds(60), link.NotBefore);
+    }
+
+    [Fact]
     public async Task OverlongNameOrEmailIsUnprocessable()
     {
         var group = SeedOpenGroup();

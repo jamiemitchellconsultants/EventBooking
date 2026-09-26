@@ -22,7 +22,7 @@
             <h1>Check your email</h1>
         </div>
         <div class="public-registration-page__status">
-            <p class="public-registration-page__note" role="status">If that address can receive mail, a confirmation link is on its way. Use the link within 24 hours to confirm your place.</p>
+            <p class="public-registration-page__note" role="status">If that address can receive mail, a confirmation link is on its way. Use the link before it expires to confirm your place.</p>
         </div>
     }
     else if (_event is null || _group is null)
@@ -70,7 +70,8 @@
                 <option value="">Choose your group…</option>
                 @foreach (var choice in _group.AttendeeGroups)
                 {
-                    <option value="@choice.Id.ToString("D")" title="@choice.Description">@choice.Name</option>
+                    var open = _event.AvailableAttendeeGroupIds.Contains(choice.Id);
+                    <option value="@choice.Id.ToString("D")" title="@choice.Description" disabled="@(!open)">@choice.Name@(open ? "" : " (full)")</option>
                 }
             </select>
         </div>

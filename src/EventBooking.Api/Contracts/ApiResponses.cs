@@ -46,7 +46,7 @@ public sealed record PublicAttendeeGroupChoiceResponse(
 /// <summary>One open event choice with its public copy.</summary>
 public sealed record PublicEventChoiceResponse(
     Guid EventId, string LocationName, string Address, EventTimeResponse EventTime,
-    IReadOnlyList<string> AppointmentTypeCodes);
+    IReadOnlyList<string> AppointmentTypeCodes, IReadOnlyList<Guid> AvailableAttendeeGroupIds);
 
 /// <summary>One open event group with its public choices.</summary>
 public sealed record PublicEventGroupResponse(
@@ -374,7 +374,7 @@ public static class ApiResponses
                 x.EventId, x.LocationName, x.Address,
                 EventTimeResponse.From(
                     x.Date, x.StartTime, x.DurationMinutes, x.TimeZoneId, zones),
-                x.AppointmentTypeCodes))]);
+                x.AppointmentTypeCodes, x.AvailableAttendeeGroupIds))]);
     }
 
     /// <summary>Projects one submitted self-registration request.</summary>

@@ -42,6 +42,8 @@ namespace EventBooking.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql("DELETE FROM email_log WHERE attendee_id IS NULL;");
+
             migrationBuilder.DropIndex(
                 name: "IX_email_log_self_registration_id",
                 table: "email_log");

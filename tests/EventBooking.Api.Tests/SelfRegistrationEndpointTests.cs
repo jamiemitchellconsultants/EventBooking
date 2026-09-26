@@ -40,7 +40,8 @@ public sealed class SelfRegistrationEndpointTests(ApiFactory factory)
         Assert.Equal("Open intake", detail.GetProperty("title").GetString());
         Assert.Equal("Choose a date", detail.GetProperty("description").GetString());
         Assert.Single(detail.GetProperty("attendeeGroups").EnumerateArray());
-        Assert.Single(detail.GetProperty("events").EnumerateArray());
+        var openEvent = Assert.Single(detail.GetProperty("events").EnumerateArray());
+        Assert.Single(openEvent.GetProperty("availableAttendeeGroupIds").EnumerateArray());
 
         var missing = await anonymous.GetAsync($"/api/public/event-groups/{closedId}");
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);

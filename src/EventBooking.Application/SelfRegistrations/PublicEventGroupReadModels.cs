@@ -15,9 +15,12 @@ public sealed record PublicAttendeeGroupChoice(Guid AttendeeGroupId, string Name
 /// <param name="DurationMinutes">The duration in minutes.</param>
 /// <param name="TimeZoneId">The location's IANA zone.</param>
 /// <param name="AppointmentTypeCodes">The capacity type codes.</param>
+/// <param name="AvailableAttendeeGroupIds">The selectable groups with spare capacity for every
+/// type they require; no counts are ever published.</param>
 public sealed record PublicEventGroupEventChoice(
     Guid EventId, string LocationName, string Address, DateOnly Date, TimeOnly StartTime,
-    int DurationMinutes, string TimeZoneId, IReadOnlyList<string> AppointmentTypeCodes);
+    int DurationMinutes, string TimeZoneId, IReadOnlyList<string> AppointmentTypeCodes,
+    IReadOnlyList<Guid> AvailableAttendeeGroupIds);
 
 /// <summary>One open event group with its public choices.</summary>
 /// <param name="Id">The event group id.</param>

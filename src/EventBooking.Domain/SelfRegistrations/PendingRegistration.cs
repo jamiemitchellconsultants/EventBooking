@@ -129,6 +129,17 @@ public sealed class PendingRegistration
         return true;
     }
 
+    /// <summary>Retires a pending request that a newer, different request replaces.</summary>
+    /// <param name="now">The current instant.</param>
+    public void Supersede(DateTimeOffset now)
+    {
+        Guard.Against(Status != SelfRegistrationStatus.Pending,
+            "Only a pending request can be superseded.");
+        Status = SelfRegistrationStatus.Expired;
+        TerminalAt = now;
+        Version++;
+    }
+
     private static string NormaliseEmail(string? email)
     {
         var trimmed = email?.Trim() ?? string.Empty;

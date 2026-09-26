@@ -30,6 +30,11 @@ public interface IEventGroupRepository
     /// <param name="group">The event group.</param>
     void Add(EventGroup group);
 
+    /// <summary>Reads a group with both collections without tracking, ahead of a locked re-read.</summary>
+    /// <param name="id">The group id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<EventGroup?> GetUntrackedAsync(Guid id, CancellationToken cancellationToken);
+
     /// <summary>Stages a new pending registration for the next save.</summary>
     /// <param name="registration">The pending registration.</param>
     void AddRegistration(PendingRegistration registration);
@@ -40,6 +45,21 @@ public interface IEventGroupRepository
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<PendingRegistration?> FindInFlightAsync(
         Guid eventId, string email, CancellationToken cancellationToken);
+
+    /// <summary>Serialises concurrent submissions for one normalized email address until commit.</summary>
+    /// <param name="email">The normalized email address.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task LockEmailAsync(string email, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The instant the newest confirmation-link email for the address is due to go out, or null
+    /// when none was staged at or after <paramref name="since"/>.
+    /// </summary>
+    /// <param name="email">The normalized email address.</param>
+    /// <param name="since">The earliest staging instant to consider.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task<DateTimeOffset?> LatestLinkDueAsync(
+        string email, DateTimeOffset since, CancellationToken cancellationToken);
 
     /// <summary>Gets one pending registration by its request identifier.</summary>
     /// <param name="requestId">The request id.</param>

@@ -94,7 +94,8 @@ public sealed class PublicEventGroupsClient(HttpClient http) : IPublicEventGroup
     private sealed record WireEvent(
         [property: JsonPropertyName("eventId")] Guid Id,
         string LocationName, string Address, WireTime EventTime,
-        IReadOnlyList<string> AppointmentTypeCodes);
+        IReadOnlyList<string> AppointmentTypeCodes,
+        IReadOnlyList<Guid>? AvailableAttendeeGroupIds);
     private sealed record WireGroup(
         Guid Id, string Title, string Description,
         IReadOnlyList<PublicAttendeeGroupDto> AttendeeGroups,
@@ -107,6 +108,6 @@ public sealed class PublicEventGroupsClient(HttpClient http) : IPublicEventGroup
                 x.Id, x.LocationName, x.Address,
                 x.EventTime.Date, x.EventTime.StartTime, x.EventTime.DurationMinutes,
                 x.AppointmentTypeCodes,
-                [.. AttendeeGroups.Select(g => g.Id)]))]);
+                x.AvailableAttendeeGroupIds ?? []))]);
     }
 }

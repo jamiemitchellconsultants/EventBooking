@@ -25,6 +25,14 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
             .Include(group => group.Events)
             .SingleOrDefaultAsync(group => group.Id == id, cancellationToken);
 
+    /// <summary>Reads a group with both collections without tracking.</summary>
+    public Task<EventGroup?> GetUntrackedAsync(Guid id, CancellationToken cancellationToken) =>
+        context.EventGroups
+            .AsNoTracking()
+            .Include(group => group.AttendeeGroups)
+            .Include(group => group.Events)
+            .SingleOrDefaultAsync(group => group.Id == id, cancellationToken);
+
     /// <summary>Locks the parent Event Group row before loading gate and selected-group data.</summary>
     public Task<EventGroup?> LockForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
         rowLocks.LockEventGroupAsync(id, cancellationToken);
@@ -61,6 +69,25 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
             x => x.EventId == eventId && x.Email == email
                 && x.Status == SelfRegistrationStatus.Pending,
             cancellationToken);
+
+    /// <summary>Takes a transaction-scoped advisory lock on the email address.</summary>
+    public async Task LockEmailAsync(string email, CancellationToken cancellationToken) =>
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({email}, 0))", cancellationToken);
+
+    /// <summary>Finds when the newest link email for the address is due to be sent.</summary>
+    public async Task<DateTimeOffset?> LatestLinkDueAsync(
+        string email, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        var rows = await (
+            from delivery in context.EmailLogs
+            join request in context.PendingRegistrations
+                on delivery.SelfRegistrationId equals request.RequestId
+            where request.Email == email && delivery.SentAt >= since
+            select new { delivery.SentAt, delivery.NotBefore })
+            .ToListAsync(cancellationToken);
+        return rows.Count == 0 ? null : rows.Max(x => x.NotBefore ?? x.SentAt);
+    }
 
     /// <summary>Gets one pending registration by its request identifier.</summary>
     public Task<PendingRegistration?> GetRegistrationAsync(
