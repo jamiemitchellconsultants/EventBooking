@@ -107,7 +107,7 @@ public sealed class SelfRegistrationHandlerTests
     }
 
     [Fact]
-    public async Task ADifferentGroupSelectionRetiresTheOldRequestAndEmailsTheNewOne()
+    public async Task ADifferentGroupSelectionLeavesTheLiveRequestAloneAndAddsAnother()
     {
         var group = SeedOpenGroup();
         var second = Domain.EventGroups.EventGroup.Create(Guid.NewGuid(), "Other days", null,
@@ -131,10 +131,9 @@ public sealed class SelfRegistrationHandlerTests
             second.Id, eventId, CabinCrewId, "Robin", "robin@example.com"), CancellationToken.None);
 
         Assert.NotEqual(first.Value.RequestId, other.Value.RequestId);
-        Assert.Equal(SelfRegistrationStatus.Expired,
-            _eventGroups.Registrations.Single(x => x.RequestId == first.Value.RequestId).Status);
-        Assert.Equal(second.Id, _eventGroups.Registrations
-            .Single(x => x.Status == SelfRegistrationStatus.Pending).EventGroupId);
+        Assert.All(_eventGroups.Registrations,
+            x => Assert.Equal(SelfRegistrationStatus.Pending, x.Status));
+        Assert.Equal(2, _eventGroups.Registrations.Count);
         Assert.Equal(other.Value.RequestId, _emails.Items.Last().SelfRegistrationId);
     }
 

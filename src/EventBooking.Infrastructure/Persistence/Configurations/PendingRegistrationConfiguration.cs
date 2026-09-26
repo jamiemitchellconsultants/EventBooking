@@ -27,7 +27,7 @@ public sealed class PendingRegistrationConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.TokenVersion).HasColumnName("token_version");
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
 
-        builder.HasIndex(x => new { x.EventId, x.Email }).IsUnique()
+        builder.HasIndex(x => new { x.EventId, x.Email, x.EventGroupId, x.AttendeeGroupId }).IsUnique()
             .HasFilter("status = 1");
         builder.HasIndex(x => new { x.Status, x.ExpiresAt });
         builder.HasIndex(x => new { x.Status, x.TerminalAt });

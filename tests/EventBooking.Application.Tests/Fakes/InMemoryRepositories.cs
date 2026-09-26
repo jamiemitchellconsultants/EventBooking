@@ -515,11 +515,13 @@ public sealed class InMemoryEventGroupRepository : IEventGroupRepository
     /// <summary>Stages a new pending registration for the next save.</summary>
     public void AddRegistration(PendingRegistration registration) => Registrations.Add(registration);
 
-    /// <summary>Finds the pending registration for one event and email address.</summary>
+    /// <summary>Finds the pending registration for one event, email address and selection.</summary>
     public Task<PendingRegistration?> FindInFlightAsync(
-        Guid eventId, string email, CancellationToken cancellationToken) =>
+        Guid eventId, string email, Guid eventGroupId, Guid attendeeGroupId,
+        CancellationToken cancellationToken) =>
         Task.FromResult(Registrations.SingleOrDefault(x =>
-            x.EventId == eventId && x.Email == email && x.Status == SelfRegistrationStatus.Pending));
+            x.EventId == eventId && x.Email == email && x.EventGroupId == eventGroupId
+            && x.AttendeeGroupId == attendeeGroupId && x.Status == SelfRegistrationStatus.Pending));
 
     /// <summary>The in-memory store has no concurrent writers to serialise.</summary>
     public Task LockEmailAsync(string email, CancellationToken cancellationToken) => Task.CompletedTask;

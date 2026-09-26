@@ -39,12 +39,15 @@ public interface IEventGroupRepository
     /// <param name="registration">The pending registration.</param>
     void AddRegistration(PendingRegistration registration);
 
-    /// <summary>Finds the pending registration for one event and email address.</summary>
+    /// <summary>Finds the pending registration for one event, email address and selection.</summary>
     /// <param name="eventId">The event id.</param>
     /// <param name="email">The normalized email address.</param>
+    /// <param name="eventGroupId">The event group the request came through.</param>
+    /// <param name="attendeeGroupId">The selected attendee group.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task<PendingRegistration?> FindInFlightAsync(
-        Guid eventId, string email, CancellationToken cancellationToken);
+        Guid eventId, string email, Guid eventGroupId, Guid attendeeGroupId,
+        CancellationToken cancellationToken);
 
     /// <summary>Serialises concurrent submissions for one normalized email address until commit.</summary>
     /// <param name="email">The normalized email address.</param>

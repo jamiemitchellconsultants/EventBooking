@@ -84,7 +84,7 @@ Event's type set; the existing active-booking restriction still applies.
 `SelfRegistration` stores ID, `EventGroup` ID, Event ID, `AttendeeGroup` ID, submitted name,
 normalized email, expiry, status, token version, and nullable resulting Attendee/Booking IDs.
 Pending, Confirmed, and Expired are its states, with terminalAt stamped on the latter two. The
-confirmation link is a signed bearer token with its own purpose and a 24-hour expiry. The token
+confirmation link is a signed bearer token with its own purpose and an expiry that defaults to 24 hours and that an Admin may set between 1 and 168 hours in `SystemSettings`. The token
 and rendered URL are never stored in the
 database or audit log. The outbox stores its `SelfRegistration` ID and renders the email from that
 row. Pending rows do not consume capacity. A pending request becomes expired when read after its

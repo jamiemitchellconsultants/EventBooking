@@ -58,7 +58,8 @@ public class SchemaTests(PostgresFixture fixture)
                     "20260925120000_AttendeeGroupDescription", "20260925123000_EventGroups",
                     "20260925130000_AddSelfRegistration",
                     "20260925204034_SelfRegistrationTerminalAt",
-                    "20260926043945_SelfRegistrationEmailLink"],
+                    "20260926043945_SelfRegistrationEmailLink",
+                    "20260926081036_SelfRegistrationPerSelectionIndex"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();

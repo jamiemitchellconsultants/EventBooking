@@ -109,15 +109,15 @@ public sealed class SubmitSelfRegistrationHandler(
 
         await groups.LockEmailAsync(registration.Email, ct);
 
-        // One request per address and event. A live request for the same group and selection is
-        // resent; a lapsed or different one is retired so the new choice replaces it, and the
-        // link that is emailed always belongs to what the visitor just asked for.
-        var existing = await groups.FindInFlightAsync(eventItem.Id, registration.Email, ct);
-        if (existing is not null
-            && (now >= existing.ExpiresAt || existing.EventGroupId != group.Id
-                || existing.AttendeeGroupId != attendeeGroup.Id))
+        // One live request per address, event and selection. A live one is resent; a lapsed one
+        // is retired so its replacement can take its place. A live request for a different
+        // selection is never touched: the caller has not yet proved they own the address, so
+        // they must not be able to invalidate a link that address's owner is holding.
+        var existing = await groups.FindInFlightAsync(
+            eventItem.Id, registration.Email, group.Id, attendeeGroup.Id, ct);
+        if (existing is not null && now >= existing.ExpiresAt)
         {
-            existing.Supersede(now);
+            existing.Expire(now);
             audit.Record(AuditEntityTypes.SelfRegistration, existing.RequestId,
                 AuditAction.SelfRegistrationExpired, ActorType.System, correlation.CorrelationId,
                 $"status {existing.Status}");
@@ -159,7 +159,8 @@ public sealed class SubmitSelfRegistrationHandler(
             // A concurrent submission for the same address won the race; report its request.
             await transaction.RollbackAsync(ct);
             requestId = (await groups.FindInFlightAsync(
-                eventItem.Id, registration.Email, ct))?.RequestId ?? requestId;
+                eventItem.Id, registration.Email, group.Id, attendeeGroup.Id, ct))?.RequestId
+                ?? requestId;
         }
 
         return Result<SubmitSelfRegistrationResult>.Success(new SubmitSelfRegistrationResult(

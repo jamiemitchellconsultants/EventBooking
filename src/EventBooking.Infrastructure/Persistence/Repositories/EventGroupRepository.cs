@@ -62,11 +62,13 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
     public void AddRegistration(PendingRegistration registration) =>
         context.PendingRegistrations.Add(registration);
 
-    /// <summary>Finds the pending registration for one event and email address.</summary>
+    /// <summary>Finds the pending registration for one event, email address and selection.</summary>
     public Task<PendingRegistration?> FindInFlightAsync(
-        Guid eventId, string email, CancellationToken cancellationToken) =>
+        Guid eventId, string email, Guid eventGroupId, Guid attendeeGroupId,
+        CancellationToken cancellationToken) =>
         context.PendingRegistrations.SingleOrDefaultAsync(
             x => x.EventId == eventId && x.Email == email
+                && x.EventGroupId == eventGroupId && x.AttendeeGroupId == attendeeGroupId
                 && x.Status == SelfRegistrationStatus.Pending,
             cancellationToken);
 
