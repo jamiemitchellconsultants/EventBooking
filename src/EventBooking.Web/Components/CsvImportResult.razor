@@ -1,4 +1,3 @@
-@using EventBooking.Web.Services
 @if (Accepted)
 {
     <Banner Variant="BannerVariant.Success" Message="@($"Imported {ImportedCount}.")" />
@@ -14,10 +13,4 @@ else
             }
         </ul>
     </div>
-}
-
-@code {
-    [Parameter] public bool Accepted { get; set; }
-    [Parameter] public IReadOnlyList<FieldProblem> Errors { get; set; } = [];
-    [Parameter] public int ImportedCount { get; set; }
 }
