@@ -38,6 +38,8 @@ no Appointment Type. The page provides four workspace links plus Help:
 - **System settings** (`/settings`)
 - **Staff access** (`/staff-access`)
 - **Events** (`/events`)
+- **Event groups** (`/event-groups`) — publish events for public self-registration; see the
+  [Coordinator guide](coordinator-guide.md#event-groups-screen)
 - **Audit trail** (`/audit`)
 - **Help** (`/help`) — every role's guide, including this one
 
@@ -120,10 +122,17 @@ Use `/settings` to review the fixed Appointment Types and configure invitation t
 3. Set **Max auto-retry count** to the number of times an unanswered invitation is automatically
    re-issued before the attendee is marked No response - needs follow-up for a Coordinator to
    re-invite manually.
-4. Select **Save changes**.
-5. Wait for **Saved. These changes apply to invites created from now on.** before leaving.
+4. Set **Self-registration confirmation window (hours)** (1 to 168, default 24) to how long an
+   emailed self-registration link stays valid before the request expires.
+5. Select **Save changes**.
+6. Wait for **Saved. These changes apply to invites created from now on.** before leaving.
 
 Changes do not reach back and alter invitations already sent.
+
+On **Attendee groups**, each group also has a **Description** of up to 500 characters. It is shown
+to the public beside the group name on self-registration forms, so say who should choose it. A group
+listed in an event group cannot be deactivated, and its required Appointment Types cannot be changed
+to a set that no longer matches that event group's events.
 
 ## Events screen
 

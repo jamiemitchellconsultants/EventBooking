@@ -8,11 +8,11 @@ that page; a signed-out visitor sees only the attendee guide.
 
 | Guide | Who it is for | Main workspace |
 |---|---|---|
-| [Admin](admin-guide.md) | System administrators who set appointment-type scope, settings, and event operations | System settings, Staff access, Events, Audit trail |
-| [Coordinator](coordinator-guide.md) | Recruitment coordinators who manage attendees, invitations, bookings, readiness, and recovery | Attendees, Dashboards, Events, Audit trail |
+| [Admin](admin-guide.md) | System administrators who set appointment-type scope, settings, and event operations | System settings, Staff access, Events, Event groups, Audit trail |
+| [Coordinator](coordinator-guide.md) | Recruitment coordinators who manage attendees, invitations, bookings, readiness, and recovery | Attendees, Dashboards, Events, Event groups, Audit trail |
 | [Manager](manager-guide.md) | Appointment-type managers who negotiate events, manage capacity, and may deliver appointments | Event proposals, Appointments |
 | [Appointment staff](appointment-staff-guide.md) | Delivery staff who check attendees in and record outcomes | Appointments |
-| [Attendee](attendee-guide.md) | Invited attendees who choose and manage appointment times | Email links for booking and booking management |
+| [Attendee](attendee-guide.md) | Invited or self-registering attendees who choose and manage appointment times | Email links for booking and booking management; public event-group pages |
 
 ## End-to-end workflow and dependencies
 
@@ -28,6 +28,7 @@ that page; a signed-out visitor sees only the attendee guide.
 | 8. Deliver appointments | Manager or Appointment staff | The attendee has an active Booking on the selected Confirmed Event | **Appointments**: check in, complete, or record No-show for the caller's scoped type |
 | 9. Check readiness | Coordinator | Appointment outcomes have been recorded | **Attendees**: expand readiness; the attendee is ready only when every current required type has a Completed outcome |
 | 10. Recover a missed appointment | Coordinator, then Attendee | The latest unsatisfied attempt for at least one current required type is No-show | **Attendees**: choose **Arrange missed appointments**; the attendee books a new shared event containing only the missed types |
+| 5a. Publish for self-registration (optional) | Admin or Coordinator | Confirmed Events that all offer exactly the Appointment Types the chosen Attendee Groups require | **Event groups**: create a group, add compatible events, share its link; attendees request a place and confirm by email, which books it without an invitation |
 | 11. Account for a change | Admin or Coordinator | The change has been recorded | **Audit trail**, or the **History** control on a attendee or event row |
 
 An upstream delay remains visible at the next stage. For example, a Coordinator cannot issue an
@@ -46,8 +47,8 @@ requires returning to the home page first. **Help** is the last link in both pla
 
 | Access profile | Workspace links |
 |---|---|
-| Admin | System settings, Staff access, Events, Audit trail |
-| Coordinator | Attendees, Dashboards, Events, Audit trail |
+| Admin | System settings, Staff access, Events, Event groups, Audit trail |
+| Coordinator | Attendees, Dashboards, Events, Event groups, Audit trail |
 | Manager | Event proposals, Appointments |
 | Appointment staff | Appointments |
 
@@ -60,8 +61,8 @@ identity provider; ask whoever administers application access there, not a Event
 page or action is missing, first check the access summary: the absence is normally an access rule,
 not a page fault.
 
-Attendees do not sign in. They use personal, single-use links sent by email and see no staff
-navigation. They can open `/help` without signing in to read the attendee guide.
+Attendees do not sign in. They use personal, single-use links sent by email, or the public
+event-group pages a Coordinator shares, and see no staff navigation. They can open `/help` without signing in to read the attendee guide.
 
 ## Who assigns what
 
@@ -82,6 +83,9 @@ profile only appears on the Staff access screen after that person has signed in 
   Appointment Types the attendee requires; nobody selects those requirements individually.
 - A **Event Proposal** is a suggested four-hour window. Once all three Managers accept it, it becomes
   a **Confirmed Event** that attendees can book.
+- An **Event Group** is a public page that lists open Confirmed Events for chosen Attendee Groups. An
+  attendee can request a place there without an invitation; the place is booked only when they
+  confirm through an emailed link.
 - An **Invite** offers a attendee exactly three suitable Confirmed Events. Confirming one creates a
   **Booking**.
 - A **Booking Appointment** is one required Appointment Type inside a Booking. Each type is checked
