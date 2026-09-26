@@ -170,8 +170,8 @@ public sealed class MeEndpointTests(ApiFactory factory)
 
     public static TheoryData<string, string[]> MutationAffordancesByRole => new()
     {
-        { "Admin", ["createLocation", "createAppointmentType", "createAttendeeGroup"] },
-        { "Coordinator", ["createAttendee", "importAttendees"] },
+        { "Admin", ["createLocation", "createAppointmentType", "createAttendeeGroup", "createEventGroup"] },
+        { "Coordinator", ["createAttendee", "importAttendees", "createEventGroup"] },
         { "Manager", ["proposeEvent"] },
     };
 
@@ -192,7 +192,7 @@ public sealed class MeEndpointTests(ApiFactory factory)
         var all = new[]
         {
             "createLocation", "createAppointmentType", "createAttendeeGroup",
-            "createAttendee", "importAttendees", "proposeEvent",
+            "createAttendee", "importAttendees", "proposeEvent", "createEventGroup",
         };
         foreach (var relation in expectedRelations)
         {
@@ -220,7 +220,7 @@ public sealed class MeEndpointTests(ApiFactory factory)
             foreach (var relation in new[]
             {
                 "createLocation", "createAppointmentType", "createAttendeeGroup",
-                "createAttendee", "importAttendees", "proposeEvent",
+                "createAttendee", "importAttendees", "proposeEvent", "createEventGroup",
             })
             {
                 Assert.False(links.TryGetProperty(relation, out _), relation);

@@ -155,6 +155,9 @@ public sealed record CurrentStaffResponse(
                 "createAttendeeGroup", "createAttendeeGroup", "/api/attendee-groups",
                 nameof(StaffCapability.ManageReferenceData)),
             new LinkCandidate(
+                "createEventGroup", "createEventGroup", "/api/event-groups",
+                nameof(StaffCapability.ManageEventGroups)),
+            new LinkCandidate(
                 "proposeEvent", "proposeEvent", "/api/event-proposals",
                 nameof(StaffCapability.ManageEventNegotiation)),
             new LinkCandidate(
