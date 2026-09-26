@@ -6,7 +6,7 @@
 
 ## COO-01 — Find the work queues
 
-1. Sign in. **Expect:** **Attendees**, **Dashboards**, **Event operations**, and **Audit search** under **Your work**; read-only **Locations**, **Appointment types**, and **Attendee groups** under **Reference data**. **Staff access** and **System settings** are absent.
+1. Sign in. **Expect:** **Attendees**, **Dashboards**, **Event operations**, **Event groups**, and **Audit search** under **Your work**; read-only **Locations**, **Appointment types**, and **Attendee groups** under **Reference data**. **Staff access** and **System settings** are absent.
 2. Open **Dashboards**. Switch between **Awaiting availability**, **No response**, and **Events**. **Expect:** each tab shows its own count and rows or an empty message. Use the Location filter and note whether the data changes as expected.
 3. Open **Attendees**. Use Status, Group, Readiness, and **Search by name or email…** to locate an existing test attendee. **Expect:** the row shows required types, status, readiness, delivery, booking and history.
 4. Open **Help**. **Expect:** the Coordinator guide is available.
@@ -97,3 +97,21 @@
 **Result:** Pass / Fail / Blocked / Not run
 
 **Event, affected booking and evidence:** ____________________
+
+## COO-07 — Publish an event group for self-registration
+
+1. Open **Event groups**. Select **New event group**. (Known issue on the 2026-09-26 local build: **New event group** and **Edit** do not appear because the API omits the `createEventGroup` link. Mark Blocked or create the group through the API until it lands.) Enter a reserved **Title** and **Description**, tick one or more **Eligible attendee groups**, and select **Save**. **Expect:** the line beneath the group list shows the Appointment Types those groups require, and the new group appears in the list. Groups are created closed; tick **Open group for registration** and save to publish.
+2. Select **Edit** on it. Open **Add an event…**. **Expect:** events whose types do not match the group are greyed out and say which types differ. Add a compatible future event. **Expect:** it appears under **Member events**. Newly added events start with **Open registration for this event** unticked; tick it to publish that event.
+3. Copy the **Shareable link** for the Attendee tester (ATT-04). Do not paste it into a public issue.
+4. After ATT-04, find the attendee on **Attendees**. **Expect:** status Booked with a booking that the **Bookings** control reveals. **History** shows the self-registration booking.
+5. Untick **Open registration for this event**, or untick **Open group for registration** and save. **Expect:** the public page no longer offers new requests, and the earlier booking remains.
+6. Try to deactivate an attendee group that the event group lists (Admin only, on **Attendee groups**). **Expect:** it is refused with a message naming the event groups that use it.
+
+**Reference screens (local demo build):**
+
+![Event groups list (groups created through the API — see the note below)](screenshots/coo07-event-groups-list.png)
+*Event groups list (groups created through the API — see the note below).*
+
+**Result:** Pass / Fail / Blocked / Not run
+
+**Event group, event and evidence:** ____________________

@@ -65,3 +65,45 @@
 **Result:** Pass / Fail / Blocked / Not run
 
 **Device, accessibility observations and evidence:** ____________________
+
+## ATT-04 — Register yourself from a group page
+
+Needs a shareable link from the Coordinator (COO-07) and a test mailbox you control. No invitation is required.
+
+1. Open the group link. **Expect:** the group title and description, then open events showing place, address, date and start time, with no capacity figures. A closed or unknown group says it is no longer open and shows the Coordinator contact.
+2. Select an event. **Expect:** the event's place, time and appointment types, and **Full name**, **Email address** and **Your group** fields. The page states that sending the request does not hold a place.
+3. Leave a field empty and select **Send request**. **Expect:** an accessible error and the other entries kept.
+4. Enter the test name and mailbox, choose a group, and select **Send request**. **Expect:** **Check your email**, with the same wording for a new or an already-requested address. Repeat the request once. **Expect:** the same wording, and no second confirmation email arrives immediately.
+5. Open the emailed link. **Expect:** the group title, place, date, start time and your group, with **Confirm my place**. Select it once. **Expect:** **Your place is booked** and a booking-confirmation email with a management link.
+6. Reopen the confirmation link. **Expect:** it reports that your place is booked and creates no second booking. Open the management link and confirm it shows the booking.
+7. With a link known to be expired or malformed, open it. **Expect:** an error with the Coordinator contact, and no token in the page text. Never edit a real person's token to test this.
+
+**Reference screens (local demo build):**
+
+![Public event group](screenshots/att04-group.png)
+*Public event group.*
+
+![Request form](screenshots/att04-event-form.png)
+*Request form.*
+
+![Validation error](screenshots/att04-form-error.png)
+*Validation error.*
+
+![Request sent](screenshots/att04-check-email.png)
+*Request sent.*
+
+![Confirm my place](screenshots/att04-confirm.png)
+*Confirm my place.*
+
+![Place booked](screenshots/att04-booked.png)
+*Place booked.*
+
+![Invalid confirmation link](screenshots/att04-invalid-link.png)
+*Invalid confirmation link.*
+
+![Request form at 375 px wide](screenshots/att04-mobile-event-form.png)
+*Request form at 375 px wide.*
+
+**Result:** Pass / Fail / Blocked / Not run
+
+**Device, outcome and evidence:** ____________________

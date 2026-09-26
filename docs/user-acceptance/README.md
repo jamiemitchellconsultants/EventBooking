@@ -8,6 +8,7 @@ Use these scripts at [the home-lab EventBooking site](https://eventbooking.tqaen
 | Manager | [Manager acceptance](manager.md) | Can I agree an event and control capacity for my own appointment type? |
 | Coordinator | [Coordinator acceptance](coordinator.md) | Can I add, invite and follow up an attendee? |
 | Attendee | [Attendee acceptance](attendee.md) | Can I book and manage a visit from my private email link? |
+| Attendee (self-registration) | [Attendee acceptance](attendee.md), ATT-04 | Can I request a place from a public group page and book it by confirming my email? |
 | Appointment staff | [Appointment staff acceptance](appointment-staff.md) | Can I find my roster and record the correct outcome? |
 
 ## Before anyone starts

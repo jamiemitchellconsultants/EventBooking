@@ -18,7 +18,9 @@ audit trail.
 6. After delivery staff record outcomes, review each attendee's readiness.
 7. If the latest unsatisfied attempt is No-show, select **Arrange missed appointments** and monitor
    the recovery invitation until the missed types are completed.
-8. When a plan changes, cancel the attendee's booking from their row — with or without sending
+8. To let attendees register themselves instead of waiting for an invitation, publish an event group
+   on **Event groups** and share its link.
+9. When a plan changes, cancel the attendee's booking from their row — with or without sending
    fresh options — rather than asking them to find their emailed link.
 
 ## Home page
@@ -28,6 +30,7 @@ After signing in, the home-page access summary should include **Coordinator**. I
 - **Attendees** (`/attendees`)
 - **Dashboards** (`/dashboards`)
 - **Events** (`/events`)
+- **Event groups** (`/event-groups`)
 - **Audit trail** (`/audit`)
 - **Help** (`/help`) — every role's guide, including the attendee guide
 
@@ -243,6 +246,51 @@ rebooking workflow — so tell the delivery teams first, and expect the affected
 watching afterwards. A Manager can cancel the same window from their own screen, so agree who is
 acting before anyone clicks.
 
+## Event groups screen
+
+Use `/event-groups` to publish Confirmed Events for public self-registration. Admins can manage
+event groups too. An attendee who opens the shared link chooses an event, sends a request, and books
+the place by confirming through an emailed link. No invitation is involved, and the Attendee record
+is created or reused automatically.
+
+### Create an event group
+
+1. Select **New event group**.
+2. Enter a **Title** and **Description**. Both are shown to the public.
+3. Under **Eligible attendee groups**, tick each Attendee Group that may register. The line beneath
+   lists the Appointment Types those groups require.
+4. Select **Save**. A new group starts closed; edit it and tick **Open group for registration** when it is ready to publish.
+
+The Attendee Group **Description** (set by an Admin on Attendee groups) appears beside each group
+name on the public form. Every selected group must require exactly the same Appointment Types as
+the events you add.
+
+### Add and manage events
+
+1. Select **Edit** on the group.
+2. Choose an event from **Add an event…**, then select **Add event**. Only active future events
+   whose Appointment Types exactly match the group are selectable; incompatible ones are greyed out
+   with the types they lack.
+3. Newly added events start closed: tick **Open registration for this event** to publish one, and
+   untick it to stop new requests. Select **Remove** to take an event out of the group.
+4. Copy the **Shareable link** to send to attendees.
+
+Closing a group, closing an event, or removing an event stops new requests and confirmations but
+never cancels a Booking that already exists. An Attendee Group cannot be deactivated, and its
+Appointment Type mapping cannot be changed to an incompatible set, while an event group lists it.
+
+### What attendees experience
+
+The public page never shows capacity. A group with no space is labelled "(full)" on the request
+form, and the server refuses an over-capacity request or confirmation. A request holds no place;
+capacity is taken only at confirmation, so an attendee who confirms after the last place has gone is
+refused.
+
+Confirmation creates or reuses the Attendee (matched on email) and creates a Booking, so the person
+then appears on **Attendees** as Booked with a normal booking-management link. Unconfirmed requests
+expire after the window Admins set on System settings (24 hours by default), and terminal requests
+are purged 30 days after they are confirmed or expire, along with their confirmation emails.
+
 ## Audit trail screen
 
 Use `/audit` to search across the whole record. As a Coordinator you see both attendee entries
@@ -263,6 +311,15 @@ proposals, events, and staff access profiles).
 
 ## Troubleshooting
 
+- **An event will not add to an event group** — its Appointment Types differ from those the
+  selected Attendee Groups require, it is not active, or it has started. Pick a compatible event or
+  change the group selection.
+- **An attendee says the confirmation link does not work** — links expire after the configured
+  window and work once. Ask them to submit a new request from the group page; if they already
+  confirmed, look for their Booking on **Attendees**.
+- **An attendee says no email arrived** — the page shows the same message whether or not an address
+  is eligible, and repeat requests for one address are throttled. Ask them to check spam and wait
+  before retrying.
 - **Invite cannot be created** — fewer than three suitable events exist, the attendee data is
   inconsistent, or another action changed state. Refresh, fix the stated dependency, and retry.
 - **Invitation link is invalid** — it may be expired, used, cancelled, or superseded by an Employee

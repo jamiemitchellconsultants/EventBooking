@@ -29,6 +29,27 @@ Your Booking is valid as soon as **Booking confirmed** appears. If the page says
 could not be confirmed, save the on-screen management link and contact the recruitment team only if
 you need help; do not repeat the booking.
 
+## Register yourself from a group page
+
+Some visits are published on a public page instead of by personal invitation. Use this if the
+recruitment team sent you a link containing `/event-groups/`.
+
+1. Open the link and choose one of the listed places and times.
+2. Enter your **Full name** and **Email address**, and choose **Your group**. A group marked
+   **(full)** cannot be chosen.
+3. Select **Send request**. The page says **Check your email**, whether or not the address can
+   receive mail. **Sending a request does not hold a place.**
+4. Open the link in the email and select **Confirm my place**. Your place is booked only now, and
+   the page says **Your place is booked**.
+5. Check the booking-confirmation email for your management link, then manage or cancel as
+   described below.
+
+The confirmation link works once and expires after a limited time (24 hours unless the recruitment
+team has changed it). If it has expired or was already used, the page says so and shows the
+recruitment team's contact; send a new request if you still need a place. If the last place is taken
+before you confirm, confirmation is refused and you will need to choose another time. Opening the
+link again after booking simply shows that your place is booked.
+
 ## Attend your appointments
 
 Come to transitional location during the confirmed four-hour window. Follow the team's arrival instructions.
