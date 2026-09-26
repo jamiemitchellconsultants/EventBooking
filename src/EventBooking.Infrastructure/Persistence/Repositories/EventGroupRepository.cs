@@ -99,26 +99,11 @@ public sealed class EventGroupRepository(EventBookingDbContext context, RowLocks
             .ToListAsync(cancellationToken);
         if (due.Count == 0) return 0;
 
-        var confirmed = due.Where(x => x.Status == SelfRegistrationStatus.Confirmed).ToList();
-        if (confirmed.Count > 0)
-        {
-            var emails = confirmed.Select(x => x.Email).ToList();
-            var events = confirmed.Select(x => x.EventId).ToList();
-            var attendeeIds = await context.Attendees
-                .Where(x => emails.Contains(x.Email))
-                .Select(x => x.Id)
-                .ToListAsync(cancellationToken);
-            var bookingIds = await context.Bookings
-                .Where(x => attendeeIds.Contains(x.AttendeeId) && events.Contains(x.EventId))
-                .Select(x => x.Id)
-                .ToListAsync(cancellationToken);
-            var deliveries = await context.EmailLogs
-                .Where(x => x.TemplateName == EmailTemplate.SelfRegistrationConfirmation
-                    && x.BookingId != null && bookingIds.Contains(x.BookingId.Value)
-                    && x.SentAt <= cutoff)
-                .ToListAsync(cancellationToken);
-            context.EmailLogs.RemoveRange(deliveries);
-        }
+        var requestIds = due.Select(x => x.RequestId).ToList();
+        var deliveries = await context.EmailLogs
+            .Where(x => x.SelfRegistrationId != null && requestIds.Contains(x.SelfRegistrationId.Value))
+            .ToListAsync(cancellationToken);
+        context.EmailLogs.RemoveRange(deliveries);
 
         context.PendingRegistrations.RemoveRange(due);
         return due.Count;

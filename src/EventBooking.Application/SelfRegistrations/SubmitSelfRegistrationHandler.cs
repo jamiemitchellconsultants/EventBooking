@@ -14,7 +14,7 @@ namespace EventBooking.Application.SelfRegistrations;
 /// <param name="events">The events.</param>
 /// <param name="locations">The locations for future-window checks.</param>
 /// <param name="settings">The system settings.</param>
-/// <param name="tokens">The token service.</param>
+/// <param name="emails">The email outbox.</param>
 /// <param name="unitOfWork">The unitOfWork.</param>
 /// <param name="audit">The audit.</param>
 /// <param name="clock">The clock.</param>
@@ -26,7 +26,7 @@ public sealed class SubmitSelfRegistrationHandler(
     IEventRepository events,
     ILocationRepository locations,
     ISystemSettingsRepository settings,
-    ITokenService tokens,
+    IEmailDeliveryRepository emails,
     IUnitOfWork unitOfWork,
     IAuditLogger audit,
     IClock clock,
@@ -48,7 +48,7 @@ public sealed class SubmitSelfRegistrationHandler(
             Error.NotFound("No such event in this event group."));
 
         if (!group.IsOpen || !membership.IsOpen)
-            return Result<SubmitSelfRegistrationResult>.Failure(SelfRegistrationErrors.NotOpen());
+            return Result<SubmitSelfRegistrationResult>.Failure(SelfRegistrationErrors.NotAvailable());
 
         if (!group.AttendeeGroups.Any(x => x.AttendeeGroupId == command.AttendeeGroupId))
             return Result<SubmitSelfRegistrationResult>.Failure(
@@ -65,7 +65,7 @@ public sealed class SubmitSelfRegistrationHandler(
             return Result<SubmitSelfRegistrationResult>.Failure(
                 eventItem is null
                     ? Error.NotFound("No such event in this event group.")
-                    : SelfRegistrationErrors.EventUnavailable());
+                    : SelfRegistrationErrors.NotAvailable());
 
         var now = clock.UtcNow;
         var expiryHours = (await settings.GetAsync(ct)).PendingRegistrationExpiryHours;
@@ -82,33 +82,51 @@ public sealed class SubmitSelfRegistrationHandler(
             return Result<SubmitSelfRegistrationResult>.Failure(Error.Validation(ex.Message));
         }
 
-        var existing = await groups.FindInFlightAsync(eventItem.Id, registration.Email, ct);
-        if (existing is not null)
+        bool hasSpace;
+        try
         {
-            if (existing.EventGroupId == group.Id
-                && existing.AttendeeGroupId == attendeeGroup.Id
-                && existing.Name == registration.Name)
-                return Result<SubmitSelfRegistrationResult>.Success(ToResult(
-                    existing,
-                    SelfRegistrationToken.Issue(
-                        tokens, existing.RequestId, existing.TokenVersion),
-                    existing.Email));
-            return Result<SubmitSelfRegistrationResult>.Failure(
-                SelfRegistrationErrors.DuplicateRequest());
+            hasSpace = eventItem.HasSpareCapacityForAll(attendeeGroup.RequiredAppointmentTypeIds);
+        }
+        catch (DomainException)
+        {
+            return Result<SubmitSelfRegistrationResult>.Failure(SelfRegistrationErrors.NotAvailable());
         }
 
-        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
-        groups.AddRegistration(registration);
-        audit.Record(AuditEntityTypes.SelfRegistration, registration.RequestId,
-            AuditAction.SelfRegistrationRequested, ActorType.Anonymous, correlation.CorrelationId,
-            $"correlation {correlation.CorrelationId}; group {group.Id}; event {eventItem.Id}");
-        await unitOfWork.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
+        if (!hasSpace)
+            return Result<SubmitSelfRegistrationResult>.Failure(SelfRegistrationErrors.Full());
 
-        return Result<SubmitSelfRegistrationResult>.Success(ToResult(
-            registration,
-            SelfRegistrationToken.Issue(tokens, registration.RequestId, registration.TokenVersion),
-            (command.Email ?? string.Empty).Trim()));
+        // An address that already has a request in flight gets a fresh copy of the email for
+        // that request and the same neutral receipt: neither the reply nor the token reveals
+        // whether the address was already known.
+        var existing = await groups.FindInFlightAsync(eventItem.Id, registration.Email, ct);
+        var target = existing ?? registration;
+
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        if (existing is null)
+        {
+            groups.AddRegistration(registration);
+            audit.Record(AuditEntityTypes.SelfRegistration, registration.RequestId,
+                AuditAction.SelfRegistrationRequested, ActorType.Anonymous,
+                correlation.CorrelationId,
+                $"correlation {correlation.CorrelationId}; group {group.Id}; event {eventItem.Id}");
+        }
+
+        emails.Add(SelfRegistrationDelivery.StageLink(
+            Guid.NewGuid(), target.RequestId, now, correlation.CorrelationId));
+        try
+        {
+            await unitOfWork.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        catch (UniqueConstraintViolationException)
+        {
+            // A concurrent submission for the same address won the race; the receipt is the same.
+            await transaction.RollbackAsync(ct);
+        }
+
+        return Result<SubmitSelfRegistrationResult>.Success(new SubmitSelfRegistrationResult(
+            target.RequestId, group.Id, eventItem.Id, attendeeGroup.Id, registration.Name,
+            (command.Email ?? string.Empty).Trim(), target.ExpiresAt));
     }
 
     private async Task<bool> HasStartedAsync(Event eventItem, CancellationToken ct)
@@ -117,10 +135,4 @@ public sealed class SubmitSelfRegistrationHandler(
         return location is null
             || eventItem.Window.HasStarted(zones, location.TimeZoneId, clock.UtcNow);
     }
-
-    private static SubmitSelfRegistrationResult ToResult(
-        PendingRegistration registration, string token, string emailEcho) =>
-        new(registration.RequestId, registration.EventGroupId, registration.EventId,
-            registration.AttendeeGroupId, registration.Name,
-            emailEcho, registration.ExpiresAt, token);
 }

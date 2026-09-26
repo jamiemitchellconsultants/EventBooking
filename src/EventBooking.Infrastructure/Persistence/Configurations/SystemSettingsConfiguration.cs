@@ -25,7 +25,7 @@ public sealed class SystemSettingsConfiguration : IEntityTypeConfiguration<Syste
                 InviteExpiryDays = 7,
                 MaxAutoRetryCount = 2,
                 InviteOptionCount = 3,
-                PendingRegistrationExpiryHours = 48,
+                PendingRegistrationExpiryHours = 24,
                 Version = 1L,
             });
     }

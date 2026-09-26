@@ -117,15 +117,15 @@ public static class EmailComposer
         var types = string.Join(", ", context.TypeCodes.OrderBy(code => code, StringComparer.Ordinal));
         var lines = new List<string>
         {
-            $"Your self-registration for {types} is confirmed.",
+            $"Please confirm your registration for {types}. No place is held until you do.",
             context.LocationName,
             context.LocationAddress,
             context.WindowText,
-            $"Manage here: {context.BookUrl}",
+            $"Confirm here: {context.BookUrl}",
             $"Contact: {context.CoordinatorContact}",
         };
         return new EmailMessage(Guid.Empty, string.Empty, string.Empty,
             EmailTemplate.SelfRegistrationConfirmation,
-            $"Confirmed: {types}", string.Join("\n", lines), string.Join("\n", lines));
+            $"Confirm your registration: {types}", string.Join("\n", lines), string.Join("\n", lines));
     }
 }

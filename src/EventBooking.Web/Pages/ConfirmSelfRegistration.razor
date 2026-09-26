@@ -90,7 +90,7 @@
             {
                 _summary = outcome.Value;
             }
-            else if (outcome.StatusCode == 409)
+            else if (outcome.ErrorCode == "already-confirmed")
             {
                 _confirmed = true;
             }
@@ -129,7 +129,7 @@
                 return;
             }
 
-            if (outcome.StatusCode == 409)
+            if (outcome.ErrorCode == "already-confirmed")
             {
                 _confirmSubmission.Complete();
                 _confirmed = true;

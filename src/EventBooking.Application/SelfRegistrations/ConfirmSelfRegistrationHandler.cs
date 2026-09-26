@@ -111,7 +111,8 @@ public sealed class ConfirmSelfRegistrationHandler(
         }
 
         var attendeeGroup = await attendeeGroups.GetAsync(registration.AttendeeGroupId, ct);
-        if (attendeeGroup is null || !attendeeGroup.IsActive)
+        if (attendeeGroup is null || !attendeeGroup.IsActive
+            || group.AttendeeGroups.All(x => x.AttendeeGroupId != attendeeGroup.Id))
             return Result<ConfirmSelfRegistrationOutcome>.Failure(
                 SelfRegistrationErrors.GroupNotSelectable());
 
@@ -123,10 +124,14 @@ public sealed class ConfirmSelfRegistrationHandler(
         if (live.IsFailure)
             return Result<ConfirmSelfRegistrationOutcome>.Failure(live.Error);
 
-        var attendee = await ResolveAttendeeAsync(registration, attendeeGroup, ct);
-        if (attendee is null)
-            return Result<ConfirmSelfRegistrationOutcome>.Failure(
-                Error.NotFound("No such attendee."));
+        var resolved = await ResolveAttendeeAsync(registration, attendeeGroup, ct);
+        if (resolved.IsFailure)
+            return Result<ConfirmSelfRegistrationOutcome>.Failure(resolved.Error);
+        var attendee = resolved.Value;
+
+        // The lock order is attendee, invite, booking, event: a reused attendee's waiting
+        // invite is locked here and gives way to the one-option invite below.
+        var waiting = await invites.LockPendingForAttendeeAsync(attendee.Id, ct);
 
         if (await bookings.LockActiveForAttendeeAsync(attendee.Id, ct) is not null)
             return Result<ConfirmSelfRegistrationOutcome>.Failure(
@@ -170,28 +175,36 @@ public sealed class ConfirmSelfRegistrationHandler(
 
         var now = clock.UtcNow;
         var systemSettings = await settings.GetAsync(ct);
-        // The internal invite records the single confirmed option: it offers exactly the
-        // event being booked, so the booking factory's pending-and-offers checks hold.
-        var invite = Invite.CreateInitial(
-            Guid.NewGuid(), attendee.Id, now.AddDays(systemSettings.InviteExpiryDays),
-            [location.Id], [eventItem.Id], required, retryCount: 0,
-            systemSettings.InviteExpiryDays, systemSettings.MaxAutoRetryCount,
-            inviteOptionCount: 1);
-        invites.Add(invite);
+        Booking booking;
+        try
+        {
+            // The internal invite records the single confirmed option: it offers exactly the
+            // event being booked, so the booking factory's pending-and-offers checks hold.
+            var invite = Invite.CreateInitial(
+                Guid.NewGuid(), attendee.Id, now.AddDays(systemSettings.InviteExpiryDays),
+                [location.Id], [eventItem.Id], required, retryCount: 0,
+                systemSettings.InviteExpiryDays, systemSettings.MaxAutoRetryCount,
+                inviteOptionCount: 1);
+            waiting?.MarkSuperseded();
+            invites.Add(invite);
 
-        var booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, now);
-        bookings.Add(booking);
-        foreach (var typeId in required)
-            appointments.Add(BookingAppointment.Create(Guid.NewGuid(), booking.Id, typeId));
-        invite.MarkUsed();
-        if (attendee.Status == AttendeeStatus.NotYetInvited)
+            booking = Booking.Create(Guid.NewGuid(), invite, eventItem.Id, now);
+            bookings.Add(booking);
+            foreach (var typeId in required)
+                appointments.Add(BookingAppointment.Create(Guid.NewGuid(), booking.Id, typeId));
+            invite.MarkUsed();
             attendee.MarkInvited(now);
-        if (attendee.Status != AttendeeStatus.Booked)
             attendee.MarkBooked(now);
+        }
+        catch (DomainException ex)
+        {
+            await transaction.RollbackAsync(ct);
+            return Result<ConfirmSelfRegistrationOutcome>.Failure(Error.Validation(ex.Message));
+        }
 
         registration.Confirm(tokenVersion, now);
 
-        emails.Add(SelfRegistrationDelivery.StageConfirmation(
+        emails.Add(SelfRegistrationDelivery.StageBookingConfirmation(
             Guid.NewGuid(), attendee.Id, booking.Id, now, correlation.CorrelationId));
 
         var details = $"correlation {correlation.CorrelationId}; event {eventItem.Id}";
@@ -264,7 +277,7 @@ public sealed class ConfirmSelfRegistrationHandler(
         return Result<IReadOnlyDictionary<Guid, IReadOnlyCollection<Guid>>>.Success(live);
     }
 
-    private async Task<Attendee?> ResolveAttendeeAsync(
+    private async Task<Result<Attendee>> ResolveAttendeeAsync(
         PendingRegistration registration,
         Domain.AttendeeGroups.AttendeeGroup attendeeGroup,
         CancellationToken ct)
@@ -276,13 +289,17 @@ public sealed class ConfirmSelfRegistrationHandler(
                 Guid.NewGuid(), registration.Name, registration.Email, attendeeGroup,
                 clock.UtcNow);
             attendees.Add(created);
-            return created;
+            return Result<Attendee>.Success(created);
         }
 
         var locked = await attendees.LockForUpdateAsync(existing.Id, ct);
-        if (locked is null) return null;
-        locked.UpdateDetails(registration.Name, registration.Email);
-        locked.AssignAttendeeGroup(attendeeGroup);
-        return locked;
+        if (locked is null) return Result<Attendee>.Failure(Error.NotFound("No such attendee."));
+
+        // An existing record is reused untouched: the stored name stays, and a different group
+        // is a conflict rather than a silent reassignment of a staff-managed attendee.
+        if (locked.AttendeeGroupId != attendeeGroup.Id)
+            return Result<Attendee>.Failure(Error.Conflict(
+                "This email address is already registered in a different attendee group."));
+        return Result<Attendee>.Success(locked);
     }
 }

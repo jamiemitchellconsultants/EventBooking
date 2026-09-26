@@ -98,7 +98,7 @@ This settles the token lifecycle the predecessor left open (decision D14).
 |---|---|---|---|
 | Book token | When the `Invite` is created (`tokenVersion` = 1) | The `Invite` is `Pending` and `now < expiresAt` | The invite becoming `Used`, `Expired`, `Superseded` or `Cancelled` |
 | Manage token | When the `Booking` is created (`manageTokenVersion` = 1). It is shown on the confirmation page and in the `BookingConfirmation` email | The `Booking` exists. Actions are allowed only while it is `Active` and the window has not started; otherwise the token is read-only | Nothing in the first release. After the event has ended, the page shows history only |
-| Registration token | When the `SelfRegistration` is submitted (`tokenVersion` = 1). It is returned in the submit response and emailed in the confirmation path | The request is `Pending` and `now < expiresAt` | Confirmation, which is single-use; a repeated confirmation reports the existing booking |
+| Registration token | When the `SelfRegistration` is submitted (`tokenVersion` = 1). It is emailed only, in the confirmation link; the submit response is a neutral receipt that never carries it | The request is `Pending` and `now < expiresAt` | Confirmation, which is single-use; a repeated confirmation reports the existing booking |
 
 Token format and handling:
 

@@ -24,7 +24,7 @@ public sealed class SystemSettings
     /// <summary>How many event options an invitation offers (design 07: 1 to 5, default 3).</summary>
     public int InviteOptionCount { get; private set; }
 
-    /// <summary>How many hours a self-registration request stays confirmable: 1 to 168, default 48.</summary>
+    /// <summary>How many hours a self-registration request stays confirmable: 1 to 168, default 24.</summary>
     public int PendingRegistrationExpiryHours { get; private set; }
 
     /// <summary>The optimistic-concurrency token.</summary>
@@ -35,7 +35,7 @@ public sealed class SystemSettings
         new()
         {
             Id = SingletonId, InviteExpiryDays = 7, MaxAutoRetryCount = 2, InviteOptionCount = 3,
-            PendingRegistrationExpiryHours = 48, Version = 1,
+            PendingRegistrationExpiryHours = 24, Version = 1,
         };
 
     /// <summary>Applies new settings, or refuses them all (FR-1.9; design 08 bounds).</summary>

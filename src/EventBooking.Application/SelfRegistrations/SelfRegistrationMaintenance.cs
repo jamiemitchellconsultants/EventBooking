@@ -41,10 +41,9 @@ public sealed class SelfRegistrationMaintenance(
 
         await unitOfWork.SaveChangesAsync(ct);
 
+        // Each batch is only staged by the repository; saving it is what lets the next read
+        // see the remaining rows instead of the same ones again.
         while (await groups.DeleteTerminalBeforeAsync(now.AddDays(-30), ct) > 0)
-        {
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
+            await unitOfWork.SaveChangesAsync(ct);
     }
 }

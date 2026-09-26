@@ -6,6 +6,12 @@ namespace EventBooking.Domain.SelfRegistrations;
 /// <summary>One anonymous request to join an event, awaiting confirmation through its token.</summary>
 public sealed class PendingRegistration
 {
+    /// <summary>The longest accepted requester name.</summary>
+    public const int MaxNameLength = 200;
+
+    /// <summary>The longest accepted requester email address.</summary>
+    public const int MaxEmailLength = 320;
+
     private PendingRegistration()
     {
         Name = string.Empty;
@@ -75,6 +81,10 @@ public sealed class PendingRegistration
         Guard.Against(eventId == Guid.Empty, "eventId must not be empty.");
         Guard.Against(attendeeGroupId == Guid.Empty, "attendeeGroupId must not be empty.");
         Guard.Against(expiryHours < 1, "expiryHours must be positive.");
+        Guard.Against((name?.Trim().Length ?? 0) > MaxNameLength,
+            $"name must be at most {MaxNameLength} characters.");
+        Guard.Against((email?.Trim().Length ?? 0) > MaxEmailLength,
+            $"email must be at most {MaxEmailLength} characters.");
 
         return new PendingRegistration
         {

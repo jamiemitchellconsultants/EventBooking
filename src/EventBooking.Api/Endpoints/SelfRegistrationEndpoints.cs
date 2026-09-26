@@ -93,6 +93,7 @@ public static class SelfRegistrationEndpoints
             .WithAgentMetadata("submitSelfRegistration")
             .Produces<SubmitSelfRegistrationResponse>(201)
             .ProducesProblem(404)
+            .ProducesProblem(409)
             .ProducesProblem(422)
             .ProducesProblem(429);
 
@@ -116,6 +117,7 @@ public static class SelfRegistrationEndpoints
             .WithAgentMetadata("submitEventRegistration")
             .Produces<SubmitSelfRegistrationResponse>(201)
             .ProducesProblem(404)
+            .ProducesProblem(409)
             .ProducesProblem(422)
             .ProducesProblem(429);
 

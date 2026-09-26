@@ -71,7 +71,7 @@ public sealed class ConfirmSelfRegistrationHandlerTests
         var registration = _eventGroups.Registrations.Single();
         Assert.Equal(SelfRegistrationStatus.Confirmed, registration.Status);
         var delivery = Assert.Single(_emails.Items);
-        Assert.Equal(EmailTemplate.SelfRegistrationConfirmation, delivery.TemplateName);
+        Assert.Equal(EmailTemplate.BookingConfirmation, delivery.TemplateName);
         Assert.Equal(booking.Id, delivery.BookingId);
         Assert.Equal("confirm-correlation", delivery.CorrelationId);
         var attendee = Assert.Single(_attendees.Items);
@@ -114,11 +114,124 @@ public sealed class ConfirmSelfRegistrationHandlerTests
         Assert.Single(_eventGroups.Registrations);
     }
 
-    private string Submit(string name, string email)
+    [Fact]
+    public async Task AnExistingAttendeeIsReusedWithTheStoredNameAndNoOtherChange()
+    {
+        var existing = SeedAttendee("Staff Entered Name", "robin@example.com", AttendeeGroupIds.CabinCrew);
+        var token = Submit("Robin Public", "robin@example.com");
+
+        var result = await Handler.HandleAsync(
+            new ConfirmSelfRegistrationCommand(token), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(_attendees.Items);
+        Assert.Equal("Staff Entered Name", existing.Name);
+        Assert.Equal(AttendeeStatus.Booked, existing.Status);
+    }
+
+    [Fact]
+    public async Task AnExistingAttendeeInADifferentGroupIsAConflictAndUnchanged()
+    {
+        var existing = SeedAttendee("Staff Entered Name", "robin@example.com", AttendeeGroupIds.Engineering);
+        var token = Submit("Robin Public", "robin@example.com");
+
+        var result = await Handler.HandleAsync(
+            new ConfirmSelfRegistrationCommand(token), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("conflict", result.Error.Code);
+        Assert.Equal(AttendeeGroupIds.Engineering, existing.AttendeeGroupId);
+        Assert.Equal("Staff Entered Name", existing.Name);
+        Assert.Empty(_bookings.Items);
+        Assert.Empty(_emails.Items);
+    }
+
+    [Theory]
+    [InlineData(AttendeeStatus.AwaitingAvailability)]
+    [InlineData(AttendeeStatus.NoResponseNeedsFollowUp)]
+    [InlineData(AttendeeStatus.Invited)]
+    public async Task AnAttendeeWaitingInAnyUnbookedStatusCanBeBooked(AttendeeStatus status)
+    {
+        var existing = SeedAttendee("Robin", "robin@example.com", AttendeeGroupIds.CabinCrew);
+        var now = BeforeExpiry;
+        if (status == AttendeeStatus.AwaitingAvailability) existing.MarkAwaitingAvailability(now);
+        else
+        {
+            existing.MarkInvited(now);
+            if (status == AttendeeStatus.NoResponseNeedsFollowUp) existing.MarkNoResponse(now);
+        }
+
+        var token = Submit("Robin", "robin@example.com");
+        var result = await Handler.HandleAsync(
+            new ConfirmSelfRegistrationCommand(token), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AttendeeStatus.Booked, existing.Status);
+    }
+
+    [Fact]
+    public async Task AWaitingInitialInviteIsSupersededByTheOneOptionInvite()
+    {
+        var existing = SeedAttendee("Robin", "robin@example.com", AttendeeGroupIds.CabinCrew);
+        var waiting = Domain.Invites.Invite.CreateInitial(
+            Guid.NewGuid(), existing.Id, BeforeExpiry.AddDays(7), [ProposalFixture.LocationId],
+            [_eventItem.Id], [AppointmentTypeIds.MedicalCheckUp], 0, 7, 2, 1);
+        _invites.Items.Add(waiting);
+        existing.MarkInvited(BeforeExpiry);
+        var token = Submit("Robin", "robin@example.com");
+
+        var result = await Handler.HandleAsync(
+            new ConfirmSelfRegistrationCommand(token), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(Domain.Invites.InviteStatus.Superseded, waiting.Status);
+    }
+
+    [Fact]
+    public async Task ARequestForAGroupRemovedFromTheEventGroupIsRefused()
+    {
+        _attendeeGroups.Items.Add(AttendeeGroup.Create(
+            AttendeeGroupIds.Engineering, "ENGINEERING", "Engineering",
+            [AppointmentTypeIds.MedicalCheckUp], [AppointmentTypeIds.MedicalCheckUp]));
+        var both = new Dictionary<Guid, IReadOnlyCollection<Guid>>
+        {
+            [AttendeeGroupIds.CabinCrew] = [AppointmentTypeIds.MedicalCheckUp],
+            [AttendeeGroupIds.Engineering] = [AppointmentTypeIds.MedicalCheckUp],
+        };
+        var memberTypes = new Dictionary<Guid, IReadOnlyCollection<Guid>>
+        {
+            [_eventItem.Id] = [AppointmentTypeIds.MedicalCheckUp],
+        };
+        _group.Edit("Open days", null, both, memberTypes);
+        var token = Submit("Robin", "robin@example.com", AttendeeGroupIds.Engineering);
+        _group.Edit("Open days", null, new Dictionary<Guid, IReadOnlyCollection<Guid>>
+        {
+            [AttendeeGroupIds.CabinCrew] = [AppointmentTypeIds.MedicalCheckUp],
+        }, memberTypes);
+
+        var result = await Handler.HandleAsync(
+            new ConfirmSelfRegistrationCommand(token), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation", result.Error.Code);
+        Assert.Empty(_bookings.Items);
+    }
+
+    private Attendee SeedAttendee(string name, string email, Guid attendeeGroupId)
+    {
+        var group = _attendeeGroups.Items.SingleOrDefault(x => x.Id == attendeeGroupId)
+            ?? AttendeeGroup.Create(attendeeGroupId, "OTHER", "Other",
+                [AppointmentTypeIds.MedicalCheckUp], [AppointmentTypeIds.MedicalCheckUp]);
+        var attendee = Attendee.Create(Guid.NewGuid(), name, email, group, BeforeExpiry);
+        _attendees.Items.Add(attendee);
+        return attendee;
+    }
+
+    private string Submit(string name, string email, Guid? attendeeGroupId = null)
     {
         var registration = PendingRegistration.Create(
-            Guid.NewGuid(), _group.Id, _eventItem.Id, AttendeeGroupIds.CabinCrew,
-            name, email, BeforeExpiry, 48);
+            Guid.NewGuid(), _group.Id, _eventItem.Id, attendeeGroupId ?? AttendeeGroupIds.CabinCrew,
+            name, email, BeforeExpiry, 24);
         _eventGroups.Registrations.Add(registration);
         return _tokens.Issue(
             TokenPurpose.Registration, registration.RequestId, registration.TokenVersion);

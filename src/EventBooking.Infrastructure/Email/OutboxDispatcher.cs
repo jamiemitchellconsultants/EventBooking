@@ -1,10 +1,12 @@
 using EventBooking.Application.Abstractions;
 using EventBooking.Application.Notifications;
+using EventBooking.Application.SelfRegistrations;
 using EventBooking.Domain.Audit;
 using EventBooking.Domain.Bookings;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Invites;
 using EventBooking.Domain.Notifications;
+using EventBooking.Domain.SelfRegistrations;
 using EventBooking.Domain.Time;
 using EventBooking.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -220,8 +222,11 @@ public sealed class OutboxDispatcher(
     private async Task<EmailMessage> RenderAsync(
         IServiceScope scope, EmailLog row, AppointmentTypeCodes codes, CancellationToken ct)
     {
+        if (row.SelfRegistrationId is { } requestId)
+            return await RenderRegistrationLinkAsync(scope, row, requestId, codes, ct);
+
         var attendees = scope.ServiceProvider.GetRequiredService<IAttendeeRepository>();
-        var attendee = await attendees.GetAsync(row.AttendeeId, ct)
+        var attendee = await attendees.GetAsync(row.AttendeeId!.Value, ct)
             ?? throw new InvalidOperationException($"Attendee {row.AttendeeId} is gone.");
 
         var context = row.TemplateName switch
@@ -229,8 +234,6 @@ public sealed class OutboxDispatcher(
             EmailTemplate.AttendeeInvite or EmailTemplate.AttendeeReinvite =>
                 await InviteContextAsync(scope, row, codes, ct),
             EmailTemplate.BookingConfirmation =>
-                await BookingContextAsync(scope, row, attendee.Id, codes, ct),
-            EmailTemplate.SelfRegistrationConfirmation =>
                 await BookingContextAsync(scope, row, attendee.Id, codes, ct),
             EmailTemplate.EventCancelledRebookingNeeded =>
                 await CancellationContextAsync(scope, row, attendee.Id, codes, ct),
@@ -242,6 +245,48 @@ public sealed class OutboxDispatcher(
             AttendeeId = attendee.Id,
             ToAddress = attendee.Email,
             ToName = attendee.Name,
+            DeliveryId = row.Id,
+        };
+    }
+
+    private async Task<EmailMessage> RenderRegistrationLinkAsync(
+        IServiceScope scope, EmailLog row, Guid requestId, AppointmentTypeCodes codes,
+        CancellationToken ct)
+    {
+        var groups = scope.ServiceProvider.GetRequiredService<IEventGroupRepository>();
+        var events = scope.ServiceProvider.GetRequiredService<IEventRepository>();
+        var attendeeGroups = scope.ServiceProvider.GetRequiredService<IAttendeeGroupRepository>();
+        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+
+        var request = await groups.GetRegistrationUntrackedAsync(requestId, ct);
+        if (request is null || request.Status != SelfRegistrationStatus.Pending
+            || clock.UtcNow >= request.ExpiresAt)
+            throw new InvalidOperationException(
+                $"Registration {requestId} is no longer awaiting confirmation.");
+
+        var eventItem = await events.GetAsync(request.EventId, ct)
+            ?? throw new InvalidOperationException($"Event {request.EventId} is gone.");
+        var attendeeGroup = await attendeeGroups.GetAsync(request.AttendeeGroupId, ct)
+            ?? throw new InvalidOperationException(
+                $"Attendee group {request.AttendeeGroupId} is gone.");
+        var (locationName, locationAddress, windowText) =
+            await WindowTextAsync(scope, eventItem, ct);
+        var issued = SelfRegistrationToken.Issue(tokens, request.RequestId, request.TokenVersion);
+        var context = new EmailContext(
+            attendeeGroup.RequiredAppointmentTypeIds.Select(codes.CodeOf).ToList(),
+            locationName,
+            locationAddress,
+            windowText,
+            $"{links.BaseUrl}/event-groups/confirm/{issued}",
+            links.CoordinatorContact,
+            false,
+            false,
+            attendeeGroup.RequiredAppointmentTypeIds.Count);
+
+        return EmailComposer.Compose(row.TemplateName.ToString(), context) with
+        {
+            ToAddress = request.Email,
+            ToName = request.Name,
             DeliveryId = row.Id,
         };
     }

@@ -17,9 +17,13 @@ public static class SelfRegistrationErrors
     public static Error GroupNotSelectable() =>
         Error.Validation("The attendee group cannot be selected in this event group.");
 
-    /// <summary>The same email already has a different in-flight request for this event.</summary>
-    public static Error DuplicateRequest() =>
-        Error.Validation("This email already has a different pending request for this event.");
+    /// <summary>What an anonymous submission sees for a closed gate or unavailable event.</summary>
+    public static Error NotAvailable() =>
+        Error.NotFound("Registration is not open for this group or event.");
+
+    /// <summary>The selected group has no spare capacity for its required types.</summary>
+    public static Error Full() =>
+        Error.CapacityExhausted("There is no space left for this attendee group.");
 
     /// <summary>The confirmation link names nothing confirmable.</summary>
     public static Error LinkInvalid() =>

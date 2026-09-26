@@ -17,7 +17,7 @@ public class SystemSettingsBoundsTests
         Assert.Equal(7, settings.InviteExpiryDays);
         Assert.Equal(2, settings.MaxAutoRetryCount);
         Assert.Equal(3, settings.InviteOptionCount);
-        Assert.Equal(48, settings.PendingRegistrationExpiryHours);
+        Assert.Equal(24, settings.PendingRegistrationExpiryHours);
     }
 
     [Theory]
@@ -54,6 +54,6 @@ public class SystemSettingsBoundsTests
         Assert.Equal(7, settings.InviteExpiryDays);
         Assert.Equal(2, settings.MaxAutoRetryCount);
         Assert.Equal(3, settings.InviteOptionCount);
-        Assert.Equal(48, settings.PendingRegistrationExpiryHours);
+        Assert.Equal(24, settings.PendingRegistrationExpiryHours);
     }
 }

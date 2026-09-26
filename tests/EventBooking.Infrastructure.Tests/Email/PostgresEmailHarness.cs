@@ -367,7 +367,7 @@ public abstract class PostgresEmailHarness(PostgresFixture fixture) : IDisposabl
             Clock);
 
         var result = await handler.HandleAsync(
-            new RetryEmailCommand(coordinator, row.AttendeeId, rowId), CancellationToken.None);
+            new RetryEmailCommand(coordinator, row.AttendeeId!.Value, rowId), CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Error?.Message);
     }

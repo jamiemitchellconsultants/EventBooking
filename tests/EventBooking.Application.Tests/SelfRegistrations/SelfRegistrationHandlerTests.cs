@@ -7,6 +7,7 @@ using EventBooking.Domain.AppointmentTypes;
 using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Locations;
+using EventBooking.Domain.Notifications;
 using EventBooking.Domain.SelfRegistrations;
 using EventBooking.Domain.Time;
 using EventBooking.Application.Tests.Fakes;
@@ -22,7 +23,7 @@ public sealed class SelfRegistrationHandlerTests
     private readonly InMemoryEventRepository _events = new();
     private readonly InMemoryLocationRepository _locations = new();
     private readonly InMemorySystemSettingsRepository _settings = new();
-    private readonly FakeTokenService _tokens = new();
+    private readonly InMemoryEmailDeliveryRepository _emails = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly RecordingAuditLogger _audit = new();
     private readonly AsyncLocalCorrelationContext _correlation = new();
@@ -33,13 +34,13 @@ public sealed class SelfRegistrationHandlerTests
     }
 
     private SubmitSelfRegistrationHandler Handler => new(
-        _eventGroups, _attendeeGroups, _events, _locations, _settings, _tokens,
+        _eventGroups, _attendeeGroups, _events, _locations, _settings, _emails,
         _unitOfWork, _audit, _clock, ProposalFixture.Zones, _correlation);
 
     private static readonly Guid CabinCrewId = AttendeeGroupIds.CabinCrew;
 
     [Fact]
-    public async Task SubmissionCreatesOnePendingRegistrationAndIssuesItsToken()
+    public async Task SubmissionCreatesOnePendingRegistrationAndEmailsItsLink()
     {
         var group = SeedOpenGroup();
 
@@ -52,9 +53,17 @@ public sealed class SelfRegistrationHandlerTests
         var registration = _eventGroups.Registrations.Single();
         Assert.Equal("robin@example.com", registration.Email);
         Assert.Equal(SelfRegistrationStatus.Pending, registration.Status);
-        Assert.Equal(
-            _tokens.Issue(TokenPurpose.Registration, registration.RequestId, registration.TokenVersion),
-            result.Value.ConfirmationToken);
+        var delivery = Assert.Single(_emails.Items);
+        Assert.Equal(registration.RequestId, delivery.SelfRegistrationId);
+        Assert.Null(delivery.AttendeeId);
+        Assert.Equal(EmailTemplate.SelfRegistrationConfirmation, delivery.TemplateName);
+    }
+
+    [Fact]
+    public void TheReceiptCarriesNoToken()
+    {
+        Assert.DoesNotContain(typeof(SubmitSelfRegistrationResult).GetProperties(),
+            x => x.Name.Contains("Token", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -67,7 +76,7 @@ public sealed class SelfRegistrationHandlerTests
             group.Id, group.Events.Single().EventId, CabinCrewId,
             "Robin Public", "robin@example.com"), CancellationToken.None);
         Assert.True(closed.IsFailure);
-        Assert.Equal("validation", closed.Error.Code);
+        Assert.Equal("not_found", closed.Error.Code);
 
         var stale = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
             group.Id, Guid.NewGuid(), CabinCrewId,
@@ -77,7 +86,7 @@ public sealed class SelfRegistrationHandlerTests
     }
 
     [Fact]
-    public async Task AnIdenticalInFlightSubmissionReturnsTheExistingToken()
+    public async Task AnInFlightSubmissionIsNeutralAndReEmailsTheExistingRequest()
     {
         var group = SeedOpenGroup();
         var command = new SubmitSelfRegistrationCommand(
@@ -85,28 +94,52 @@ public sealed class SelfRegistrationHandlerTests
             "Robin Public", "robin@example.com");
 
         var first = await Handler.HandleAsync(command, CancellationToken.None);
-        var second = await Handler.HandleAsync(command, CancellationToken.None);
+        var second = await Handler.HandleAsync(command with { Name = "Robin Other" },
+            CancellationToken.None);
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
-        Assert.Equal(first.Value.ConfirmationToken, second.Value.ConfirmationToken);
+        Assert.Equal(first.Value.RequestId, second.Value.RequestId);
         Assert.Single(_eventGroups.Registrations);
+        Assert.Equal(2, _emails.Items.Count);
+        Assert.All(_emails.Items,
+            x => Assert.Equal(first.Value.RequestId, x.SelfRegistrationId));
     }
 
     [Fact]
-    public async Task ADifferentSubmissionForTheSameEmailIsUnprocessable()
+    public async Task OverlongNameOrEmailIsUnprocessable()
     {
         var group = SeedOpenGroup();
-        var first = new SubmitSelfRegistrationCommand(
-            group.Id, group.Events.Single().EventId, CabinCrewId,
-            "Robin Public", "robin@example.com");
-        var second = first with { Name = "Robin Other" };
+        var eventId = group.Events.Single().EventId;
 
-        Assert.True((await Handler.HandleAsync(first, CancellationToken.None)).IsSuccess);
-        var result = await Handler.HandleAsync(second, CancellationToken.None);
+        var name = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
+            group.Id, eventId, CabinCrewId, new string('n', 201), "robin@example.com"),
+            CancellationToken.None);
+        var email = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
+            group.Id, eventId, CabinCrewId, "Robin", new string('a', 320) + "@example.com"),
+            CancellationToken.None);
+
+        Assert.Equal("validation", name.Error.Code);
+        Assert.Equal("validation", email.Error.Code);
+        Assert.Empty(_eventGroups.Registrations);
+    }
+
+    [Fact]
+    public async Task ASubmissionForAFullEventIsRefusedAsCapacityExhausted()
+    {
+        var group = SeedOpenGroup();
+        var eventItem = _events.Items.Single();
+        for (var i = 0; i < 5; i++)
+            eventItem.ChargeRequiredTypes([AppointmentTypeIds.MedicalCheckUp]);
+
+        var result = await Handler.HandleAsync(new SubmitSelfRegistrationCommand(
+            group.Id, eventItem.Id, CabinCrewId, "Robin", "robin@example.com"),
+            CancellationToken.None);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("validation", result.Error.Code);
+        Assert.Equal(Error.CapacityExhaustedCode, result.Error.Code);
+        Assert.Empty(_eventGroups.Registrations);
+        Assert.Empty(_emails.Items);
     }
 
     private Domain.EventGroups.EventGroup SeedOpenGroup()

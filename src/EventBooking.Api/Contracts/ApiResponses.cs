@@ -54,10 +54,10 @@ public sealed record PublicEventGroupResponse(
     IReadOnlyList<PublicAttendeeGroupChoiceResponse> AttendeeGroups,
     IReadOnlyList<PublicEventChoiceResponse> Events);
 
-/// <summary>The submitted self-registration request with its confirmation token.</summary>
+/// <summary>The neutral receipt for a submitted self-registration request.</summary>
 public sealed record SubmitSelfRegistrationResponse(
     Guid RequestId, Guid EventGroupId, Guid EventId, Guid AttendeeGroupId,
-    string Name, string Email, DateTimeOffset ExpiresAt, string ConfirmationToken);
+    string Name, string Email, DateTimeOffset ExpiresAt);
 
 /// <summary>One pending self-registration request's public summary.</summary>
 public sealed record SelfRegistrationSummaryResponse(
@@ -386,7 +386,7 @@ public static class ApiResponses
         ArgumentNullException.ThrowIfNull(result);
         return new SubmitSelfRegistrationResponse(
             result.RequestId, result.EventGroupId, result.EventId, result.AttendeeGroupId,
-            result.Name, result.Email, result.ExpiresAt, result.ConfirmationToken);
+            result.Name, result.Email, result.ExpiresAt);
     }
 
     /// <summary>Projects one pending self-registration request's public summary.</summary>

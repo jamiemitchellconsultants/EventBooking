@@ -2670,6 +2670,16 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Unprocessable Entity",
             "content": {
@@ -7122,8 +7132,7 @@
           "attendeeGroupId",
           "name",
           "email",
-          "expiresAt",
-          "confirmationToken"
+          "expiresAt"
         ],
         "type": "object",
         "properties": {
@@ -7152,9 +7161,6 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
-          },
-          "confirmationToken": {
-            "type": "string"
           }
         }
       },

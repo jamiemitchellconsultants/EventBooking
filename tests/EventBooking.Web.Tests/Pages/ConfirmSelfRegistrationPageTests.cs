@@ -38,6 +38,33 @@ public sealed class ConfirmSelfRegistrationPageTests : BunitContext
     }
 
     [Fact]
+    public void AnAlreadyConfirmedRequestShowsTheBookedMessage()
+    {
+        Services.AddSingleton<IPublicEventGroupsClient>(
+            new FakeConfirmClient(confirmProblem: ("already-confirmed", "Already confirmed.")));
+
+        var cut = Render<ConfirmSelfRegistration>(p => p.Add(x => x.Token, Token));
+        cut.WaitForElement("[data-action='confirm-registration']").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains("Your place is booked", cut.Markup));
+    }
+
+    [Theory]
+    [InlineData("capacity-exhausted", "There is no space left.")]
+    [InlineData("conflict", "This attendee is already booked.")]
+    public void OtherConflictsNeverClaimThePlaceIsBooked(string code, string message)
+    {
+        Services.AddSingleton<IPublicEventGroupsClient>(
+            new FakeConfirmClient(confirmProblem: (code, message)));
+
+        var cut = Render<ConfirmSelfRegistration>(p => p.Add(x => x.Token, Token));
+        cut.WaitForElement("[data-action='confirm-registration']").Click();
+
+        cut.WaitForAssertion(() => Assert.Contains(message, cut.Find("[role='alert']").TextContent));
+        Assert.DoesNotContain("Your place is booked", cut.Markup);
+    }
+
+    [Fact]
     public void SummaryNeverRendersTheRawToken()
     {
         Services.AddSingleton<IPublicEventGroupsClient>(new FakeConfirmClient());
@@ -54,7 +81,8 @@ public sealed class ConfirmSelfRegistrationPageTests : BunitContext
         "Open days", "London HQ",
         new DateOnly(2026, 10, 5), new TimeOnly(9, 0), "Field staff");
 
-    private sealed class FakeConfirmClient(int viewStatus = 200, string? viewError = null)
+    private sealed class FakeConfirmClient(
+        int viewStatus = 200, string? viewError = null, (string Code, string Message)? confirmProblem = null)
         : IPublicEventGroupsClient
     {
         public List<string> ConfirmKeys { get; } = [];
@@ -81,6 +109,10 @@ public sealed class ConfirmSelfRegistrationPageTests : BunitContext
             string token, IdempotencySubmission submission, CancellationToken ct)
         {
             ConfirmKeys.Add(submission.Key);
+            if (confirmProblem is { } problem)
+                return Task.FromResult(ApiOutcome<ConfirmSelfRegistrationOutcomeDto>.Failure(
+                    new ApiProblem(problem.Code, "Conflict", 409, problem.Message,
+                        [], null, null, null, null)));
             return Task.FromResult(ApiOutcome<ConfirmSelfRegistrationOutcomeDto>.Success(
                 new ConfirmSelfRegistrationOutcomeDto(Guid.NewGuid()), 201));
         }

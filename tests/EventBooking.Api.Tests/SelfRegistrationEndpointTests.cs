@@ -65,7 +65,7 @@ public sealed class SelfRegistrationEndpointTests(ApiFactory factory)
                 name = "Robin Public",
                 email = "robin@example.com",
             });
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, closed.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, closed.StatusCode);
 
         factory.SignedInAs = await factory.GivenStaffAsync(Role.Coordinator);
         await OpenMemberAsync(client, groupId, eventId, 2);
@@ -82,7 +82,7 @@ public sealed class SelfRegistrationEndpointTests(ApiFactory factory)
             });
         Assert.Equal(HttpStatusCode.Created, submitted.StatusCode);
         var body = await BodyAsync(submitted);
-        Assert.Equal(71, body.GetProperty("confirmationToken").GetString()!.Length);
+        Assert.False(body.TryGetProperty("confirmationToken", out _));
         Assert.Equal("robin@example.com", body.GetProperty("email").GetString());
 
         var stale = await anonymous.PostAsJsonAsync(

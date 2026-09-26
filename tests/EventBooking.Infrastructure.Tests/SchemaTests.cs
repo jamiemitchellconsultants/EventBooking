@@ -3,6 +3,7 @@ using EventBooking.Domain.AttendeeGroups;
 using EventBooking.Domain.Attendees;
 using EventBooking.Domain.Events;
 using EventBooking.Domain.Locations;
+using EventBooking.Domain.Notifications;
 using EventBooking.Infrastructure.Persistence;
 using EventBooking.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +57,8 @@ public class SchemaTests(PostgresFixture fixture)
                     "20260925034812_GrantApplicationRoleOnLaterTables",
                     "20260925120000_AttendeeGroupDescription", "20260925123000_EventGroups",
                     "20260925130000_AddSelfRegistration",
-                    "20260925204034_SelfRegistrationTerminalAt"],
+                    "20260925204034_SelfRegistrationTerminalAt",
+                    "20260926043945_SelfRegistrationEmailLink"],
                 (await context.Database.GetPendingMigrationsAsync()).ToArray());
 
             await context.Database.MigrateAsync();
@@ -372,6 +374,21 @@ public class SchemaTests(PostgresFixture fixture)
 
         Assert.Contains("claimed_at", columns);
         Assert.Contains("claim_count", columns);
+    }
+
+    [Fact]
+    public async Task ADeliveryNamesExactlyOneRecipientContext()
+    {
+        await fixture.ResetAsync();
+
+        await using var context = fixture.NewContext();
+        context.EmailLogs.Add(EmailLog.RecordPendingSelfRegistration(
+            Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow));
+        await context.SaveChangesAsync();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO email_log (id, attendee_id, self_registration_id, template_name, sent_at, status, claim_count) " +
+            "VALUES (gen_random_uuid(), NULL, NULL, 5, now(), 3, 0);"));
     }
 
     private static async Task InsertManagerProfileAsync(EventBookingDbContext context, Guid typeId) =>
